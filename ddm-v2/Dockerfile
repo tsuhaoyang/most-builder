@@ -37,4 +37,4 @@ USER appuser
 
 EXPOSE 8000
 
-CMD ["uvicorn", "ddm_v2.main:app", "--host", "0.0.0.0", "--port", "8000", "--app-dir", "src"]
+CMD ["uvicorn", "ddm_v2.main:app", "--host", "0.0.0.0", "--port", "8000", "--reload", "--app-dir", "src"]

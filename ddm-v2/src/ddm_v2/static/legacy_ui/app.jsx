@@ -1,4 +1,4 @@
-        const { useState, useEffect, useCallback, useMemo, useRef } = React;
+        const { useState, useEffect, useLayoutEffect, useCallback, useMemo, useRef } = React;
         const API_BASE = window.DDM_API_BASE || "/api/v1";
         const MOST_PANEL_MIN_HEIGHTS = [0, 0, 0];
         const MOST_PANEL_KEYS = ['builder', 'list', 'mi'];
@@ -117,8 +117,8 @@
 
         const formatDate = (iso) => iso ? new Date(iso).toLocaleString() : '-';
 
-        const SectionCard = ({ title, actions, children, className = '' }) => (
-            <div className={`bg-slate-900/80 border border-slate-800 rounded-2xl shadow-xl overflow-hidden ${className}`}>
+        const SectionCard = ({ title, actions, children, className = '', allowOverflow = false }) => (
+            <div className={`bg-slate-900/80 border border-slate-800 rounded-2xl shadow-xl ${allowOverflow ? 'overflow-visible' : 'overflow-hidden'} ${className}`}>
                 <div className="flex items-center justify-between px-5 py-3 border-b border-slate-800 bg-slate-900/70">
                     <div className="font-semibold text-sm tracking-wide text-slate-200">{title}</div>
                     <div className="flex gap-2 text-xs text-slate-400">{actions}</div>
@@ -1079,6 +1079,74 @@
             isEditing,
             isEditingTemplate
         }) => {
+            const [openMenuKey, setOpenMenuKey] = useState(null);
+            const [menuPlacement, setMenuPlacement] = useState(null);
+            const triggerRefs = useRef({});
+
+            const KEY_TO_INDEX_OPTIONS = {
+                A1: A_INDEX_OPTIONS,
+                A2: A_INDEX_OPTIONS,
+                A3: A_INDEX_OPTIONS,
+                B1: B_INDEX_OPTIONS,
+                B2: B_INDEX_OPTIONS,
+                G: G_INDEX_OPTIONS,
+                P: P_INDEX_OPTIONS,
+                M: M_INDEX_OPTIONS,
+                X: X_INDEX_OPTIONS,
+                I: I_INDEX_OPTIONS
+            };
+
+            useLayoutEffect(() => {
+                if (!openMenuKey) {
+                    setMenuPlacement(null);
+                    return undefined;
+                }
+                const GAP = 4;
+                const maxMenuH = Math.min(window.innerHeight * 0.6, 208);
+                const place = () => {
+                    const el = triggerRefs.current[openMenuKey];
+                    if (!el) return;
+                    const r = el.getBoundingClientRect();
+                    const vw = window.innerWidth;
+                    const menuWidth = Math.max(r.width, 224);
+                    let left = r.left;
+                    if (left + menuWidth > vw - 8) left = Math.max(8, vw - menuWidth - 8);
+                    let top = r.bottom + GAP;
+                    const spaceBelow = window.innerHeight - r.bottom - GAP;
+                    if (spaceBelow < Math.min(maxMenuH, 120) && r.top - GAP > window.innerHeight - r.bottom) {
+                        top = Math.max(8, r.top - GAP - maxMenuH);
+                    }
+                    setMenuPlacement({ top, left, width: menuWidth });
+                };
+                place();
+                window.addEventListener('scroll', place, true);
+                window.addEventListener('resize', place);
+                return () => {
+                    window.removeEventListener('scroll', place, true);
+                    window.removeEventListener('resize', place);
+                };
+            }, [openMenuKey]);
+
+            useEffect(() => {
+                if (!openMenuKey) return undefined;
+                const onDoc = (e) => {
+                    const trigger = triggerRefs.current[openMenuKey];
+                    const panel = document.querySelector(`[data-most-dd-panel="${openMenuKey}"]`);
+                    if (trigger?.contains(e.target)) return;
+                    if (panel?.contains(e.target)) return;
+                    setOpenMenuKey(null);
+                };
+                const onKey = (e) => {
+                    if (e.key === 'Escape') setOpenMenuKey(null);
+                };
+                document.addEventListener('mousedown', onDoc);
+                document.addEventListener('keydown', onKey);
+                return () => {
+                    document.removeEventListener('mousedown', onDoc);
+                    document.removeEventListener('keydown', onKey);
+                };
+            }, [openMenuKey]);
+
             const handleChange = (key, value) => {
                 onChange({ ...params, [key]: parseInt(value) || 0 });
             };
@@ -1109,8 +1177,8 @@
 
             // Render UI for From Location (FuzzySelect)
             const renderFromLocation = () => (
-                <div className="space-y-1 min-w-[120px]">
-                    <label className="text-[10px] text-slate-400 uppercase">From (起點)</label>
+                <div className="inline-flex flex-col items-center gap-1 shrink-0 w-[7.5rem]">
+                    <label className="text-[10px] text-slate-400 uppercase whitespace-nowrap">From (起點)</label>
                     <FuzzySelect
                         options={masterData?.fromLocations || []}
                         value={mostForm?.from_location}
@@ -1123,8 +1191,8 @@
 
             // Render UI for To Location (FuzzySelect)
             const renderToLocation = () => (
-                <div className="space-y-1 min-w-[120px]">
-                    <label className="text-[10px] text-slate-400 uppercase">To (終點)</label>
+                <div className="inline-flex flex-col items-center gap-1 shrink-0 w-[7.5rem]">
+                    <label className="text-[10px] text-slate-400 uppercase whitespace-nowrap">To (終點)</label>
                     <FuzzySelect
                         options={masterData?.toLocations || []}
                         value={mostForm?.to_location}
@@ -1137,8 +1205,8 @@
 
             // Render UI for Object Picker (Dropdown)
             const renderObjectPicker = () => (
-                <div className="space-y-1 min-w-[160px]">
-                    <label className="text-[10px] text-slate-400 uppercase flex justify-between">
+                <div className="inline-flex flex-col items-center gap-1 shrink-0 w-[8.5rem]">
+                    <label className="text-[10px] text-slate-400 uppercase whitespace-nowrap flex justify-between gap-1 w-full">
                         <span>目標物 (Object)</span>
                         {glovePreview && <span className="text-blue-300 ml-1">{glovePreview.glove_type}</span>}
                     </label>
@@ -1167,8 +1235,8 @@
 
             // Render UI for Component Input (Dropdown)
             const renderComponentInput = () => (
-                <div className="space-y-1 min-w-[100px]">
-                    <label className="text-[10px] text-slate-400 uppercase">Comp (元件)</label>
+                <div className="inline-flex flex-col items-center gap-1 shrink-0 w-[6.5rem]">
+                    <label className="text-[10px] text-slate-400 uppercase whitespace-nowrap">Comp (元件)</label>
                     <FuzzySelect
                         options={masterData?.components || []}
                         value={mostForm?.object_component} // Mapping strictly
@@ -1186,8 +1254,8 @@
             
              // Render Reference Point / Index Location (for Controlled I)
             const renderRefPoint = () => (
-                <div className="space-y-1 min-w-[100px]">
-                    <label className="text-[10px] text-slate-400 uppercase">Where (位置)</label>
+                <div className="inline-flex flex-col items-center gap-1 shrink-0 w-[7rem]">
+                    <label className="text-[10px] text-slate-400 uppercase whitespace-nowrap">Where (位置)</label>
                     <FuzzySelect
                         options={masterData?.referencePoints || []}
                         value={mostForm?.reference_point}
@@ -1202,8 +1270,8 @@
 
             // Render Hand Selection (Dropdown)
             const renderHandSelect = () => (
-                <div className="space-y-1 min-w-[70px]">
-                    <label className="text-[10px] text-slate-400 uppercase">Hand</label>
+                <div className="inline-flex flex-col items-center gap-1 shrink-0 w-max">
+                    <label className="text-[10px] text-slate-400 uppercase whitespace-nowrap">Hand</label>
                     <select
                         value={mostForm?.hand || '右手'}
                         onChange={(e) => {
@@ -1211,7 +1279,7 @@
                              if(onFormChange) onFormChange(f => ({...f, hand: val}));
                              onChange({ ...params, hand: val === '左手' ? 'Left' : val === '双手' ? 'Both' : 'Right' });
                         }}
-                        className="w-full rounded-lg border border-slate-700 bg-slate-900/40 px-2 py-1.5 text-xs text-center font-medium text-blue-300"
+                        className="w-max min-w-[3.25rem] rounded-lg border border-slate-700 bg-slate-900/40 px-1.5 py-1.5 text-xs text-center font-medium text-blue-300"
                     >
                          {['左手', '双手', '右手'].map(h => <option key={h} value={h}>{h}</option>)}
                     </select>
@@ -1219,8 +1287,8 @@
             );
 
             const renderFreqInput = () => (
-                <div className="space-y-1 min-w-[70px]">
-                    <label className="text-[10px] text-slate-400 uppercase">Freq</label>
+                <div className="inline-flex flex-col items-center gap-1 shrink-0 w-max">
+                    <label className="text-[10px] text-slate-400 uppercase whitespace-nowrap">Freq</label>
                     <input
                         type="number"
                         data-testid="most-frequency"
@@ -1231,14 +1299,14 @@
                             const next = Math.max(1, parseInt(e.target.value, 10) || 1);
                             handleFormChange('frequency', next);
                         }}
-                        className="w-full rounded-lg border border-slate-700 bg-slate-900/40 px-2 py-1.5 text-xs text-center"
+                        className="w-12 rounded-lg border border-slate-700 bg-slate-900/40 px-1 py-1.5 text-xs text-center"
                     />
                 </div>
             );
 
             const renderSimoToggle = () => (
-                <div className="space-y-1 min-w-[70px]">
-                    <label className="text-[10px] text-slate-400 uppercase">SIMO</label>
+                <div className="inline-flex flex-col items-center gap-1 shrink-0 w-max">
+                    <label className="text-[10px] text-slate-400 uppercase whitespace-nowrap">SIMO</label>
                     <label className="flex items-center justify-center gap-2 rounded-lg border border-slate-700 bg-slate-900/40 px-2 py-1.5 cursor-pointer hover:bg-slate-900/60">
                         <input
                             type="checkbox"
@@ -1273,21 +1341,83 @@
                 onChange({ ...params, p_modifiers: newModifiers, P_addon: pAddonTmu });
             };
 
+            const formatMostOptionLabel = (opt) => {
+                if (!opt?.label) return '';
+                return opt.description ? `${opt.label} — ${opt.description}` : opt.label;
+            };
+
+            /** X_INDEX_OPTIONS 有多筆相同 index，依是否輸入秒數區分目前選項 */
+            const resolveSelectedIndexOption = (paramKey, options) => {
+                const raw = params[paramKey];
+                const v = raw === undefined || raw === null ? 0 : Number(raw);
+                const matches = options.filter((o) => o.index === v);
+                if (matches.length <= 1) return matches[0];
+                if (paramKey === 'X') {
+                    const hasTime = (params.X_time_seconds || 0) > 0;
+                    if (hasTime) return matches.find((o) => o.allow_time_input) || matches[0];
+                    return matches.find((o) => !o.allow_time_input) || matches[0];
+                }
+                return matches[0];
+            };
+
+            const lookupOptionFullLabel = (options, index, paramKey = null) => {
+                const matches = options.filter((o) => o.index === index);
+                let opt = matches[0];
+                if (paramKey === 'X' && matches.length > 1) {
+                    const hasTime = (params.X_time_seconds || 0) > 0;
+                    if (hasTime) opt = matches.find((o) => o.allow_time_input) || matches[0];
+                    else opt = matches.find((o) => !o.allow_time_input) || matches[0];
+                }
+                return opt ? formatMostOptionLabel(opt) : String(index);
+            };
+
+            /** 收合時只顯示簡碼（label 全形｜前一段，如 A1、G3、X6） */
+            const shortOptionCode = (opt) => {
+                if (!opt?.label) return '—';
+                const head = String(opt.label).split('｜')[0];
+                return (head || opt.label).trim();
+            };
+
+            const pickIndexOption = (key, opt) => {
+                if (key === 'X') {
+                    if (!opt.allow_time_input) {
+                        onChange({ ...params, X: opt.index, X_time_seconds: 0 });
+                    } else {
+                        onChange({ ...params, X: opt.index });
+                    }
+                } else {
+                    handleChange(key, opt.index);
+                }
+                setOpenMenuKey(null);
+            };
+
             const renderSelect = (label, key, options) => {
-                const selectedOption = options.find(opt => opt.index === (params[key] ?? 0));
+                const selectedOption = resolveSelectedIndexOption(key, options);
+                const detailTitle = selectedOption ? formatMostOptionLabel(selectedOption) : '';
+                const displayShort = selectedOption ? shortOptionCode(selectedOption) : '—';
+                const isOpen = openMenuKey === key;
+
                 return (
-                    <div className="space-y-1 relative min-w-[60px]">
-                        <label className="text-[10px] text-slate-400 uppercase">{label}</label>
+                    <div className="inline-flex flex-col items-center gap-1 relative shrink-0 w-max">
+                        <label className="text-[10px] text-slate-400 uppercase whitespace-nowrap">{label}</label>
                         {renderTmuBadge(params[key] ?? 0)}
-                        <select
-                            value={params[key] ?? 0}
-                            onChange={(e) => handleChange(key, e.target.value)}
-                            className="w-full rounded-lg border border-slate-700 bg-slate-900/40 px-1 py-1.5 text-xs text-center"
-                        >
-                            {options.map(opt => (
-                                <option key={opt.index} value={opt.index}>{opt.label.split('｜')[0]}</option>
-                            ))}
-                        </select>
+                        <div className="relative" data-most-dd={key}>
+                            <button
+                                type="button"
+                                ref={(el) => {
+                                    if (el) triggerRefs.current[key] = el;
+                                    else delete triggerRefs.current[key];
+                                }}
+                                onClick={() => setOpenMenuKey(isOpen ? null : key)}
+                                title={detailTitle}
+                                className="inline-flex w-max max-w-[9rem] items-center justify-between gap-0.5 rounded-lg border border-slate-700 bg-slate-900/40 px-1.5 py-1.5 text-xs hover:border-slate-500"
+                            >
+                                <span className="font-mono text-slate-100">{displayShort}</span>
+                                <span className="text-slate-500 shrink-0 text-[10px] select-none" aria-hidden>
+                                    {isOpen ? '▲' : '▼'}
+                                </span>
+                            </button>
+                        </div>
                     </div>
                 );
             };
@@ -1304,11 +1434,11 @@
             const renderPModifiersPanel = () => {
                  const selectedModifiers = params.p_modifiers || [];
                  return (
-                    <div className="mt-2 p-2 border border-slate-700/60 rounded-lg bg-slate-900/30">
-                        <div className="flex flex-wrap gap-2 text-[10px] text-slate-400">
+                    <div className="mt-3 p-3 border border-slate-700/60 rounded-lg bg-slate-900/30">
+                        <div className="flex flex-wrap gap-x-4 gap-y-2 text-[10px] text-slate-400">
                              <span className="uppercase">P Addons:</span>
                              {P_MODIFIERS.map(mod => (
-                                <label key={mod.id} className="flex items-center gap-1 cursor-pointer hover:text-slate-200">
+                                <label key={mod.id} className="flex items-center gap-1 cursor-pointer hover:text-slate-200" title={mod.description || mod.label}>
                                     <input type="checkbox" checked={selectedModifiers.includes(mod.id)}
                                         onChange={() => handlePModifierToggle(mod.id)}
                                         className="rounded border-slate-600 bg-slate-800 text-amber-500" />
@@ -1342,50 +1472,39 @@
             const renderXTimeInput = () => {
                 const xValue = params.X ?? 0;
                 return (
-                    <div className="flex gap-2">
+                    <div className="inline-flex flex-nowrap items-end gap-2 shrink-0">
                         {renderSelect('X', 'X', X_INDEX_OPTIONS)}
-                        {/* X Time (conditionally shown or always?) "X(Time)" requested in sequence */}
-                        <div className="space-y-1 min-w-[70px]">
-                            <label className="text-[10px] text-slate-400 uppercase">Time(s)</label>
+                        <div className="inline-flex flex-col items-center gap-1 shrink-0 w-max">
+                            <label className="text-[10px] text-slate-400 uppercase whitespace-nowrap">Time(s)</label>
                             <input
                                 type="number"
                                 min="0" step="0.1"
                                 value={params.X_time_seconds ?? ''}
                                 onChange={(e) => handleFloatChange('X_time_seconds', e.target.value)}
                                 placeholder="s"
-                                className="w-full rounded-lg border border-slate-700 bg-slate-900/40 px-2 py-1.5 text-xs text-center"
+                                className="w-14 rounded-lg border border-slate-700 bg-slate-900/40 px-1 py-1.5 text-xs text-center"
                             />
                         </div>
                     </div>
                 );
             };
             
-            const renderA3Select = () => renderSelect('A', 'A3', A_INDEX_OPTIONS);
+            const renderA3Select = () => renderSelect('A3', 'A3', A_INDEX_OPTIONS);
 
-            const renderISelectWithOutOfSight = () => {
-                 return (
-                    <div className="space-y-1 relative min-w-[60px]">
-                        <label className="text-[10px] text-slate-400 uppercase">I</label>
-                        {renderTmuBadge(params.I ?? 0)}
-                        <select
-                            value={params.I ?? 0}
-                            onChange={(e) => handleChange('I', e.target.value)}
-                            className="w-full rounded-lg border border-slate-700 bg-slate-900/40 px-1 py-1.5 text-xs text-center"
-                        >
-                            {I_INDEX_OPTIONS.map(opt => <option key={opt.index} value={opt.index}>{opt.label.split('｜')[0]}</option>)}
-                        </select>
-                         <label className="flex items-center gap-1 mt-1 cursor-pointer justify-center">
-                                <input
-                                    type="checkbox"
-                                    checked={params.out_of_sight || false}
-                                    onChange={(e) => onChange({ ...params, out_of_sight: e.target.checked })}
-                                    className="w-3 h-3 rounded border-slate-600 bg-slate-900 text-amber-500"
-                                />
-                                <span className="text-[9px] text-slate-400">Out</span>
-                        </label>
-                    </div>
-                 );
-            };
+            const renderISelectWithOutOfSight = () => (
+                <div className="inline-flex flex-col items-center gap-1 shrink-0 w-max">
+                    {renderSelect('I', 'I', I_INDEX_OPTIONS)}
+                    <label className="flex items-center gap-1 cursor-pointer justify-center pt-0.5">
+                        <input
+                            type="checkbox"
+                            checked={params.out_of_sight || false}
+                            onChange={(e) => onChange({ ...params, out_of_sight: e.target.checked })}
+                            className="w-3 h-3 rounded border-slate-600 bg-slate-900 text-amber-500"
+                        />
+                        <span className="text-[9px] text-slate-400">Out</span>
+                    </label>
+                </div>
+            );
 
             // Calculate live previews
             const returnACm = parseFloat(mostForm?.return_a_cm) || 0;
@@ -1427,13 +1546,23 @@
                     const A3 = params.A3 ?? returnAIndex;
                     return {
                         items: [
-                            { key: 'A1', label: 'A1', index: A1 },
-                            { key: 'B1', label: 'B1', index: B1 },
-                            { key: 'G', label: 'G', index: G },
-                            { key: 'M', label: 'M', index: M },
-                            { key: 'X', label: params.X_time_seconds > 0 ? `X(${params.X_time_seconds}s)` : 'X', index: X },
-                            { key: 'I', label: params.out_of_sight ? 'I(Out)' : 'I', index: I },
-                            { key: 'A3', label: 'A3', index: A3 }
+                            { key: 'A1', label: 'A1', index: A1, detail: lookupOptionFullLabel(A_INDEX_OPTIONS, A1) },
+                            { key: 'B1', label: 'B1', index: B1, detail: lookupOptionFullLabel(B_INDEX_OPTIONS, B1) },
+                            { key: 'G', label: 'G', index: G, detail: lookupOptionFullLabel(G_INDEX_OPTIONS, G) },
+                            { key: 'M', label: 'M', index: M, detail: lookupOptionFullLabel(M_INDEX_OPTIONS, M) },
+                            {
+                                key: 'X',
+                                label: params.X_time_seconds > 0 ? `X(${params.X_time_seconds}s)` : 'X',
+                                index: X,
+                                detail: lookupOptionFullLabel(X_INDEX_OPTIONS, X, 'X')
+                            },
+                            {
+                                key: 'I',
+                                label: params.out_of_sight ? 'I(Out)' : 'I',
+                                index: I,
+                                detail: lookupOptionFullLabel(I_INDEX_OPTIONS, I)
+                            },
+                            { key: 'A3', label: 'A3', index: A3, detail: lookupOptionFullLabel(A_INDEX_OPTIONS, A3) }
                         ]
                     };
                 }
@@ -1448,14 +1577,23 @@
                 const A3 = params.A3 ?? returnAIndex;
                 return {
                     items: [
-                        { key: 'A1', label: 'A1', index: A1 },
-                        { key: 'B1', label: 'B1', index: B1 },
-                        { key: 'G', label: 'G', index: G },
-                        { key: 'A2', label: 'A2', index: A2 },
-                        { key: 'B2', label: 'B2', index: B2 },
-                        { key: 'P', label: 'P', index: P },
-                        ...(P_addon ? [{ key: 'P_addon', label: 'P+', index: P_addon }] : []),
-                        { key: 'A3', label: 'A3', index: A3 }
+                        { key: 'A1', label: 'A1', index: A1, detail: lookupOptionFullLabel(A_INDEX_OPTIONS, A1) },
+                        { key: 'B1', label: 'B1', index: B1, detail: lookupOptionFullLabel(B_INDEX_OPTIONS, B1) },
+                        { key: 'G', label: 'G', index: G, detail: lookupOptionFullLabel(G_INDEX_OPTIONS, G) },
+                        { key: 'A2', label: 'A2', index: A2, detail: lookupOptionFullLabel(A_INDEX_OPTIONS, A2) },
+                        { key: 'B2', label: 'B2', index: B2, detail: lookupOptionFullLabel(B_INDEX_OPTIONS, B2) },
+                        { key: 'P', label: 'P', index: P, detail: lookupOptionFullLabel(P_INDEX_OPTIONS, P) },
+                        ...(P_addon
+                            ? [
+                                  {
+                                      key: 'P_addon',
+                                      label: 'P+',
+                                      index: P_addon,
+                                      detail: `P 加算修飾（額外 ${P_addon} TMU，見下方 P Addons）`
+                                  }
+                              ]
+                            : []),
+                        { key: 'A3', label: 'A3', index: A3, detail: lookupOptionFullLabel(A_INDEX_OPTIONS, A3) }
                     ]
                 };
             }, [params, seqType, returnAIndex]);
@@ -1511,19 +1649,29 @@
                         </div>
                         <div className="rounded-lg border border-slate-700/60 bg-slate-900/20 px-3 py-2">
                             <div className="text-[10px] text-slate-500 uppercase mb-2">TMU 明細</div>
-                            <div className="flex flex-wrap gap-2">
-                                {effectiveBreakdown.items.map(item => {
+                            <div className="flex flex-wrap gap-3">
+                                {effectiveBreakdown.items.map((item) => {
                                     const tmu = (item.index || 0) * 10;
                                     const isZero = !item.index;
+                                    const tip = item.detail
+                                        ? `${item.detail} → ${tmu} TMU`
+                                        : `${item.label}: ${item.index} → ${tmu} TMU`;
                                     return (
                                         <div
                                             key={item.key}
-                                            className={`px-2 py-1 rounded border text-xs font-mono ${isZero ? 'border-slate-800 text-slate-500 bg-slate-950/20' : 'border-emerald-900/40 text-emerald-300 bg-emerald-900/10'}`}
-                                            title={`${item.label}: ${item.index} → ${tmu} TMU`}
+                                            className={`px-3 py-2 rounded-lg border text-xs max-w-[240px] ${isZero ? 'border-slate-800 text-slate-500 bg-slate-950/20' : 'border-emerald-900/40 text-emerald-300 bg-emerald-900/10'}`}
+                                            title={tip}
                                         >
-                                            <span className="mr-2 text-slate-400">{item.label}</span>
-                                            <span className="text-slate-200">{item.index}</span>
-                                            <span className="ml-2 text-emerald-400">{tmu}</span>
+                                            <div className="font-mono">
+                                                <span className="mr-2 text-slate-400">{item.label}</span>
+                                                <span className="text-slate-200">{item.index}</span>
+                                                <span className="ml-2 text-emerald-400">{tmu}</span>
+                                            </div>
+                                            {item.detail ? (
+                                                <div className="mt-0.5 text-[9px] font-sans font-normal text-slate-500 leading-snug line-clamp-3 normal-case">
+                                                    {item.detail}
+                                                </div>
+                                            ) : null}
                                         </div>
                                     );
                                 })}
@@ -1531,19 +1679,20 @@
                         </div>
                     </div>
 
-                    {/* Sequence Inputs Row (Horizontal Scrollable) */}
-                    <div className="flex items-start gap-2 overflow-x-auto pb-4 pt-1">
+                    {/* Single horizontal row (scroll) — column width follows content like original */}
+                    <div className="rounded-lg border border-slate-700/40 bg-slate-900/15 px-2 py-2">
+                        <div className="flex items-end gap-2 overflow-x-auto pb-3 pt-1">
                         {seqType === 'GENERAL' ? (
                             <>
                                 {renderHandSelect()}
-                                {renderSelect('A', 'A1', A_INDEX_OPTIONS)}
-                                {renderSelect('B', 'B1', B_INDEX_OPTIONS)}
+                                {renderSelect('A1', 'A1', A_INDEX_OPTIONS)}
+                                {renderSelect('B1', 'B1', B_INDEX_OPTIONS)}
                                 {renderFromLocation()}
                                 {renderSelect('G', 'G', G_INDEX_OPTIONS)}
                                 {renderObjectPicker()}
                                 {renderComponentInput()}
-                                {renderSelect('A', 'A2', A_INDEX_OPTIONS)}
-                                {renderSelect('B', 'B2', B_INDEX_OPTIONS)}
+                                {renderSelect('A2', 'A2', A_INDEX_OPTIONS)}
+                                {renderSelect('B2', 'B2', B_INDEX_OPTIONS)}
                                 {renderSelect('P', 'P', P_INDEX_OPTIONS)}
                                 {renderToLocation()}
                                 {renderA3Select()}
@@ -1553,8 +1702,8 @@
                         ) : (
                             <>
                                 {renderHandSelect()}
-                                {renderSelect('A', 'A1', A_INDEX_OPTIONS)}
-                                {renderSelect('B', 'B1', B_INDEX_OPTIONS)}
+                                {renderSelect('A1', 'A1', A_INDEX_OPTIONS)}
+                                {renderSelect('B1', 'B1', B_INDEX_OPTIONS)}
                                 {renderFromLocation()}
                                 {renderSelect('G', 'G', G_INDEX_OPTIONS)}
                                 {renderObjectPicker()}
@@ -1569,6 +1718,7 @@
                                 {renderSimoToggle()}
                             </>
                         )}
+                        </div>
                     </div>
                     
                     {seqType === 'GENERAL' && renderPModifiersPanel()}
@@ -1595,6 +1745,45 @@
                              </>
                          )}
                     </div>
+
+                    {openMenuKey && menuPlacement && (() => {
+                        const options = KEY_TO_INDEX_OPTIONS[openMenuKey];
+                        if (!options) return null;
+                        const selectedOption = resolveSelectedIndexOption(openMenuKey, options);
+                        return ReactDOM.createPortal(
+                            <ul
+                                data-most-dd-panel={openMenuKey}
+                                style={{
+                                    position: 'fixed',
+                                    top: `${menuPlacement.top}px`,
+                                    left: `${menuPlacement.left}px`,
+                                    width: `${menuPlacement.width}px`,
+                                    maxWidth: 'min(90vw, 22rem)',
+                                    maxHeight: 'min(60vh, 13rem)',
+                                    zIndex: 9999
+                                }}
+                                className="overflow-y-auto rounded-lg border border-slate-600 bg-slate-950 py-1 shadow-xl"
+                                role="listbox"
+                            >
+                                {options.map((opt, idx) => (
+                                    <li key={`${openMenuKey}-opt-${idx}`} role="none">
+                                        <button
+                                            type="button"
+                                            role="option"
+                                            aria-selected={selectedOption === opt}
+                                            className={`w-full px-2 py-2 text-left text-[11px] leading-snug text-slate-200 hover:bg-slate-800/90 ${
+                                                selectedOption === opt ? 'bg-slate-800/70' : ''
+                                            }`}
+                                            onClick={() => pickIndexOption(openMenuKey, opt)}
+                                        >
+                                            {formatMostOptionLabel(opt)}
+                                        </button>
+                                    </li>
+                                ))}
+                            </ul>,
+                            document.body
+                        );
+                    })()}
                 </div>
             );
         };
@@ -4019,6 +4208,7 @@
                                         style={{ flex: '0 0 auto' }}
                                     >
                                         <SectionCard
+                                            allowOverflow
                                             className={mostBuilderCardClass}
                                             title="序列模型編輯區"
                                             actions={(
