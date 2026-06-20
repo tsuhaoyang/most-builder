@@ -1,37 +1,56 @@
+"""v2 測試共用 fixtures。
+
+- 單元測試（unit/）：純引擎，免 DB。
+- 整合測試（integration/）：用 httpx ASGITransport 打 v2 app，需 PostgreSQL（DATABASE_URL）。
+  DB 不可用時自動 skip。
+
+注意：pytest-asyncio 每個測試用獨立 event loop，而 database.get_session_maker() 會快取
+engine/sessionmaker（綁在第一個 loop）。故每個整合測試前後都把該快取清掉，讓 engine 在
+當前 loop 重建，避免 asyncpg「another operation is in progress」。
+"""
 from __future__ import annotations
 
-import json
+import os
 
+import httpx
 import pytest
-from fastapi.testclient import TestClient
+import pytest_asyncio
+from sqlalchemy import text
 
-from ddm_v2.main import create_app
-
-
-@pytest.fixture
-def client(tmp_path):
-    db_path = tmp_path / "runtime-db.json"
-    app = create_app(db_path=db_path)
-    with TestClient(app) as test_client:
-        yield test_client
+from ddm_v2.most_engine import build_from_seed
 
 
-@pytest.fixture
-def engineer_headers(client: TestClient) -> dict[str, str]:
-    response = client.post("/api/v1/auth/login", json={"username": "Avery", "password": "avery"})
-    token = response.json()["access_token"]
-    return {"Authorization": f"Bearer {token}"}
+@pytest.fixture(scope="session")
+def rs():
+    """工廠 rule-set（自 seed 建，免 DB）。"""
+    return build_from_seed()
 
 
-@pytest.fixture
-def manager_headers(client: TestClient) -> dict[str, str]:
-    response = client.post("/api/v1/auth/login", json={"username": "admin", "password": "admin123"})
-    token = response.json()["access_token"]
-    return {"Authorization": f"Bearer {token}"}
+@pytest_asyncio.fixture
+async def client():
+    """以 admin 身分（gateway header）打 v2 app；DB 不可用則 skip。"""
+    if not os.getenv("DATABASE_URL"):
+        pytest.skip("DATABASE_URL 未設定，略過整合測試")
+    os.environ.setdefault("AUTH_DEV_USER", "IEC141289")
 
+    import ddm_v2.database as db
 
-@pytest.fixture
-def regression_fixture() -> dict:
-    fixture_path = "tests/regression/fixtures/most_reference.json"
-    with open(fixture_path, "r", encoding="utf-8") as handle:
-        return json.load(handle)
+    db._async_session_maker = None  # 在當前 loop 重建
+    from ddm_v2.database import get_engine
+
+    try:
+        eng = get_engine()
+        async with eng.connect() as conn:
+            await conn.execute(text("SELECT 1"))
+        await eng.dispose()
+    except Exception as e:  # noqa: BLE001
+        pytest.skip(f"PostgreSQL 連不上，略過整合測試：{e}")
+
+    from ddm_v2.main import create_app
+
+    app = create_app()
+    transport = httpx.ASGITransport(app=app)
+    async with httpx.AsyncClient(transport=transport, base_url="http://test", headers={"X-Username": "IEC141289"}) as c:
+        yield c
+
+    db._async_session_maker = None  # 清掉，避免殘留到下個 loop
