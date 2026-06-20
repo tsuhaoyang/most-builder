@@ -1,0 +1,70 @@
+"""dev seed：動作範本庫起手式（涵蓋 Touchtime 常見動詞）。idempotent（依 name_zh）。
+
+執行：
+  DATABASE_URL=... PYTHONPATH=src .venv/bin/python scripts/dev_seed_templates.py
+"""
+from __future__ import annotations
+
+import asyncio
+import uuid
+
+from sqlalchemy import select
+
+from ddm_v2.database import get_db_session
+from ddm_v2.models.v2.motion_template import MotionTemplate
+from ddm_v2.schemas.v2.most import (
+    ASlot, CycleIn, GSlot, ISlot, MComponent, MSlot, PSlot, XSlot,
+)
+
+
+def gm(reach0, g, reach3, p_base, addons=None, precision=False):
+    return CycleIn(seq="GM", a0=ASlot(reach_cm=reach0), g2=GSlot(g_code=g),
+                   a3=ASlot(reach_cm=reach3), p5=PSlot(p_base_code=p_base, p_addon_codes=addons or [], precision=precision))
+
+
+def cm(reach0, g, verb, dist=0, x="x_none", x_sec=0.0, i="i_none", rev=1, dia=0, angle=0):
+    return CycleIn(seq="CM", a0=ASlot(reach_cm=reach0), g2=GSlot(g_code=g),
+                   m3=MSlot(m_components=[MComponent(verb_code=verb, distance_cm=dist, angle_deg=angle, revolutions=rev, diameter_cm=dia)]),
+                   x4=XSlot(x_code=x, x_seconds=x_sec), i5=ISlot(i_code=i))
+
+
+# (name_zh, name_en, category, seq, keywords, cycle)
+TEMPLATES = [
+    ("拿取", "take", "取放", "GM", ["take", "grab", "get", "pick", "拿", "取"], gm(20, "g_grasp", 15, "p_hold")),
+    ("放置", "place", "取放", "GM", ["place", "put", "put on", "放", "置"], gm(20, "g_grasp", 20, "p_place_single")),
+    ("移動/走步", "move", "搬運", "GM", ["move", "go", "transport", "walk", "trolley", "cart", "走", "移"], gm(0, "", 0, "")),
+    ("貼標籤", "stick label", "貼附", "GM", ["stick", "label", "sticker", "貼", "標籤"], gm(15, "g_pick_small", 12, "p_place_single", ["a_align"], precision=True)),
+    ("插入/組裝", "insert", "組裝", "GM", ["insert", "assemble", "插", "組"], gm(15, "g_pick_sel", 10, "p_asm_single", ["a_insert"])),
+    ("鎖附螺絲", "screw", "鎖附", "CM", ["screw", "lock", "tighten", "fasten", "鎖", "螺絲"], cm(18, "g_grasp", "m_screw", i="i_check")),
+    ("撕開/移除", "open/remove", "拆解", "CM", ["open", "remove", "unpack", "tear", "pulltab", "pull tab", "撕", "拆", "移除"], cm(20, "g_pick_sel", "m_tearopen", dist=15)),
+    ("按壓/按鈕", "press", "操作", "CM", ["press", "push", "button", "按", "壓"], cm(20, "g_touch", "m_push", dist=4)),
+    ("掃描/檢查", "scan/check", "檢測", "CM", ["scan", "check", "test", "inspect", "掃", "檢查", "測"], cm(25, "g_touch", "m_hand", x="x_scan", x_sec=1.5, i="i_check")),
+    ("插接線材", "plug cable", "組裝", "CM", ["plug", "connect", "cable", "接線", "插接"], cm(20, "g_grasp", "m_push", dist=6, i="i_align1")),
+    # ── 成品化常見 pattern（含距離分級/精度，降低冷啟動）──
+    ("小範圍拿取(≤50cm)", "take short reach", "取放", "GM", ["take short", "近距", "小範圍", "拿近件"], gm(30, "g_grasp", 30, "p_place_single")),
+    ("拆箱取件", "unpack take out", "取放", "GM", ["unpack", "take out of box", "拆箱", "取出"], gm(35, "g_grab", 30, "p_hold")),
+    ("精密對準裝配", "precision fit", "組裝", "GM", ["fit precisely", "align fit", "精密", "對準裝"], gm(30, "g_pick_sel", 25, "p_asm_single", ["a_align"], precision=True)),
+    ("壓合卡扣", "snap fit", "組裝", "GM", ["snap", "clip", "卡扣", "壓合"], gm(25, "g_grasp", 20, "p_asm_single", ["a_snap"])),
+    ("電動鎖附(多顆)", "power driver screws", "鎖附", "CM", ["driver", "power screw", "電動鎖", "多螺絲"], cm(18, "g_grasp", "m_screw", i="i_check")),
+    ("功能測試(治具)", "function test fixture", "檢測", "CM", ["function test", "fixture", "治具", "測試"], cm(30, "g_grasp", "m_push", dist=5, x="x_press", x_sec=2.0, i="i_check")),
+]
+
+
+async def main() -> None:
+    async for s in get_db_session():
+        added = 0
+        for name_zh, name_en, cat, seq, kws, cyc in TEMPLATES:
+            exists = (await s.execute(select(MotionTemplate).where(MotionTemplate.name_zh == name_zh))).scalar_one_or_none()
+            if exists:
+                continue
+            s.add(MotionTemplate(id=uuid.uuid4(), name_zh=name_zh, name_en=name_en, category=cat,
+                                 keywords=kws, seq_kind=seq, cycle_template=cyc.model_dump(mode="json"),
+                                 status="standard", created_by="IEC141289"))
+            added += 1
+        await s.commit()
+        print(f"✓ 動作範本：新增 {added} 筆（總定義 {len(TEMPLATES)} 筆）")
+        break
+
+
+if __name__ == "__main__":
+    asyncio.run(main())
