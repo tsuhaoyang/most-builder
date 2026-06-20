@@ -1,0 +1,59 @@
+"""v2 匯出 API：WI 1128 預覽 / Excel / LB csv / LB API 接口。
+
+依據 system-architecture-v2 §8.1。
+"""
+from __future__ import annotations
+
+import uuid
+
+from fastapi import APIRouter, Depends, HTTPException, Response
+from sqlalchemy.ext.asyncio import AsyncSession
+
+from ddm_v2.auth.deps import CurrentUser, current_user
+from ddm_v2.database import get_db_session
+from ddm_v2.services.v2 import export_service as exp
+from ddm_v2.services.v2 import worksheet_service as wsvc
+
+router = APIRouter(prefix="/api/v2", tags=["v2-export"])
+
+
+@router.get("/worksheets/{worksheet_id}/export/wi-preview")
+async def wi_preview(worksheet_id: uuid.UUID, session: AsyncSession = Depends(get_db_session), _: CurrentUser = Depends(current_user)) -> dict:
+    try:
+        return await exp.wi_preview(session, worksheet_id)
+    except wsvc.WorksheetNotFound:
+        raise HTTPException(status_code=404, detail=f"worksheet 不存在：{worksheet_id}")
+
+
+@router.get("/worksheets/{worksheet_id}/export/excel")
+async def export_excel(worksheet_id: uuid.UUID, session: AsyncSession = Depends(get_db_session), _: CurrentUser = Depends(current_user)) -> Response:
+    try:
+        data = await exp.to_excel_bytes(session, worksheet_id)
+    except wsvc.WorksheetNotFound:
+        raise HTTPException(status_code=404, detail=f"worksheet 不存在：{worksheet_id}")
+    return Response(
+        content=data,
+        media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        headers={"Content-Disposition": f'attachment; filename="WI_{worksheet_id}.xlsx"'},
+    )
+
+
+@router.get("/worksheets/{worksheet_id}/export/lb-csv")
+async def export_lb_csv(worksheet_id: uuid.UUID, session: AsyncSession = Depends(get_db_session), _: CurrentUser = Depends(current_user)) -> Response:
+    try:
+        text = await exp.to_lb_csv(session, worksheet_id)
+    except wsvc.WorksheetNotFound:
+        raise HTTPException(status_code=404, detail=f"worksheet 不存在：{worksheet_id}")
+    return Response(
+        content="﻿" + text,  # BOM 讓 Excel 開 CSV 不亂碼
+        media_type="text/csv; charset=utf-8",
+        headers={"Content-Disposition": f'attachment; filename="LB_{worksheet_id}.csv"'},
+    )
+
+
+@router.post("/worksheets/{worksheet_id}/export/lb-api")
+async def export_lb_api(worksheet_id: uuid.UUID, session: AsyncSession = Depends(get_db_session), _: CurrentUser = Depends(current_user)) -> dict:
+    try:
+        return await exp.lb_api_payload(session, worksheet_id)
+    except wsvc.WorksheetNotFound:
+        raise HTTPException(status_code=404, detail=f"worksheet 不存在：{worksheet_id}")
