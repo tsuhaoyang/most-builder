@@ -49,6 +49,6 @@ PYTHONPATH=src python scripts/core_logic/run_all.py  # 核心邏輯黃金/反例
 
 ## 文件
 
-- 核心邏輯：`docs/specs/minimost-sequence-model-core-logic-spec.md`、`level-system-core-logic-spec.md`
-- 架構：`docs/specs/system-architecture-v2-spec.md`、`data-model-and-storage-spec.md`、`rbac-spec.md`
+- 核心邏輯：`docs/core-logic/`（minimost-sequence / level-system / 驗證目錄 / MOST 核心算法）
+- 架構：`docs/architecture/`（system-architecture-v2 / data-model-and-storage / frontend-data-flow / rbac）
 - 文件索引：`docs/DOC_REGISTRY.md`

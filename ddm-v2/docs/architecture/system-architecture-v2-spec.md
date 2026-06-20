@@ -4,7 +4,7 @@
 **版本：** 0.1 — 草案（架構分岔已定，第二層決策見 §12）
 **建立日期：** 2026-06-17
 **作者：** 架構師（20y SWE + IE 視角）
-**前提：** 核心邏輯已確認並以 89 個測試護住（見 [sequence](./minimost-sequence-model-core-logic-spec.md) / [level](./level-system-core-logic-spec.md) / [test-catalog](./core-logic-validation-test-catalog.md)）。本文件談「如何把核心邏輯做成可信的系統」。
+**前提：** 核心邏輯已確認並以 89 個測試護住（見 [sequence](../core-logic/minimost-sequence-model-core-logic-spec.md) / [level](../core-logic/level-system-core-logic-spec.md) / [test-catalog](../core-logic/core-logic-validation-test-catalog.md)）。本文件談「如何把核心邏輯做成可信的系統」。
 
 ---
 
@@ -76,7 +76,7 @@
 每筆 WI cycle 持久化時記錄 **`rule_set_version_id`**；之後重算用當時版本 → **數值可回放、可稽核**。
 
 ### 3.4 漂移防線（CI）
-[validate-core-logic](../../.claude/skills/validate-core-logic/SKILL.md) skill 的 89 個黃金/反例測試，CI 上對「引擎」跑（不再只是獨立 validator）。黃金值（GM28/CM29、教學 7 範例、image5 反例）是規格的一部分，任何引擎或 rule-set 改動都必須維持綠燈。
+核心邏輯驗證（[scripts/core_logic/](../../scripts/core_logic/)）的黃金/反例測試，CI 上對「引擎」跑（不再只是獨立 validator）。黃金值（GM28/CM29、教學 7 範例、image5 反例）是規格的一部分，任何引擎或 rule-set 改動都必須維持綠燈。
 
 > **前端即時性 vs 單一引擎**：見 §12 Q-A（建議：前端以 debounce 呼叫 calculate API 取權威值；若 UX 需更即時，再開「以同一組黃金向量鎖定的 TS 鏡像引擎」，CI 對 TS 與 Python 同跑黃金集）。
 

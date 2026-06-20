@@ -57,4 +57,4 @@ PYTHONPATH=src python scripts/core_logic/run_all.py    # 核心邏輯黃金/反�
 
 - 前端：`docs/html_con/v2-workbench.html`
 - 後端 API：`src/ddm_v2/api/routes/v2/`、引擎 `src/ddm_v2/most_engine/`
-- 規格：`docs/specs/`、索引 `docs/DOC_REGISTRY.md`
+- 規格：`docs/core-logic/`、`docs/architecture/`；索引 `docs/DOC_REGISTRY.md`

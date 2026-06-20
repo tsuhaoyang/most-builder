@@ -50,10 +50,10 @@
 
 | 文件 | 說明 | 依賴決策 |
 |------|------|----------|
-| [`docs/specs/MOST-core-algorithm-spec.md`](../specs/MOST-core-algorithm-spec.md) | 不可變動的 MOST 核心算法規格、驗證與測試案例 | — |
-| [`docs/specs/system-architecture-v2-spec.md`](../specs/system-architecture-v2-spec.md) | 目標系統架構 v2（定點重建） | — |
-| [`docs/specs/minimost-sequence-model-core-logic-spec.md`](../specs/minimost-sequence-model-core-logic-spec.md) | MiniMOST Sequence Model 核心邏輯 | OQ-001 |
-| [`docs/specs/level-system-core-logic-spec.md`](../specs/level-system-core-logic-spec.md) | Level System 核心邏輯（含對 LB 輸出合約） | OQ-001 |
+| [`docs/core-logic/MOST-core-algorithm-spec.md`](../core-logic/MOST-core-algorithm-spec.md) | 不可變動的 MOST 核心算法規格、驗證與測試案例 | — |
+| [`docs/architecture/system-architecture-v2-spec.md`](../architecture/system-architecture-v2-spec.md) | 目標系統架構 v2（定點重建） | — |
+| [`docs/core-logic/minimost-sequence-model-core-logic-spec.md`](../core-logic/minimost-sequence-model-core-logic-spec.md) | MiniMOST Sequence Model 核心邏輯 | OQ-001 |
+| [`docs/core-logic/level-system-core-logic-spec.md`](../core-logic/level-system-core-logic-spec.md) | Level System 核心邏輯（含對 LB 輸出合約） | OQ-001 |
 
 > 註：phase1/phase1a 規格已隨 legacy 移除（2026-06-21）。
 

@@ -3,7 +3,7 @@
 **文件類型：** 資料模型 / 儲存設計規格
 **版本：** 0.1 — 草案
 **建立日期：** 2026-06-17
-**關聯：** [system-architecture-v2-spec.md](./system-architecture-v2-spec.md)（§3 單一引擎、§4 資料模型總綱）、[level-system-core-logic-spec.md](./level-system-core-logic-spec.md)、[minimost-sequence-model-core-logic-spec.md](./minimost-sequence-model-core-logic-spec.md)
+**關聯：** [system-architecture-v2-spec.md](./system-architecture-v2-spec.md)（§3 單一引擎、§4 資料模型總綱）、[level-system-core-logic-spec.md](../core-logic/level-system-core-logic-spec.md)、[minimost-sequence-model-core-logic-spec.md](../core-logic/minimost-sequence-model-core-logic-spec.md)
 **範圍：** 本地 PostgreSQL 儲存模型；設計時即預留「日後改由外部系統界接」與「BOM 自動產生草稿」「匯出真實 WI/Level」。
 
 ---
@@ -349,7 +349,7 @@ Adapter       今: LocalDbProvider(PG)   ｜ 日後: MesProvider/ErpBomProvider/
 - 各分類**權威系統**：元件→PLM/ERP？器具→工具主檔？從/到→MES 線體佈局？（決定哪個 adapter 先做）
 - external_code **前綴規則與發碼權責**最終版。
 - process_version 與 worksheet 是否永遠 1:1（或一版本多線體工序單）。
-- 既有 IE 待確認：C1 機台/人力分攤、C2 Level 巢狀>2、C4 B 選用、C5 SIMO 指派（[level §14](./level-system-core-logic-spec.md#14--需找人ie確認清單user-尚未回答須對外確認)）。
+- 既有 IE 待確認：C1 機台/人力分攤、C2 Level 巢狀>2、C4 B 選用、C5 SIMO 指派（[level §14](../core-logic/level-system-core-logic-spec.md#14--需找人ie確認清單user-尚未回答須對外確認)）。
 
 ---
 

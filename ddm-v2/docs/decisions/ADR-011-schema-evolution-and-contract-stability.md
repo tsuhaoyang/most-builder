@@ -2,7 +2,7 @@
 
 **Status:** Accepted
 **Date:** 2026-06-18
-**關聯：** [system-architecture-v2-spec.md](../specs/system-architecture-v2-spec.md)、[data-model-and-storage-spec.md](../specs/data-model-and-storage-spec.md)、[frontend-data-flow-spec.md](../specs/frontend-data-flow-spec.md)
+**關聯：** [system-architecture-v2-spec.md](../architecture/system-architecture-v2-spec.md)、[data-model-and-storage-spec.md](../architecture/data-model-and-storage-spec.md)、[frontend-data-flow-spec.md](../architecture/frontend-data-flow-spec.md)
 
 ## Context
 

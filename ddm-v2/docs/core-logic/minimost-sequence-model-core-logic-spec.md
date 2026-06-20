@@ -19,12 +19,11 @@
 
 | 代號 | 來源 | 角色 | 路徑 |
 |------|------|------|------|
-| **JS** | `minimost-sentence-core.js` | **目前運作中的計算核心**（句子填空 + WI 工作台共用） | [docs/html_con/minimost-sentence-core.js](../html_con/minimost-sentence-core.js) |
-| **SEED** | `minimost_seed.py` | **目前資料庫種子值**（rule set + 各參數表） | [src/ddm_v2/seed/minimost_seed.py](../../src/ddm_v2/seed/minimost_seed.py) |
+| **引擎** | `most_engine/` | **v2 權威計算引擎**（讀 rule-set 資料，非硬編） | [src/ddm_v2/most_engine/](../../src/ddm_v2/most_engine/) |
+| **SEED** | `rule_set_seed.py` | **rule-set 種子值**（rule set + 各參數表） | [src/ddm_v2/seed/v2/rule_set_seed.py](../../src/ddm_v2/seed/v2/rule_set_seed.py) |
 | **1205** | `MOST系統邏輯1205.xlsx` → 工作表「MOST 系统逻辑」 | **完整 IE 主表**（最詳盡的階梯、進階放置、處理時間、詞彙庫、長敘事範例） | [docs/sample_excel/](../sample_excel/) |
 | **詳解版** | `MOST邏輯詳解版.xlsx` | **WI 顯示導向的精簡教學表**（G/P/M/X/I 選項與顯示字樣規則） | [docs/sample_excel/](../sample_excel/) |
 | **1128** | `MiniMOST1128.xlsx` → 工作表「1126」 | **WI 表（工時表）範例**：一列＝一個方法步，含 SUB/Key Parts/HAND/METHOD/SEQUENCE/Freq/SIMO/TMU 欄 | [docs/sample_excel/](../sample_excel/) |
-| 理解快照 | `most-system-understanding.html` | 前述來源的人讀整理（已自行標註多個 gap） | [docs/html_con/](../html_con/) |
 
 > ⚠️ **與 `MOST-core-algorithm-spec.md`（教科書）的關係：** 該文件是 Zandin《MOST 4th Edition》教科書的標準算法。**本專案的 MiniMOST 是工廠客製化的表（來自上述 Excel），其 G/P/I 等索引值與教科書 MiniMOST 並不相同**（見 [§8.1](#81-本專案-minimost-vs-教科書-minimost重大)）。本規格以**工廠 Excel／運作中程式碼**為事實基準，並把與教科書的落差明確標出，交由 User 裁示哪一份為準。
 
@@ -361,9 +360,9 @@ CM：  從 + "從哪裡" + (A+B) + G + 對象/目標物 + M + X + I + A + "到�
 
 | 元件 | 檔案 | 狀態 |
 |------|------|------|
-| 資料模型 | [models/minimost.py](../../src/ddm_v2/models/minimost.py) | rule set / GM・CM kinds / slots / A 帶 / B 選項 / G / P base / P addon / M 階梯 / M 動詞 / X / I 皆已建表 |
-| 種子 | [seed/minimost_seed.py](../../src/ddm_v2/seed/minimost_seed.py) | 已塞入上述各表（值見 §4，與 JS 大致一致、A/B 有落差） |
-| 服務 | [services/minimost_service.py](../../src/ddm_v2/services/minimost_service.py)、[services/most_calculation_service.py](../../src/ddm_v2/services/most_calculation_service.py) | 待逐函式比對是否完全實作 §4 規則（下一步） |
+| 資料模型 | [models/v2/rule_set_tables.py](../../src/ddm_v2/models/v2/rule_set_tables.py) | rule set + A 帶 / B 選項 / G / P base / P addon / M 階梯 / M 動詞 / X / I 子表 |
+| 種子 | [seed/v2/rule_set_seed.py](../../src/ddm_v2/seed/v2/rule_set_seed.py) | rule-set 種子值（值見 §4） |
+| 引擎 | [most_engine/calculate.py](../../src/ddm_v2/most_engine/calculate.py) | 單一權威計算引擎（讀 rule-set 資料實作 §4 規則） |
 | 遷移 | `migrations/versions/0015~0017` | MiniMOST catalog + cycles + 敘事 FK |
 
 > 本規格**不**要求現在改程式；僅標出「規格 vs 現況」供後續驗證 script 使用。

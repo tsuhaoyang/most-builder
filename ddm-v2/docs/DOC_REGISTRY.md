@@ -1,72 +1,78 @@
-# 文件登錄表（Document Registry）
+# 文件索引（Document Registry）
 
-> 追蹤現役文件、狀態與主旨。
-> （2026-06-21：已移除 phase1/phase1a 全部 legacy 規格與審查報告、legacy_specs/、舊 system-architecture-spec、html_con 舊原型。）
+> **版本：alpha** — MOST（MiniMOST）工時量測平台 v2 文件。
+> 依用途分類：核心邏輯 / 架構 / 決策 / 路線圖 / 使用者規格 / 參考 / UI。
 
----
+## 目錄結構
+
+```
+docs/
+├── core-logic/      核心邏輯（權威）：MOST 計算、Level System、驗證
+├── architecture/    系統架構、資料模型、前端資料流、RBAC
+├── decisions/       決策記錄（OQ / ADR）
+├── roadmap/         路線圖草案（phase2）
+├── user-spec/       使用者提供的規格草案
+├── reference/       維運/參考筆記
+├── sample_excel/    權威來源資料（1205 / 1128）
+└── html_con/        前端原型（preview_server 提供）
+```
 
 ## 狀態說明
 
 | 符號 | 意義 |
 |------|------|
-| ✅ 完成 | 文件已完成，可作為參考 |
-| 🔄 進行中 | 文件仍在撰寫或待更新 |
-| 📌 參考 | 唯讀參考文件，不應修改 |
+| ✅ 完成 | 可作為實作依據 |
+| 🔄 進行中 | 仍在撰寫/待更新 |
+| 📌 參考 | 唯讀參考，不應修改 |
 
 ---
 
-## 核心邏輯 / 架構（docs/specs/）
+## core-logic/（核心邏輯 — 權威）
 
 | 文件 | 主旨 | 狀態 |
 |------|------|------|
-| [minimost-sequence-model-core-logic-spec.md](specs/minimost-sequence-model-core-logic-spec.md) | MiniMOST Sequence Model 核心邏輯（GM/CM 七格、A/B/G/P/M/X/I 查表、TMU 口徑、敘事、SIMO） | ✅ v1.0 |
-| [level-system-core-logic-spec.md](specs/level-system-core-logic-spec.md) | Level System 核心邏輯（main/sub/cub/nb、深度階層、變動層級 `~`/`/`、R1–R9、巢狀 sub⊃cub、對 LB 輸出合約） | ✅ v1.x |
-| [core-logic-validation-test-catalog.md](specs/core-logic-validation-test-catalog.md) | 核心邏輯驗證測試目錄（黃金集＋反例＋edge case） | ✅ v1.0 |
-| [MOST-core-algorithm-spec.md](specs/MOST-core-algorithm-spec.md) | MOST 核心算法規格（核心參考） | 📌 參考 |
-| [system-architecture-v2-spec.md](specs/system-architecture-v2-spec.md) | 目標系統架構 v2（定點重建）：架構決策、單一權威引擎、rule-set 版本化、SPA、LB 輸出合約 | 🔄 v0.x |
-| [data-model-and-storage-spec.md](specs/data-model-and-storage-spec.md) | 資料模型與儲存設計（廠區→產品→SKU→version→工序單→level、儲存策略、生命週期） | 🔄 v0.x |
-| [frontend-data-flow-spec.md](specs/frontend-data-flow-spec.md) | 前端資料流（DTO/狀態、cycle 編輯迴圈、Level 同步、錯誤碼→UI） | 🔄 v0.x |
-| [rbac-spec.md](specs/rbac-spec.md) | RBAC（聯邦認證 Traefik ForwardAuth + 本地角色 IE/manager/admin、員工編號為鍵） | ✅ v1.0（已實作） |
-| [phase2-ui-ia-rbac-masterdata-architecture.md](specs/phase2-ui-ia-rbac-masterdata-architecture.md) | Phase 2：IA／topology／群組／手勢（部分已決） | 🔄 草案 |
-| [phase2-cross-system-data-alignment-spec.md](specs/phase2-cross-system-data-alignment-spec.md) | Phase 2：跨系統數據對齊 | 🔄 草案 |
+| [minimost-sequence-model-core-logic-spec.md](core-logic/minimost-sequence-model-core-logic-spec.md) | MiniMOST Sequence Model（GM/CM 七格、A/B/G/P/M/X/I 查表、TMU 口徑、敘事、SIMO） | ✅ v1.0 |
+| [level-system-core-logic-spec.md](core-logic/level-system-core-logic-spec.md) | Level System（main/sub/cub/nb、變動主序 `~`/`/`、R1–R9、巢狀 sub⊃cub、對 LB 輸出合約） | ✅ v1.x |
+| [core-logic-validation-test-catalog.md](core-logic/core-logic-validation-test-catalog.md) | 核心邏輯驗證測試目錄（黃金集＋反例＋edge case） | ✅ v1.0 |
+| [MOST-core-algorithm-spec.md](core-logic/MOST-core-algorithm-spec.md) | MOST 核心算法規格（核心參考） | 📌 參考 |
 
----
-
-## 決策記錄（docs/decisions/）
+## architecture/（架構）
 
 | 文件 | 主旨 | 狀態 |
 |------|------|------|
-| [OQ-001-most-system-selection.md](decisions/OQ-001-most-system-selection.md) | MOST 系統選型（MiniMOST 優先） | ✅ |
-| [OQ-002-allowance-and-standard-time.md](decisions/OQ-002-allowance-and-standard-time.md) | Allowance 與 standard time | ✅ |
-| [OQ-003-database-migration.md](decisions/OQ-003-database-migration.md) | DB 遷移策略（Alembic + PostgreSQL） | ✅ |
-| [OQ-004-concurrent-access.md](decisions/OQ-004-concurrent-access.md) | 並發存取與鎖定 | ✅ |
-| [OQ-005-custom-tool-elements.md](decisions/OQ-005-custom-tool-elements.md) | 自定義工具元素 | ✅ |
-| [OQ-006-phase1-implementation-open-questions.md](decisions/OQ-006-phase1-implementation-open-questions.md) | 實作開放問題 | ✅ |
-| [ADR-010-nl-to-most-backlog.md](decisions/ADR-010-nl-to-most-backlog.md) | 自然語言 → MOST：暫不實作 | ✅ |
-| [ADR-011-schema-evolution-and-contract-stability.md](decisions/ADR-011-schema-evolution-and-contract-stability.md) | Schema 演進與合約穩定政策 | ✅ |
-| [README.md](decisions/README.md) | 決策記錄目錄說明 | ✅ |
+| [system-architecture-v2-spec.md](architecture/system-architecture-v2-spec.md) | 目標系統架構 v2（定點重建）：單一權威引擎、rule-set 版本化、SPA、LB 輸出合約 | 🔄 v0.x |
+| [data-model-and-storage-spec.md](architecture/data-model-and-storage-spec.md) | 資料模型與儲存（廠區→產品→SKU→version→工序單→level、儲存策略、生命週期） | 🔄 v0.x |
+| [frontend-data-flow-spec.md](architecture/frontend-data-flow-spec.md) | 前端資料流（DTO/狀態、cycle 編輯迴圈、Level 同步、錯誤碼→UI） | 🔄 v0.x |
+| [rbac-spec.md](architecture/rbac-spec.md) | RBAC（聯邦認證 Traefik ForwardAuth + 本地角色 IE/manager/admin） | ✅ v1.0（已實作） |
 
----
+## decisions/（決策記錄）
 
-## 使用者規格（docs/user_spec/）
+OQ-001~006、ADR-010/011：見 [decisions/README.md](decisions/README.md)。
+
+## roadmap/（路線圖草案）
 
 | 文件 | 主旨 | 狀態 |
 |------|------|------|
-| [minimost-database-schema-design.md](user_spec/minimost-database-schema-design.md) | MiniMOST sequence model 主數據與循環 ER／表結構草案 | 🔄 草案 |
-| [minimost-operational-flow-and-examples.md](user_spec/minimost-operational-flow-and-examples.md) | MiniMOST 操作流程、G/P/M/X/I 選項、GM/CM 教學範例 | 🔄 草案 |
-| [backstage_spec.md](user_spec/backstage_spec.md) | 後台規格 | 🔄 草案 |
+| [phase2-ui-ia-rbac-masterdata-architecture.md](roadmap/phase2-ui-ia-rbac-masterdata-architecture.md) | IA／topology／群組／手勢（部分已決） | 🔄 草案 |
+| [phase2-cross-system-data-alignment-spec.md](roadmap/phase2-cross-system-data-alignment-spec.md) | 跨系統數據對齊 | 🔄 草案 |
 
----
+## user-spec/（使用者規格草案）
 
-## 其他
+| 文件 | 主旨 | 狀態 |
+|------|------|------|
+| [minimost-database-schema-design.md](user-spec/minimost-database-schema-design.md) | MiniMOST 主數據與循環 ER／表結構草案 | 🔄 草案 |
+| [minimost-operational-flow-and-examples.md](user-spec/minimost-operational-flow-and-examples.md) | MiniMOST 操作流程、選項、GM/CM 教學範例 | 🔄 草案 |
+| [backstage_spec.md](user-spec/backstage_spec.md) | 後台規格 | 🔄 草案 |
 
-| 文件/目錄 | 主旨 |
+## reference/ + 資料 + UI
+
+| 項目 | 主旨 |
 |------|------|
-| [docs/html_con/v2-workbench.html](html_con/v2-workbench.html) | 現役單頁多分頁 workbench（preview_server `/`） |
-| [docs/html_con/v2-wi-preview.html](html_con/v2-wi-preview.html) | 單列聚焦版（preview_server `/single`） |
-| [docs/sample_excel/](sample_excel/) | 權威來源資料（1205.xlsx＝Level System、1128＝WI 範本） |
-| [docs/docker-data-persistence.zh-TW.md](docker-data-persistence.zh-TW.md) | Docker 映像 vs volume 資料持久化 |
+| [reference/docker-data-persistence.zh-TW.md](reference/docker-data-persistence.zh-TW.md) | Docker 映像 vs volume 資料持久化 |
+| [sample_excel/](sample_excel/) | 權威來源（1205.xlsx＝Level System、1128＝WI 範本） |
+| [html_con/v2-workbench.html](html_con/v2-workbench.html) | 現役單頁多分頁 workbench（preview_server `/`） |
+| [html_con/v2-wi-preview.html](html_con/v2-wi-preview.html) | 單列聚焦版（preview_server `/single`） |
 
 ---
 
-*最後更新：2026-06-21 | 清理 legacy 文件*
+*最後更新：2026-06-21（alpha：docs 結構化分類）*
