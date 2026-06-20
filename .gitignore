@@ -1,1 +1,16 @@
 docker-wheels/
+.env
+.venv/
+venv/
+dev_docs/
+.cursor/
+.claude/
+# 外部系統參考副本（只可參考，不納版）
+LB/
+# Python build / runtime artifacts
+__pycache__/
+*.py[cod]
+*.egg-info/
+ddm-v2/data/
+# 大型參考二進位（不納版）
+ddm-v2/docs/*.pdf

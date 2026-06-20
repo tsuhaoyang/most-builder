@@ -1,4 +1,23 @@
 services:
+  db:
+    image: postgres:16-alpine
+    container_name: ddm-v2-db
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-ddm_user}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-ddm_pass}
+      POSTGRES_DB: ${POSTGRES_DB:-ddm_v2}
+    volumes:
+      - ddm-v2-pgdata:/var/lib/postgresql/data
+    ports:
+      # Host port for local `alembic` / psql (change if you already run Postgres on 5432)
+      - "${POSTGRES_HOST_PORT:-5432}:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-ddm_user} -d ${POSTGRES_DB:-ddm_v2}"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
   ddm-v2:
     build:
       context: .
@@ -12,19 +31,20 @@ services:
     image: ddm-v2:202603-rc1
     container_name: ddm-v2
     restart: unless-stopped
+    depends_on:
+      db:
+        condition: service_healthy
     ports:
       - "${DDM_PORT:-8000}:8000"
     environment:
       DDM_ROOT_DIR: /app
       DDM_DATA_DIR: /app/data
-      DDM_DB_PATH: /app/data/runtime-db.json
       DDM_SECRET_KEY: ${DDM_SECRET_KEY:-ddm-v2-release-candidate-202603-rc1-secure-key}
       DDM_CORS_ALLOW_ORIGINS: ${DDM_CORS_ALLOW_ORIGINS:-http://127.0.0.1:8000,http://localhost:8000}
       DDM_CORS_ALLOW_METHODS: ${DDM_CORS_ALLOW_METHODS:-GET,POST,PUT,DELETE}
       DDM_CORS_ALLOW_HEADERS: ${DDM_CORS_ALLOW_HEADERS:-Authorization,Content-Type}
       DDM_CORS_ALLOW_CREDENTIALS: ${DDM_CORS_ALLOW_CREDENTIALS:-true}
-    volumes:
-      - ddm-v2-data:/app/data
+      DATABASE_URL: postgresql+asyncpg://${POSTGRES_USER:-ddm_user}:${POSTGRES_PASSWORD:-ddm_pass}@db:5432/${POSTGRES_DB:-ddm_v2}
 
 volumes:
-  ddm-v2-data:
+  ddm-v2-pgdata:

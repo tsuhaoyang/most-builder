@@ -1,142 +1,54 @@
 # DDM v2
 
-Refactored release-candidate codebase for the legacy DDM Phase 1 workflow. The application keeps the original core capabilities, but restructures them into a modular FastAPI backend with a lightweight static control console and a full automated test suite.
+工業工程 **MOST**（Maynard Operation Sequence Technique）工時量測平台，scope = **MiniMOST**。
+純 v2 FastAPI 後端（API 前綴 `/api/v2`）＋ 單頁多分頁前端（`docs/html_con/`）＋ PostgreSQL。
+（legacy Phase 1 程式碼已於 2026-06 移除。）
 
-Additional onboarding and RC validation docs:
+## 功能範圍
 
-- `QUICKSTART.md`
-- `docs/release-candidate-test-coverage.zh-TW.md`
+- **WI 工時表**：以「句子填空」描述 GM/CM cycle，由單一權威引擎算 TMU（1 TMU = 0.036 秒）。
+- **Level System**：標註工序關係（main/sub/cub/nb、變動主序 `~`/`/`、巢狀 sub⊃cub）→ 供線平衡 (LB) 演算法用的完整約束模型。
+- **動作範本庫**：常用 cycle 範本（標準/草稿治理）＋關鍵字比對（建表加速、匯入自動建 MOST 的地基）。
+- **Rule-set 管理**：TMU 計算規則為版本化資料，單一引擎讀取（clone→改→發布）。
+- **SOP 版本**：draft/published 凍結、另存新檔。
+- **匯出**：工序單 Excel（含 Level 關係欄）／LB CSV／LB API 接口。
+- **RBAC**：聯邦認證（Traefik ForwardAuth）＋本地角色 viewer < IE < manager < admin。
 
-## Scope
+## 技術棧
 
-DDM v2 covers these functional areas:
+FastAPI · SQLAlchemy 2.0 (async) · PostgreSQL · Alembic · Pydantic v2 · pytest。
 
-- authentication and role-based access
-- master-data management for syntax, objects, tools, locations, employees, and project metadata
-- MOST calculation and validation workflows
-- SOP versioning and action editing
-- level-system synchronization, editing, and graph generation
-- line-balance simulation and history
-- audit logging and JSON-backed persistence
+## 先決條件
 
-## Prerequisites
+- Python **3.11+**（見 `pyproject.toml`）
+- PostgreSQL（本機或 `docker compose up db`）
 
-- Python 3.10+
+## 快速開始
 
-## Quick Start
-
-Create a local virtual environment and install the app with development dependencies:
-
-```bash
-cd ddm-v2
-python3 -m venv .venv
-. .venv/bin/activate
-pip install -e .[dev]
-```
-
-Run the application:
+見 [QUICKSTART.md](QUICKSTART.md)。最短路徑：
 
 ```bash
 cd ddm-v2
-. .venv/bin/activate
-uvicorn ddm_v2.main:app --reload --app-dir src
+python3.12 -m venv .venv && .venv/bin/pip install -e ".[dev]"
+export DATABASE_URL="postgresql+asyncpg://USER:PASS@localhost:5432/ddm_v2"
+PYTHONPATH=src .venv/bin/alembic upgrade head
+PYTHONPATH=src .venv/bin/python scripts/dev_seed_v2.py        # site/product/sku/worksheet + admin
+PYTHONPATH=src .venv/bin/python scripts/dev_seed_templates.py  # 動作範本庫
+PYTHONPATH=src .venv/bin/python scripts/preview_server.py      # 前端 → http://localhost:8099
 ```
 
-Open the full validation UI at `http://127.0.0.1:8000`.
+或用 Docker：`docker compose up`（自動跑 migration + 種 admin app_users + 起 API on :8000）。
 
-If you only want the lightweight API smoke-test console, open `http://127.0.0.1:8000/control-console`.
-
-The validation UI is now split into a shell page plus external legacy assets under `src/ddm_v2/static/legacy_ui/`, with the root path serving `validation_shell.html` instead of a single embedded HTML file.
-
-## Demo Accounts
-
-- Manager: `admin` / `admin123`
-- Engineer: `Avery` / `avery`
-- Operator: `operator1` / `op123`
-
-## Running Tests
-
-Run the full suite:
+## 測試
 
 ```bash
-cd ddm-v2
-. .venv/bin/activate
-PYTHONPATH=src pytest -q
+PYTHONPATH=src pytest                 # 無 DB：unit 通過、integration 自動 skip
+PYTHONPATH=src DATABASE_URL=... pytest # 有 DB：unit + integration 全跑
+PYTHONPATH=src python scripts/core_logic/run_all.py  # 核心邏輯黃金/反例
 ```
 
-Run by layer:
+## 文件
 
-```bash
-PYTHONPATH=src pytest -q -m unit
-PYTHONPATH=src pytest -q -m functional
-PYTHONPATH=src pytest -q -m e2e
-PYTHONPATH=src pytest -q -m regression
-```
-
-## Project Layout
-
-```text
-ddm-v2/
-├── data/                  # runtime JSON persistence output
-├── docs/                  # English and Chinese specifications
-├── src/ddm_v2/
-│   ├── api/routes/        # HTTP endpoints
-│   ├── repositories/      # JSON persistence abstraction
-│   ├── services/          # domain logic
-│   ├── static/            # validation shell, legacy UI assets, and control console
-│   ├── main.py            # FastAPI app factory
-│   ├── schemas.py         # Pydantic schemas and enums
-│   └── seeds.py           # default seed data
-└── tests/
-    ├── unit/
-    ├── functional/
-    ├── e2e/
-    └── regression/
-```
-
-## Notes
-
-- The runtime database is stored at `ddm-v2/data/runtime-db.json` when the app runs normally.
-- Tests inject a temporary database path through the app factory so each run is isolated.
-- The persistence layer is intentionally file-based in this release candidate to keep deployment simple while the domain model stabilizes.
-- The root path now serves the legacy-compatible validation UI so workflow checks can be performed against the rebuilt backend.
-
-## Runtime Configuration
-
-These environment variables are supported for deployment hardening:
-
-- `DDM_SECRET_KEY`: JWT signing secret.
-- `DDM_DB_PATH`: runtime database file path.
-- `DDM_DATA_DIR`: base data directory when `DDM_DB_PATH` is not set.
-- `DDM_CORS_ALLOW_ORIGINS`: comma-separated allowed origins.
-- `DDM_CORS_ALLOW_METHODS`: comma-separated allowed HTTP methods.
-- `DDM_CORS_ALLOW_HEADERS`: comma-separated allowed headers.
-- `DDM_CORS_ALLOW_CREDENTIALS`: `true` or `false`.
-
-## Docker Deploy
-
-This repo now includes a single-container deployment setup for server validation.
-
-Build and start it with Docker Compose:
-
-```bash
-cd ddm-v2
-cp .env.example .env
-docker compose up -d --build
-```
-
-Open the app at `http://127.0.0.1:8000` locally, or replace the host with your server IP/domain.
-
-Useful commands:
-
-```bash
-docker compose ps
-docker compose logs -f
-docker compose down
-```
-
-Notes:
-
-- Runtime data is stored in the named volume `ddm-v2-data` and mapped to `/app/data` inside the container.
-- The image runs the source tree directly with `uvicorn ... --app-dir src` so the static UI files and local path-based settings keep working.
-- For server deployment, update `DDM_SECRET_KEY` and `DDM_CORS_ALLOW_ORIGINS` in `.env` before exposing the service publicly.
+- 核心邏輯：`docs/specs/minimost-sequence-model-core-logic-spec.md`、`level-system-core-logic-spec.md`
+- 架構：`docs/specs/system-architecture-v2-spec.md`、`data-model-and-storage-spec.md`、`rbac-spec.md`
+- 文件索引：`docs/DOC_REGISTRY.md`
