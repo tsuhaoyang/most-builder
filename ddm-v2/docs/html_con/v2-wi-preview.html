@@ -1,0 +1,1237 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Sequence Model 句子填空示範（詳解版 · Dummy）</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+TC:wght@400;500;600;700&display=swap" rel="stylesheet" />
+  <style>
+    :root { --gm: #0369a1; --cm: #7c3aed; --ink: #0f172a; }
+    body { font-family: "Noto Sans TC", system-ui, sans-serif; background: #f1f5f9; color: var(--ink); }
+    .mono { font-family: ui-monospace, monospace; }
+    .slot { display: inline-flex; align-items: center; justify-content: center; min-width: 2rem; height: 2rem; border-radius: 0.45rem; font-weight: 700; font-size: 0.8rem; border: 2px solid; }
+    .s-A { background: #dbeafe; border-color: #2563eb; color: #1e3a8a; }
+    .s-B { background: #fef3c7; border-color: #d97706; }
+    .s-G { background: #dcfce7; border-color: #16a34a; }
+    .s-P { background: #fce7f3; border-color: #db2777; }
+    .s-M { background: #ede9fe; border-color: #7c3aed; }
+    .s-X { background: #e0e7ff; border-color: #4f46e5; }
+    .s-I { background: #ccfbf1; border-color: #0d9488; }
+    .choice { transition: box-shadow 0.12s, opacity 0.12s; }
+    .choice.selected { box-shadow: 0 0 0 3px #2563eb; border-color: #2563eb; }
+    .choice.dimmed { opacity: 0.45; }
+    .step-btn.done { border-color: #34d399; background: #ecfdf5; }
+    .step-btn.active { border-color: #2563eb; background: #eff6ff; ring: 2px ring-blue-200; }
+    .panel-enter { animation: fadeIn 0.22s ease; }
+    @keyframes fadeIn { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: none; } }
+    .addon.on { background: #dbeafe; border-color: #3b82f6; }
+    .blank-select {
+      display: inline-block; max-width: 100%; margin: 0 0.15rem;
+      padding: 0.2rem 1.5rem 0.2rem 0.45rem; font-size: 0.875rem;
+      border: 2px dashed #94a3b8; border-radius: 0.4rem; background: #fffbeb;
+      color: #0f172a; vertical-align: baseline; cursor: pointer;
+    }
+    .blank-select:focus { border-color: #2563eb; outline: none; box-shadow: 0 0 0 2px #bfdbfe; }
+    .sentence-line { line-height: 2.2; font-size: 0.95rem; }
+    .narr-box { border-radius: 0.75rem; padding: 0.75rem 1rem; line-height: 1.65; }
+    .narr-simple { background: #fffbeb; border: 1px solid #fde68a; }
+    .narr-complex { background: #f0f9ff; border: 1px solid #bae6fd; }
+    .col-help { display: inline-flex; align-items: center; gap: 0.2rem; cursor: help; }
+    .col-help .icon { width: 1rem; height: 1rem; border-radius: 9999px; background: #e2e8f0; color: #475569; font-size: 0.65rem; font-weight: 700; line-height: 1rem; text-align: center; flex-shrink: 0; }
+    .a-inline { display: inline-flex; flex-wrap: wrap; align-items: center; gap: 0.2rem; padding: 0.15rem 0.35rem; background: #eff6ff; border-radius: 0.35rem; border: 1px solid #bfdbfe; vertical-align: middle; }
+    .seq-banner { border-width: 2px; }
+  </style>
+</head>
+<body class="pb-44">
+  <header class="bg-gradient-to-br from-slate-800 to-slate-900 text-white px-4 py-5 sm:px-8">
+    <div class="max-w-4xl mx-auto">
+      <p class="text-xs text-amber-300/90 uppercase tracking-wider">v2 設計預覽 · 詞彙/敘事為示範假資料 · TMU 由真・v2 引擎計算</p>
+      <h1 class="text-2xl font-bold mt-1">v2 WI Workbench · 句子填空（API 驅動）</h1>
+      <p class="text-sm text-slate-300 mt-2 max-w-2xl">
+        以<strong class="text-white">句子內下拉</strong>填空；合計 TMU 與技術列由 <code class="text-amber-200">POST /api/v2/minimost/calculate</code> 回（前端不自算，spec F1）。敘事為前端即時合成（FE-2 未來移後端）。
+      </p>
+    </div>
+  </header>
+
+  <div class="max-w-4xl mx-auto px-4 py-4 space-y-4">
+    <section class="bg-white rounded-xl seq-banner border-blue-300 p-4 shadow-md ring-2 ring-blue-100">
+      <h2 class="text-base font-bold text-slate-900">① 請先選擇序列模式</h2>
+      <p class="text-xs text-slate-600 mt-1">決定第 4～6 格要填「放置」或「控制移動＋處理時間＋對齊」。選定後才填下方句子。</p>
+      <div class="mt-3 grid sm:grid-cols-2 gap-3">
+        <label class="cursor-pointer rounded-xl border-2 p-4 has-[:checked]:border-blue-600 has-[:checked]:bg-blue-50">
+          <input type="radio" name="seq" value="GM" class="sr-only" checked />
+          <p class="font-bold text-blue-800">GM 一般移動</p>
+          <p class="mono text-xs mt-1">A B G · A B P · A</p>
+        </label>
+        <label class="cursor-pointer rounded-xl border-2 p-4 has-[:checked]:border-violet-600 has-[:checked]:bg-violet-50">
+          <input type="radio" name="seq" value="CM" class="sr-only" />
+          <p class="font-bold text-violet-800">CM 控制移動</p>
+          <p class="mono text-xs mt-1">A B G · M X I · A</p>
+        </label>
+      </div>
+    </section>
+
+    <!-- Pipeline overview -->
+    <section class="bg-white rounded-xl border border-slate-200 p-3 shadow-sm overflow-x-auto">
+      <p class="text-xs text-slate-500 mb-2">七格流水線（填完會亮綠框）</p>
+      <div id="pipeline" class="flex items-center gap-1 min-w-max text-xs"></div>
+    </section>
+
+    <section class="bg-white rounded-xl border border-slate-200 p-4 shadow-sm">
+      <h2 class="text-sm font-semibold text-slate-800">② 工時表列資訊（對齊工時表欄位）</h2>
+      <div class="mt-3 grid sm:grid-cols-2 lg:grid-cols-4 gap-3 text-sm">
+        <label class="block"><span class="text-xs text-slate-500">子活動摘要</span>
+          <input id="wiSub" type="text" class="mt-1 w-full border rounded-lg px-2 py-1.5" placeholder="例：拿取風槍清潔放置材料盒" /></label>
+        <label class="block"><span class="text-xs text-slate-500">關鍵部件 *</span>
+          <select id="wiKeyParts" class="mt-1 w-full border rounded-lg px-2 py-1.5 text-sm"></select></label>
+        <label class="block"><span class="text-xs text-slate-500">步驟編號</span>
+          <input id="wiStepNo" type="number" min="1" class="mt-1 w-full border rounded-lg px-2 py-1.5" value="1" /></label>
+        <label class="block"><span class="text-xs text-slate-500">使用手</span>
+          <select id="wiHandCode" class="mt-1 w-full border rounded-lg px-2 py-1.5 text-sm"></select></label>
+      </div>
+    </section>
+    <section class="grid sm:grid-cols-2 gap-3">
+      <div class="narr-box narr-simple"><p class="text-xs font-semibold text-amber-800 mb-1">簡易句</p><p id="narrSimple" class="text-sm">—</p></div>
+      <div class="narr-box narr-complex"><p class="text-xs font-semibold text-sky-800 mb-1">完整句</p><p id="narrComplex" class="text-sm">—</p></div>
+    </section>
+    <section id="mainPanel" class="bg-white rounded-2xl border-2 border-slate-200 shadow-md">
+      <div class="border-b border-slate-100 px-4 py-3">
+        <h2 class="text-lg font-semibold">③ 句子填空</h2>
+        <p class="text-xs text-slate-500 mt-1">句中空白為下拉；G／P／A 多階層會出現第二個下拉。</p>
+      </div>
+      <div id="sentenceRoot" class="p-4 sm:p-5 space-y-5 panel-enter"></div>
+      <p id="formErr" class="px-4 pb-3 text-sm text-red-600 min-h-[1.25em]"></p>
+    </section>
+
+    <section class="bg-white rounded-xl border border-slate-200 p-4 shadow-sm">
+      <h2 class="text-sm font-semibold text-slate-800">④ 儲存到資料庫（示範 worksheet）</h2>
+      <p class="text-xs text-slate-500 mt-1">把目前這條 cycle 當第 1 列存進示範 worksheet（<code class="mono">PUT /api/v2/worksheets/…</code>，寫 wi_rows + most_cycles + level_entries），再讀回顯示。</p>
+      <button type="button" id="btnSave" class="mt-2 px-3 py-1.5 bg-emerald-600 text-white rounded-lg text-sm">儲存到 DB → 讀回</button>
+      <pre id="saveResult" class="mono text-xs bg-slate-50 p-2 rounded mt-2 overflow-auto max-h-56">（按上方按鈕）</pre>
+    </section>
+
+    <p class="text-xs text-center text-slate-400">
+      <button type="button" id="btnLoadExample" class="underline text-blue-600">載入教學範例（GM 28 / CM 29 TMU）</button>
+    </p>
+  </div>
+
+  <!-- Sticky preview -->
+  <footer class="fixed bottom-0 left-0 right-0 z-30 bg-white/95 backdrop-blur border-t border-slate-200 shadow-lg">
+    <div class="max-w-4xl mx-auto p-3 space-y-2">
+      <div class="flex flex-wrap justify-between gap-2 items-start">
+        <div>
+          <p class="text-[0.65rem] text-slate-500">技術列</p>
+          <p id="techLine" class="mono text-sm font-semibold text-slate-800">—</p>
+        </div>
+        <div class="text-right">
+          <p class="text-[0.65rem] text-slate-500">合計 TMU</p>
+          <p id="totalTmu" class="text-2xl font-mono font-bold text-emerald-600">0</p>
+          <p id="engineBadge" class="text-[0.65rem] text-slate-400">—</p>
+        </div>
+      </div>
+      <div class="grid sm:grid-cols-2 gap-2 text-xs">
+        <div class="bg-sky-50 rounded p-2 border border-sky-100">
+          <p class="text-slate-500 mb-0.5">完整敘事（即時合成）</p>
+          <p id="narrComplexFooter" class="text-slate-800 leading-relaxed">請完成步驟 1 的作業物件。</p>
+        </div>
+        <div class="bg-amber-50 rounded p-2 border border-amber-100">
+          <p class="text-slate-500 mb-0.5">簡要骨架</p>
+          <p id="narrSimpleFooter" class="text-slate-700">—</p>
+        </div>
+      </div>
+    </div>
+  </footer>
+
+<script>
+(function () {
+  'use strict';
+
+  /* ── 詳解版 G（介面一律繁中）── */
+  const G_OPTIONS = [
+    { id: 'g1', label: '輕按', mod: '接觸', modKey: 'contact', tmu: 3, reqMod: true },
+    { id: 'g2', label: '接觸', mod: '接觸', modKey: 'contact', tmu: 3, reqMod: true },
+    { id: 'g3', label: '輕拍', mod: '接觸', modKey: 'contact', tmu: 3, reqMod: true },
+    { id: 'g4', label: '抓握', mod: null, tmu: 6 },
+    { id: 'g5', label: '抓取', mod: null, tmu: 6 },
+    { id: 'g6', label: '重新抓握', mod: null, tmu: 6 },
+    { id: 'g7', label: '換手', mod: '轉移', modKey: 'transfer', tmu: 10, reqMod: true },
+    { id: 'g8', label: '拿取', mod: '選取', modKey: 'select', tmu: 10, reqMod: true },
+    { id: 'g9', label: '拿取（小件）', mod: '選取（小）', modKey: 'select_small', tmu: 16, reqMod: true },
+    { id: 'g10', label: '拔出', mod: '分離', modKey: 'separate', tmu: 16, reqMod: true },
+    { id: 'g11', label: '拿取（收集）', mod: '收集', modKey: 'collect', tmu: 24, reqMod: true },
+  ];
+
+  /* ── MOST系統邏輯1205 · A 三維度（伸手／手度／腳步）→ 取 INDEX 最大 ── */
+  const A_REACH_BANDS = [
+    { maxCm: 2.5, index: 0, label: '≤2.5 公分', pick: 2.5 },
+    { maxCm: 5, index: 1, label: '≤5 公分', pick: 5 },
+    { maxCm: 10, index: 3, label: '≤10 公分', pick: 10 },
+    { maxCm: 20, index: 6, label: '≤20 公分', pick: 20 },
+    { maxCm: 35, index: 10, label: '≤35 公分', pick: 35 },
+    { maxCm: 60, index: 16, label: '≤60 公分', pick: 60 },
+    { maxCm: Infinity, index: 24, label: '>60 公分', pick: 80 },
+  ];
+  const A_TWIST_BANDS = [
+    { maxDeg: 30, index: 0, label: '≤30 度', pick: 30 },
+    { maxDeg: 60, index: 1, label: '≤60 度', pick: 60 },
+    { maxDeg: 120, index: 3, label: '≤120 度', pick: 120 },
+    { maxDeg: 180, index: 6, label: '≤180 度', pick: 180 },
+  ];
+  const A_FOOT_BANDS = [
+    { maxCm: 20, index: 6, label: '≤20 公分', pick: 20 },
+    { maxCm: 30, index: 10, label: '≤30 公分（一步）', pick: 30 },
+    { maxCm: 45, index: 16, label: '≤45 公分', pick: 45 },
+    { maxCm: 65, index: 24, label: '≤65 公分', pick: 65 },
+    { maxCm: Infinity, index: 32, label: '>65 公分（兩步）', pick: 80 },
+  ];
+
+  function defaultASlot() {
+    return { kind: 'A', reach_cm: 0, twist_deg: 0, foot_cm: 0, flip: false, flip_target: '' };
+  }
+
+  function normalizeASlot(st) {
+    if (!st) return defaultASlot();
+    if (st.distance_cm != null && st.reach_cm == null) {
+      st.reach_cm = Number(st.distance_cm) || 0;
+      delete st.distance_cm;
+    }
+    if (st.reach_cm == null) st.reach_cm = 0;
+    if (st.twist_deg == null) st.twist_deg = 0;
+    if (st.foot_cm == null) st.foot_cm = 0;
+    if (st.flip == null) st.flip = false;
+    if (st.flip_target == null) st.flip_target = '';
+    return st;
+  }
+
+  function resolveBand(value, bands, valueKey) {
+    if (!value || value <= 0) return null;
+    for (let i = 0; i < bands.length; i++) {
+      const b = bands[i];
+      if (value <= b[valueKey]) return { index: b.index, label: b.label };
+    }
+    const last = bands[bands.length - 1];
+    return { index: last.index, label: last.label };
+  }
+
+  function partialA(st) {
+    const s = normalizeASlot(st);
+    const parts = [];
+    const r = resolveBand(s.reach_cm, A_REACH_BANDS, 'maxCm');
+    if (r) parts.push({ key: '伸手', detail: s.reach_cm + ' cm', index: r.index, label: r.label });
+    const t = resolveBand(s.twist_deg, A_TWIST_BANDS, 'maxDeg');
+    if (t) parts.push({ key: '手度', detail: s.twist_deg + '°', index: t.index, label: t.label });
+    const f = resolveBand(s.foot_cm, A_FOOT_BANDS, 'maxCm');
+    if (f) parts.push({ key: '脚步', detail: s.foot_cm + ' cm', index: f.index, label: f.label });
+    if (!parts.length) return { index: 0, tmu: 0, parts: [], code: 'A0' };
+    const best = parts.reduce((a, b) => (b.index > a.index ? b : a));
+    return { index: best.index, tmu: best.index, parts, code: 'A' + best.index };
+  }
+
+  function aSlotTmu(st) {
+    return partialA(st).index;
+  }
+
+  /* ── 詳解版 P 基底 ── */
+  const P_BASES = [
+    { id: 'p1', label: '丟', dir: null, tmu: 3 },
+    { id: 'p2', label: '保持住', dir: null, tmu: 3 },
+    { id: 'p3', label: '放', dir: '無方向', tmu: 6 },
+    { id: 'p4', label: '放', dir: '多種方向', tmu: 10 },
+    { id: 'p5', label: '放', dir: '一種方向', tmu: 16 },
+    { id: 'p6', label: '組', dir: '多種方向', tmu: 10 },
+    { id: 'p7', label: '組', dir: '一種方向', tmu: 16 },
+  ];
+
+  const P_ADDONS = [
+    { id: 'a1', label: '對準', delta: 8, needsPrecision: true, wiNote: '若勾選顯示「對準組」' },
+    { id: 'a2', label: '插入', delta: 8, wiNote: '僅顯示字樣' },
+    { id: 'a3', label: '較難處理', delta: 8, wiNote: 'WI 不顯示' },
+    { id: 'a4', label: '卡合', delta: 16, wiNote: '僅顯示字樣' },
+    { id: 'a5', label: '施加壓力', delta: 16, wiNote: 'WI 不顯示' },
+  ];
+
+  /* ── 詳解版 M（精簡常用列）── */
+  const M_VERBS = [
+    { id: 'm_btn', label: '按動按鈕', type: 'fixed', tmu: 3 },
+    { id: 'm_screw', label: '滑出螺絲', type: 'fixed', tmu: 3 },
+    { id: 'm_li', label: '理', type: 'ladder' },
+    { id: 'm_chuan', label: '穿', type: 'ladder' },
+    { id: 'm_tui', label: '推', type: 'ladder' },
+    { id: 'm_la', label: '拉', type: 'ladder' },
+    { id: 'm_tie', label: '貼附', type: 'ladder' },
+    { id: 'm_rot_s', label: '旋轉', type: 'rotate', maxD: 12.5 },
+    { id: 'm_hand', label: '手度', type: 'hand' },
+    { id: 'm_foot', label: '腳步', type: 'foot' },
+  ];
+
+  const X_OPTIONS = [
+    { id: 'x0', label: '無機台等待', mode: 'zero', tmu: 0 },
+    { id: 'x1', label: '並壓合機台', mode: 'seconds', sec: 0 },
+    { id: 'x2', label: '並熱熔機台', mode: 'seconds', sec: 0 },
+    { id: 'x3', label: '刷條碼', mode: 'fixed216', tmu: Math.ceil(0.216 / 0.036) },
+  ];
+
+  const I_OPTIONS = [
+    { id: 'i0', label: '不額外對齊', tmu: 0 },
+    { id: 'i1', label: '並檢查（正常視線）', tmu: 6 },
+    { id: 'i2', label: '並對準（正常視線·到點）', tmu: 10 },
+    { id: 'i3', label: '並對齊（正常視線·到兩點）', tmu: 16 },
+  ];
+
+  const DUMMY_VOCAB = {
+    object: [
+      { id: 'o1', name: 'DIMM 材料盒' },
+      { id: 'o2', name: '插座蓋（示範物）' },
+      { id: 'o3', name: '主板' },
+    ],
+    from: [
+      { id: 'f1', name: '料架' },
+      { id: 'f2', name: '百宝箱' },
+      { id: 'f3', name: '工具箱' },
+    ],
+    to: [
+      { id: 't1', name: '潔淨棚工作台' },
+      { id: 't2', name: '回收桶邊' },
+      { id: 't3', name: '規定位置' },
+    ],
+    hand: [
+      { id: 'h0', name: '（不指定）' },
+      { id: 'h1', name: '右手' },
+      { id: 'h2', name: '左手' },
+      { id: 'h3', name: '雙手' },
+    ],
+  };
+
+  const KEY_PARTS_OPTIONS = [
+    { id: 'kp_dimm', name: '記憶體模組' },
+    { id: 'kp_mb', name: '主板' },
+    { id: 'kp_label', name: '標籤／主板' },
+    { id: 'kp_cover', name: '插座蓋' },
+    { id: 'kp_custom', name: '（自訂）' },
+  ];
+  /* 內部代碼僅供儲存；畫面顯示繁中，不顯示 BH／RH 等代號 */
+  const HAND_CODES = [
+    { id: 'BH', name: '雙手' },
+    { id: 'LH', name: '左手' },
+    { id: 'RH', name: '右手' },
+  ];
+
+  function handDisplay(code) {
+    const h = HAND_CODES.find((x) => x.id === code);
+    return h ? h.name : '';
+  }
+
+  function findBandPick(value, bands, key) {
+    if (!value || value <= 0) return '0';
+    for (const b of bands) {
+      if (value <= b[key]) return String(b.pick);
+    }
+    return String(bands[bands.length - 1].pick);
+  }
+
+  const state = {
+    seq: 'GM',
+    wi: { sub: '', keyParts: 'kp_cover', stepNo: 1, handCode: 'RH' },
+    nv: { obj: '', from: '', to: '', hand: '' },
+    slots: {
+      0: defaultASlot(),
+      1: { kind: 'B', choice_id: 'b0' },
+      2: { kind: 'G', g_id: '', modifiers: {} },
+      3: defaultASlot(),
+      4: { kind: 'B', choice_id: 'b0' },
+      5: { kind: 'P', base_id: '', addon_ids: [], precision: false },
+      6: defaultASlot(),
+    },
+    mComponents: [{ verb_id: '', distance_cm: 4, angle_deg: 90, revolutions: 1, diameter_cm: 10 }],
+    x_id: 'x0',
+    x_seconds: 0,
+    i_id: 'i0',
+  };
+
+  function seq() { return document.querySelector('input[name="seq"]:checked').value; }
+
+  function ladderTmu(cm) {
+    const d = Number(cm) || 0;
+    if (d <= 1) return 3;
+    if (d <= 4) return 6;
+    if (d <= 10) return 10;
+    if (d <= 18) return 16;
+    if (d <= 30) return 24;
+    return 42;
+  }
+
+  function secToTmu(sec) {
+    if (!sec || sec <= 0) return 0;
+    return Math.ceil(sec / 0.036);
+  }
+
+  function rotTmu(dcm, rev) {
+    rev = Math.min(3, Math.max(1, Math.round(rev)));
+    if (dcm <= 12.5) return [0, 16, 32, 42][rev] || 16;
+    return [0, 24, 42][rev] || 24;
+  }
+
+  function handTmu(deg) {
+    const a = Number(deg) || 0;
+    if (a <= 0) return 0;
+    if (a <= 90) return 6;
+    return 10;
+  }
+
+  function partialM(comp) {
+    const v = M_VERBS.find((x) => x.id === comp.verb_id);
+    if (!v) return 0;
+    if (v.type === 'fixed') return v.tmu;
+    if (v.type === 'ladder') return ladderTmu(comp.distance_cm);
+    if (v.type === 'hand') return handTmu(comp.angle_deg);
+    if (v.type === 'foot') return ladderTmu(comp.distance_cm);
+    if (v.type === 'rotate') return rotTmu(comp.diameter_cm, comp.revolutions);
+    return 0;
+  }
+
+  function slotTmus() {
+    const s = state.slots;
+    const out = [];
+    out[0] = aSlotTmu(s[0]);
+    out[1] = 0;
+    const g = G_OPTIONS.find((x) => x.id === s[2].g_id);
+    if (!g) out[2] = 0;
+    else if (g.reqMod && g.modKey && !s[2].modifiers[g.modKey]) out[2] = 0;
+    else out[2] = g.tmu;
+    if (seq() === 'GM') out[3] = aSlotTmu(s[3]);
+    out[4] = 0;
+    if (seq() === 'GM') {
+      const pb = P_BASES.find((x) => x.id === s[5].base_id);
+      let p = pb ? pb.tmu : 0;
+      if (pb && state.slots[5].addon_ids) {
+        state.slots[5].addon_ids.forEach((aid) => {
+          const ad = P_ADDONS.find((a) => a.id === aid);
+          if (!ad) return;
+          if (ad.needsPrecision && !state.slots[5].precision) return;
+          p += ad.delta;
+        });
+      }
+      out[5] = p;
+    } else {
+      const parts = state.mComponents.filter((c) => c.verb_id).map(partialM);
+      out[3] = parts.length ? Math.max(...parts) : 0;
+      const xo = X_OPTIONS.find((x) => x.id === state.x_id);
+      out[4] = xo ? (xo.mode === 'seconds' ? secToTmu(state.x_seconds) : xo.tmu) : 0;
+      const io = I_OPTIONS.find((x) => x.id === state.i_id);
+      out[5] = io ? io.tmu : 0;
+    }
+    out[6] = aSlotTmu(s[6]);
+    return out;
+  }
+
+  function narrAFragment(st) {
+    const p = partialA(st);
+    const bits = [];
+    if (st.reach_cm > 0) bits.push('伸手約' + st.reach_cm + '公分');
+    if (st.twist_deg > 0) bits.push('手度約' + st.twist_deg + '度');
+    if (st.foot_cm > 0) bits.push('腳步約' + st.foot_cm + '公分');
+    if (!bits.length) return '';
+    return bits.join('、') + '（' + p.code + '）';
+  }
+
+  function techLine() {
+    const t = slotTmus();
+    const letters = seq() === 'GM' ? ['A', 'B', 'G', 'A', 'B', 'P', 'A'] : ['A', 'B', 'G', 'M', 'X', 'I', 'A'];
+    return letters.map((L, i) => L + t[i]).join(' ');
+  }
+
+  function vocabName(kind, id) {
+    if (!id || id === 'h0') return '';
+    const row = DUMMY_VOCAB[kind].find((x) => x.id === id);
+    return row ? row.name : '';
+  }
+
+  function buildNarrative() {
+    const o = vocabName('object', state.nv.obj);
+    const from = vocabName('from', state.nv.from);
+    const to = vocabName('to', state.nv.to);
+    const hand = handDisplay(state.wi.handCode) || vocabName('hand', state.nv.hand);
+    if (!o) return '（請在句中選擇作業物件。）';
+    const g = G_OPTIONS.find((x) => x.id === state.slots[2].g_id);
+    const gVerb = g ? g.label : '拿取';
+    const a0 = normalizeASlot(state.slots[0]);
+    let a = (hand || '') + (from ? '從' + from : '') + gVerb + '「' + o + '」';
+    const frag0 = narrAFragment(a0);
+    if (frag0) a += '，' + frag0.replace(/（A\d+）$/, '');
+    if (a0.flip && a0.flip_target) {
+      const ft = vocabName('object', a0.flip_target) || '目標物';
+      a += '，並翻轉「' + ft + '」';
+    }
+    a += '。';
+    if (seq() === 'GM') {
+      const a3 = normalizeASlot(state.slots[3]);
+      const frag3 = narrAFragment(a3);
+      const pb = P_BASES.find((x) => x.id === state.slots[5].base_id);
+      a += '隨後';
+      if (frag3) a += frag3.replace(/（A\d+）$/, '');
+      if (to) a += (frag3 ? '，' : '') + '到' + to;
+      if (pb) a += '，以「' + pb.label + (pb.dir ? '·' + pb.dir : '') + '」放置「' + o + '」';
+      a += '。';
+    } else {
+      if (to) a += '在' + to + '一側';
+      const mc = state.mComponents.find((c) => c.verb_id);
+      if (mc) {
+        const vm = M_VERBS.find((v) => v.id === mc.verb_id);
+        a += '，以' + (vm ? vm.label : '控制') + '實施移動';
+      }
+      a += '。';
+    }
+    const a6 = normalizeASlot(state.slots[6]);
+    const frag6 = narrAFragment(a6);
+    a += frag6 ? '最後' + frag6.replace(/（A\d+）$/, '') + '返回。' : '最後收束返回。';
+    return a;
+  }
+
+  function buildShort() {
+    const o = vocabName('object', state.nv.obj);
+    const hand = handDisplay(state.wi.handCode) || vocabName('hand', state.nv.hand) || '［手勢］';
+    const from = vocabName('from', state.nv.from) || '［自］';
+    const to = vocabName('to', state.nv.to) || '［目的］';
+    const g = G_OPTIONS.find((x) => x.id === state.slots[2].g_id);
+    const act1 = g ? g.label : '［動作1］';
+    let act2 = '［動作2］';
+    if (seq() === 'GM') {
+      const pb = P_BASES.find((x) => x.id === state.slots[5].base_id);
+      if (pb) act2 = pb.label;
+    } else {
+      const mc = state.mComponents.filter((c) => c.verb_id).map((c) => ({ c, t: partialM(c) }));
+      if (mc.length) {
+        const mx = Math.max(...mc.map((x) => x.t));
+        const win = mc.find((x) => x.t === mx);
+        if (win) {
+          const vm = M_VERBS.find((v) => v.id === win.c.verb_id);
+          act2 = vm ? vm.label : act2;
+        }
+      }
+    }
+    if (!o) return hand + ' 從' + from + ' ' + act1 + ' ［作業物］ ' + act2 + ' 至' + to;
+    return hand + ' 從' + from + ' ' + act1 + ' 「' + o + '」 ' + act2 + ' 至' + to;
+  }
+
+  /* ── v2 引擎整合：state → CycleIn DTO → POST /api/v2 取權威 TMU（spec F1）── */
+  const API_BASE = location.origin;
+  const SEED = {
+    g: { g1: 'g_tap', g2: 'g_touch', g3: 'g_pat', g4: 'g_grasp', g5: 'g_grab', g6: 'g_regrasp', g7: 'g_handchange', g8: 'g_pick_sel', g9: 'g_pick_small', g10: 'g_pullout', g11: 'g_pick_collect' },
+    p: { p1: 'p_toss', p2: 'p_hold', p3: 'p_place_none', p4: 'p_place_multi', p5: 'p_place_single', p6: 'p_asm_multi', p7: 'p_asm_single' },
+    a: { a1: 'a_align', a2: 'a_insert', a3: 'a_hard', a4: 'a_snap', a5: 'a_press' },
+    m: { m_btn: 'm_btn', m_screw: 'm_screw', m_li: 'm_li', m_chuan: 'm_through', m_tui: 'm_push', m_la: 'm_pull', m_tie: 'm_attach', m_rot_s: 'm_rotate', m_hand: 'm_hand', m_foot: 'm_foot' },
+    x: { x0: 'x_none', x1: 'x_press', x2: 'x_heat', x3: 'x_scan' },
+    i: { i0: 'i_none', i1: 'i_check', i2: 'i_align1', i3: 'i_align2' },
+  };
+  function aPay(st) { const s = normalizeASlot(st); return { reach_cm: s.reach_cm, twist_deg: s.twist_deg, foot_cm: s.foot_cm }; }
+  function cycleToPayload() {
+    const isGm = seq() === 'GM';
+    const g = state.slots[2];
+    const p = {
+      seq: isGm ? 'GM' : 'CM', rule_set_code: 'MINIMOST_FACTORY_V1',
+      a0: aPay(state.slots[0]), b1: { b_code: null },
+      g2: { g_code: SEED.g[g.g_id] || null, modifiers: g.modifiers || {} }, a6: aPay(state.slots[6]),
+    };
+    if (isGm) {
+      p.a3 = aPay(state.slots[3]); p.b4 = { b_code: null };
+      const p5 = state.slots[5];
+      p.p5 = { p_base_code: SEED.p[p5.base_id] || null, p_addon_codes: (p5.addon_ids || []).map((a) => SEED.a[a]).filter(Boolean), precision: !!p5.precision };
+    } else {
+      p.m3 = { m_components: state.mComponents.filter((c) => c.verb_id).map((c) => ({ verb_code: SEED.m[c.verb_id] || null, distance_cm: c.distance_cm || 0, angle_deg: c.angle_deg || 0, revolutions: c.revolutions || 1, diameter_cm: c.diameter_cm || 10 })) };
+      p.x4 = { x_code: SEED.x[state.x_id] || 'x_none', x_seconds: state.x_seconds || 0 };
+      p.i5 = { i_code: SEED.i[state.i_id] || 'i_none' };
+    }
+    return p;
+  }
+  let engineTimer = null;
+  function callEngine() {
+    const b = document.getElementById('engineBadge');
+    if (b) { b.textContent = '· 引擎計算中…'; b.className = 'text-[0.65rem] text-slate-400'; }
+    clearTimeout(engineTimer);
+    engineTimer = setTimeout(async () => {
+      try {
+        const r = await fetch(API_BASE + '/api/v2/minimost/calculate', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(cycleToPayload()) });
+        const j = await r.json();
+        const bd = document.getElementById('engineBadge');
+        if (!r.ok) { if (bd) { bd.textContent = '⚠️ 引擎：' + (j.detail && j.detail.code || r.status); bd.className = 'text-[0.65rem] text-red-600'; } return; }
+        document.getElementById('totalTmu').textContent = j.total_tmu;
+        document.getElementById('techLine').textContent = j.tech_line;
+        if (bd) { bd.textContent = '✓ v2 引擎核對：' + j.total_tmu + ' TMU · ' + j.total_seconds + ' 秒'; bd.className = 'text-[0.65rem] text-emerald-600'; }
+      } catch (e) {
+        const bd = document.getElementById('engineBadge');
+        if (bd) { bd.textContent = '⚠️ 引擎連線失敗（伺服器未啟動？）'; bd.className = 'text-[0.65rem] text-red-600'; }
+      }
+    }, 300);
+  }
+
+  function refreshPreview() {
+    document.getElementById('techLine').textContent = techLine();
+    document.getElementById('totalTmu').textContent = String(slotTmus().reduce((a, b) => a + b, 0));
+    const ns = document.getElementById('narrSimple');
+    const nc = document.getElementById('narrComplex');
+    if (ns) ns.textContent = buildShort();
+    if (nc) nc.textContent = buildNarrative();
+    const nf = document.getElementById('narrSimpleFooter');
+    const cf = document.getElementById('narrComplexFooter');
+    if (nf) nf.textContent = buildShort();
+    if (cf) cf.textContent = buildNarrative();
+    renderPipeline();
+    callEngine();
+  }
+
+  function renderPipeline() {
+    const letters = seq() === 'GM' ? ['A', 'B', 'G', 'A', 'B', 'P', 'A'] : ['A', 'B', 'G', 'M', 'X', 'I', 'A'];
+    const cls = { A: 's-A', B: 's-B', G: 's-G', P: 's-P', M: 's-M', X: 's-X', I: 's-I' };
+    const t = slotTmus();
+    const host = document.getElementById('pipeline');
+    host.innerHTML = letters
+      .map(
+        (L, i) =>
+          '<span class="slot ' +
+          cls[L] +
+          (t[i] > 0 || (L === 'B' && i <= 4) ? ' ring-2 ring-emerald-300' : '') +
+          '" title="slot ' +
+          i +
+          ' · ' +
+          t[i] +
+          ' TMU">' +
+          L +
+          t[i] +
+          '</span>' +
+          (i < 6 ? '<span class="text-slate-300">→</span>' : '')
+      )
+      .join('');
+  }
+
+  function el(tag, cls, html) {
+    const e = document.createElement(tag);
+    if (cls) e.className = cls;
+    if (html != null) e.innerHTML = html;
+    return e;
+  }
+
+  function choiceGrid(items, selectedId, onPick, labelFn) {
+    const g = el('div', 'grid sm:grid-cols-2 gap-2');
+    g.className = 'grid sm:grid-cols-2 gap-2';
+    const locked = !!selectedId;
+    items.forEach((it) => {
+      const btn = el('button', 'choice border rounded-lg px-3 py-2 text-left text-sm bg-white');
+      btn.type = 'button';
+      const sel = selectedId === it.id;
+      if (sel) btn.classList.add('selected');
+      if (locked && !sel) btn.classList.add('dimmed');
+      btn.textContent = labelFn(it);
+      btn.addEventListener('click', () => {
+        onPick(it);
+        refreshPreview();
+        renderSentenceForm();
+      });
+      g.appendChild(btn);
+    });
+    return g;
+  }
+
+  function renderABody(box, slotIndex, opts) {
+    opts = opts || {};
+    const st = normalizeASlot(state.slots[slotIndex]);
+    state.slots[slotIndex] = st;
+    const title = opts.title || 'A · 動作距離（1205：伸手／手度／腳步取 INDEX 最大）';
+    box.appendChild(el('p', 'text-sm font-semibold text-blue-900 mb-1', title));
+    box.appendChild(
+      el(
+        'p',
+        'text-xs text-slate-500 mb-3',
+        '依 MOST系統邏輯1205：三列可並存，系統分別查階梯後取最大值作為此格 A 的貢獻（INDEX＝TMU）。'
+      )
+    );
+
+    const fields = [
+      { key: 'reach_cm', partKey: '伸手', label: '伸手 · 距離 (cm)', step: '0.1', max: 300, hint: '對照表「手」欄 in/cm 階梯' },
+      { key: 'twist_deg', partKey: '手度', label: '手度 · 角度 (°)', step: '1', max: 180, hint: '對照表「角度」欄 ≤30°…≤180°' },
+      { key: 'foot_cm', partKey: '脚步', label: '脚步 · 距離 (cm)', step: '0.1', max: 300, hint: '對照表「腳」欄；0 表示無腳步' },
+    ];
+
+    fields.forEach((f) => {
+      const row = el('div', 'flex flex-wrap items-center gap-2 mb-2 p-2 rounded-lg bg-blue-50/80 border border-blue-100');
+      const lab = el('label', 'text-sm font-medium w-full sm:w-40', f.label);
+      const inp = el('input', 'border rounded w-28 px-2 py-1 text-sm');
+      inp.type = 'number';
+      inp.min = '0';
+      inp.max = String(f.max);
+      inp.step = f.step;
+      inp.value = st[f.key];
+      const hint = el('span', 'text-xs text-slate-500 mono');
+      const sync = () => {
+        st[f.key] = Math.max(0, parseFloat(inp.value) || 0);
+        inp.value = st[f.key];
+        const pa = partialA(st);
+        const part = pa.parts.find((p) => p.key === f.partKey);
+        hint.textContent = part ? '→ ' + part.key + ' A' + part.index + '（' + part.label + '）' : '→ 不計入';
+        refreshPreview();
+        renderASummary(slotIndex);
+      };
+      inp.addEventListener('input', sync);
+      sync();
+      row.appendChild(lab);
+      row.appendChild(inp);
+      row.appendChild(hint);
+      const sub = el('span', 'text-[0.65rem] text-slate-400 w-full', f.hint);
+      row.appendChild(sub);
+      box.appendChild(row);
+    });
+
+    const sumHost = el('div', 'text-sm p-3 rounded-lg bg-slate-800 text-white mono mt-2');
+    sumHost.id = 'a-summary-' + slotIndex;
+    box.appendChild(sumHost);
+    renderASummary(slotIndex);
+
+    if (opts.showFlip) {
+      const flipBox = el('div', 'mt-3 p-3 rounded-lg border border-violet-200 bg-violet-50');
+      const flab = el('p', 'text-sm font-medium text-violet-900', '翻轉（控制移動：有手度時須填）');
+      flipBox.appendChild(flab);
+      const frow = el('label', 'flex items-center gap-2 text-sm mt-2');
+      const fcb = el('input');
+      fcb.type = 'checkbox';
+      fcb.checked = !!st.flip;
+      fcb.addEventListener('change', () => {
+        st.flip = fcb.checked;
+        refreshPreview();
+        renderSentenceForm();
+      });
+      frow.appendChild(fcb);
+      frow.appendChild(document.createTextNode('需要翻轉動作'));
+      flipBox.appendChild(frow);
+      const tsel = el('select', 'w-full border rounded mt-2 text-sm px-2 py-1');
+      const o0 = el('option');
+      o0.value = '';
+      o0.textContent = '— 選擇目標物 —';
+      tsel.appendChild(o0);
+      DUMMY_VOCAB.object.forEach((r) => {
+        const o = el('option');
+        o.value = r.id;
+        o.textContent = r.name;
+        tsel.appendChild(o);
+      });
+      tsel.value = st.flip_target || '';
+      tsel.addEventListener('change', () => {
+        st.flip_target = tsel.value;
+        refreshPreview();
+      });
+      flipBox.appendChild(el('p', 'text-xs text-slate-600 mt-2', '目標物（翻轉對象）'));
+      flipBox.appendChild(tsel);
+      box.appendChild(flipBox);
+    }
+
+    const tbl = el('details', 'mt-3 text-xs');
+    tbl.className = 'mt-3 text-xs';
+    const sum = el('summary', 'cursor-pointer text-blue-700 underline', '展開 1205 A 階梯對照（伸手／手度／腳步）');
+    tbl.appendChild(sum);
+    const table = el('table', 'w-full border-collapse mt-2 text-[0.7rem]');
+    table.innerHTML =
+      '<thead><tr class="bg-slate-100"><th class="border p-1">類型</th><th class="border p-1">條件</th><th class="border p-1">INDEX</th></tr></thead><tbody>' +
+      A_REACH_BANDS.map((b) => '<tr><td class="border p-1">伸手</td><td class="border p-1">' + b.label + '</td><td class="border p-1">' + b.index + '</td></tr>').join('') +
+      A_TWIST_BANDS.map((b) => '<tr><td class="border p-1">手度</td><td class="border p-1">' + b.label + '</td><td class="border p-1">' + b.index + '</td></tr>').join('') +
+      A_FOOT_BANDS.map((b) => '<tr><td class="border p-1">脚步</td><td class="border p-1">' + b.label + '</td><td class="border p-1">' + b.index + '</td></tr>').join('') +
+      '</tbody>';
+    tbl.appendChild(table);
+    box.appendChild(tbl);
+  }
+
+  function renderASummary(slotIndex) {
+    const host = document.getElementById('a-summary-' + slotIndex);
+    if (!host) return;
+    const st = normalizeASlot(state.slots[slotIndex]);
+    const pa = partialA(st);
+    if (!pa.parts.length) {
+      host.textContent = '此格 A0（三項皆 0 或未填）';
+      return;
+    }
+    host.innerHTML =
+      '分量：' +
+      pa.parts.map((p) => p.key + '→A' + p.index).join(' · ') +
+      ' &nbsp;|&nbsp; <strong>此格 = ' +
+      pa.code +
+      '（' +
+      pa.index +
+      ' TMU）</strong>';
+  }
+
+  function validateASlot(st, opts) {
+    opts = opts || {};
+    const s = normalizeASlot(st);
+    if (opts.requireFlipIfTwist && s.twist_deg > 0) {
+      if (!s.flip) return '填了手度時須勾選「翻轉」。';
+      if (!s.flip_target) return '翻轉須選擇目標物。';
+    }
+    return true;
+  }
+
+
+  function textNode(t) { return document.createTextNode(t); }
+
+  function mkSel(options, value, onChange, cls) {
+    const s = el('select', cls || 'blank-select');
+    options.forEach((o) => {
+      const opt = el('option');
+      opt.value = o.id != null ? o.id : o.value;
+      opt.textContent = o.label != null ? o.label : o.name || o.text;
+      s.appendChild(opt);
+    });
+    s.value = value || '';
+    s.addEventListener('change', () => onChange(s.value, s));
+    return s;
+  }
+
+  function mkABlock(slotIdx) {
+    const st = normalizeASlot(state.slots[slotIdx]);
+    const wrap = el('span', 'a-inline');
+    const pa = partialA(st);
+    const hint = el('span', 'text-[0.65rem] text-blue-700 mono ml-1', '→' + pa.code);
+
+    const reachOpts = [{ id: '0', label: '伸手：無' }].concat(
+      A_REACH_BANDS.map((b) => ({ id: String(b.pick), label: '伸手 ' + b.label + '（A' + b.index + '）' }))
+    );
+    const twistOpts = [{ id: '0', label: '手度：無' }].concat(
+      A_TWIST_BANDS.map((b) => ({ id: String(b.pick), label: '手度 ' + b.label + '（A' + b.index + '）' }))
+    );
+    const footOpts = [{ id: '0', label: '腳步：無' }].concat(
+      A_FOOT_BANDS.map((b) => ({ id: String(b.pick), label: '腳步 ' + b.label + '（A' + b.index + '）' }))
+    );
+
+    wrap.appendChild(
+      mkSel(reachOpts, findBandPick(st.reach_cm, A_REACH_BANDS, 'maxCm'), (v) => {
+        st.reach_cm = parseFloat(v) || 0;
+        refreshPreview();
+        renderSentenceForm();
+      })
+    );
+    wrap.appendChild(
+      mkSel(twistOpts, findBandPick(st.twist_deg, A_TWIST_BANDS, 'maxDeg'), (v) => {
+        st.twist_deg = parseFloat(v) || 0;
+        refreshPreview();
+        renderSentenceForm();
+      })
+    );
+    wrap.appendChild(
+      mkSel(footOpts, findBandPick(st.foot_cm, A_FOOT_BANDS, 'maxCm'), (v) => {
+        st.foot_cm = parseFloat(v) || 0;
+        refreshPreview();
+        renderSentenceForm();
+      })
+    );
+    wrap.appendChild(hint);
+    return wrap;
+  }
+
+  function mkVocabSel(kind, nvKey, placeholder) {
+    const opts = [{ id: '', label: placeholder }];
+    DUMMY_VOCAB[kind].forEach((r) => opts.push({ id: r.id, label: r.name }));
+    return mkSel(opts, state.nv[nvKey], (v) => {
+      state.nv[nvKey] = v;
+      refreshPreview();
+    });
+  }
+
+  function mkGBlock() {
+    const wrap = el('span', 'inline-flex flex-wrap items-center gap-1 align-middle');
+    const gOpts = [{ id: '', label: '—取得方式—' }].concat(G_OPTIONS.map((g) => ({ id: g.id, label: g.label })));
+    const gSel = mkSel(gOpts, state.slots[2].g_id, (v) => {
+      state.slots[2].g_id = v;
+      if (!v) state.slots[2].modifiers = {};
+      renderSentenceForm();
+      refreshPreview();
+    });
+    wrap.appendChild(gSel);
+    const g = G_OPTIONS.find((x) => x.id === state.slots[2].g_id);
+    if (g && g.modKey) {
+      const modOpts = [
+        { id: '0', label: '—' + g.mod + '—' },
+        { id: '1', label: '✓ ' + g.mod },
+      ];
+      const mSel = mkSel(modOpts, state.slots[2].modifiers[g.modKey] ? '1' : '0', (v) => {
+        state.slots[2].modifiers[g.modKey] = v === '1';
+        refreshPreview();
+      });
+      wrap.appendChild(mSel);
+    }
+    return wrap;
+  }
+
+  function mkPBlock() {
+    const wrap = el('span', 'inline-flex flex-wrap items-center gap-1 align-middle');
+    const pOpts = [{ id: '', label: '—放置—' }].concat(P_BASES.map((p) => ({ id: p.id, label: p.label + (p.dir ? '·' + p.dir : '') })));
+    wrap.appendChild(
+      mkSel(pOpts, state.slots[5].base_id, (v) => {
+        state.slots[5].base_id = v;
+        refreshPreview();
+      })
+    );
+    const adOpts = [{ id: '', label: '—附加1—' }].concat(P_ADDONS.map((a) => ({ id: a.id, label: a.label })));
+    const aids = state.slots[5].addon_ids || [];
+    wrap.appendChild(
+      mkSel(adOpts, aids[0] || '', (v) => {
+        const next = aids.slice();
+        if (v) next[0] = v;
+        else next.shift();
+        state.slots[5].addon_ids = next.slice(0, 2);
+        renderSentenceForm();
+        refreshPreview();
+      })
+    );
+    wrap.appendChild(
+      mkSel(adOpts, aids[1] || '', (v) => {
+        const next = aids.slice();
+        if (v) {
+          if (next.length < 1) next[0] = v;
+          else next[1] = v;
+        } else if (next.length > 1) next.pop();
+        state.slots[5].addon_ids = next.slice(0, 2);
+        renderSentenceForm();
+        refreshPreview();
+      })
+    );
+    if ((state.slots[5].addon_ids || []).includes('a1')) {
+      const prOpts = [
+        { id: '0', label: '精度：未勾' },
+        { id: '1', label: '精度＜4 公厘' },
+      ];
+      wrap.appendChild(
+        mkSel(prOpts, state.slots[5].precision ? '1' : '0', (v) => {
+          state.slots[5].precision = v === '1';
+          refreshPreview();
+        })
+      );
+    }
+    return wrap;
+  }
+
+  function mkMBlock() {
+    const wrap = el('span', 'inline-flex flex-wrap items-center gap-1 align-middle');
+    const comp = state.mComponents[0] || (state.mComponents[0] = { verb_id: '', distance_cm: 30, angle_deg: 0, revolutions: 1, diameter_cm: 10 });
+    const vOpts = [{ id: '', label: '—控制動詞—' }].concat(M_VERBS.map((v) => ({ id: v.id, label: v.label })));
+    wrap.appendChild(
+      mkSel(vOpts, comp.verb_id, (v) => {
+        comp.verb_id = v;
+        renderSentenceForm();
+        refreshPreview();
+      })
+    );
+    const vm = M_VERBS.find((x) => x.id === comp.verb_id);
+    if (vm && vm.type === 'ladder') {
+      const dOpts = [
+        { id: '4', label: '距離約 4 公分' },
+        { id: '12', label: '距離約 12 公分' },
+        { id: '30', label: '距離約 30 公分' },
+      ];
+      wrap.appendChild(
+        mkSel(dOpts, String(comp.distance_cm || 30), (v) => {
+          comp.distance_cm = parseFloat(v) || 0;
+          refreshPreview();
+        })
+      );
+    }
+    if (vm && vm.type === 'hand') {
+      wrap.appendChild(
+        mkSel(
+          [
+            { id: '0', label: '手度：無' },
+            { id: '90', label: '≤90 度' },
+            { id: '180', label: '≤180 度' },
+          ],
+          String(comp.angle_deg || 0),
+          (v) => {
+            comp.angle_deg = parseFloat(v) || 0;
+            refreshPreview();
+          }
+        )
+      );
+    }
+    if (vm && vm.type === 'foot') {
+      wrap.appendChild(
+        mkSel(
+          [{ id: '0', label: '腳步：無' }].concat(A_FOOT_BANDS.map((b) => ({ id: String(b.pick), label: '腳步 ' + b.label }))),
+          findBandPick(comp.distance_cm, A_FOOT_BANDS, 'maxCm'),
+          (v) => {
+            comp.distance_cm = parseFloat(v) || 0;
+            refreshPreview();
+          }
+        )
+      );
+    }
+    if (vm && vm.type === 'rotate') {
+      wrap.appendChild(
+        mkSel(
+          [
+            { id: '1', label: '1 圈' },
+            { id: '2', label: '2 圈' },
+            { id: '3', label: '3 圈' },
+          ],
+          String(comp.revolutions || 1),
+          (v) => {
+            comp.revolutions = parseInt(v, 10) || 1;
+            refreshPreview();
+          }
+        )
+      );
+    }
+    const xo = X_OPTIONS.find((x) => x.id === state.x_id);
+    if (xo && xo.mode === 'seconds') {
+      wrap.appendChild(document.createTextNode(' 等待秒數 '));
+      const inp = el('input', 'blank-select w-20');
+      inp.type = 'number';
+      inp.min = '0';
+      inp.step = '0.1';
+      inp.value = state.x_seconds || 0;
+      inp.addEventListener('input', () => {
+        state.x_seconds = parseFloat(inp.value) || 0;
+        refreshPreview();
+      });
+      wrap.appendChild(inp);
+    }
+    wrap.appendChild(
+      mkSel(
+        X_OPTIONS.map((x) => ({ id: x.id, label: x.label })),
+        state.x_id,
+        (v) => {
+          state.x_id = v;
+          refreshPreview();
+        }
+      )
+    );
+    wrap.appendChild(
+      mkSel(
+        I_OPTIONS.map((x) => ({ id: x.id, label: x.label })),
+        state.i_id,
+        (v) => {
+          state.i_id = v;
+          refreshPreview();
+        }
+      )
+    );
+    return wrap;
+  }
+
+  function sentenceLine(parts) {
+    const line = el('p', 'sentence-line p-3 rounded-lg bg-slate-50 border border-slate-100');
+    parts.forEach((p) => {
+      if (typeof p === 'string') line.appendChild(textNode(p));
+      else line.appendChild(p);
+    });
+    return line;
+  }
+
+  function renderSentenceForm() {
+    const root = document.getElementById('sentenceRoot');
+    if (!root) return;
+    root.innerHTML = '';
+    const isGm = seq() === 'GM';
+
+    root.appendChild(
+      sentenceLine([
+        mkVocabSel('hand', 'hand', '—手勢—'),
+        ' 從 ',
+        mkVocabSel('from', 'from', '—來源—'),
+        ' ，',
+        mkABlock(0),
+        ' 以 ',
+        mkGBlock(),
+        ' 取得「',
+        mkVocabSel('object', 'obj', '—物件—'),
+        '」。',
+      ])
+    );
+
+    if (isGm) {
+      root.appendChild(
+        sentenceLine([
+          '隨後 ',
+          mkABlock(3),
+          ' 到 ',
+          mkVocabSel('to', 'to', '—目的地—'),
+          ' ，以 ',
+          mkPBlock(),
+          ' 放置。',
+        ])
+      );
+    } else {
+      root.appendChild(
+        sentenceLine([
+          '在 ',
+          mkVocabSel('to', 'to', '—地點—'),
+          ' ，',
+          mkMBlock(),
+          ' 實施控制移動。',
+        ])
+      );
+      if (seq() === 'CM') {
+        const flipSec = el('details', 'mt-2 text-sm');
+        flipSec.appendChild(el('summary', 'cursor-pointer text-violet-700', '控制移動 · 翻轉與目標物（有手度時必填）'));
+        const fb = el('div', 'p-3 bg-violet-50 rounded-lg mt-2');
+        renderABody(fb, 0, { title: '', showFlip: true });
+        flipSec.appendChild(fb);
+        root.appendChild(flipSec);
+      }
+    }
+
+    root.appendChild(sentenceLine(['最後 ', mkABlock(6), ' 。']));
+
+    const err = validateForm();
+    const errEl = document.getElementById('formErr');
+    if (errEl) errEl.textContent = err === true ? '' : err;
+  }
+
+  function validateForm() {
+    if (!state.nv.obj) return '請在句中選擇作業物件。';
+    if (!state.wi.keyParts) return '請選擇關鍵部件。';
+    const av = validateASlot(state.slots[0], { requireFlipIfTwist: seq() === 'CM' });
+    if (av !== true) return av;
+    if (!state.slots[2].g_id) return '請選擇取得方式 (G)。';
+    const g = G_OPTIONS.find((x) => x.id === state.slots[2].g_id);
+    if (g && g.reqMod && g.modKey && !state.slots[2].modifiers[g.modKey]) return 'G 需勾選修飾：' + g.mod;
+    if (seq() === 'GM' && !state.slots[5].base_id) return '請選擇放置方式 (P)。';
+    if (seq() === 'CM') {
+      if (!state.mComponents.some((c) => c.verb_id)) return '請選擇 M 動詞。';
+      if (!state.x_id) return '請選擇 X。';
+      if (!state.i_id) return '請選擇 I。';
+    }
+    return true;
+  }
+
+  function initWiMeta() {
+    const kp = document.getElementById('wiKeyParts');
+    const hc = document.getElementById('wiHandCode');
+    if (kp && !kp.options.length) {
+      KEY_PARTS_OPTIONS.forEach((r) => {
+        const o = el('option');
+        o.value = r.id;
+        o.textContent = r.name;
+        kp.appendChild(o);
+      });
+      kp.value = state.wi.keyParts;
+      kp.addEventListener('change', () => {
+        state.wi.keyParts = kp.value;
+        refreshPreview();
+      });
+    }
+    if (hc && !hc.options.length) {
+      HAND_CODES.forEach((r) => {
+        const o = el('option');
+        o.value = r.id;
+        o.textContent = r.name;
+        hc.appendChild(o);
+      });
+      hc.value = state.wi.handCode;
+      hc.addEventListener('change', () => {
+        state.wi.handCode = hc.value;
+        state.nv.hand = state.wi.handCode === 'BH' ? 'h3' : state.wi.handCode === 'LH' ? 'h2' : state.wi.handCode === 'RH' ? 'h1' : 'h0';
+        renderSentenceForm();
+        refreshPreview();
+      });
+    }
+    const sub = document.getElementById('wiSub');
+    if (sub) {
+      sub.value = state.wi.sub;
+      sub.addEventListener('input', () => {
+        state.wi.sub = sub.value;
+      });
+    }
+    const sn = document.getElementById('wiStepNo');
+    if (sn) {
+      sn.value = state.wi.stepNo;
+      sn.addEventListener('change', () => {
+        state.wi.stepNo = parseInt(sn.value, 10) || 1;
+      });
+    }
+  }
+
+  function resetSlotsForSeq() {
+    state.slots[0] = defaultASlot();
+    state.slots[3] = defaultASlot();
+    state.slots[6] = defaultASlot();
+    state.slots[5] = { kind: seq() === 'GM' ? 'P' : 'M', base_id: '', addon_ids: [], precision: false };
+    state.mComponents = [{ verb_id: '', distance_cm: 30, angle_deg: 0, revolutions: 1, diameter_cm: 10 }];
+    state.x_id = 'x0';
+    state.i_id = 'i0';
+  }
+
+  function loadExample() {
+    const isGm = seq() === 'GM';
+    document.querySelector('input[name="seq"][value="' + (isGm ? 'GM' : 'CM') + '"]').checked = true;
+    state.wi = { sub: isGm ? '拿取插座蓋並放置' : '推廢料入桶', keyParts: 'kp_cover', stepNo: 1, handCode: 'RH' };
+    state.nv = { obj: 'o2', from: 'f3', to: 't2', hand: 'h1' };
+    state.slots[0] = defaultASlot();
+    state.slots[0].reach_cm = isGm ? 20 : 25;
+    state.slots[2].g_id = isGm ? 'g4' : 'g2';
+    state.slots[2].modifiers = isGm ? {} : { contact: true };
+    state.slots[3] = defaultASlot();
+    if (isGm) state.slots[3].reach_cm = 25;
+    state.slots[6] = defaultASlot();
+    if (isGm) {
+      state.slots[5].base_id = 'p3';
+      state.slots[5].addon_ids = [];
+    } else {
+      state.mComponents = [{ verb_id: 'm_tui', distance_cm: 30, angle_deg: 0, revolutions: 1, diameter_cm: 10 }];
+      state.x_id = 'x0';
+      state.i_id = 'i0';
+    }
+    initWiMeta();
+    renderSentenceForm();
+    refreshPreview();
+  }
+
+  document.querySelectorAll('input[name="seq"]').forEach((inp) => {
+    inp.addEventListener('change', () => {
+      state.seq = seq();
+      resetSlotsForSeq();
+      renderSentenceForm();
+      refreshPreview();
+    });
+  });
+
+  document.getElementById('btnLoadExample').addEventListener('click', loadExample);
+
+  /* ── ④ 儲存到 DB（示範 worksheet）→ 讀回 ── */
+  const DEMO = {
+    ws: '55555555-5555-5555-5555-555555555555',
+    obj: '66666666-6666-6666-6666-666666666666',
+    from: '77777777-7777-7777-7777-777777777777',
+    to: '88888888-8888-8888-8888-888888888888',
+  };
+  const btnSave = document.getElementById('btnSave');
+  if (btnSave) {
+    btnSave.addEventListener('click', async () => {
+      const out = document.getElementById('saveResult');
+      out.textContent = '儲存中…';
+      const rowId = (window.crypto && crypto.randomUUID) ? crypto.randomUUID() : 'a1a1a1a1-0000-0000-0000-000000000001';
+      const payload = {
+        rows: [{
+          id: rowId, seq_no: 1, hand: state.wi.handCode,
+          object_vocab_id: DEMO.obj, from_vocab_id: DEMO.from, to_vocab_id: DEMO.to,
+          frequency: 1, cycle: cycleToPayload(),
+          level: { ascription: 'main', level: '1', coefficient: 1 },
+        }],
+      };
+      try {
+        const r = await fetch(API_BASE + '/api/v2/worksheets/' + DEMO.ws, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) });
+        const j = await r.json();
+        if (!r.ok) { out.textContent = '⚠️ ' + r.status + '：' + JSON.stringify(j.detail); return; }
+        const row = (j.rows || [])[0] || {};
+        out.textContent = '✓ 已存入 DB 並讀回\n'
+          + 'worksheet 合計：' + j.total_tmu + ' TMU\n'
+          + '第1列：' + (row.cycle && row.cycle.seq_kind) + ' · ' + (row.cycle && row.cycle.total_tmu) + ' TMU · ' + (row.cycle && row.cycle.tech_line) + '\n'
+          + 'level：' + (row.level && row.level.ascription) + '/' + (row.level && row.level.level) + ' · second=' + (row.level && row.level.second) + '\n'
+          + '存的 rule_set 快照 id：' + (row.cycle && row.cycle.rule_set_id) + '\n\n'
+          + 'slot_inputs（DB 裡的權威原始輸入）：\n' + JSON.stringify(row.cycle && row.cycle.slot_inputs, null, 1);
+      } catch (e) { out.textContent = '連線失敗（伺服器未啟動？）：' + e; }
+    });
+  }
+
+  initWiMeta();
+  renderSentenceForm();
+  refreshPreview();
+
+})();
+</script>
+</body>
+</html>
