@@ -32,8 +32,6 @@ def _resolve_path(raw: str | None, default: Path, root_dir: Path) -> Path:
 class Settings:
     root_dir: Path
     data_dir: Path
-    static_dir: Path
-    db_path: Path
     app_name: str
     app_version: str
     secret_key: str
@@ -43,19 +41,17 @@ class Settings:
     cors_allow_credentials: bool
     cors_allow_methods: list[str]
     cors_allow_headers: list[str]
+    database_url: str
+    database_echo: bool
 
 
 @lru_cache(maxsize=1)
 def get_settings() -> Settings:
     root_dir = Path(os.getenv("DDM_ROOT_DIR", Path(__file__).resolve().parents[2])).resolve()
     data_dir = _resolve_path(os.getenv("DDM_DATA_DIR"), root_dir / "data", root_dir)
-    static_dir = _resolve_path(os.getenv("DDM_STATIC_DIR"), root_dir / "src" / "ddm_v2" / "static", root_dir)
-    db_path = _resolve_path(os.getenv("DDM_DB_PATH"), data_dir / "runtime-db.json", root_dir)
     return Settings(
         root_dir=root_dir,
         data_dir=data_dir,
-        static_dir=static_dir,
-        db_path=db_path,
         app_name=os.getenv("DDM_APP_NAME", "DDM v2"),
         app_version=os.getenv("DDM_APP_VERSION", "2.0.0-rc1"),
         secret_key=os.getenv("DDM_SECRET_KEY", "ddm-v2-release-candidate-202603-rc1-secure-key"),
@@ -65,13 +61,13 @@ def get_settings() -> Settings:
         cors_allow_credentials=_parse_bool(os.getenv("DDM_CORS_ALLOW_CREDENTIALS"), True),
         cors_allow_methods=_parse_csv(os.getenv("DDM_CORS_ALLOW_METHODS"), ["*"]),
         cors_allow_headers=_parse_csv(os.getenv("DDM_CORS_ALLOW_HEADERS"), ["*"]),
+        database_url=os.getenv("DATABASE_URL", "postgresql+asyncpg://ddm_user:ddm_pass@localhost:5432/ddm_v2"),
+        database_echo=_parse_bool(os.getenv("DATABASE_ECHO"), False),
     )
 
 
 ROOT_DIR = get_settings().root_dir
 DATA_DIR = get_settings().data_dir
-STATIC_DIR = get_settings().static_dir
-DB_PATH = get_settings().db_path
 
 SECRET_KEY = get_settings().secret_key
 ACCESS_TOKEN_EXPIRE_HOURS = get_settings().access_token_expire_hours
