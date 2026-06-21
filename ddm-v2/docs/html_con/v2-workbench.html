@@ -1,0 +1,1036 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>v2 MOST Workbench（多分頁 · API 驅動）</title>
+<script src="https://cdn.tailwindcss.com"></script>
+<link href="https://fonts.googleapis.com/css2?family=Noto+Sans+TC:wght@400;500;600;700&display=swap" rel="stylesheet" />
+<style>
+  body { font-family: "Noto Sans TC", system-ui, sans-serif; background: #f1f5f9; color: #0f172a; }
+  .mono { font-family: ui-monospace, monospace; }
+  .tab-btn[aria-selected="true"] { background: #0f172a; color: #fff; }
+  .tab-panel[hidden] { display: none !important; }
+  .blank-select { display:inline-block;margin:0 .15rem;padding:.2rem 1.4rem .2rem .45rem;font-size:.85rem;border:2px dashed #94a3b8;border-radius:.4rem;background:#fffbeb;cursor:pointer; }
+  .blank-select:focus { border-color:#2563eb;outline:none; }
+  .a-inline { display:inline-flex;flex-wrap:wrap;align-items:center;gap:.2rem;padding:.1rem .3rem;background:#eff6ff;border-radius:.35rem;border:1px solid #bfdbfe;vertical-align:middle; }
+  .sentence-line { line-height: 2.2; font-size: .95rem; }
+  table.wi th, table.wi td { border:1px solid #e2e8f0; padding:.3rem .5rem; font-size:.8rem; text-align:left; }
+  table.wi th { background:#f1f5f9; }
+  .chip { display:inline-flex;flex-direction:column;align-items:center;min-width:2.6rem;border:2px solid #cbd5e1;border-radius:.4rem;padding:.1rem .3rem; }
+  .hint { display:inline-flex;align-items:center;justify-content:center;width:15px;height:15px;border-radius:50%;background:#94a3b8;color:#fff;font-size:10px;font-weight:700;cursor:help;position:relative;margin:0 3px;vertical-align:middle;font-style:normal;user-select:none; }
+  .hint:hover { background:#0ea5e9; }
+  .hint:hover::after { content:attr(data-tip);position:absolute;left:50%;top:calc(100% + 7px);transform:translateX(-50%);background:#0f172a;color:#fff;font-size:11px;font-weight:400;line-height:1.45;padding:6px 9px;border-radius:6px;width:max-content;max-width:260px;white-space:normal;text-align:left;z-index:60;box-shadow:0 4px 14px rgba(0,0,0,.28); }
+  .hint:hover::before { content:"";position:absolute;left:50%;top:calc(100% + 2px);transform:translateX(-50%);border:5px solid transparent;border-bottom-color:#0f172a;z-index:60; }
+</style>
+</head>
+<body class="pb-10">
+  <header class="bg-gradient-to-br from-slate-800 to-slate-900 text-white px-4 py-3 sm:px-6">
+    <div class="max-w-6xl mx-auto flex items-center justify-between">
+      <div>
+        <p class="text-[0.65rem] text-amber-300/90 uppercase tracking-wider">v2 設計預覽 · 單一前端多分頁 · TMU/存讀由真 v2 API</p>
+        <h1 class="text-xl font-bold">MOST Workbench</h1>
+      </div>
+      <button id="btnManual" class="shrink-0 px-3 py-1.5 rounded-lg bg-white/10 hover:bg-white/20 border border-white/25 text-sm">📖 操作手冊</button>
+    </div>
+  </header>
+
+  <!-- 頂部脈絡列 -->
+  <div class="bg-white border-b border-slate-200">
+    <div class="max-w-6xl mx-auto px-4 py-2 flex flex-wrap gap-3 items-center text-xs text-slate-600">
+      <span>廠區 <b>示範廠區</b></span><span class="text-slate-300">/</span>
+      <span>產品 <b>示範產品</b></span><span class="text-slate-300">/</span>
+      <span>SKU <b class="mono">HDL5X_DEMO</b></span><span class="text-slate-300">/</span>
+      <span>版本 <b>v1 (draft)</b></span>
+      <span id="meBadge" class="ml-auto text-slate-700">👤 …</span>
+      <span class="text-slate-400 mono" id="ctxRuleSet">rule-set 載入中…</span>
+    </div>
+  </div>
+
+  <!-- Tab nav -->
+  <nav class="bg-white border-b border-slate-200 sticky top-0 z-20">
+    <div class="max-w-6xl mx-auto px-4 flex flex-wrap gap-1 py-2 text-sm" role="tablist">
+      <button class="tab-btn px-3 py-1.5 rounded-lg border" data-tab="wi" aria-selected="true">① WI 工時表</button>
+      <button class="tab-btn px-3 py-1.5 rounded-lg border" data-tab="level" aria-selected="false">② Level System</button>
+      <button class="tab-btn px-3 py-1.5 rounded-lg border" data-tab="master" aria-selected="false">③ 主數據</button>
+      <button class="tab-btn px-3 py-1.5 rounded-lg border" data-tab="ruleset" aria-selected="false">④ Rule-set 管理</button>
+      <button class="tab-btn px-3 py-1.5 rounded-lg border" data-tab="sop" aria-selected="false">⑤ SOP 版本</button>
+      <button class="tab-btn px-3 py-1.5 rounded-lg border" data-tab="export" aria-selected="false">⑥ 匯出</button>
+      <button class="tab-btn px-3 py-1.5 rounded-lg border" data-tab="users" id="tabUsers" aria-selected="false" hidden>⑦ 使用者</button>
+    </div>
+  </nav>
+
+  <main class="max-w-6xl mx-auto px-4 py-4">
+    <!-- ① WI 工時表 -->
+    <section id="panel-wi" class="tab-panel space-y-4">
+      <div class="bg-white rounded-xl border p-4">
+        <div class="flex flex-wrap items-center gap-3 mb-2">
+          <h2 class="font-semibold">編輯一條工序</h2>
+          <div class="flex gap-1 ml-auto text-sm">
+            <button id="modeQuick" class="px-2 py-1 rounded border">⚡ 快速範本</button>
+            <button id="modePrecise" class="px-2 py-1 rounded border">🔧 精確調整</button>
+          </div>
+        </div>
+
+        <!-- ⚡ 快速模式 -->
+        <div id="quickBox" class="space-y-2"></div>
+
+        <!-- 🔧 精確模式 -->
+        <div id="preciseBox" class="hidden">
+          <div class="flex flex-wrap items-center gap-4 mb-2 text-sm">
+            <label class="flex items-center gap-1"><input type="radio" name="seq" value="GM" checked> GM 一般移動<span class="hint" data-tip="一般移動：徒手把物件從一處取到另一處（取放）。七格 A B G A B P A。">i</span></label>
+            <label class="flex items-center gap-1"><input type="radio" name="seq" value="CM"> CM 控制移動<span class="hint" data-tip="控制移動：受控或機器動作（推/拉/旋/鎖附+製程時間）。七格 A B G M X I A。">i</span></label>
+          </div>
+          <div class="flex flex-wrap items-center gap-2 mb-2 text-sm border-b pb-2">
+            <span class="text-slate-400 text-xs">套用範本請用上方「⚡ 快速範本」；在此逐格微調後可 →</span>
+            <button id="btnTplSave" class="px-2 py-1 border rounded text-xs">💾 存目前這條為範本</button>
+            <span class="hint" data-tip="把目前逐格調好的這條 cycle 存成草稿範本（manager 可提升為標準），日後可在快速模式重用。">i</span>
+          </div>
+          <div id="sentenceRoot" class="space-y-3"></div>
+        </div>
+        <div class="flex flex-wrap items-center gap-3 mt-3 pt-3 border-t">
+          <span class="text-sm">次數<span class="hint" data-tip="此動作在一個循環內重複的次數，TMU 會乘上次數。">i</span> <input id="freq" type="number" min="1" value="1" class="border rounded w-16 px-1 py-0.5 text-sm"></span>
+          <span class="text-sm">SIMO群組<span class="hint" data-tip="同步動作：填相同代號(如 S1)的列代表同時進行（例：雙手並行）。合計時取群組最大值，不重複累加。">i</span> <input id="simoGroup" class="border rounded w-24 px-1 py-0.5 text-sm" placeholder="同群同時 如S1"></span>
+          <span class="mono text-sm text-slate-700" id="techLine">—</span>
+          <span class="ml-auto text-sm">本列 <b id="rowTmu" class="text-sky-700 text-lg">0</b> TMU <span id="engineBadge" class="text-[0.65rem] text-slate-400"></span></span>
+          <button id="btnAddRow" class="px-3 py-1.5 bg-blue-600 text-white rounded-lg text-sm">＋ 加入工時表</button>
+        </div>
+        <p class="text-xs text-slate-500 mt-2" id="narr">—</p>
+      </div>
+
+      <div class="bg-white rounded-xl border p-4">
+        <div class="flex items-center justify-between mb-2">
+          <h2 class="font-semibold">工時表（多列）</h2>
+          <div class="text-sm">整表合計 <b id="tableTotal" class="text-emerald-600 text-lg">0</b> TMU ≈ <b id="tableTotalSec" class="text-emerald-600 text-lg">0</b> 秒 <span class="text-slate-400">(含 SIMO 取 max)</span></div>
+        </div>
+        <div id="wiBatch" class="hidden flex-wrap items-center gap-2 mb-2 text-xs bg-amber-50 border border-amber-200 rounded p-2"></div>
+        <table class="wi w-full"><thead><tr><th><input type="checkbox" id="wiSelAll"></th><th>#</th><th>手</th><th>敘述</th><th>技術列</th><th>TMU</th><th>Freq</th><th>SIMO</th><th></th></tr></thead><tbody id="wiBody"></tbody></table>
+        <div class="flex gap-2 mt-3">
+          <button id="btnSave" class="px-3 py-1.5 bg-emerald-600 text-white rounded-lg text-sm">儲存</button>
+        </div>
+        <pre id="saveResult" class="mono text-xs bg-slate-50 p-2 rounded mt-2 overflow-auto max-h-48"></pre>
+      </div>
+    </section>
+
+    <section id="panel-level" class="tab-panel" hidden></section>
+    <section id="panel-master" class="tab-panel" hidden></section>
+    <section id="panel-ruleset" class="tab-panel" hidden></section>
+    <section id="panel-sop" class="tab-panel" hidden></section>
+    <section id="panel-export" class="tab-panel" hidden></section>
+    <section id="panel-users" class="tab-panel" hidden></section>
+  </main>
+
+  <!-- ── 操作手冊 Modal ── -->
+  <div id="manualOverlay" class="fixed inset-0 z-50 bg-black/50 hidden items-start justify-center p-4 overflow-y-auto">
+    <div class="bg-white rounded-xl max-w-3xl w-full my-8 shadow-2xl">
+      <div class="flex items-center justify-between px-5 py-3 border-b sticky top-0 bg-white rounded-t-xl">
+        <h2 class="font-bold text-lg">📖 操作手冊 — MOST Workbench</h2>
+        <button id="btnManualClose" class="text-slate-400 hover:text-slate-800 text-2xl leading-none">&times;</button>
+      </div>
+      <div class="px-5 py-4 space-y-6 text-sm text-slate-700 leading-relaxed" style="max-height:75vh;overflow-y:auto">
+
+        <section>
+          <h3 class="font-bold text-base text-slate-900 mb-1">這套系統在做什麼</h3>
+          <p><b>MOST</b>（Maynard Operation Sequence Technique）把每道工序拆成標準<b>動作單元</b>，算出客觀工時 <b>TMU</b>（1 TMU = 0.036 秒）。<b>Level System</b> 則描述工序之間的<b>關係與限制</b>（先後、同站、不可拆、可挪動），交給 <b>LB（線平衡）</b>系統用演算法算出最佳分站。</p>
+          <p class="mt-1 text-xs text-slate-500">流程：① 建工時表算 TMU → ② 標 Level 關係 → ⑤ 版本發布 → ⑥ 匯出給 LB。</p>
+        </section>
+
+        <section>
+          <h3 class="font-bold text-base text-slate-900 mb-1">① WI 工時表</h3>
+          <p>用「句子填空」描述一條動作 cycle，引擎即時算 TMU。兩種模型：</p>
+          <ul class="list-disc pl-5 mt-1 space-y-0.5">
+            <li><b>GM 一般移動</b>（徒手取放）：七格 <span class="mono">A B G A B P A</span></li>
+            <li><b>CM 控制移動</b>（受控/機器動作）：七格 <span class="mono">A B G M X I A</span></li>
+          </ul>
+          <table class="wi w-full mt-2"><thead><tr><th>格</th><th>意義</th><th>說明</th></tr></thead><tbody>
+            <tr><td class="mono">A</td><td>移動/伸手</td><td>取 reach/twist/foot 三者最大；距離分級給分</td></tr>
+            <tr><td class="mono">B</td><td>身體動作</td><td>彎腰/起身等（0 / 10 / 32 / 42）</td></tr>
+            <tr><td class="mono">G</td><td>取得</td><td>抓握/接觸/拿取…；部分需修飾子，否則歸 0</td></tr>
+            <tr><td class="mono">P</td><td>放置（GM）</td><td>放/組/保持 + 附加（對準需勾「精準」）</td></tr>
+            <tr><td class="mono">M</td><td>控制移動（CM）</td><td>推/拉/旋轉/鎖附…；依種類用距離/角度/直徑+圈數/固定計價</td></tr>
+            <tr><td class="mono">X</td><td>製程時間（CM）</td><td>熱壓/測試/掃描等；連續＝輸入秒數，固定＝定值</td></tr>
+            <tr><td class="mono">I</td><td>對準/檢查（CM）</td><td>對準、檢查動作分級</td></tr>
+          </tbody></table>
+          <p class="mt-1"><b>TMU = 各格指數總和 × 倍率</b>。<b>次數</b>＝該動作重複次數；<b>SIMO 群組</b>＝同群動作同時進行（合計取群組最大值，不重複累加）。</p>
+        </section>
+
+        <section>
+          <h3 class="font-bold text-base text-slate-900 mb-1">② Level System（工序關係）</h3>
+          <p>把工時表的列拖進<b>群組盒</b>來標關係。系統自動管 main/order，免手填。</p>
+          <table class="wi w-full mt-1"><thead><tr><th>概念</th><th>意義</th><th>對 LB</th></tr></thead><tbody>
+            <tr><td><b>main / 主序</b></td><td>頂層先後順序（precedence）</td><td>先後約束</td></tr>
+            <tr><td><b class="text-sky-700">sub（藍盒）</b></td><td>可移動子序：整組可挪動，內部順序固定</td><td>可整組搬站</td></tr>
+            <tr><td><b class="text-amber-700">cub（橘盒）</b></td><td>同站不可拆：成員必須在同一工站</td><td>強制同站</td></tr>
+            <tr><td><b>巢狀（盒中盒）</b></td><td>sub 內可再開 cub（sub ⊃ cub）</td><td>深度限制</td></tr>
+            <tr><td><b class="text-rose-700">nb 約束</b></td><td>不可同站：每站最多 N 個（逼分站）</td><td>分離約束</td></tr>
+          </tbody></table>
+          <p class="mt-2"><b>變動主序（自由度，給 LB 挪動空間）：</b></p>
+          <ul class="list-disc pl-5 mt-0.5 space-y-0.5">
+            <li><span class="mono">2</span> ＝ 固定在第 2 位（硬約束）</li>
+            <li><span class="mono">1~2</span> ＝ 範圍：可放 1 或 2（LB 自行擇優）</li>
+            <li><span class="mono">1/3</span> ＝ 列舉：只能 1 或 3（跳過 2）</li>
+          </ul>
+          <p class="mt-2 text-xs text-slate-500"><b>操作：</b>勾不到——改用<b>拖曳</b>把卡片拖進盒子即分組；sub 盒右上「＋ cub 子群組」做巢狀；「解散」拆組；下方紅色<b>約束區</b>勾卡片設「不可同站」。系統會自動檢查群組設定是否正確。</p>
+        </section>
+
+        <section>
+          <h3 class="font-bold text-base text-slate-900 mb-1">③ 主數據（詞彙庫）</h3>
+          <p>管理工序用的詞彙（物件/元件/器具/從/到/手勢）。這裡新增的詞彙，立即出現在 ① 的下拉選單。日後可改由外部系統（PLM/MES）供應。</p>
+        </section>
+
+        <section>
+          <h3 class="font-bold text-base text-slate-900 mb-1">④ Rule-set 管理</h3>
+          <p>TMU 的計算規則（各格分值/動詞/階梯表）是<b>版本化的資料</b>，由單一引擎讀取。流程：<b>clone 成 draft → 編輯 → 發布</b>。改規則即改全系統算出的 TMU（單一真相，不漂移）。</p>
+        </section>
+
+        <section>
+          <h3 class="font-bold text-base text-slate-900 mb-1">⑤ SOP 版本</h3>
+          <p>工序單以版本管理。<b>draft</b> 可編輯；<b>發布(published)</b> 後該版<b>凍結</b>（存檔被擋）。要修改已發布版本 → <b>另存新檔</b>成新 draft。發布需 manager 以上權限。</p>
+        </section>
+
+        <section>
+          <h3 class="font-bold text-base text-slate-900 mb-1">⑥ 匯出</h3>
+          <ul class="list-disc pl-5 mt-0.5 space-y-0.5">
+            <li><b>預覽 / Excel</b>：工序單；Excel 附 Level 欄（主序/角色/群組/巢狀母組/組內序/nb）→ 人看得懂關係。</li>
+            <li><b>lb-csv / lb-api</b>：給 LB 的<b>完整約束模型</b>——含每節點允許主序集合（自由度）、sub/cub 群組語意、巢狀、nb 分站約束。</li>
+          </ul>
+        </section>
+
+        <section>
+          <h3 class="font-bold text-base text-slate-900 mb-1">⑦ 使用者（權限 RBAC）</h3>
+          <p>角色由低到高：<b>viewer</b>（只讀）＜ <b>IE</b>（編輯工時表/Level/詞彙）＜ <b>manager</b>（發布/凍結）＜ <b>admin</b>（管理使用者）。身分由閘道（Traefik/OAuth2）注入，本系統只管角色授權。右上角 👤 顯示目前身分。</p>
+        </section>
+
+        <p class="text-xs text-slate-400 pt-2 border-t">提示：右上角 👤 顯示你的角色；權限不足的按鈕會自動禁用。</p>
+      </div>
+    </div>
+  </div>
+
+<script>
+(function () {
+  'use strict';
+  const API = location.origin;
+  const DEMO = { ws:'55555555-5555-5555-5555-555555555555', obj:'66666666-6666-6666-6666-666666666666', from:'77777777-7777-7777-7777-777777777777', to:'88888888-8888-8888-8888-888888888888' };
+  let ACTIVE_WS = DEMO.ws;  // 目前作用中的 worksheet（SOP tab 可切換）
+  let ME = { employee_no:'', roles:[], level:0 };  // 登入者（RBAC）
+  const canEdit = ()=>ME.level>=1, canPublish = ()=>ME.level>=2, isAdmin = ()=>ME.level>=3;
+  async function loadMe(){
+    try{ ME = await (await fetch(API+'/api/v2/me')).json(); }
+    catch(e){ ME={employee_no:'(未登入)',roles:[],level:0}; }
+    document.getElementById('meBadge').textContent='👤 '+ME.employee_no+' · '+((ME.roles&&ME.roles[0])||'viewer');
+    document.getElementById('tabUsers').hidden = !isAdmin();
+    applyGating();
+  }
+  function applyGating(){
+    const e=canEdit();
+    ['btnAddRow','btnSave','btnTplSave'].forEach(id=>{ const b=document.getElementById(id); if(b){ b.disabled=!e; b.title=e?'':'需 IE 以上角色'; b.classList.toggle('opacity-40',!e); } });
+  }
+
+  // ── rule-set 選項（從 DB /options 載；下拉資料源）──
+  let OPT = null;
+
+  // ── 詞彙：從 DB /api/v2/vocab 載入（真 vocab id；存檔直接用）──
+  let VOCAB = { object: [], from: [], to: [] };
+  async function loadVocab(){
+    const all = await (await fetch(API+'/api/v2/vocab')).json();
+    VOCAB.object = all.filter(v=>v.kind==='object'||v.kind==='component').map(v=>({id:v.id,name:v.name_zh}));
+    VOCAB.from = all.filter(v=>v.kind==='from').map(v=>({id:v.id,name:v.name_zh}));
+    VOCAB.to = all.filter(v=>v.kind==='to').map(v=>({id:v.id,name:v.name_zh}));
+    return all;
+  }
+  function firstId(kind){ return (VOCAB[kind][0]||{}).id||''; }
+  const HANDS = [{ id:'RH', name:'右手' }, { id:'LH', name:'左手' }, { id:'BH', name:'雙手' }];
+
+  // ── 編輯器狀態（目前正在編的那一列）──
+  function defaultCycle() {
+    return {
+      seq:'GM', handCode:'RH', freq:1, simoGroup:'',
+      nv:{ obj:firstId('object'), from:firstId('from'), to:firstId('to') },
+      a0:{reach:0,twist:0,foot:0}, b1:null, g:'', gMod:{},
+      a3:{reach:0,twist:0,foot:0}, b4:null, p_base:'', p_addons:[], precision:false,
+      m:{verb:'',distance:30,angle:90,rev:1,dia:10}, x:'x_none', x_sec:0, i:'i_none',
+      a6:{reach:0,twist:0,foot:0},
+    };
+  }
+  let cur = defaultCycle();
+  let rows = [];           // 已加入的列（snapshot）
+  let editingId = null;    // 正在編輯哪一列（null=新列）
+  const levelMap = {};     // Level 標註：rowId → {coefficient,number,...}（跨同步保留）
+
+  // ── 工具 ──
+  const el = (t,c,h)=>{const e=document.createElement(t);if(c)e.className=c;if(h!=null)e.innerHTML=h;return e;};
+  // 即時提示小圖示（hover 顯示說明）
+  const hint = (t)=>{const s=el('span','hint','i');s.setAttribute('data-tip',t);return s;};
+  // 可搜尋下拉：輸入即過濾；找不到時可「＋新增」(onCreate)
+  function comboBox(opts, curId, onPick, ph, onCreate){
+    const wrap=el('span','relative inline-block align-middle');
+    const inp=el('input','border rounded px-1 py-0.5 text-sm'); inp.placeholder=ph||'搜尋…'; inp.setAttribute('autocomplete','off');
+    const c=opts.find(o=>o.v===curId); inp.value=c?c.l:'';
+    const dd=el('div','absolute left-0 top-full mt-0.5 z-30 bg-white border rounded shadow max-h-52 overflow-auto text-sm hidden'); dd.style.minWidth='12rem';
+    function paint(f){ dd.innerHTML=''; const q=(f||'').toLowerCase();
+      opts.filter(o=>o.l.toLowerCase().includes(q)).slice(0,60).forEach(o=>{ const d=el('div','px-2 py-1 hover:bg-slate-100 cursor-pointer'); d.textContent=o.l; d.onmousedown=e=>{e.preventDefault(); inp.value=o.l; onPick(o.v); dd.classList.add('hidden'); }; dd.appendChild(d); });
+      if(onCreate && f && !opts.some(o=>o.l.toLowerCase()===q)){ const d=el('div','px-2 py-1 text-blue-600 hover:bg-blue-50 cursor-pointer'); d.textContent='＋ 新增「'+f+'」'; d.onmousedown=e=>{e.preventDefault(); dd.classList.add('hidden'); onCreate(f); }; dd.appendChild(d); }
+      if(!dd.children.length){ const d=el('div','px-2 py-1 text-slate-400','無相符'); dd.appendChild(d); }
+    }
+    inp.onfocus=()=>{ paint(''); dd.classList.remove('hidden'); };
+    inp.oninput=()=>paint(inp.value);
+    inp.onblur=()=>setTimeout(()=>dd.classList.add('hidden'),150);
+    wrap.appendChild(inp); wrap.appendChild(dd);
+    return wrap;
+  }
+  async function createVocab(kind, name, then){
+    if(!canEdit()){ alert('需要 IE 以上權限才能新增詞彙'); return; }
+    const r=await fetch(API+'/api/v2/vocab',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({kind, name_zh:name})});
+    if(!r.ok){ alert('新增詞彙失敗 '+r.status); return; }
+    const v=await r.json(); await loadVocab(); then(v.id);
+  }
+  function opt(v,l){const o=document.createElement('option');o.value=v;o.textContent=l;return o;}
+  function sel(opts,val,onCh,cls){const s=el('select',cls||'blank-select');opts.forEach(o=>s.appendChild(opt(o.v,o.l)));s.value=val==null?'':val;s.onchange=()=>onCh(s.value);return s;}
+  function seqOf(){return document.querySelector('input[name=seq]:checked').value;}
+
+  // ── A 帶下拉（值＝該帶上界 cm/deg；overflow 用大值）──
+  function aBandOpts(comp){
+    const unit = comp==='twist'?'度':'公分';
+    const out=[{v:'0',l:(comp==='reach'?'伸手':comp==='twist'?'手度':'腳步')+'：無'}];
+    OPT.a_bands[comp].forEach(b=>{ const v=b.max_value==null?999:b.max_value; out.push({v:String(v),l:`≤${b.max_value==null?'更大':b.max_value}${unit}(A${b.index})`}); });
+    return out;
+  }
+  function aBlock(slot){
+    const w=el('span','a-inline');
+    w.appendChild(hint('A 移動/伸手：取 伸手、手度(扭轉)、腳步 三者分級的最大值。距離越大分數越高。'));
+    [['reach','reach'],['twist','twist'],['foot','foot']].forEach(([comp,key])=>{
+      w.appendChild(sel(aBandOpts(comp), String(slot[key]||0), v=>{slot[key]=parseFloat(v)||0;onEdit();}));
+    });
+    return w;
+  }
+  function mkVocab(kind,nvKey,ph){
+    const opts=VOCAB[kind].map(r=>({v:r.id,l:r.name}));
+    return comboBox(opts, cur.nv[nvKey], v=>{cur.nv[nvKey]=v;onEdit();}, ph,
+      canEdit() ? (label=>createVocab(kind, label, id=>{ cur.nv[nvKey]=id; renderActiveMode(); onEdit(); })) : null);
+  }
+  function vname(kind,id){const r=VOCAB[kind].find(x=>x.id===id);return r?r.name:'';}
+
+  // ── B 身體動作（C4：1205 四選項）──
+  function bBlock(key){
+    const w=el('span','inline-flex items-center align-middle');
+    w.appendChild(hint('B 身體動作：彎腰/起身/站坐等輔助動作（無=0，其餘 10/32/42）。'));
+    w.appendChild(sel([{v:'',l:'身體:無'}].concat(OPT.b.filter(b=>b.code!=='b_none').map(b=>({v:b.code,l:b.label}))), cur[key]||'', v=>{cur[key]=v||null;onEdit();}));
+    return w;
+  }
+  // ── G 區塊（+修飾）──
+  function gBlock(){
+    const w=el('span','inline-flex flex-wrap items-center gap-1 align-middle');
+    w.appendChild(hint('G 取得：抓握/接觸/拿取等方式。部分方式需勾修飾子，否則該動作計 0。'));
+    w.appendChild(sel([{v:'',l:'—取得方式—'}].concat(OPT.g.map(g=>({v:g.code,l:g.label}))), cur.g, v=>{cur.g=v;cur.gMod={};renderEditor();onEdit();}));
+    const g=OPT.g.find(x=>x.code===cur.g);
+    if(g&&g.requires_modifier&&g.modifier_key){ w.appendChild(sel([{v:'0',l:'—'+g.modifier_key+' 未勾—'},{v:'1',l:'✓ '+g.modifier_key}], cur.gMod[g.modifier_key]?'1':'0', v=>{cur.gMod[g.modifier_key]=v==='1';onEdit();})); }
+    return w;
+  }
+  // ── P 區塊 ──
+  function pBlock(){
+    const w=el('span','inline-flex flex-wrap items-center gap-1 align-middle');
+    w.appendChild(hint('P 放置：放/組/保持等 + 最多 2 個附加（對準、插入、壓合…）。選「對準」須再勾精度(<4mm)。'));
+    w.appendChild(sel([{v:'',l:'—放置—'}].concat(OPT.p_bases.map(p=>({v:p.code,l:p.label}))), cur.p_base, v=>{cur.p_base=v;onEdit();}));
+    [0,1].forEach(i=>{ w.appendChild(sel([{v:'',l:'—附加—'}].concat(OPT.p_addons.map(a=>({v:a.code,l:a.label}))), cur.p_addons[i]||'', v=>{ const arr=cur.p_addons.filter((_,j)=>j!==i); if(v)arr.splice(i,0,v); cur.p_addons=arr.slice(0,2); renderEditor(); onEdit(); })); });
+    if(cur.p_addons.includes('a_align')) w.appendChild(sel([{v:'0',l:'精度未勾'},{v:'1',l:'精度<4mm'}], cur.precision?'1':'0', v=>{cur.precision=v==='1';onEdit();}));
+    return w;
+  }
+  // ── M/X/I 區塊 ──
+  function mBlock(){
+    const w=el('span','inline-flex flex-wrap items-center gap-1 align-middle');
+    w.appendChild(hint('M 控制移動：推/拉/旋轉/鎖附等受控動作。依動詞種類自動要距離、角度或圈數。'));
+    w.appendChild(sel([{v:'',l:'—控制動詞—'}].concat(OPT.m_verbs.map(m=>({v:m.code,l:m.label}))), cur.m.verb, v=>{cur.m.verb=v;renderEditor();onEdit();}));
+    const mv=OPT.m_verbs.find(x=>x.code===cur.m.verb);
+    if(mv&&(mv.pricing_kind==='ladder'||mv.pricing_kind==='foot')) w.appendChild(sel([4,12,18,30,45].map(d=>({v:String(d),l:'距離 '+d+'cm'})), String(cur.m.distance), v=>{cur.m.distance=parseFloat(v);onEdit();}));
+    if(mv&&mv.pricing_kind==='hand') w.appendChild(sel([{v:'90',l:'≤90度'},{v:'180',l:'≤180度'}], String(cur.m.angle), v=>{cur.m.angle=parseFloat(v);onEdit();}));
+    if(mv&&mv.pricing_kind==='rotate') w.appendChild(sel([1,2,3].map(r=>({v:String(r),l:r+'圈'})), String(cur.m.rev), v=>{cur.m.rev=parseInt(v);onEdit();}));
+    w.appendChild(hint('X 製程時間：機器/製程造成的等待（熱壓、測試、掃描）。連續式需輸入秒數，固定式為定值。'));
+    w.appendChild(sel(OPT.x.map(x=>({v:x.code,l:x.label})), cur.x, v=>{cur.x=v;renderEditor();onEdit();}));
+    const xo=OPT.x.find(x=>x.code===cur.x);
+    if(xo&&xo.mode==='seconds'){ const inp=el('input','blank-select w-20');inp.type='number';inp.min=0;inp.step=0.1;inp.value=cur.x_sec;inp.oninput=()=>{cur.x_sec=parseFloat(inp.value)||0;onEdit();};w.appendChild(document.createTextNode('秒'));w.appendChild(inp); }
+    w.appendChild(hint('I 對準/檢查：定位對準或檢查確認動作的分級。'));
+    w.appendChild(sel(OPT.i.map(i=>({v:i.code,l:i.label})), cur.i, v=>{cur.i=v;onEdit();}));
+    return w;
+  }
+
+  function line(parts){const p=el('p','sentence-line p-2 rounded-lg bg-slate-50 border border-slate-100');parts.forEach(x=>p.appendChild(typeof x==='string'?document.createTextNode(x):x));return p;}
+
+  function renderEditor(){
+    const root=document.getElementById('sentenceRoot'); root.innerHTML='';
+    const gm=seqOf()==='GM';
+    root.appendChild(line([ handBlock(), document.createTextNode(' 從 '), mkVocab('from','from','—來源—'), document.createTextNode(' ，'), aBlock(cur.a0), document.createTextNode(' '), bBlock('b1'), document.createTextNode(' 以 '), gBlock(), document.createTextNode(' 取得「'), mkVocab('object','obj','—物件—'), document.createTextNode('」。') ]));
+    if(gm){
+      root.appendChild(line([ document.createTextNode('隨後 '), aBlock(cur.a3), document.createTextNode(' '), bBlock('b4'), document.createTextNode(' 到 '), mkVocab('to','to','—目的地—'), document.createTextNode(' ，以 '), pBlock(), document.createTextNode(' 放置。') ]));
+    } else {
+      root.appendChild(line([ document.createTextNode('在 '), mkVocab('to','to','—地點—'), document.createTextNode(' ，'), mBlock(), document.createTextNode(' 實施控制移動。') ]));
+    }
+    root.appendChild(line([ document.createTextNode('最後 '), aBlock(cur.a6), document.createTextNode(' 返回。') ]));
+  }
+
+  // ── 編輯模式：⚡快速 / 🔧精確（兩者都填同一張工時表）──
+  let editMode='quick';
+  function renderActiveMode(){ if(editMode==='quick') renderQuick(); else renderEditor(); }
+  function setMode(m){ editMode=m;
+    const qb=document.getElementById('quickBox'), pb=document.getElementById('preciseBox');
+    if(qb) qb.classList.toggle('hidden', m!=='quick');
+    if(pb) pb.classList.toggle('hidden', m!=='precise');
+    const on='px-2 py-1 rounded border bg-slate-800 text-white', off='px-2 py-1 rounded border';
+    const mq=document.getElementById('modeQuick'), mp=document.getElementById('modePrecise');
+    if(mq) mq.className=(m==='quick'?on:off); if(mp) mp.className=(m==='precise'?on:off);
+    renderActiveMode(); onEdit();
+  }
+  function renderQuick(){
+    const box=document.getElementById('quickBox'); if(!box)return; box.innerHTML='';
+    const std=(TEMPL||[]).filter(t=>t.status==='standard');
+    const row=el('div','flex flex-wrap items-center gap-2 text-sm');
+    const L=t=>el('span','text-slate-500',t);
+    row.appendChild(L('手')); row.appendChild(sel(HANDS.map(h=>({v:h.id,l:h.name})), cur.handCode, v=>{cur.handCode=v;onEdit();}, 'border rounded px-1 py-0.5'));
+    row.appendChild(L('動作'));
+    row.appendChild(comboBox(std.map(t=>({v:t.id,l:t.name_zh})), '', v=>{ if(v) insertTemplate(v); }, '搜尋常見動作…'));
+    row.appendChild(L('物件')); row.appendChild(mkVocab('object','obj','—物件—'));
+    row.appendChild(L('從')); row.appendChild(mkVocab('from','from','—從—'));
+    row.appendChild(L('到')); row.appendChild(mkVocab('to','to','—到—'));
+    box.appendChild(row);
+    box.appendChild(el('p','text-xs text-slate-400','選「動作」會自動帶入七格與 TMU（下方顯示）；要逐格微調請切「🔧 精確調整」，內容會保留。沒有合適的動作？切精確模式逐格選。'));
+  }
+
+  // ── state → CycleIn payload ──
+  function payload(){
+    const gm=seqOf()==='GM';
+    const A=s=>({reach_cm:s.reach||0,twist_deg:s.twist||0,foot_cm:s.foot||0});
+    const p={seq:gm?'GM':'CM', rule_set_code:OPT.code, a0:A(cur.a0), b1:{b_code:cur.b1}, g2:{g_code:cur.g||null,modifiers:cur.gMod||{}}, a6:A(cur.a6)};
+    if(gm){ p.a3=A(cur.a3); p.b4={b_code:cur.b4}; p.p5={p_base_code:cur.p_base||null,p_addon_codes:cur.p_addons||[],precision:!!cur.precision}; }
+    else { p.m3={m_components:cur.m.verb?[{verb_code:cur.m.verb,distance_cm:cur.m.distance,angle_deg:cur.m.angle,revolutions:cur.m.rev,diameter_cm:cur.m.dia}]:[]}; p.x4={x_code:cur.x||'x_none',x_seconds:cur.x_sec||0}; p.i5={i_code:cur.i||'i_none'}; }
+    return p;
+  }
+  function shortNarr(st){ st=st||cur;
+    const gm=st.seq==='GM';
+    const hand=(HANDS.find(h=>h.id===st.handCode)||{}).name||'';
+    const g=(OPT.g.find(x=>x.code===st.g)||{}).label||'［取得］';
+    let act2='［動作2］';
+    if(gm){ act2=(OPT.p_bases.find(p=>p.code===st.p_base)||{}).label||act2; }
+    else { act2=(OPT.m_verbs.find(m=>m.code===st.m.verb)||{}).label||act2; }
+    return `${hand} 從${vname('from',st.nv.from)||'［自］'} ${g}「${vname('object',st.nv.obj)||'［物］'}」 ${act2} 至${vname('to',st.nv.to)||'［至］'}`;
+  }
+
+  let timer=null;
+  function onEdit(){
+    cur.seq=seqOf();
+    cur.freq=parseInt(document.getElementById('freq').value)||1;
+    cur.simoGroup=document.getElementById('simoGroup').value.trim();
+    document.getElementById('narr').textContent=shortNarr();
+    const b=document.getElementById('engineBadge'); b.textContent='· 計算中…'; b.className='text-[0.65rem] text-slate-400';
+    clearTimeout(timer); timer=setTimeout(calcCur,300);
+  }
+  async function calcCur(){
+    try{
+      const r=await fetch(API+'/api/v2/minimost/calculate',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(payload())});
+      const j=await r.json(); const b=document.getElementById('engineBadge');
+      if(!r.ok){ b.textContent='⚠️ '+(j.detail&&j.detail.code||r.status); b.className='text-[0.65rem] text-red-600'; return j; }
+      document.getElementById('rowTmu').textContent=j.total_tmu;
+      document.getElementById('techLine').textContent=j.tech_line;
+      b.textContent='✓ 引擎'; b.className='text-[0.65rem] text-emerald-600';
+      return j;
+    }catch(e){ document.getElementById('engineBadge').textContent='連線失敗'; return null; }
+  }
+
+  // ── 加入/更新列 ──
+  async function addOrUpdate(){
+    const j=await calcCur();
+    if(!j||j.total_tmu==null) return;
+    const snap={ id: editingId||(crypto.randomUUID?crypto.randomUUID():'r'+Date.now()),
+      state: JSON.parse(JSON.stringify(cur)), seq: j.seq, handCode: cur.handCode,
+      freq: cur.freq, simoGroup: cur.simoGroup, tmu: j.total_tmu, seconds: j.total_seconds,
+      tech: j.tech_line, narr: shortNarr(), payload: payload() };
+    if(editingId){ const i=rows.findIndex(r=>r.id===editingId); rows[i]=snap; editingId=null; }
+    else rows.push(snap);
+    cur=defaultCycle(); document.getElementById('freq').value=1; document.getElementById('simoGroup').value='';
+    renderActiveMode(); onEdit(); renderTable();
+  }
+  function editRow(id){ const r=rows.find(x=>x.id===id); if(!r)return; cur=JSON.parse(JSON.stringify(r.state)); editingId=id;
+    document.querySelector(`input[name=seq][value=${r.seq==='CM'?'CM':'GM'}]`).checked=true;
+    document.getElementById('freq').value=r.freq; document.getElementById('simoGroup').value=r.simoGroup||'';
+    setMode('precise');  // 編輯既有列＝逐格檢視/微調
+    document.getElementById('panel-wi').scrollIntoView({behavior:'smooth'}); }
+  function delRow(id){ rows=rows.filter(r=>r.id!==id); renderTable(); }
+
+  function tableTotal(){
+    // SIMO：同一 simoGroup 的列只計 max(eff)；無群組者各自加總。
+    let total=0; const groups={};
+    rows.forEach(r=>{ const eff=r.tmu*(r.freq||1); const g=(r.simoGroup||'').trim();
+      if(g){ groups[g]=Math.max(groups[g]||0,eff); } else total+=eff; });
+    Object.values(groups).forEach(v=>total+=v);
+    return total;
+  }
+  const TMU_SEC=0.036;  // 1 TMU = 0.036 秒
+  function updateTotal(){ const t=tableTotal();
+    const a=document.getElementById('tableTotal'); if(a) a.textContent=t;
+    const b=document.getElementById('tableTotalSec'); if(b) b.textContent=(t*TMU_SEC).toFixed(2); }
+
+  let selWi=new Set();
+  function dupRow(id){ const i=rows.findIndex(r=>r.id===id); if(i<0)return; const src=rows[i];
+    const copy=JSON.parse(JSON.stringify(src)); copy.id=(crypto.randomUUID?crypto.randomUUID():'r'+Date.now()+Math.random());
+    rows.splice(i+1,0,copy); renderTable(); }
+  function applyBatch(){
+    const ids=selIdsWi(); if(!ids.length)return;
+    const h=document.getElementById('wbHand').value, f=document.getElementById('wbFreq').value, s=document.getElementById('wbSimo').value;
+    ids.forEach(id=>{ const r=rows.find(x=>x.id===id); if(!r)return;
+      if(h){ r.handCode=h; r.state.handCode=h; r.narr=shortNarr(r.state); }
+      if(f!=='') r.freq=parseInt(f)||1;
+      if(s!=='') r.simoGroup=(s==='∅')?'':s;
+    });
+    selWi.clear(); renderTable();
+  }
+  function selIdsWi(){ return rows.map(r=>r.id).filter(id=>selWi.has(id)); }
+  function renderBatchBar(){
+    const bar=document.getElementById('wiBatch'); if(!bar)return;
+    const n=selIdsWi().length;
+    if(!n || !canEdit()){ bar.className='hidden'; bar.innerHTML=''; return; }
+    bar.className='flex flex-wrap items-center gap-2 mb-2 text-xs bg-amber-50 border border-amber-200 rounded p-2';
+    bar.innerHTML=`已選 <b>${n}</b> 列 → 批次套用：
+      手 <select id="wbHand" class="border rounded px-1"><option value="">—</option>${HANDS.map(h=>`<option value="${h.id}">${h.name}</option>`).join('')}</select>
+      Freq <input id="wbFreq" type="number" min="1" class="border rounded w-14 px-1" placeholder="—">
+      SIMO <input id="wbSimo" class="border rounded w-20 px-1" placeholder="— (清空填∅)">
+      <button id="wbApply" class="px-2 py-0.5 bg-amber-600 text-white rounded">套用</button>
+      <button id="wbDup" class="px-2 py-0.5 border rounded">複製選取</button>
+      <button id="wbDel" class="px-2 py-0.5 border rounded text-red-600">刪除選取</button>`;
+    document.getElementById('wbApply').onclick=applyBatch;
+    document.getElementById('wbDup').onclick=()=>{ selIdsWi().forEach(dupRow); selWi.clear(); renderTable(); };
+    document.getElementById('wbDel').onclick=()=>{ const del=new Set(selIdsWi()); rows=rows.filter(r=>!del.has(r.id)); selWi.clear(); renderTable(); };
+  }
+  function renderTable(){
+    const tb=document.getElementById('wiBody'); tb.innerHTML='';
+    const e=canEdit();
+    rows.forEach((r,i)=>{
+      const tr=el('tr');
+      const cbTd=el('td'); const cb=el('input'); cb.type='checkbox'; cb.checked=selWi.has(r.id);
+      cb.onchange=()=>{ cb.checked?selWi.add(r.id):selWi.delete(r.id); renderBatchBar(); }; cbTd.appendChild(cb); tr.appendChild(cbTd);
+      tr.appendChild(el('td',null,String(i+1)));
+      // 手（inline）
+      const hTd=el('td'); if(e){ hTd.appendChild(sel(HANDS.map(h=>({v:h.id,l:h.name})), r.handCode, v=>{ r.handCode=v; r.state.handCode=v; r.narr=shortNarr(r.state); renderTable(); }, 'border rounded px-1 text-xs')); } else hTd.textContent=r.handCode; tr.appendChild(hTd);
+      tr.appendChild(el('td',null,r.narr));
+      tr.appendChild(el('td','mono',r.tech));
+      tr.appendChild(el('td',null,'<b>'+r.tmu+'</b>'));
+      // Freq（inline）
+      const fTd=el('td'); if(e){ const fi=el('input','border rounded w-14 px-1 text-xs'); fi.type='number'; fi.min=1; fi.value=r.freq; fi.oninput=()=>{ r.freq=parseInt(fi.value)||1; updateTotal(); }; fTd.appendChild(fi); } else fTd.textContent=String(r.freq); tr.appendChild(fTd);
+      // SIMO（inline）
+      const sTd=el('td'); if(e){ const si=el('input','border rounded w-16 px-1 text-xs'); si.value=r.simoGroup||''; si.oninput=()=>{ r.simoGroup=si.value.trim(); updateTotal(); }; sTd.appendChild(si); } else sTd.textContent=r.simoGroup||''; tr.appendChild(sTd);
+      const td=el('td');
+      const ed=el('button','text-blue-600 underline text-xs mr-2','編輯'); ed.onclick=()=>editRow(r.id);
+      const dp=el('button','text-slate-600 underline text-xs mr-2','複製'); dp.onclick=()=>dupRow(r.id);
+      const d=el('button','text-red-600 underline text-xs','刪'); d.onclick=()=>delRow(r.id);
+      td.appendChild(ed); if(e){ td.appendChild(dp); td.appendChild(d); } tr.appendChild(td);
+      tb.appendChild(tr);
+    });
+    updateTotal();
+    const selAll=document.getElementById('wiSelAll'); if(selAll){ selAll.onclick=()=>{ if(selAll.checked) rows.forEach(r=>selWi.add(r.id)); else selWi.clear(); renderTable(); }; }
+    renderBatchBar();
+  }
+
+  // ── 存整表到 DB ──
+  async function saveAll(){
+    const out=document.getElementById('saveResult'); out.textContent='儲存中…';
+    const D=deriveLevel();
+    const body={ rows: rows.map((r,i)=>{ const e=D[r.id]||{}; const nv=r.state.nv||{}; return { id:r.id, seq_no:i+1, hand:r.handCode,
+      object_vocab_id: nv.obj || firstId('object') || DEMO.obj,
+      from_vocab_id: nv.from || null, to_vocab_id: nv.to || null,
+      frequency:r.freq, simo_group_id: r.simoGroup||null, narrative:r.narr,
+      cycle:r.payload, level:{
+        ascription:e.ascription, level:e.level, coefficient:e.coefficient,
+        countersignature:e.countersignature, parent_countersignature:e.parent_countersignature, order:e.order,
+        number:e.number, number_count:e.number_count,
+        machine_count:e.machine_count, manpower:e.manpower } }; }) };
+    try{
+      const r=await fetch(API+'/api/v2/worksheets/'+ACTIVE_WS,{method:'PUT',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});
+      const j=await r.json();
+      if(!r.ok){ out.textContent='⚠️ 儲存失敗：'+(j.detail?JSON.stringify(j.detail):r.status); return; }
+      out.textContent='✓ 已儲存：共 '+j.rows.length+' 列，合計 '+j.total_tmu+' TMU（≈ '+(j.total_tmu*TMU_SEC).toFixed(2)+' 秒）';
+    }catch(e){ out.textContent='連線失敗（伺服器未啟動？）：'+e; }
+  }
+
+  function loadExample(){
+    rows=[];
+    // GM 28
+    cur=defaultCycle(); cur.handCode='RH'; cur.nv={obj:firstId('object'),from:firstId('from'),to:firstId('to')}; cur.a0.reach=20; cur.g='g_grasp'; cur.a3.reach=25; cur.p_base='p_place_none';
+    document.querySelector('input[name=seq][value=GM]').checked=true; renderEditor();
+    addOrUpdate().then(()=>{
+      cur=defaultCycle(); cur.handCode='BH'; cur.nv={obj:firstId('object'),from:firstId('from'),to:firstId('to')}; cur.a0.reach=25; cur.g='g_touch'; cur.gMod={contact:true};
+      cur.m={verb:'m_push',distance:18,angle:90,rev:1,dia:10}; cur.x='x_none'; cur.i='i_none';
+      document.querySelector('input[name=seq][value=CM]').checked=true; renderEditor();
+      addOrUpdate();
+    });
+  }
+
+  function syncHand(){}  // 手已改在句子開頭由 handBlock() 渲染（renderEditor 內）
+  function handBlock(){
+    const w=el('span','a-inline'); w.appendChild(hint('左/右/雙手：此動作由哪隻手執行；雙手代表兩手同時。'));
+    w.appendChild(sel(HANDS.map(h=>({v:h.id,l:h.name})), cur.handCode, v=>{ cur.handCode=v; onEdit(); }, 'border rounded px-1 text-sm'));
+    return w;
+  }
+
+  // ── ② Level System（巢狀群組盒 + 拖曳；nb=跨樹約束晶片）──
+  // 群組中介資料：label → {type:'sub'|'cub', parent:''|sub標籤, seq}（支援空群組與巢狀）
+  let groupMeta = {};
+  let gseq = 0;
+  let nbMode = false;            // nb 約束新增模式
+  let nbPick = new Set();        // nb 新增時暫選的卡片
+
+  function syncLevel(){
+    const ids=new Set(rows.map(r=>r.id));
+    Object.keys(levelMap).forEach(k=>{ if(!ids.has(k)) delete levelMap[k]; });
+    rows.forEach((r,i)=>{ if(!levelMap[r.id]) levelMap[r.id]={coefficient:1,number:'',number_count:'',level:String(i+1),countersignature:'',machine_count:1,manpower:1}; });
+    rebuildGroupMeta();
+    renderLevelPanel();
+  }
+  // 由各列的 countersignature 補齊缺漏的 groupMeta（保留既有 parent / 空群組）
+  function rebuildGroupMeta(){
+    rows.forEach(r=>{ const cs=String(levelMap[r.id].countersignature||'').trim();
+      if(cs && !groupMeta[cs]) groupMeta[cs]={type:cs.startsWith('cub')?'cub':'sub', parent:'', seq:++gseq}; });
+  }
+  function wiIndex(id){ return rows.findIndex(r=>r.id===id); }
+  function rowsIn(label){ return rows.filter(r=>String(levelMap[r.id].countersignature||'').trim()===label); }       // 直屬列
+  function subGroupsOf(label){ return Object.keys(groupMeta).filter(g=>(groupMeta[g].parent||'')===label); }
+  function firstIdx(label){   // 群組（含子群組）在工時表中的最小列序 → 決定盒子位置
+    let mn=Infinity;
+    rows.forEach((r,i)=>{ const cs=String(levelMap[r.id].countersignature||'').trim();
+      if(cs===label || (groupMeta[cs]&&(groupMeta[cs].parent||'')===label)) mn=Math.min(mn,i); });
+    return mn===Infinity ? (1e6+(groupMeta[label]?groupMeta[label].seq:0)) : mn;
+  }
+
+  // 推導 Ascription/order/level（IE 不手填）：群組首列＝頭(main,order1)；空 sub 的子 cub 自動視為頂層
+  function deriveLevel(){
+    const res={};
+    rows.forEach((r,i)=>{ const m=levelMap[r.id]||{}; const cs=String(m.countersignature||'').trim();
+      let ascription,order,level;
+      if(cs){ const members=rowsIn(cs); const idx=members.findIndex(x=>x.id===r.id); order=idx+1;
+        if(idx===0){ ascription='main'; level=(m.level&&String(m.level).trim())?m.level:String(i+1); }
+        else { ascription=null; level=null; }
+      } else { ascription='main'; order=null; level=(m.level&&String(m.level).trim())?m.level:String(i+1); }
+      const par=(cs&&groupMeta[cs]&&groupMeta[cs].parent)?groupMeta[cs].parent:'';
+      res[r.id]={ coefficient:parseFloat(m.coefficient)||1,
+        number:(m.number&&String(m.number).trim())?String(m.number).trim():null,
+        number_count:(m.number_count===''||m.number_count==null)?null:parseInt(m.number_count),
+        ascription, level, countersignature:cs||null,
+        parent_countersignature:(par && rowsIn(par).length>0)?par:null, order,   // 母群組無直屬列→攤平
+        machine_count:parseInt(m.machine_count)||1, manpower:parseInt(m.manpower)||1 };
+    });
+    return res;
+  }
+
+  function nextLabel(prefix){ let n=1; while(groupMeta[prefix+n])n++; return prefix+n; }
+  function nextNb(){ const used=new Set(rows.map(r=>String(levelMap[r.id].number||'').trim()).filter(Boolean)); let n=1; while(used.has('nb'+n))n++; return 'nb'+n; }
+  function createGroup(type,parent){ const label=nextLabel(type); groupMeta[label]={type,parent:parent||'',seq:++gseq}; renderLevelPanel(); }
+  function moveTo(id,label){ levelMap[id].countersignature=label; renderLevelPanel(); validateLevel(); }
+  function dissolveGroup(label){
+    rowsIn(label).forEach(r=>levelMap[r.id].countersignature=groupMeta[label].parent||'');   // 列移到母容器
+    subGroupsOf(label).forEach(g=>groupMeta[g].parent=groupMeta[label].parent||'');           // 子群組改掛母容器
+    delete groupMeta[label]; renderLevelPanel(); validateLevel();
+  }
+
+  // ── nb 跨樹約束 ──
+  function nbList(){ const m={}; rows.forEach(r=>{ const n=String(levelMap[r.id].number||'').trim(); if(n){ (m[n]=m[n]||{count:levelMap[r.id].number_count||1,ids:[]}).ids.push(r.id);} }); return m; }
+  function confirmNb(){
+    if(nbPick.size<1){ nbMode=false; renderLevelPanel(); return; }
+    const cntEl=document.getElementById('nbCnt'); const cnt=parseInt(cntEl&&cntEl.value)||1;
+    const label=nextNb(); nbPick.forEach(id=>{ levelMap[id].number=label; levelMap[id].number_count=cnt; });
+    nbPick.clear(); nbMode=false; renderLevelPanel(); validateLevel();
+  }
+  function removeNb(label){ rows.forEach(r=>{ if(String(levelMap[r.id].number||'').trim()===label){ levelMap[r.id].number=''; levelMap[r.id].number_count=''; } }); renderLevelPanel(); validateLevel(); }
+
+  function renderLevelPanel(){
+    const p=document.getElementById('panel-level');
+    if(!rows.length){ p.innerHTML='<div class="bg-white rounded-xl border p-6 text-slate-500">工時表還沒有列。請先到 <b>① WI 工時表</b> 加入幾列，再回來標層級。</div>'; return; }
+    p.innerHTML=`<div class="bg-white rounded-xl border p-4">
+      <div class="flex flex-wrap items-center gap-2 mb-2"><h2 class="font-semibold mr-1">Level System</h2>
+        <button id="btnReSync" class="px-2 py-1 border rounded text-xs">自工時表同步</button>
+        <span class="mx-1 text-slate-300">|</span>
+        <button id="btnNewSub" class="px-2 py-1 border rounded text-xs bg-sky-50">＋ sub 群組（可移動）</button>
+        <span class="hint" data-tip="sub＝可移動子序：整組可在線上一起搬到別站，但組內順序固定。建立後把卡片拖進藍盒。">i</span>
+        <button id="btnNewCub" class="px-2 py-1 border rounded text-xs bg-amber-50">＋ cub 群組（同站不可拆）</button>
+        <span class="hint" data-tip="cub＝同站不可拆：成員必須在同一工站、不可被拆開分站。建立後把卡片拖進橘盒；sub 盒內可開 cub 形成巢狀。">i</span>
+        <span id="lvStatus" class="text-xs text-slate-400"></span></div>
+      <p class="text-xs text-slate-500 mb-2">把<b>卡片拖進群組盒</b>即分組；盒中盒＝<b>巢狀</b>（sub 內可開 cub 子群組）。<span class="text-sky-700">藍盒＝sub 可移動</span>、<span class="text-amber-700">橘盒＝cub 同站不可拆</span>。系統自動管 main/order，免手打。下方<b>約束</b>區設「不可同站」(nb)。</p>
+      <div id="lvTree" class="bg-slate-50/60 rounded-lg p-2 min-h-[80px]"></div>
+      <div id="lvConstraints" class="mt-3"></div>
+      <pre id="lvIssues" class="mono text-xs bg-slate-50 p-2 rounded mt-2 max-h-48 overflow-auto"></pre></div>`;
+    document.getElementById('btnReSync').onclick=syncLevel;
+    document.getElementById('btnNewSub').onclick=()=>createGroup('sub','');
+    document.getElementById('btnNewCub').onclick=()=>createGroup('cub','');
+    validateLevel();  // 進入即自動檢查（無需手按）
+    rebuildGroupMeta();
+    renderLevelTree();
+    renderConstraints();
+  }
+
+  function dropZone(elm,label){
+    elm.addEventListener('dragover',e=>{ e.preventDefault(); e.stopPropagation(); e.dataTransfer.dropEffect='move'; elm.classList.add('ring-2','ring-violet-400'); });
+    elm.addEventListener('dragleave',e=>{ e.stopPropagation(); elm.classList.remove('ring-2','ring-violet-400'); });
+    elm.addEventListener('drop',e=>{ e.preventDefault(); e.stopPropagation(); elm.classList.remove('ring-2','ring-violet-400');
+      const id=e.dataTransfer.getData('text/plain'); if(id&&levelMap[id]) moveTo(id,label); });
+  }
+  function renderLevelTree(){
+    const box=document.getElementById('lvTree'); if(!box)return; box.innerHTML='';
+    box.appendChild(renderContainer('',0));
+  }
+  // 容器(root='')：直屬列 + 子群組盒，依工時表序混排
+  function renderContainer(label,depth){
+    const wrap=el('div','space-y-1'+(depth>0?' px-2 pb-2':''));
+    dropZone(wrap,label);
+    const items=[];
+    rowsIn(label).forEach(r=>items.push({k:'row',id:r.id,idx:wiIndex(r.id)}));
+    subGroupsOf(label).forEach(g=>items.push({k:'grp',label:g,idx:firstIdx(g)}));
+    items.sort((a,b)=>a.idx-b.idx);
+    if(!items.length){ wrap.appendChild(el('div','text-xs text-slate-400 px-2 py-2 text-center border border-dashed rounded',label===''?'把卡片拖到這裡＝獨立 main 動作':'空群組——把卡片拖進來')); }
+    items.forEach(it=>{ wrap.appendChild(it.k==='row'?renderCard(it.id):renderBox(it.label,depth+1)); });
+    return wrap;
+  }
+  function renderBox(label,depth){
+    const g=groupMeta[label]; const isCub=g.type==='cub';
+    const box=el('div','rounded-lg border-2 '+(isCub?'border-amber-300 bg-amber-50/50':'border-sky-300 bg-sky-50/50'));
+    const head=el('div','flex items-center gap-2 px-2 py-1');
+    head.appendChild(el('span','text-[11px] font-semibold px-1.5 py-0.5 rounded '+(isCub?'bg-amber-200 text-amber-900':'bg-sky-200 text-sky-900'),(isCub?'🔒 ':'↕ ')+label+(isCub?' 同站不可拆':' 可移動組')));
+    const n=rowsIn(label).length+subGroupsOf(label).length;
+    head.appendChild(el('span','text-[10px] text-slate-400',n?(n+' 項'):'空'));
+    head.appendChild(el('span','flex-1'));
+    if(!isCub){ const b=el('button','text-[11px] text-amber-700 underline','＋ cub 子群組'); b.onclick=()=>createGroup('cub',label); head.appendChild(b); }
+    const dz=el('button','text-[11px] text-slate-500 underline','解散'); dz.onclick=()=>dissolveGroup(label); head.appendChild(dz);
+    box.appendChild(head);
+    box.appendChild(renderContainer(label,depth));
+    return box;
+  }
+  function lvNum(id,field,w){ const i=el('input','border rounded px-1 text-xs '+(w||'w-12')); i.type='number'; i.value=levelMap[id][field]==null?'':levelMap[id][field]; i.oninput=()=>{ levelMap[id][field]=i.value===''?'':parseFloat(i.value); }; return i; }
+  function renderCard(id){
+    const i=wiIndex(id); const m=levelMap[id]; const cs=String(m.countersignature||'').trim();
+    const firstInGroup=rowsIn(cs)[0]; const isHead = !cs || (firstInGroup && firstInGroup.id===id);
+    const card=el('div','flex items-center gap-2 px-2 py-1 bg-white rounded border'); card.id='lvrow-'+i;
+    card.draggable=true;
+    card.addEventListener('dragstart',e=>{ e.dataTransfer.setData('text/plain',id); e.dataTransfer.effectAllowed='move'; });
+    if(nbMode){ const cb=el('input'); cb.type='checkbox'; cb.checked=nbPick.has(id); cb.onchange=()=>{ cb.checked?nbPick.add(id):nbPick.delete(id); }; card.appendChild(cb); }
+    card.appendChild(el('span','text-slate-300 cursor-move select-none','⠿'));
+    card.appendChild(el('span','text-slate-400 w-6 text-right text-xs',String(i+1)));
+    if(isHead) card.appendChild(el('span','text-[10px] px-1 rounded bg-violet-100 text-violet-700','main'));
+    card.appendChild(el('span','flex-1 truncate text-sm',(rows[i]&&rows[i].narr)||'(未命名)'));
+    card.appendChild(el('span','mono text-xs text-slate-500',(rows[i]&&rows[i].seconds!=null?rows[i].seconds+'s':'')));
+    const cf=el('span','text-[10px] text-slate-400 flex items-center gap-0.5','系'); cf.appendChild(lvNum(id,'coefficient','w-12')); card.appendChild(cf);
+    if(isHead){ const lw=el('span','text-[10px] text-slate-400 flex items-center gap-0.5','主序'); const li=el('input','border rounded px-1 text-xs w-14'); li.value=m.level==null?'':m.level; li.oninput=()=>{ m.level=li.value; }; lw.appendChild(li); card.appendChild(lw); }
+    const nb=String(m.number||'').trim(); if(nb) card.appendChild(el('span','text-[10px] px-1 rounded bg-rose-100 text-rose-700','🚫'+nb));
+    return card;
+  }
+  function renderConstraints(){
+    const c=document.getElementById('lvConstraints'); if(!c)return; c.innerHTML='';
+    const wrap=el('div','rounded-lg border border-rose-200 bg-rose-50/40 p-2');
+    const head=el('div','flex items-center gap-2 mb-1 flex-wrap');
+    head.appendChild(el('span','text-xs font-semibold text-rose-800','約束：不可同站 (nb)'));
+    head.appendChild(hint('不可同站：被同一 nb 標籤標記的列，每個工站最多放 N 個，藉此強制把它們分到不同工站（跨群組的約束，不屬於樹）。'));
+    head.appendChild(el('span','flex-1'));
+    if(!nbMode){ const b=el('button','text-[11px] text-rose-700 underline','＋ 新增不可同站約束'); b.onclick=()=>{ nbMode=true; nbPick.clear(); renderLevelPanel(); }; head.appendChild(b); }
+    else { head.appendChild(el('span','text-[11px] text-slate-500','勾選上方卡片後設定 →'));
+      head.appendChild(el('span','text-[11px] text-slate-500','每站≤')); const cnt=el('input','border rounded px-1 text-xs w-12'); cnt.id='nbCnt'; cnt.type='number'; cnt.value='1'; head.appendChild(cnt);
+      const ok=el('button','text-[11px] text-white bg-rose-600 rounded px-2 py-0.5','確定'); ok.onclick=confirmNb; head.appendChild(ok);
+      const cc=el('button','text-[11px] text-slate-500 underline','取消'); cc.onclick=()=>{ nbMode=false; nbPick.clear(); renderLevelPanel(); }; head.appendChild(cc);
+    }
+    wrap.appendChild(head);
+    const list=el('div','flex flex-wrap gap-1'); const nbs=nbList();
+    if(!Object.keys(nbs).length && !nbMode) list.appendChild(el('span','text-[11px] text-slate-400','（無約束）兩組不可放同一工站時，在此設定。'));
+    Object.keys(nbs).forEach(label=>{ const grp=nbs[label]; const names=grp.ids.map(id=>'列'+(wiIndex(id)+1)).join('、');
+      const chip=el('span','inline-flex items-center gap-1 text-[11px] px-2 py-0.5 rounded-full bg-white border border-rose-300 text-rose-700');
+      chip.appendChild(el('span',null,'🚫 '+label+' 每站≤'+grp.count+'：'+names));
+      const x=el('button','text-rose-400 hover:text-rose-700 ml-0.5','✕'); x.onclick=()=>removeNb(label); chip.appendChild(x);
+      list.appendChild(chip);
+    });
+    wrap.appendChild(list); c.appendChild(wrap);
+  }
+  function levelPayload(){
+    const d=deriveLevel();
+    return rows.map(r=>{ const e=d[r.id]; return {
+      content:r.narr, raw_seconds:r.seconds, coefficient:e.coefficient,
+      number:e.number, number_count:e.number_count, ascription:e.ascription, level:e.level,
+      countersignature:e.countersignature, parent_countersignature:e.parent_countersignature, order:e.order }; });
+  }
+  async function validateLevel(){
+    const st=document.getElementById('lvStatus'); if(!st)return; st.textContent='檢查中…'; st.className='text-xs text-slate-400';
+    try{
+      const r=await fetch(API+'/api/v2/level/validate',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(levelPayload())});
+      const j=await r.json();
+      rows.forEach((_,i)=>{const tr=document.getElementById('lvrow-'+i); if(tr)tr.style.background='';});
+      const issues=document.getElementById('lvIssues');
+      if(j.valid){ st.textContent='✓ 群組設定正確'; st.className='text-xs text-emerald-600'; issues.textContent=''; return; }
+      st.textContent='✗ '+j.issues.length+' 項問題待修正'; st.className='text-xs text-red-600';
+      j.issues.forEach(is=>{ if(is.row_index>=0){const tr=document.getElementById('lvrow-'+is.row_index); if(tr)tr.style.background='#fee2e2';} });
+      issues.textContent=j.issues.map(is=>`${is.row_index<0?'整表':'列'+(is.row_index+1)}: ${is.message}`).join('\n');
+    }catch(e){ st.textContent='連線失敗：'+e; st.className='text-xs text-red-600'; }
+  }
+
+  // ── ③ 主數據 / 詞彙庫 ──
+  async function renderMasterPanel(){
+    const p=document.getElementById('panel-master');
+    let all=[]; try{ all=await (await fetch(API+'/api/v2/vocab')).json(); }catch(e){ p.innerHTML='<div class="bg-white rounded-xl border p-6 text-red-600">載入失敗：'+e+'</div>'; return; }
+    const KINDS=[['object','物件'],['component','元件'],['tool','器具'],['from','從(來源)'],['to','到(目的)'],['hand','手勢']];
+    p.innerHTML=`<div class="bg-white rounded-xl border p-4">
+      <h2 class="font-semibold mb-2">主數據 / 詞彙庫</h2>
+      <p class="text-xs text-slate-500 mb-2">這裡新增/刪除的詞彙，立即出現在 ① WI 工時表的下拉。日後可改由外部系統(PLM/MES)供應。</p>
+      <div class="flex flex-wrap gap-2 items-end mb-3 text-sm">
+        <label>類別 <select id="mvKind" class="border rounded px-1 py-0.5">${KINDS.map(k=>`<option value="${k[0]}">${k[1]}</option>`).join('')}</select></label>
+        <label>中文名 <input id="mvZh" class="border rounded px-1 py-0.5"></label>
+        <label>英文名 <input id="mvEn" class="border rounded px-1 py-0.5 w-28"></label>
+        <label>external_code <input id="mvCode" class="border rounded px-1 py-0.5 w-24"></label>
+        <button id="mvAdd" class="px-2 py-1 bg-blue-600 text-white rounded">＋新增</button>
+        <span id="mvMsg" class="text-xs text-slate-400"></span>
+      </div>
+      <table class="wi w-full"><thead><tr><th>類別</th><th>中文</th><th>英文</th><th>external_code</th><th>來源</th><th></th></tr></thead><tbody id="mvBody"></tbody></table>
+    </div>
+    <div class="bg-white rounded-xl border p-4 mt-4">
+      <h2 class="font-semibold mb-2">📋 動作範本庫</h2>
+      <p class="text-xs text-slate-500 mb-2">建表時於 ① 一鍵插入；匯入 Excel 時用關鍵字自動建 MOST。新增＝在 ① 編好一條後按「存為範本」。</p>
+      <table class="wi w-full"><thead><tr><th>名稱</th><th>類型</th><th>分類</th><th>關鍵字（匯入比對）</th><th></th></tr></thead><tbody id="tplBody"></tbody></table>
+    </div>`;
+    const tb=p.querySelector('#mvBody');
+    all.forEach(v=>{ const tr=el('tr');
+      tr.appendChild(el('td',null,v.kind)); tr.appendChild(el('td',null,v.name_zh));
+      tr.appendChild(el('td',null,v.name_en||'')); tr.appendChild(el('td','mono',v.external_code||''));
+      tr.appendChild(el('td',null,v.source_system));
+      const td=el('td'); const d=el('button','text-red-600 underline text-xs','刪'); d.onclick=async()=>{ await fetch(API+'/api/v2/vocab/'+v.id,{method:'DELETE'}); await loadVocab(); renderEditor(); renderMasterPanel(); }; td.appendChild(d); tr.appendChild(td);
+      tb.appendChild(tr); });
+    p.querySelector('#mvAdd').onclick=async()=>{
+      const zh=p.querySelector('#mvZh').value.trim(); const msg=p.querySelector('#mvMsg');
+      if(!zh){ msg.textContent='請填中文名'; return; }
+      const body={ kind:p.querySelector('#mvKind').value, name_zh:zh, name_en:p.querySelector('#mvEn').value.trim()||null, external_code:p.querySelector('#mvCode').value.trim()||null };
+      const r=await fetch(API+'/api/v2/vocab',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});
+      if(!r.ok){ msg.textContent='新增失敗 '+r.status; return; }
+      await loadVocab(); renderEditor(); renderMasterPanel();
+    };
+    // 動作範本庫列表
+    if(!TEMPL.length) await loadTemplates();
+    const ttb=p.querySelector('#tplBody');
+    TEMPL.forEach(t=>{ const tr=el('tr');
+      const badge = t.status==='standard'
+        ? '<span class="text-[10px] px-1 rounded bg-emerald-100 text-emerald-700">★標準</span> '
+        : '<span class="text-[10px] px-1 rounded bg-slate-200 text-slate-600">✎草稿</span> ';
+      tr.appendChild(el('td',null,badge+t.name_zh+(t.name_en?` <span class="text-slate-400">(${t.name_en})</span>`:'')));
+      tr.appendChild(el('td',null,t.seq_kind)); tr.appendChild(el('td',null,t.category||''));
+      tr.appendChild(el('td','text-xs text-slate-500',(t.keywords||[]).join('、')));
+      const td=el('td');
+      if(t.status==='draft' && canPublish()){ const pr=el('button','text-emerald-700 underline text-xs mr-2','⬆提升為標準'); pr.onclick=async()=>{ await fetch(API+'/api/v2/motion-templates/'+t.id+'/promote',{method:'POST'}); await loadTemplates(); renderMasterPanel(); }; td.appendChild(pr); }
+      const canDel = t.status==='standard' ? canPublish() : canEdit();
+      if(canDel){ const d=el('button','text-red-600 underline text-xs','刪'); d.onclick=async()=>{ if(!confirm('刪除範本「'+t.name_zh+'」？'))return; await fetch(API+'/api/v2/motion-templates/'+t.id,{method:'DELETE'}); await loadTemplates(); renderMasterPanel(); }; td.appendChild(d); }
+      tr.appendChild(td);
+      ttb.appendChild(tr); });
+  }
+
+  // ── ④ Rule-set 管理（檢視 + 編輯草稿 + 版本）──
+  let rsCode='MINIMOST_FACTORY_V1', rsFull=null;
+  async function renderRulesetPanel(){
+    const p=document.getElementById('panel-ruleset');
+    let list=[]; try{ list=await (await fetch(API+'/api/v2/rule-sets')).json(); }catch(e){ p.innerHTML='<div class="bg-white rounded-xl border p-6 text-red-600">載入失敗：'+e+'</div>'; return; }
+    if(!list.find(x=>x.code===rsCode)) rsCode=(list[0]||{}).code;
+    rsFull=await (await fetch(API+'/api/v2/rule-sets/'+rsCode+'/full')).json();
+    const draft=rsFull.status==='draft';
+    const cell=(arr,i,field,val)=> draft
+      ? `<input class="rsinp border rounded w-16 text-xs px-1" data-arr="${arr}" data-i="${i}" data-f="${field}" value="${val==null?'':val}">`
+      : (val==null?'':val);
+    const tbl=(title,headers,bodyHtml)=>`<div class="mb-3"><h3 class="text-sm font-semibold mb-1">${title}</h3>
+      <table class="wi"><thead><tr>${headers.map(h=>'<th>'+h+'</th>').join('')}</tr></thead><tbody>${bodyHtml}</tbody></table></div>`;
+    const opts=list.map(x=>`<option value="${x.code}" ${x.code===rsCode?'selected':''}>${x.code} (${x.status})</option>`).join('');
+    const aBody=rsFull.a_bands.map((b,i)=>`<tr><td>${b.component}</td><td>${cell('a_bands',i,'max_value',b.max_value)}</td><td>${cell('a_bands',i,'index',b.index)}</td></tr>`).join('');
+    const bBody=rsFull.b.map((b,i)=>`<tr><td>${b.label_zh}</td><td>${cell('b',i,'index',b.index)}</td></tr>`).join('');
+    const gBody=rsFull.g.map((g,i)=>`<tr><td>${g.label_zh}</td><td>${g.requires_modifier?('需「'+(g.modifier_key||'')+'」'):'—'}</td><td>${cell('g',i,'base_tmu',g.base_tmu)}</td></tr>`).join('');
+    const pbBody=rsFull.p_bases.map((x,i)=>`<tr><td>${x.label_zh}</td><td>${cell('p_bases',i,'base_tmu',x.base_tmu)}</td></tr>`).join('');
+    const paBody=rsFull.p_addons.map((a,i)=>`<tr><td>${a.label_zh}</td><td>${cell('p_addons',i,'delta',a.delta)}</td><td>${a.needs_precision?'是':'—'}</td></tr>`).join('');
+    const mlBody=rsFull.m_ladder.map((b,i)=>`<tr><td>${cell('m_ladder',i,'max_cm',b.max_cm)}</td><td>${cell('m_ladder',i,'tmu',b.tmu)}</td></tr>`).join('');
+    const mrBody=rsFull.m_rotation.map((b,i)=>`<tr><td>${b.max_diameter_cm==null?'(更大)':b.max_diameter_cm}</td><td>${b.revolutions}</td><td>${cell('m_rotation',i,'tmu',b.tmu)}</td></tr>`).join('');
+    const mhBody=rsFull.m_hand.map((b,i)=>`<tr><td>${b.max_deg==null?'(更大)':b.max_deg}</td><td>${cell('m_hand',i,'tmu',b.tmu)}</td></tr>`).join('');
+    const iBody=rsFull.i.map((x,i)=>`<tr><td>${x.label_zh}</td><td>${cell('i',i,'index',x.index)}</td></tr>`).join('');
+    p.innerHTML=`<div class="bg-white rounded-xl border p-4">
+      <div class="flex flex-wrap items-center gap-3 mb-1">
+        <h2 class="font-semibold">Rule-set</h2>
+        <select id="rsPick" class="border rounded px-1 py-0.5 text-sm">${opts}</select>
+        <span class="text-xs px-2 py-0.5 rounded ${draft?'bg-amber-100 text-amber-700':'bg-emerald-100 text-emerald-700'}">${rsFull.status}</span>
+        <span class="text-sm">乘數 ×${draft?`<input id="rsMult" class="border rounded w-16 text-xs px-1" value="${rsFull.multiplier}">`:rsFull.multiplier}</span>
+        ${(draft&&canEdit())?'<button id="rsSave" class="px-2 py-1 bg-blue-600 text-white rounded text-xs">儲存草稿</button>':''}
+        ${(draft&&canPublish())?'<button id="rsPublish" class="px-2 py-1 bg-emerald-600 text-white rounded text-xs">發布</button>':''}
+        ${canEdit()?'<button id="rsClone" class="px-2 py-1 border rounded text-xs">建立草稿(clone)</button>':''}
+        <span id="rsMsg" class="text-xs text-slate-500"></span>
+      </div>
+      <p class="text-xs ${draft?'text-amber-600':'text-slate-500'} mb-2">${draft?'草稿可編輯（黃色輸入框）。改完按「儲存草稿」，確認後「發布」。':'已發布唯讀。要改請「建立草稿(clone)」。calculate/options 讀已發布版。'}</p>
+      <div class="grid md:grid-cols-2 gap-x-6">
+        <div>${tbl('A 三分量（component/上界/index）',['分量','上界','index'],aBody)}${tbl('M 距離階梯',['上界cm','TMU'],mlBody)}${tbl('M 旋轉',['直徑≤','圈','TMU'],mrBody)}${tbl('M 手度',['角度≤','TMU'],mhBody)}</div>
+        <div>${tbl('B 身體動作',['選項','index'],bBody)}${tbl('G 取得',['選項','需修飾','base'],gBody)}${tbl('P base',['選項','base'],pbBody)}${tbl('P 附加',['選項','Δ','需精度'],paBody)}${tbl('I 對齊',['選項','index'],iBody)}</div>
+      </div>
+    </div>`;
+    p.querySelector('#rsPick').onchange=e=>{ rsCode=e.target.value; renderRulesetPanel(); };
+    p.querySelectorAll('.rsinp').forEach(inp=>inp.oninput=()=>{ const a=inp.dataset.arr,i=+inp.dataset.i,f=inp.dataset.f,v=inp.value;
+      rsFull[a][i][f]= v===''?null:(isNaN(+v)?v:+v); });
+    const cloneBtn=p.querySelector('#rsClone'); if(cloneBtn) cloneBtn.onclick=async()=>{ const nc=prompt('新草稿 code','MINIMOST_FACTORY_V2'); if(!nc)return;
+      const r=await fetch(API+'/api/v2/rule-sets/'+rsCode+'/clone-draft',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({new_code:nc})}); const j=await r.json();
+      if(!r.ok){ p.querySelector('#rsMsg').textContent='⚠️ '+(j.detail||r.status); return; } rsCode=nc; renderRulesetPanel(); };
+    const saveBtn=p.querySelector('#rsSave'); if(saveBtn) saveBtn.onclick=async()=>{ const m=p.querySelector('#rsMult'); if(m) rsFull.multiplier=parseFloat(m.value)||1;
+      const r=await fetch(API+'/api/v2/rule-sets/'+rsCode+'/full',{method:'PUT',headers:{'Content-Type':'application/json'},body:JSON.stringify(rsFull)});
+      p.querySelector('#rsMsg').textContent=r.ok?'✓ 已儲存草稿':('⚠️ '+r.status); if(r.ok) renderRulesetPanel(); };
+    const pubBtn=p.querySelector('#rsPublish'); if(pubBtn) pubBtn.onclick=async()=>{ const r=await fetch(API+'/api/v2/rule-sets/'+rsCode+'/publish',{method:'POST'}); p.querySelector('#rsMsg').textContent=r.ok?'✓ 已發布':('⚠️ '+r.status); renderRulesetPanel(); };
+  }
+
+  // ── ⑤ SOP 版本 ──
+  function payloadToState(p){
+    const s=defaultCycle(); s.seq=p.seq||'GM';
+    const A=o=>({reach:o?o.reach_cm||0:0,twist:o?o.twist_deg||0:0,foot:o?o.foot_cm||0:0});
+    s.a0=A(p.a0); s.a6=A(p.a6);
+    s.g=(p.g2&&p.g2.g_code)||''; s.gMod=(p.g2&&p.g2.modifiers)||{}; s.b1=(p.b1&&p.b1.b_code)||null;
+    if(s.seq==='GM'){ s.a3=A(p.a3); s.b4=(p.b4&&p.b4.b_code)||null; s.p_base=(p.p5&&p.p5.p_base_code)||''; s.p_addons=(p.p5&&p.p5.p_addon_codes)||[]; s.precision=!!(p.p5&&p.p5.precision); }
+    else { const m=((p.m3&&p.m3.m_components)||[])[0]||{}; s.m={verb:m.verb_code||'',distance:m.distance_cm||30,angle:m.angle_deg||90,rev:m.revolutions||1,dia:m.diameter_cm||10}; s.x=(p.x4&&p.x4.x_code)||'x_none'; s.x_sec=(p.x4&&p.x4.x_seconds)||0; s.i=(p.i5&&p.i5.i_code)||'i_none'; }
+    return s;
+  }
+  // ── 動作範本庫 ──
+  let TEMPL=[];
+  async function loadTemplates(){ try{ const j=await (await fetch(API+'/api/v2/motion-templates')).json(); TEMPL=Array.isArray(j)?j:[]; }catch(e){ TEMPL=[]; } if(editMode==='quick'){ try{ renderQuick(); }catch(e){} } }
+  function insertTemplate(id){ const t=TEMPL.find(x=>x.id===id); if(!t)return;
+    const keepNv=cur.nv, keepHand=cur.handCode, keepFreq=cur.freq, keepSimo=cur.simoGroup;
+    cur=payloadToState(t.cycle_template); cur.nv=keepNv; cur.handCode=keepHand; cur.freq=keepFreq; cur.simoGroup=keepSimo;
+    document.querySelector('input[name=seq][value='+(cur.seq==='CM'?'CM':'GM')+']').checked=true;
+    syncHand(); renderEditor(); onEdit(); }
+  async function saveAsTemplate(){
+    if(!canEdit()){ alert('需要 IE 以上權限'); return; }
+    const name=prompt('範本名稱（中文）？'); if(!name)return;
+    const kw=prompt('關鍵字（逗號分隔，供匯入比對；可留空）：','')||'';
+    const body={ name_zh:name, seq_kind:cur.seq,
+      keywords:kw.split(/[,，]/).map(x=>x.trim()).filter(Boolean), cycle_template:payload() };
+    const r=await fetch(API+'/api/v2/motion-templates',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});
+    if(r.ok){ await loadTemplates(); alert('✓ 已存為草稿範本：'+name+'（manager 可在③主數據提升為標準）'); } else { const j=await r.json().catch(()=>({})); alert('存範本失敗：'+r.status+' '+(j.detail||'')); }
+  }
+
+  async function loadWorksheet(wsId){
+    ACTIVE_WS=wsId;
+    const j=await (await fetch(API+'/api/v2/worksheets/'+wsId)).json();
+    rows=[]; Object.keys(levelMap).forEach(k=>delete levelMap[k]); groupMeta={}; gseq=0; editingId=null; selWi.clear();
+    (j.rows||[]).forEach(r=>{
+      const p=(r.cycle&&r.cycle.slot_inputs)||{seq:'GM'};
+      const st=payloadToState(p); st.handCode=r.hand||'RH'; st.nv={obj:r.object_vocab_id||'',from:r.from_vocab_id||'',to:r.to_vocab_id||''}; st.freq=r.frequency||1; st.simoGroup=r.simo_group_id||'';
+      rows.push({ id:r.wi_row_id, state:st, seq:(r.cycle&&r.cycle.seq_kind)||'GM', handCode:st.handCode, freq:r.frequency||1, simoGroup:r.simo_group_id||'',
+        tmu:(r.cycle&&r.cycle.total_tmu)||0, seconds:(r.cycle&&r.cycle.total_seconds)||0, tech:(r.cycle&&r.cycle.tech_line)||'', narr:(r.cycle&&r.cycle.narrative)||shortNarr(st), payload:p });
+      if(r.level){ levelMap[r.wi_row_id]={coefficient:r.level.coefficient||1,number:r.level.number||'',number_count:r.level.number_count==null?'':r.level.number_count,level:r.level.level||'',countersignature:r.level.countersignature||'',machine_count:r.level.machine_count||1,manpower:r.level.manpower||1};
+        const cs=String(r.level.countersignature||'').trim();
+        if(cs){ if(!groupMeta[cs]) groupMeta[cs]={type:cs.startsWith('cub')?'cub':'sub',parent:r.level.parent_countersignature||'',seq:++gseq}; else if(r.level.parent_countersignature) groupMeta[cs].parent=r.level.parent_countersignature; } }
+    });
+    renderTable();
+  }
+  async function renderSopPanel(){
+    const p=document.getElementById('panel-sop'); let v;
+    try{ v=await (await fetch(API+'/api/v2/worksheets/'+ACTIVE_WS+'/versions')).json(); }catch(e){ p.innerHTML='<div class="bg-white rounded-xl border p-6 text-red-600">載入失敗：'+e+'</div>'; return; }
+    p.innerHTML=`<div class="bg-white rounded-xl border p-4">
+      <div class="flex flex-wrap items-center gap-3 mb-2"><h2 class="font-semibold">SOP 版本</h2>
+        <span class="text-sm">目前：<b>${v.version_no}</b> <span class="text-xs px-2 py-0.5 rounded ${v.status==='published'?'bg-emerald-100 text-emerald-700':'bg-amber-100 text-amber-700'}">${v.status}</span></span>
+        ${canPublish()?`<button id="btnPublish" class="px-2 py-1 bg-emerald-600 text-white rounded text-xs" ${v.status!=='draft'?'disabled style=opacity:.4':''}>發布（凍結）</button>`:''}
+        ${canEdit()?'<button id="btnClone" class="px-2 py-1 bg-blue-600 text-white rounded text-xs">另存新檔（clone）</button>':''}
+        <span id="sopMsg" class="text-xs text-slate-500"></span></div>
+      <p class="text-xs text-slate-500 mb-2">發布後該版凍結（存檔被擋 409）；要改請另存新檔成新 draft。另存/載入會切換上方所有 tab 的作用版本。</p>
+      <table class="wi w-full"><thead><tr><th>版本</th><th>狀態</th><th>目前</th><th></th></tr></thead><tbody id="sopBody"></tbody></table>
+    </div>`;
+    const tb=p.querySelector('#sopBody');
+    v.versions.forEach(x=>{ const tr=el('tr');
+      tr.appendChild(el('td',null,x.version_no)); tr.appendChild(el('td',null,x.status)); tr.appendChild(el('td',null,x.is_current?'✓':''));
+      const td=el('td'); if(x.worksheet_id && !x.is_current){ const b=el('button','text-blue-600 underline text-xs','載入此版本'); b.onclick=async()=>{ await loadWorksheet(x.worksheet_id); renderSopPanel(); }; td.appendChild(b);} tr.appendChild(td);
+      tb.appendChild(tr); });
+    const pubB=p.querySelector('#btnPublish'); if(pubB) pubB.onclick=async()=>{ const r=await fetch(API+'/api/v2/worksheets/'+ACTIVE_WS+'/publish',{method:'POST'}); const j=await r.json(); p.querySelector('#sopMsg').textContent=r.ok?'✓ 已發布凍結':('⚠️ '+(j.detail||r.status)); renderSopPanel(); };
+    const clB=p.querySelector('#btnClone'); if(clB) clB.onclick=async()=>{ const r=await fetch(API+'/api/v2/worksheets/'+ACTIVE_WS+'/clone',{method:'POST'}); const j=await r.json(); if(!r.ok){p.querySelector('#sopMsg').textContent='⚠️ '+r.status;return;} await loadWorksheet(j.new_worksheet_id); renderSopPanel(); };
+  }
+
+  // ── ⑥ 匯出 ──
+  async function renderExportPanel(){
+    const p=document.getElementById('panel-export'); let pv;
+    try{ pv=await (await fetch(API+'/api/v2/worksheets/'+ACTIVE_WS+'/export/wi-preview')).json(); }catch(e){ p.innerHTML='<div class="bg-white rounded-xl border p-6 text-red-600">載入失敗：'+e+'</div>'; return; }
+    p.innerHTML=`<div class="bg-white rounded-xl border p-4">
+      <div class="flex flex-wrap items-center gap-3 mb-2"><h2 class="font-semibold">匯出</h2>
+        <span class="text-sm">共 ${pv.rows.length} 列 · 合計 <b class="text-emerald-600">${pv.total_tmu}</b> TMU（≈ ${(pv.total_tmu*TMU_SEC).toFixed(2)} 秒）· 狀態 ${pv.status}</span></div>
+      <p class="text-xs text-slate-500 mb-2">下載 Excel（含工序、工時與 Level 關係欄），或輸出給線平衡 (LB)。</p>
+      <div class="flex flex-wrap gap-2 mt-1">
+        <button id="exExcel" class="px-3 py-1.5 bg-emerald-600 text-white rounded text-sm">下載 Excel</button>
+        <button id="exCsv" class="px-3 py-1.5 bg-blue-600 text-white rounded text-sm">下載 LB CSV</button>
+        <button id="exApi" class="px-3 py-1.5 bg-violet-600 text-white rounded text-sm">送 LB API（接口 · dry-run）</button>
+      </div>
+      <pre id="exResult" class="mono text-xs bg-slate-50 p-2 rounded mt-2 overflow-auto max-h-56"></pre>
+    </div>`;
+    p.querySelector('#exExcel').onclick=()=>window.open(API+'/api/v2/worksheets/'+ACTIVE_WS+'/export/excel','_blank');
+    p.querySelector('#exCsv').onclick=()=>window.open(API+'/api/v2/worksheets/'+ACTIVE_WS+'/export/lb-csv','_blank');
+    p.querySelector('#exApi').onclick=async()=>{ const out=p.querySelector('#exResult'); out.textContent='送出中…';
+      const r=await fetch(API+'/api/v2/worksheets/'+ACTIVE_WS+'/export/lb-api',{method:'POST'}); const j=await r.json();
+      out.textContent='【'+j.status+'】 '+j.note+'\n\n將送出的 payload（LB 輸出合約）：\n'+JSON.stringify(j.payload,null,1); };
+  }
+
+  // ── ⑦ 使用者管理（admin）──
+  async function renderUsersPanel(){
+    const p=document.getElementById('panel-users'); let users=[];
+    try{ const r=await fetch(API+'/api/v2/admin/users'); if(!r.ok){ p.innerHTML='<div class="bg-white rounded-xl border p-6 text-red-600">需 admin 角色（'+r.status+'）</div>'; return; } users=await r.json(); }
+    catch(e){ p.innerHTML='<div class="bg-white rounded-xl border p-6 text-red-600">載入失敗：'+e+'</div>'; return; }
+    p.innerHTML=`<div class="bg-white rounded-xl border p-4">
+      <h2 class="font-semibold mb-2">使用者管理（admin）</h2>
+      <p class="text-xs text-slate-500 mb-2">認證委派 LB OAuth；這裡只管 MOST 角色（員工編號 → IE/manager/admin）。空＝viewer(唯讀)。</p>
+      <div class="flex flex-wrap gap-2 items-end mb-3 text-sm">
+        <label>員工編號 <input id="uEmp" class="border rounded px-1 py-0.5"></label>
+        <label>角色 <select id="uRole" class="border rounded px-1 py-0.5"><option value="">viewer</option><option value="IE">IE</option><option value="manager">manager</option><option value="admin">admin</option></select></label>
+        <button id="uGrant" class="px-2 py-1 bg-blue-600 text-white rounded">授予/更新</button>
+        <span id="uMsg" class="text-xs text-slate-500"></span>
+      </div>
+      <table class="wi w-full"><thead><tr><th>員工編號</th><th>角色</th><th>啟用</th><th>快速設定</th></tr></thead><tbody id="uBody"></tbody></table>
+    </div>`;
+    const tb=p.querySelector('#uBody');
+    const grant=async(emp,role)=>{ await fetch(API+'/api/v2/admin/users',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({employee_no:emp,roles:role?[role]:[]})}); renderUsersPanel(); };
+    users.forEach(u=>{ const tr=el('tr');
+      tr.appendChild(el('td',null,u.employee_no));
+      tr.appendChild(el('td',null,(u.roles&&u.roles.join(','))||'viewer'));
+      tr.appendChild(el('td',null,u.is_active?'✓':'停用'));
+      const td=el('td'); [['IE','IE'],['manager','mgr'],['admin','adm'],['','viewer']].forEach(([r,lab])=>{ const b=el('button','text-blue-600 underline text-xs mr-2',lab); b.onclick=()=>grant(u.employee_no,r); td.appendChild(b); }); tr.appendChild(td);
+      tb.appendChild(tr); });
+    p.querySelector('#uGrant').onclick=()=>{ const emp=p.querySelector('#uEmp').value.trim(); const msg=p.querySelector('#uMsg'); if(!emp){msg.textContent='填員工編號';return;} grant(emp,p.querySelector('#uRole').value); };
+  }
+
+  // ── 其他 tab placeholder ──
+  function placeholder(id,title,desc){ document.getElementById('panel-'+id).innerHTML=
+    `<div class="bg-white rounded-xl border p-6 text-slate-500"><h2 class="font-semibold text-slate-800">${title}</h2><p class="text-sm mt-2">${desc}</p><p class="text-xs mt-3 text-amber-600">建置中（一個一個 tab 實作）。</p></div>`; }
+
+  // ── Tab 切換 ──
+  document.querySelectorAll('.tab-btn').forEach(btn=>btn.onclick=()=>{
+    document.querySelectorAll('.tab-btn').forEach(b=>b.setAttribute('aria-selected','false'));
+    document.querySelectorAll('.tab-panel').forEach(p=>p.hidden=true);
+    btn.setAttribute('aria-selected','true');
+    document.getElementById('panel-'+btn.dataset.tab).hidden=false;
+    if(btn.dataset.tab==='level'){ syncLevel(); validateLevel(); }
+    if(btn.dataset.tab==='master'){ renderMasterPanel(); }
+    if(btn.dataset.tab==='ruleset'){ renderRulesetPanel(); }
+    if(btn.dataset.tab==='sop'){ renderSopPanel(); }
+    if(btn.dataset.tab==='export'){ renderExportPanel(); }
+    if(btn.dataset.tab==='users'){ renderUsersPanel(); }
+  });
+  document.querySelectorAll('input[name=seq]').forEach(r=>r.onchange=()=>{ cur.seq=seqOf(); renderEditor(); onEdit(); });
+  document.getElementById('freq').oninput=onEdit;
+  document.getElementById('simoGroup').oninput=onEdit;
+  document.getElementById('btnAddRow').onclick=addOrUpdate;
+  document.getElementById('btnSave').onclick=saveAll;
+  document.getElementById('btnTplSave').onclick=saveAsTemplate;
+  document.getElementById('modeQuick').onclick=()=>setMode('quick');
+  document.getElementById('modePrecise').onclick=()=>setMode('precise');
+
+  // ── 操作手冊 modal ──
+  (function(){
+    const mo=document.getElementById('manualOverlay');
+    const show=()=>{ mo.classList.remove('hidden'); mo.classList.add('flex'); };
+    const hide=()=>{ mo.classList.add('hidden'); mo.classList.remove('flex'); };
+    document.getElementById('btnManual').onclick=show;
+    document.getElementById('btnManualClose').onclick=hide;
+    mo.addEventListener('click',e=>{ if(e.target===mo) hide(); });
+    document.addEventListener('keydown',e=>{ if(e.key==='Escape') hide(); });
+  })();
+
+  // ── 啟動：載 options ──
+  (async ()=>{
+    try{
+      await loadMe();  // RBAC：身份 + gating
+      OPT=await (await fetch(API+'/api/v2/rule-sets/MINIMOST_FACTORY_V1/options')).json();
+      document.getElementById('ctxRuleSet').textContent='rule-set: '+OPT.code+' · ×'+OPT.multiplier;
+      await loadVocab(); await loadTemplates(); cur=defaultCycle();  // 載 DB 詞彙/範本後重置 nv 預設
+      setMode('quick');  // 預設快速模式
+      try{ await loadWorksheet(ACTIVE_WS); }catch(e){}  // 啟動即載入作用中 worksheet（含已種入的列）
+    }catch(e){ document.getElementById('sentenceRoot').innerHTML='<p class="text-red-600">無法載入 rule-set options（伺服器未啟動？）：'+e+'</p>'; }
+  })();
+})();
+</script>
+</body>
+</html>
