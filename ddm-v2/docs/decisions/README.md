@@ -21,6 +21,8 @@
 | [OQ-006-phase1-implementation-open-questions.md](OQ-006-phase1-implementation-open-questions.md) | 從決策推進到 Phase 1 實作後浮現的細節問題 | 🟢 已定案 |
 | [ADR-010-nl-to-most-backlog.md](ADR-010-nl-to-most-backlog.md) | 自然語言 → MOST：暫不實作與後續條件 | 🟢 已定案 |
 | [ADR-011-schema-evolution-and-contract-stability.md](ADR-011-schema-evolution-and-contract-stability.md) | v2 實作期變更政策：契約穩定 + schema 加法演進（避免整合問題） | 🟢 已定案 |
+| [ADR-012-3d-rendering-architecture.md](ADR-012-3d-rendering-architecture.md) | 3D 模擬渲染架構：Web 3D 資產管線(A) 為基礎 + Pixel Streaming(B) 未來可選；workbench 新分頁 | 🟢 已定案 |
+| [ADR-013-excel-import-architecture.md](ADR-013-excel-import-architecture.md) | Excel 匯入：資料驅動(profile)+staging 暫存+預覽；增量 2a(ingest)→2b(enrich/commit) | 🟢 已定案 |
 
 ## 主題歸屬
 

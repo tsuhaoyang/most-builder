@@ -47,7 +47,7 @@ docs/
 
 ## decisions/（決策記錄）
 
-OQ-001~006、ADR-010/011：見 [decisions/README.md](decisions/README.md)。
+OQ-001~006、ADR-010~013：見 [decisions/README.md](decisions/README.md)。（ADR-012 3D 渲染架構、ADR-013 Excel 匯入架構）
 
 ## roadmap/（路線圖草案）
 
@@ -55,6 +55,7 @@ OQ-001~006、ADR-010/011：見 [decisions/README.md](decisions/README.md)。
 |------|------|------|
 | [phase2-ui-ia-rbac-masterdata-architecture.md](roadmap/phase2-ui-ia-rbac-masterdata-architecture.md) | IA／topology／群組／手勢（部分已決） | 🔄 草案 |
 | [phase2-cross-system-data-alignment-spec.md](roadmap/phase2-cross-system-data-alignment-spec.md) | 跨系統數據對齊 | 🔄 草案 |
+| [phase5-i18n-full-bilingual-spec.md](roadmap/phase5-i18n-full-bilingual-spec.md) | Phase 5：全面多語系（中/英） | 🔄 草案 |
 
 ## user-spec/（使用者規格草案）
 
