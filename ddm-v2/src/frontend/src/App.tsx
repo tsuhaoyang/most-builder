@@ -1,5 +1,6 @@
 import { useState } from 'react'
-import { useMe } from './shared/auth/useMe'
+import { useMe, canEdit } from './shared/auth/useMe'
+import { ImportModal } from './features/import/ImportModal'
 import { WiWorkbench } from './features/wi-workbench/WiWorkbench'
 import { LevelSystem } from './features/level-system/LevelSystem'
 import { MasterData } from './features/master-data/MasterData'
@@ -20,6 +21,7 @@ const TABS = [
 
 export default function App() {
   const [tab, setTab] = useState<string>('wi')
+  const [importOpen, setImportOpen] = useState(false)
   const { data: me } = useMe()
 
   return (
@@ -42,8 +44,14 @@ export default function App() {
               {t.label}
             </button>
           ))}
+          {canEdit(me) && (
+            <button onClick={() => setImportOpen(true)} className="ml-auto px-3 py-1.5 rounded-lg border border-blue-300 text-blue-700">
+              📥 匯入 Excel
+            </button>
+          )}
         </div>
       </nav>
+      {importOpen && <ImportModal onClose={() => setImportOpen(false)} />}
 
       <main className="max-w-6xl mx-auto px-4 py-4">
         {tab === 'wi' ? <WiWorkbench />
