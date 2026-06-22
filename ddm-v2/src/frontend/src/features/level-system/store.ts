@@ -17,6 +17,7 @@ interface LevelState {
   toggleNbPick: (id: string) => void
   confirmNb: (count: number) => void
   removeNb: (label: string) => void
+  hydrate: (levelMap: Record<string, LevelCell>, groupMeta: Record<string, GroupMeta>, gseq: number) => void
 }
 
 const rows = () => useWiStore.getState().rows
@@ -74,4 +75,7 @@ export const useLevelStore = create<LevelState>((set, get) => ({
     rows().forEach(r => { if ((lm[r.id]?.number || '').trim() === label) lm[r.id] = { ...lm[r.id], number: '', number_count: '' } })
     return { levelMap: lm }
   }),
+
+  // 由載入的 worksheet 還原 Level（取代本地狀態）
+  hydrate: (levelMap, groupMeta, gseq) => set({ levelMap, groupMeta, gseq, nbMode: false, nbPick: [] }),
 }))

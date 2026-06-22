@@ -33,3 +33,19 @@ export const useCalculate = () =>
 export interface SaveResult { worksheet_id: string; status: string; total_tmu: number; rows: unknown[] }
 export const useSaveWorksheet = (wsId: string) =>
   useMutation({ mutationFn: (body: unknown) => apiPut<SaveResult>(`/api/v2/worksheets/${wsId}`, body) })
+
+// 讀回整份 worksheet（切換版本 / 開啟時載入；後端權威）
+export interface WsReadRow {
+  wi_row_id: string; seq_no: number; hand: string | null
+  object_vocab_id: string; from_vocab_id: string | null; to_vocab_id: string | null
+  frequency: number; simo_group_id: string | null
+  cycle: { seq_kind: string; total_tmu: number; total_seconds: number; narrative: string | null; slot_inputs: unknown } | null
+  level: {
+    coefficient: number; ascription: string | null; level: string | null
+    countersignature: string | null; parent_countersignature: string | null
+    number: string | null; number_count: number | null
+  } | null
+}
+export interface WsRead { worksheet_id: string; status: string; total_tmu: number; rows: WsReadRow[] }
+export const useWorksheet = (wsId: string) =>
+  useQuery({ queryKey: ['worksheet', wsId], queryFn: () => apiGet<WsRead>(`/api/v2/worksheets/${wsId}`), refetchOnWindowFocus: false })

@@ -3,6 +3,7 @@ import { useMe } from './shared/auth/useMe'
 import { WiWorkbench } from './features/wi-workbench/WiWorkbench'
 import { LevelSystem } from './features/level-system/LevelSystem'
 import { MasterData } from './features/master-data/MasterData'
+import { SopPanel } from './features/sop/SopPanel'
 import { ExportPanel } from './features/export/Export'
 
 const TABS = [
@@ -45,6 +46,7 @@ export default function App() {
         {tab === 'wi' ? <WiWorkbench />
           : tab === 'level' ? <LevelSystem />
           : tab === 'master' ? <MasterData />
+          : tab === 'sop' ? <SopPanel />
           : tab === 'export' ? <ExportPanel />
           : <div className="bg-white rounded-xl border p-6 text-slate-500">
               {TABS.find(t => t.id === tab)?.label}：待遷移（藍本見 docs/html_con/v2-workbench.html）。

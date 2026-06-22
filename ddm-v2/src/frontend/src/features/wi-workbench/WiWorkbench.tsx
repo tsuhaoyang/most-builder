@@ -1,11 +1,13 @@
 import { useEffect, useMemo, useState } from 'react'
-import { useRuleSetOptions, useVocab, useTemplates, useCalculate, useSaveWorksheet, type RuleSetOptions } from './api'
+import { useQueryClient } from '@tanstack/react-query'
+import { useRuleSetOptions, useVocab, useTemplates, useCalculate, useSaveWorksheet, useWorksheet, type RuleSetOptions } from './api'
 import { useWiStore, type Row } from './store'
 import { useMe, canEdit } from '../../shared/auth/useMe'
-import { ACTIVE_WS, TMU_SEC } from '../../shared/config'
+import { useWorkspace } from '../../shared/workspace'
+import { TMU_SEC } from '../../shared/config'
 import { defaultCycle, buildPayload, aBandOpts, shortNarr, type CycleState, type ASlot } from './cycle'
 import { useLevelStore } from '../level-system/store'
-import { derive } from '../level-system/logic'
+import { derive, type LevelCell, type GroupMeta } from '../level-system/logic'
 
 const HANDS = [{ id: 'RH', name: '右手' }, { id: 'LH', name: '左手' }, { id: 'BH', name: '雙手' }]
 
@@ -15,8 +17,35 @@ export function WiWorkbench() {
   const { data: vocab = [] } = useVocab()
   const { data: templates = [] } = useTemplates()
   const calc = useCalculate()
-  const save = useSaveWorksheet(ACTIVE_WS)
-  const { rows, addRow, delRow, totalTmu } = useWiStore()
+  const activeWs = useWorkspace(s => s.activeWs)
+  const save = useSaveWorksheet(activeWs)
+  const qc = useQueryClient()
+  const { data: wsData } = useWorksheet(activeWs)
+  const { rows, addRow, delRow, setRows, totalTmu } = useWiStore()
+
+  // 載入/切換版本：以後端 worksheet 還原 WI 列 + Level（取代本地）
+  useEffect(() => {
+    if (!wsData) return
+    setRows(wsData.rows.map(r => ({
+      id: r.wi_row_id,
+      seq: (r.cycle?.seq_kind === 'CM' ? 'CM' : 'GM') as 'GM' | 'CM',
+      handCode: r.hand ?? 'RH', freq: r.frequency, simoGroup: r.simo_group_id ?? '',
+      nv: { obj: r.object_vocab_id ?? '', from: r.from_vocab_id ?? '', to: r.to_vocab_id ?? '' },
+      narr: r.cycle?.narrative ?? '', tmu: r.cycle?.total_tmu ?? 0, seconds: r.cycle?.total_seconds ?? 0,
+      payload: r.cycle?.slot_inputs ?? null,
+    })))
+    const lm: Record<string, LevelCell> = {}; const gm: Record<string, GroupMeta> = {}
+    wsData.rows.forEach((r, i) => {
+      const L = r.level
+      lm[r.wi_row_id] = {
+        coefficient: L?.coefficient ?? 1, number: L?.number ?? '', number_count: L?.number_count ?? '',
+        level: L?.level ?? String(i + 1), countersignature: L?.countersignature ?? '', machine_count: 1, manpower: 1,
+      }
+      const csl = (L?.countersignature ?? '').trim()
+      if (csl && !gm[csl]) gm[csl] = { type: csl.startsWith('cub') ? 'cub' : 'sub', parent: L?.parent_countersignature ?? '', seq: i }
+    })
+    useLevelStore.getState().hydrate(lm, gm, wsData.rows.length)
+  }, [wsData, setRows])
 
   const [mode, setMode] = useState<'quick' | 'precise'>('quick')
   const [cur, setCur] = useState<CycleState>(defaultCycle())
@@ -88,6 +117,8 @@ export function WiWorkbench() {
     }
     try {
       const res = await save.mutateAsync(body)
+      qc.invalidateQueries({ queryKey: ['wi-preview'] })
+      qc.invalidateQueries({ queryKey: ['versions'] })
       setSaveMsg(`✓ 已儲存：${res.rows.length} 列，合計 ${res.total_tmu} TMU（≈ ${(res.total_tmu * TMU_SEC).toFixed(2)} 秒）`)
     } catch (e) { setSaveMsg('⚠️ 儲存失敗：' + (e as Error).message) }
   }

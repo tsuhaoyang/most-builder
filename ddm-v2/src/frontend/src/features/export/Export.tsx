@@ -1,8 +1,10 @@
 import { useState } from 'react'
-import { ACTIVE_WS, TMU_SEC } from '../../shared/config'
+import { TMU_SEC } from '../../shared/config'
+import { useWorkspace } from '../../shared/workspace'
 import { useWiPreview, useLbApi, downloadExcel, downloadCsv } from './api'
 
 export function ExportPanel() {
+  const ACTIVE_WS = useWorkspace(s => s.activeWs)
   const { data, isLoading, error } = useWiPreview(ACTIVE_WS)
   const lbApi = useLbApi(ACTIVE_WS)
   const [result, setResult] = useState('')
