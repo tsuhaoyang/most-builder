@@ -1,69 +1,122 @@
-import { useEffect, useState } from 'react'
-import { useTemplates, useVocab, useCalculate } from './api'
-import { useWiStore } from './store'
+import { useEffect, useMemo, useState } from 'react'
+import { useRuleSetOptions, useVocab, useTemplates, useCalculate, useSaveWorksheet, type RuleSetOptions } from './api'
+import { useWiStore, type Row } from './store'
 import { useMe, canEdit } from '../../shared/auth/useMe'
-import { Hint } from '../../shared/ui/Hint'
+import { ACTIVE_WS, TMU_SEC } from '../../shared/config'
+import { defaultCycle, buildPayload, aBandOpts, shortNarr, type CycleState, type ASlot } from './cycle'
+import { useLevelStore } from '../level-system/store'
+import { derive } from '../level-system/logic'
 
 const HANDS = [{ id: 'RH', name: '右手' }, { id: 'LH', name: '左手' }, { id: 'BH', name: '雙手' }]
-const TMU_SEC = 0.036
 
-// 垂直切片：示範 Query(範本/詞彙) + Zustand(列) + 後端權威計算 + 元件分層。
-// 精確逐格編輯（七格）於後續遷移補上（藍本：docs/html_con）。
 export function WiWorkbench() {
   const { data: me } = useMe()
-  const { data: templates = [] } = useTemplates()
+  const { data: opts } = useRuleSetOptions()
   const { data: vocab = [] } = useVocab()
+  const { data: templates = [] } = useTemplates()
   const calc = useCalculate()
+  const save = useSaveWorksheet(ACTIVE_WS)
   const { rows, addRow, delRow, totalTmu } = useWiStore()
 
-  const [hand, setHand] = useState('RH')
-  const [tplId, setTplId] = useState('')
-  const [obj, setObj] = useState('')
-  const [freq, setFreq] = useState(1)
-  const [tmu, setTmu] = useState<number | null>(null)
-  const [tech, setTech] = useState('')
+  const [mode, setMode] = useState<'quick' | 'precise'>('quick')
+  const [cur, setCur] = useState<CycleState>(defaultCycle())
+  const [qHand, setQHand] = useState('RH'); const [qTpl, setQTpl] = useState(''); const [qObj, setQObj] = useState(''); const [qFreq, setQFreq] = useState(1)
+  const [tmu, setTmu] = useState<number | null>(null); const [tech, setTech] = useState(''); const [saveMsg, setSaveMsg] = useState('')
 
-  const std = templates.filter((t) => t.status === 'standard')
-  const objs = vocab.filter((v) => v.kind === 'object' || v.kind === 'component')
-  const tpl = std.find((t) => t.id === tplId)
   const editable = canEdit(me)
+  const objs = vocab.filter(v => v.kind === 'object' || v.kind === 'component')
+  const froms = vocab.filter(v => v.kind === 'from'); const tos = vocab.filter(v => v.kind === 'to')
+  const std = templates.filter(t => t.status === 'standard')
+  const tpl = std.find(t => t.id === qTpl)
+
+  // 目前要送計算的 payload（精確：buildPayload；快速：範本 cycle_template）
+  const payload = useMemo(() => {
+    if (!opts) return null
+    return mode === 'precise' ? buildPayload(cur, opts.code) : (tpl?.cycle_template ?? null)
+  }, [mode, cur, tpl, opts])
 
   useEffect(() => {
-    if (!tpl) { setTmu(null); setTech(''); return }
-    calc.mutate(tpl.cycle_template, { onSuccess: (r) => { setTmu(r.total_tmu); setTech(r.tech_line) } })
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [tplId])
+    if (!payload) { setTmu(null); setTech(''); return }
+    const id = setTimeout(() => calc.mutate(payload, { onSuccess: r => { setTmu(r.total_tmu); setTech(r.tech_line) }, onError: () => { setTmu(null); setTech('') } }), 250)
+    return () => clearTimeout(id)
+  }, [JSON.stringify(payload)]) // eslint-disable-line react-hooks/exhaustive-deps
+
+  if (!opts) return <div className="bg-white rounded-xl border p-6 text-slate-500">載入 rule-set…</div>
+  const label = (kind: string, code: string) => {
+    const m: Record<string, { code: string; label: string }[]> = { g: opts.g, p_base: opts.p_bases, m_verb: opts.m_verbs }
+    return m[kind]?.find(o => o.code === code)?.label ?? ''
+  }
+  const vname = (kind: string, id: string) => vocab.find(v => v.id === id)?.name_zh ?? ''
 
   function add() {
-    if (!tpl || tmu == null) return
-    const objName = objs.find((o) => o.id === obj)?.name_zh ?? ''
-    addRow({
-      id: crypto.randomUUID(),
-      narr: `${HANDS.find((h) => h.id === hand)?.name} ${tpl.name_zh}「${objName}」`,
-      tmu, seconds: tmu * TMU_SEC, freq, handCode: hand, payload: tpl.cycle_template,
-    })
+    if (tmu == null) return
+    if (mode === 'precise') {
+      addRow(mkRow(cur.seq, cur.handCode, cur.freq, cur.simoGroup, cur.nv, shortNarr(cur, label, vname), tmu, payload))
+    } else {
+      if (!tpl) return
+      const nv = { obj: qObj, from: '', to: '' }
+      const narr = `${HANDS.find(h => h.id === qHand)?.name} ${tpl.name_zh}「${vname('object', qObj)}」`
+      addRow(mkRow(tpl.seq_kind as 'GM' | 'CM', qHand, qFreq, '', nv, narr, tmu, payload))
+    }
+  }
+  function mkRow(seq: 'GM' | 'CM', hand: string, freq: number, simo: string, nv: Row['nv'], narr: string, t: number, pl: unknown): Row {
+    return { id: crypto.randomUUID(), seq, handCode: hand, freq, simoGroup: simo, nv, narr, tmu: t, seconds: t * TMU_SEC, payload: pl }
+  }
+
+  async function doSave() {
+    setSaveMsg('儲存中…')
+    const lv = useLevelStore.getState()
+    const d = derive(rows, lv.levelMap, lv.groupMeta)
+    const fallbackObj = objs[0]?.id
+    const body = {
+      rows: rows.map((r, i) => {
+        const e = d[i] || {}
+        return {
+          id: r.id, seq_no: i + 1, hand: r.handCode,
+          object_vocab_id: r.nv.obj || fallbackObj,
+          from_vocab_id: r.nv.from || null, to_vocab_id: r.nv.to || null,
+          frequency: r.freq, simo_group_id: r.simoGroup || null, narrative: r.narr,
+          cycle: r.payload,
+          level: {
+            coefficient: e.coefficient ?? 1, ascription: e.ascription ?? 'main', level: e.level ?? String(i + 1),
+            countersignature: e.countersignature ?? null, parent_countersignature: e.parent_countersignature ?? null,
+            order: e.order ?? null, number: e.number ?? null, number_count: e.number_count ?? null,
+            machine_count: 1, manpower: 1,
+          },
+        }
+      }),
+    }
+    try {
+      const res = await save.mutateAsync(body)
+      setSaveMsg(`✓ 已儲存：${res.rows.length} 列，合計 ${res.total_tmu} TMU（≈ ${(res.total_tmu * TMU_SEC).toFixed(2)} 秒）`)
+    } catch (e) { setSaveMsg('⚠️ 儲存失敗：' + (e as Error).message) }
   }
 
   const total = totalTmu()
-
   return (
     <div className="space-y-4">
       <div className="bg-white rounded-xl border p-4">
-        <h2 className="font-semibold mb-2">編輯一條工序（快速）</h2>
-        <div className="flex flex-wrap items-end gap-3 text-sm">
-          <label>手 <select className="border rounded px-1 py-0.5" value={hand} onChange={(e) => setHand(e.target.value)}>
-            {HANDS.map((h) => <option key={h.id} value={h.id}>{h.name}</option>)}</select></label>
-          <label>動作範本<Hint tip="標準動作範本，後端權威計算 TMU" /> <select className="border rounded px-1 py-0.5" value={tplId} onChange={(e) => setTplId(e.target.value)}>
-            <option value="">— 選動作 —</option>
-            {std.map((t) => <option key={t.id} value={t.id}>[{t.seq_kind}] {t.name_zh}</option>)}</select></label>
-          <label>物件 <select className="border rounded px-1 py-0.5" value={obj} onChange={(e) => setObj(e.target.value)}>
-            <option value="">—</option>
-            {objs.map((o) => <option key={o.id} value={o.id}>{o.name_zh}</option>)}</select></label>
-          <label>次數 <input type="number" min={1} className="border rounded w-16 px-1 py-0.5" value={freq} onChange={(e) => setFreq(parseInt(e.target.value) || 1)} /></label>
-          <span className="mono">{tech || '—'}</span>
+        <div className="flex items-center gap-3 mb-2">
+          <h2 className="font-semibold">編輯一條工序</h2>
+          <div className="ml-auto flex gap-1 text-sm">
+            <button className={`px-2 py-1 rounded border ${mode === 'quick' ? 'bg-slate-900 text-white' : ''}`} onClick={() => setMode('quick')}>⚡ 快速範本</button>
+            <button className={`px-2 py-1 rounded border ${mode === 'precise' ? 'bg-slate-900 text-white' : ''}`} onClick={() => setMode('precise')}>🔧 精確調整</button>
+          </div>
+        </div>
+
+        {mode === 'quick'
+          ? <div className="flex flex-wrap items-end gap-2 text-sm">
+              <label>手 <Sel value={qHand} onChange={setQHand} opts={HANDS.map(h => ({ v: h.id, l: h.name }))} /></label>
+              <label>動作 <Sel value={qTpl} onChange={setQTpl} opts={[{ v: '', l: '— 選動作 —' }, ...std.map(t => ({ v: t.id, l: `[${t.seq_kind}] ${t.name_zh}` }))]} /></label>
+              <label>物件 <Sel value={qObj} onChange={setQObj} opts={[{ v: '', l: '—' }, ...objs.map(o => ({ v: o.id, l: o.name_zh }))]} /></label>
+              <label>次數 <input type="number" min={1} className="border rounded w-16 px-1 py-0.5" value={qFreq} onChange={e => setQFreq(parseInt(e.target.value) || 1)} /></label>
+            </div>
+          : <PreciseEditor cur={cur} setCur={setCur} opts={opts} objs={objs} froms={froms} tos={tos} />}
+
+        <div className="flex flex-wrap items-center gap-3 mt-3 pt-3 border-t text-sm">
+          <span className="font-mono text-slate-600">{tech || '—'}</span>
           <span className="ml-auto">本列 <b className="text-sky-700 text-lg">{tmu ?? '—'}</b> TMU</span>
-          <button disabled={!editable || tmu == null} onClick={add}
-            className="px-3 py-1.5 bg-blue-600 text-white rounded-lg disabled:opacity-40">＋ 加入</button>
+          <button disabled={!editable || tmu == null} onClick={add} className="px-3 py-1.5 bg-blue-600 text-white rounded-lg disabled:opacity-40">＋ 加入工時表</button>
         </div>
         {!editable && <p className="text-xs text-amber-600 mt-2">目前身分無編輯權限（需 IE 以上）。</p>}
       </div>
@@ -74,18 +127,102 @@ export function WiWorkbench() {
           <div className="text-sm">合計 <b className="text-emerald-600 text-lg">{total}</b> TMU ≈ <b className="text-emerald-600">{(total * TMU_SEC).toFixed(2)}</b> 秒</div>
         </div>
         <table className="w-full text-sm">
-          <thead><tr className="bg-slate-100 text-left"><th className="p-1">#</th><th className="p-1">手</th><th className="p-1">敘述</th><th className="p-1">TMU</th><th className="p-1">次數</th><th className="p-1"></th></tr></thead>
+          <thead><tr className="bg-slate-100 text-left"><th className="p-1">#</th><th className="p-1">手</th><th className="p-1">敘述</th><th className="p-1">TMU</th><th className="p-1">次數</th><th className="p-1">SIMO</th><th className="p-1"></th></tr></thead>
           <tbody>
             {rows.map((r, i) => (
               <tr key={r.id} className="border-t">
                 <td className="p-1">{i + 1}</td><td className="p-1">{r.handCode}</td><td className="p-1">{r.narr}</td>
-                <td className="p-1"><b>{r.tmu}</b></td><td className="p-1">{r.freq}</td>
+                <td className="p-1"><b>{r.tmu}</b></td><td className="p-1">{r.freq}</td><td className="p-1">{r.simoGroup}</td>
                 <td className="p-1">{editable && <button className="text-red-600 underline" onClick={() => delRow(r.id)}>刪</button>}</td>
               </tr>
             ))}
-            {rows.length === 0 && <tr><td colSpan={6} className="p-3 text-slate-400">尚無列。選動作範本＋物件後「加入」。</td></tr>}
+            {rows.length === 0 && <tr><td colSpan={7} className="p-3 text-slate-400">尚無列。</td></tr>}
           </tbody>
         </table>
+        <div className="flex gap-2 mt-3 items-center">
+          <button disabled={!editable || !rows.length || save.isPending} onClick={doSave} className="px-3 py-1.5 bg-emerald-600 text-white rounded-lg disabled:opacity-40">儲存</button>
+          <span className="text-xs text-slate-500">{saveMsg}</span>
+        </div>
+      </div>
+    </div>
+  )
+}
+
+function Sel({ value, onChange, opts }: { value: string; onChange: (v: string) => void; opts: { v: string; l: string }[] }) {
+  return <select className="border rounded px-1 py-0.5" value={value} onChange={e => onChange(e.target.value)}>
+    {opts.map(o => <option key={o.v} value={o.v}>{o.l}</option>)}
+  </select>
+}
+
+function ASlotEditor({ slot, set, opts }: { slot: ASlot; set: (s: ASlot) => void; opts: RuleSetOptions }) {
+  const comp = (c: 'reach' | 'twist' | 'foot') => (
+    <select className="border rounded px-1 text-xs bg-amber-50" value={slot[c]} onChange={e => set({ ...slot, [c]: parseFloat(e.target.value) || 0 })}>
+      {aBandOpts(opts.a_bands[c], c).map(o => <option key={o.v} value={o.v}>{o.l}</option>)}
+    </select>
+  )
+  return <span className="inline-flex gap-1 items-center px-1 bg-blue-50 border border-blue-200 rounded">{comp('reach')}{comp('twist')}{comp('foot')}</span>
+}
+
+function PreciseEditor({ cur, setCur, opts, objs, froms, tos }: {
+  cur: CycleState; setCur: (c: CycleState) => void; opts: RuleSetOptions
+  objs: { id: string; name_zh: string }[]; froms: { id: string; name_zh: string }[]; tos: { id: string; name_zh: string }[]
+}) {
+  const gm = cur.seq === 'GM'
+  const set = (patch: Partial<CycleState>) => setCur({ ...cur, ...patch })
+  const g = opts.g.find(x => x.code === cur.g)
+  const mv = opts.m_verbs.find(x => x.code === cur.m.verb)
+  const voc = (arr: { id: string; name_zh: string }[]) => [{ v: '', l: '—' }, ...arr.map(o => ({ v: o.id, l: o.name_zh }))]
+  return (
+    <div className="space-y-2 text-sm">
+      <div className="flex flex-wrap items-center gap-2">
+        <label className="flex items-center gap-1"><input type="radio" checked={gm} onChange={() => set({ seq: 'GM' })} /> GM 一般移動</label>
+        <label className="flex items-center gap-1"><input type="radio" checked={!gm} onChange={() => set({ seq: 'CM' })} /> CM 控制移動</label>
+        <label>手 <Sel value={cur.handCode} onChange={v => set({ handCode: v })} opts={HANDS.map(h => ({ v: h.id, l: h.name }))} /></label>
+        <label>物件 <Sel value={cur.nv.obj} onChange={v => set({ nv: { ...cur.nv, obj: v } })} opts={voc(objs)} /></label>
+        <label>從 <Sel value={cur.nv.from} onChange={v => set({ nv: { ...cur.nv, from: v } })} opts={voc(froms)} /></label>
+        <label>到 <Sel value={cur.nv.to} onChange={v => set({ nv: { ...cur.nv, to: v } })} opts={voc(tos)} /></label>
+      </div>
+      <div className="flex flex-wrap items-center gap-2">
+        <span className="text-xs text-slate-500">A0</span><ASlotEditor slot={cur.a0} set={s => set({ a0: s })} opts={opts} />
+        <span className="text-xs text-slate-500">B</span>
+        <Sel value={cur.b1 ?? ''} onChange={v => set({ b1: v || null })} opts={[{ v: '', l: '身體:無' }, ...opts.b.filter(b => b.code !== 'b_none').map(b => ({ v: b.code, l: b.label }))]} />
+        <span className="text-xs text-slate-500">G</span>
+        <Sel value={cur.g} onChange={v => set({ g: v, gMod: {} })} opts={[{ v: '', l: '—取得—' }, ...opts.g.map(o => ({ v: o.code, l: o.label }))]} />
+        {g?.requires_modifier && g.modifier_key &&
+          <label className="text-xs"><input type="checkbox" checked={!!cur.gMod[g.modifier_key]} onChange={e => set({ gMod: { ...cur.gMod, [g.modifier_key!]: e.target.checked } })} /> {g.modifier_key}</label>}
+      </div>
+      {gm
+        ? <div className="flex flex-wrap items-center gap-2">
+            <span className="text-xs text-slate-500">A3</span><ASlotEditor slot={cur.a3} set={s => set({ a3: s })} opts={opts} />
+            <span className="text-xs text-slate-500">B</span>
+            <Sel value={cur.b4 ?? ''} onChange={v => set({ b4: v || null })} opts={[{ v: '', l: '身體:無' }, ...opts.b.filter(b => b.code !== 'b_none').map(b => ({ v: b.code, l: b.label }))]} />
+            <span className="text-xs text-slate-500">P</span>
+            <Sel value={cur.p_base} onChange={v => set({ p_base: v })} opts={[{ v: '', l: '—放置—' }, ...opts.p_bases.map(o => ({ v: o.code, l: o.label }))]} />
+            {[0, 1].map(i => (
+              <Sel key={i} value={cur.p_addons[i] ?? ''} onChange={v => { const a = cur.p_addons.filter((_, j) => j !== i); if (v) a.splice(i, 0, v); set({ p_addons: a.slice(0, 2) }) }}
+                opts={[{ v: '', l: '—附加—' }, ...opts.p_addons.map(o => ({ v: o.code, l: o.label }))]} />
+            ))}
+            {cur.p_addons.some(c => opts.p_addons.find(a => a.code === c)?.needs_precision) &&
+              <label className="text-xs"><input type="checkbox" checked={cur.precision} onChange={e => set({ precision: e.target.checked })} /> 精度&lt;4mm</label>}
+          </div>
+        : <div className="flex flex-wrap items-center gap-2">
+            <span className="text-xs text-slate-500">M</span>
+            <Sel value={cur.m.verb} onChange={v => set({ m: { ...cur.m, verb: v } })} opts={[{ v: '', l: '—動詞—' }, ...opts.m_verbs.map(o => ({ v: o.code, l: o.label }))]} />
+            {mv && (mv.pricing_kind === 'distance_ladder' || mv.pricing_kind === 'ladder' || mv.pricing_kind === 'foot') &&
+              <Sel value={String(cur.m.distance)} onChange={v => set({ m: { ...cur.m, distance: parseFloat(v) } })} opts={[4, 12, 18, 30, 45].map(d => ({ v: String(d), l: d + 'cm' }))} />}
+            {mv && (mv.pricing_kind === 'hand_twist' || mv.pricing_kind === 'hand') &&
+              <Sel value={String(cur.m.angle)} onChange={v => set({ m: { ...cur.m, angle: parseFloat(v) } })} opts={[{ v: '90', l: '≤90度' }, { v: '180', l: '≤180度' }]} />}
+            {mv && (mv.pricing_kind === 'rotation_by_diameter' || mv.pricing_kind === 'rotate') &&
+              <Sel value={String(cur.m.rev)} onChange={v => set({ m: { ...cur.m, rev: parseInt(v) } })} opts={[1, 2, 3].map(r => ({ v: String(r), l: r + '圈' }))} />}
+            <span className="text-xs text-slate-500">X</span>
+            <Sel value={cur.x} onChange={v => set({ x: v })} opts={opts.x.map(o => ({ v: o.code, l: o.label }))} />
+            {opts.x.find(o => o.code === cur.x)?.mode === 'seconds' &&
+              <input type="number" min={0} step={0.1} className="border rounded w-20 px-1 text-xs" value={cur.x_sec} onChange={e => set({ x_sec: parseFloat(e.target.value) || 0 })} placeholder="秒" />}
+            <span className="text-xs text-slate-500">I</span>
+            <Sel value={cur.i} onChange={v => set({ i: v })} opts={opts.i.map(o => ({ v: o.code, l: o.label }))} />
+          </div>}
+      <div className="flex items-center gap-2">
+        <span className="text-xs text-slate-500">A6(返回)</span><ASlotEditor slot={cur.a6} set={s => set({ a6: s })} opts={opts} />
       </div>
     </div>
   )
