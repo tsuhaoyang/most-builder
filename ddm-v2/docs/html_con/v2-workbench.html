@@ -107,6 +107,7 @@
         <table class="wi w-full"><thead><tr><th><input type="checkbox" id="wiSelAll"></th><th>#</th><th>手</th><th>敘述</th><th>技術列</th><th>TMU</th><th>Freq</th><th>SIMO</th><th></th></tr></thead><tbody id="wiBody"></tbody></table>
         <div class="flex gap-2 mt-3">
           <button id="btnSave" class="px-3 py-1.5 bg-emerald-600 text-white rounded-lg text-sm">儲存</button>
+          <button id="btnImport" class="px-3 py-1.5 border rounded-lg text-sm">📥 匯入 Excel</button>
         </div>
         <pre id="saveResult" class="mono text-xs bg-slate-50 p-2 rounded mt-2 overflow-auto max-h-48"></pre>
       </div>
@@ -119,6 +120,26 @@
     <section id="panel-export" class="tab-panel" hidden></section>
     <section id="panel-users" class="tab-panel" hidden></section>
   </main>
+
+  <!-- ── Excel 匯入 Modal（Phase 2a：upload→map→preview→staging）── -->
+  <div id="importOverlay" class="fixed inset-0 z-50 bg-black/50 hidden items-start justify-center p-4 overflow-y-auto">
+    <div class="bg-white rounded-xl max-w-4xl w-full my-8 shadow-2xl">
+      <div class="flex items-center justify-between px-5 py-3 border-b sticky top-0 bg-white rounded-t-xl">
+        <h2 class="font-bold text-lg">📥 匯入 Excel（暫存區）</h2>
+        <button id="btnImportClose" class="text-slate-400 hover:text-slate-800 text-2xl leading-none">&times;</button>
+      </div>
+      <div class="px-5 py-4 text-sm" style="max-height:78vh;overflow-y:auto">
+        <p class="text-xs text-slate-500 mb-3">上傳 → 選分頁/表頭 → 對應欄位 → 預覽。本階段(2a)只存到<b>暫存區</b>，尚不併入工時表（Phase 2b）。格式不固定沒關係，靠欄位對應；可存成 profile 重用。</p>
+        <div class="flex flex-wrap items-center gap-2 mb-3">
+          <input type="file" id="impFile" accept=".xlsx" class="text-xs">
+          <button id="impUpload" class="px-2 py-1 bg-blue-600 text-white rounded text-xs">上傳</button>
+          <span id="impMsg" class="text-xs text-slate-400"></span>
+        </div>
+        <div id="impStep2" class="hidden"></div>
+        <div id="impPreview" class="mt-3"></div>
+      </div>
+    </div>
+  </div>
 
   <!-- ── 操作手冊 Modal ── -->
   <div id="manualOverlay" class="fixed inset-0 z-50 bg-black/50 hidden items-start justify-center p-4 overflow-y-auto">
@@ -223,7 +244,7 @@
   }
   function applyGating(){
     const e=canEdit();
-    ['btnAddRow','btnSave','btnTplSave'].forEach(id=>{ const b=document.getElementById(id); if(b){ b.disabled=!e; b.title=e?'':'需 IE 以上角色'; b.classList.toggle('opacity-40',!e); } });
+    ['btnAddRow','btnSave','btnTplSave','btnImport'].forEach(id=>{ const b=document.getElementById(id); if(b){ b.disabled=!e; b.title=e?'':'需 IE 以上角色'; b.classList.toggle('opacity-40',!e); } });
   }
 
   // ── rule-set 選項（從 DB /options 載；下拉資料源）──
@@ -1017,6 +1038,77 @@
     document.getElementById('btnManualClose').onclick=hide;
     mo.addEventListener('click',e=>{ if(e.target===mo) hide(); });
     document.addEventListener('keydown',e=>{ if(e.key==='Escape') hide(); });
+  })();
+
+  // ── Excel 匯入 (Phase 2a：upload→map→preview→staging) ──
+  (function(){
+    const ov=document.getElementById('importOverlay'); let IMP=null;
+    const show=()=>{ if(!canEdit()){ alert('需要 IE 以上權限'); return; } ov.classList.remove('hidden'); ov.classList.add('flex'); reset(); };
+    const hide=()=>{ ov.classList.add('hidden'); ov.classList.remove('flex'); };
+    function reset(){ IMP=null; document.getElementById('impFile').value=''; document.getElementById('impMsg').textContent='';
+      const s2=document.getElementById('impStep2'); s2.classList.add('hidden'); s2.innerHTML=''; document.getElementById('impPreview').innerHTML=''; }
+    document.getElementById('btnImport').onclick=show;
+    document.getElementById('btnImportClose').onclick=hide;
+    ov.addEventListener('click',e=>{ if(e.target===ov) hide(); });
+
+    document.getElementById('impUpload').onclick=async()=>{
+      const f=document.getElementById('impFile').files[0]; const msg=document.getElementById('impMsg');
+      if(!f){ msg.textContent='請選 .xlsx'; return; }
+      msg.textContent='上傳解析中…';
+      const fd=new FormData(); fd.append('file', f);
+      try{ const r=await fetch(API+'/api/v2/imports/upload',{method:'POST',body:fd}); const j=await r.json();
+        if(!r.ok){ msg.textContent='⚠️ '+(j.detail||r.status); return; }
+        IMP=j; msg.textContent='✓ 解析：'+j.sheets.length+' 分頁'; renderStep2();
+      }catch(e){ msg.textContent='連線失敗：'+e; }
+    };
+    const sheetByName=n=>IMP.sheets.find(s=>s.name===n);
+    function colOptions(sheet, hr){ const hdr=(sheet.grid[hr])||[]; const n=Math.max(sheet.n_cols, hdr.length);
+      const o=[{v:'',l:'—（不對應）—'}];
+      for(let i=0;i<n;i++){ const nm=(hdr[i]!=null&&String(hdr[i]).trim())?String(hdr[i]):('欄'+(i+1)); o.push({v:String(i),l:(i+1)+'. '+nm}); }
+      return o; }
+    function renderStep2(){
+      const box=document.getElementById('impStep2'); box.classList.remove('hidden');
+      box.innerHTML=`<div class="border-t pt-3 flex flex-wrap items-end gap-3">
+        <label class="text-xs">分頁 <select id="impSheet" class="border rounded px-1 py-0.5 text-sm">${IMP.sheets.map(s=>`<option value="${s.name}">${s.name} (${s.n_rows}列)</option>`).join('')}</select></label>
+        <label class="text-xs">表頭列(1起) <input id="impHdr" type="number" min="1" class="border rounded w-16 px-1 py-0.5 text-sm"></label>
+        <label class="text-xs">時間單位 <select id="impUnit" class="border rounded px-1 py-0.5 text-sm"><option value="sec">秒</option><option value="min">分</option></select></label>
+        ${IMP.profiles.length?`<label class="text-xs">profile <select id="impProfile" class="border rounded px-1 py-0.5 text-sm"><option value="">—</option>${IMP.profiles.map(p=>`<option value="${p.id}">${p.name}</option>`).join('')}</select></label>`:''}
+        <div id="impMapFields" class="w-full mt-1"></div>
+        <button id="impPreviewBtn" class="px-2 py-1 bg-violet-600 text-white rounded text-xs">預覽</button>
+        <button id="impSaveProfile" class="px-2 py-1 border rounded text-xs">存成 profile</button></div>`;
+      const sheetSel=document.getElementById('impSheet'), hdrInp=document.getElementById('impHdr');
+      sheetSel.value=IMP.suggested_sheet||IMP.sheets[0].name;
+      hdrInp.value=(IMP.suggested_header_row!=null?IMP.suggested_header_row:0)+1;
+      const renderFields=()=>{ const sheet=sheetByName(sheetSel.value); const hr=(parseInt(hdrInp.value)||1)-1; const opts=colOptions(sheet,hr);
+        document.getElementById('impMapFields').innerHTML='<div class="grid grid-cols-2 gap-1">'+IMP.target_fields.map(f=>
+          `<label class="text-xs flex items-center gap-1">${f}${IMP.required_fields.includes(f)?'<span class="text-red-500">*</span>':''}
+           <select data-field="${f}" class="impMap border rounded px-1 py-0.5 text-sm flex-1">${opts.map(o=>`<option value="${o.v}">${o.l}</option>`).join('')}</select></label>`).join('')+'</div>'; };
+      renderFields(); sheetSel.onchange=renderFields; hdrInp.oninput=renderFields;
+      const profSel=document.getElementById('impProfile');
+      if(profSel) profSel.onchange=()=>{ const p=IMP.profiles.find(x=>x.id===profSel.value); if(!p)return;
+        if(p.header_row!=null) hdrInp.value=p.header_row+1; document.getElementById('impUnit').value=p.time_unit||'sec'; renderFields();
+        setTimeout(()=>document.querySelectorAll('.impMap').forEach(s=>{ if(p.column_map[s.dataset.field]!=null) s.value=String(p.column_map[s.dataset.field]); }),0); };
+      document.getElementById('impPreviewBtn').onclick=doPreview;
+      document.getElementById('impSaveProfile').onclick=doSaveProfile;
+    }
+    function currentMap(){ const m={}; document.querySelectorAll('.impMap').forEach(s=>{ if(s.value!=='') m[s.dataset.field]=parseInt(s.value); }); return m; }
+    async function doPreview(){ const map=currentMap(); const pv=document.getElementById('impPreview');
+      if(map.description==null){ pv.innerHTML='<p class="text-red-600 text-xs">description 為必填，請先對應</p>'; return; }
+      const body={sheet:document.getElementById('impSheet').value, header_row:(parseInt(document.getElementById('impHdr').value)||1)-1, column_map:map, time_unit:document.getElementById('impUnit').value};
+      pv.textContent='預覽中…';
+      const r=await fetch(API+'/api/v2/imports/'+IMP.import_id+'/map',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)}); const j=await r.json();
+      if(!r.ok){ pv.innerHTML='<p class="text-red-600 text-xs">⚠️ '+(j.detail||r.status)+'</p>'; return; }
+      const rows=j.rows.slice(0,50).map(row=>`<tr><td>${row._row}</td>${j.fields.map(f=>`<td>${row[f]==null?'':row[f]}</td>`).join('')}</tr>`).join('');
+      pv.innerHTML=`<div class="text-xs mb-1">✓ 已暫存 <b>${j.n}</b> 列（Phase 2b 再併入工時表）${j.warnings.length?` · <span class="text-amber-600">${j.warnings.length} 項警告</span>`:''}</div>
+        <div class="overflow-x-auto"><table class="wi w-full"><thead><tr><th>列</th>${j.fields.map(f=>`<th>${f}</th>`).join('')}</tr></thead><tbody>${rows}</tbody></table></div>
+        ${j.warnings.length?`<pre class="mono text-xs bg-amber-50 p-2 rounded mt-2 max-h-32 overflow-auto">${j.warnings.join('\n')}</pre>`:''}`;
+    }
+    async function doSaveProfile(){ const map=currentMap(); if(!Object.keys(map).length){ alert('請先對應欄位'); return; }
+      const name=prompt('profile 名稱？'); if(!name)return;
+      const body={name, header_row:(parseInt(document.getElementById('impHdr').value)||1)-1, column_map:map, time_unit:document.getElementById('impUnit').value, sheet_hint:document.getElementById('impSheet').value};
+      const r=await fetch(API+'/api/v2/imports/profiles',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});
+      alert(r.ok?'✓ 已存 profile：'+name:'存 profile 失敗 '+r.status);
+    }
   })();
 
   // ── 啟動：載 options ──

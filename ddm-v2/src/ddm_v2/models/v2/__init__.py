@@ -12,6 +12,7 @@ from ddm_v2.models.v2.auth import AppUser
 from ddm_v2.models.v2.base import Base, TimestampMixin
 from ddm_v2.models.v2.bom import BomImport, BomItem
 from ddm_v2.models.v2.codes import CodePrefixRegistry
+from ddm_v2.models.v2.import_staging import ExcelImport, ImportProfile
 from ddm_v2.models.v2.motion_template import MotionTemplate
 from ddm_v2.models.v2.org import Product, Site, Sku
 from ddm_v2.models.v2.rule_set import RuleSet
@@ -67,4 +68,6 @@ __all__ = [
     "AuditLog",
     "AppUser",
     "MotionTemplate",
+    "ExcelImport",
+    "ImportProfile",
 ]

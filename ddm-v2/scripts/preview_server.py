@@ -16,6 +16,7 @@ from fastapi.responses import FileResponse
 
 from ddm_v2.api.routes.v2.calculate import router as v2_router
 from ddm_v2.api.routes.v2.export import router as v2_export_router
+from ddm_v2.api.routes.v2.import_excel import router as v2_import_router
 from ddm_v2.api.routes.v2.rule_set import router as v2_ruleset_router
 from ddm_v2.api.routes.v2.admin_users import router as v2_admin_router
 from ddm_v2.api.routes.v2.motion_template import router as v2_motion_template_router
@@ -30,6 +31,7 @@ app.include_router(v2_worksheet_router)
 app.include_router(v2_vocab_router)
 app.include_router(v2_motion_template_router)
 app.include_router(v2_export_router)
+app.include_router(v2_import_router)
 app.include_router(v2_ruleset_router)
 app.include_router(v2_admin_router)
 

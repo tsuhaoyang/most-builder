@@ -106,7 +106,7 @@ class WiRow(Base, TimestampMixin):
 
     __table_args__ = (
         CheckConstraint("hand IS NULL OR hand IN ('LH','RH','BH')", name="hand"),
-        CheckConstraint("provenance IN ('manual','bom_draft')", name="provenance"),
+        CheckConstraint("provenance IN ('manual','bom_draft')", name="provenance"),  # 2b 再加 'imported'
         CheckConstraint("frequency > 0", name="frequency_pos"),
         UniqueConstraint("worksheet_id", "seq_no", name="uq_wi_rows_worksheet_id_seq_no"),
     )

@@ -20,6 +20,7 @@ from fastapi.responses import JSONResponse, RedirectResponse
 from ddm_v2.api.routes.v2.admin_users import router as v2_admin_router
 from ddm_v2.api.routes.v2.calculate import router as v2_calculate_router
 from ddm_v2.api.routes.v2.export import router as v2_export_router
+from ddm_v2.api.routes.v2.import_excel import router as v2_import_router
 from ddm_v2.api.routes.v2.motion_template import router as v2_motion_template_router
 from ddm_v2.api.routes.v2.rule_set import router as v2_ruleset_router
 from ddm_v2.api.routes.v2.vocab import router as v2_vocab_router
@@ -108,6 +109,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     app.include_router(v2_vocab_router)
     app.include_router(v2_motion_template_router)
     app.include_router(v2_export_router)
+    app.include_router(v2_import_router)
     app.include_router(v2_ruleset_router)
     app.include_router(v2_admin_router)
 
