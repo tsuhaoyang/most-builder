@@ -10,3 +10,4 @@ docs
 frontend
 tests
 docker-wheels
+src/frontend
