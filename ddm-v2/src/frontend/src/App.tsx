@@ -6,6 +6,7 @@ import { MasterData } from './features/master-data/MasterData'
 import { RuleSetViewer } from './features/rule-set/RuleSetViewer'
 import { SopPanel } from './features/sop/SopPanel'
 import { ExportPanel } from './features/export/Export'
+import { UsersPanel } from './features/users/UsersPanel'
 
 const TABS = [
   { id: 'wi', label: '① WI 工時表' },
@@ -14,6 +15,7 @@ const TABS = [
   { id: 'ruleset', label: '④ Rule-set' },
   { id: 'sop', label: '⑤ SOP 版本' },
   { id: 'export', label: '⑥ 匯出' },
+  { id: 'users', label: '⑦ 使用者' },
 ] as const
 
 export default function App() {
@@ -50,6 +52,7 @@ export default function App() {
           : tab === 'ruleset' ? <RuleSetViewer />
           : tab === 'sop' ? <SopPanel />
           : tab === 'export' ? <ExportPanel />
+          : tab === 'users' ? <UsersPanel />
           : <div className="bg-white rounded-xl border p-6 text-slate-500">
               {TABS.find(t => t.id === tab)?.label}：待遷移（藍本見 docs/html_con/v2-workbench.html）。
             </div>}
