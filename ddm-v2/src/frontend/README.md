@@ -43,9 +43,22 @@ npm run dev            # http://localhost:5173
   （先 `cd ddm-v2 && PYTHONPATH=src python -c "import json;from ddm_v2.main import create_app;open('src/frontend/openapi.json','w').write(json.dumps(create_app().openapi()))"`）
 - `npm run test:e2e` — Playwright（需 dev server + 後端在跑）
 
-## 遷移計畫（逐 tab）
+## 遷移狀態（完成）
 
-藍本＝`docs/html_con/v2-workbench.html`（**保留為參考，不刪**）。已遷 WI（快速切片）；待遷：Level System(巢狀群組盒)、主數據、Rule-set、SOP、匯出、匯入、使用者。WI 的精確七格編輯亦待補。
+藍本＝`docs/html_con/v2-workbench.html`（**保留為參考，不刪**）。七大分頁 + 匯入精靈已全數遷移：
+
+| 區塊 | 內容 |
+|---|---|
+| ① WI | ⚡快速範本 + 🔧精確七格(A/B/G/P/M/X/I, GM/CM)；後端權威計算；存整表 + 依 activeWs 載入(還原 WI+Level) |
+| ② Level System | 巢狀群組盒（sub⊃cub 拖放）+ ~// 變動度 + nb；derive 由分組推導 |
+| ③ 主數據 | 詞彙 CRUD（invalidate 連動 WI/Level） |
+| ④ Rule-set | 規則表唯讀檢視（11 區塊；TMU 計算依據） |
+| ⑤ SOP 版本 | 版本清單 + 發布(manager)/另存新檔(IE)/切換版本 |
+| ⑥ 匯出 | Excel / LB CSV / LB API(dry-run)；讀 activeWs |
+| ⑦ 使用者 | 角色管理(admin)：IE/manager/admin + 啟用切換 |
+| 📥 匯入 | 三步精靈：上傳→對應→預覽(+存 Profile)；提交工時表=2b |
+
+**跨切片狀態**：`shared/workspace.ts`(activeWs，WI/匯出/SOP 共用) · Level store 讀 WI rows · Query invalidation 維持快取一致。**後續**：WI 精確編輯的 A 變動度(~//) UI、匯入 2b 提交工時表、Phase 5 i18n、Playwright e2e 實跑。
 
 ## 部署
 
