@@ -3,6 +3,7 @@ import { useMe } from './shared/auth/useMe'
 import { WiWorkbench } from './features/wi-workbench/WiWorkbench'
 import { LevelSystem } from './features/level-system/LevelSystem'
 import { MasterData } from './features/master-data/MasterData'
+import { RuleSetViewer } from './features/rule-set/RuleSetViewer'
 import { SopPanel } from './features/sop/SopPanel'
 import { ExportPanel } from './features/export/Export'
 
@@ -46,6 +47,7 @@ export default function App() {
         {tab === 'wi' ? <WiWorkbench />
           : tab === 'level' ? <LevelSystem />
           : tab === 'master' ? <MasterData />
+          : tab === 'ruleset' ? <RuleSetViewer />
           : tab === 'sop' ? <SopPanel />
           : tab === 'export' ? <ExportPanel />
           : <div className="bg-white rounded-xl border p-6 text-slate-500">
