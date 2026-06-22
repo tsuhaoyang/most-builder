@@ -4,8 +4,8 @@
 
 ## 1. 這是什麼
 
-純 v2 的 MOST（MiniMOST）工時量測平台：FastAPI 後端（`/api/v2`）＋ 單頁多分頁前端（`docs/html_con/`）＋ PostgreSQL。
-六大分頁：WI 工時表 / Level System / 主數據 / Rule-set / SOP 版本 / 匯出（＋使用者管理）。
+純 v2 的 MOST（MiniMOST）工時量測平台：FastAPI 後端（`/api/v2`）＋ **React 前端**（`src/frontend`，模組化、API 驅動）＋ PostgreSQL。
+七大分頁：① WI 工時表 / ② Level System / ③ 主數據 / ④ Rule-set / ⑤ SOP 版本 / ⑥ 匯出 / ⑦ 使用者，＋「📥 匯入 Excel」精靈。
 
 ## 2. 本機啟動
 
@@ -27,9 +27,15 @@ PYTHONPATH=src .venv/bin/python scripts/dev_seed_v2.py         # 階層 + worksh
 PYTHONPATH=src .venv/bin/python scripts/dev_seed_templates.py   # 動作範本庫
 PYTHONPATH=src .venv/bin/python scripts/dev_seed_30rows.py      # （可選）30 筆示範工序
 
-# 2.4 跑前端預覽
+# 2.4 建置前端（一次）
+( cd src/frontend && npm install && npm run build )
+
+# 2.5 跑單一伺服器（前端 + API 同源）
 PYTHONPATH=src .venv/bin/python scripts/preview_server.py       # http://localhost:8099
 ```
+
+**前端熱重載開發**（改 UI 時用）：保持 preview_server 在跑當 API 後端，另開一個終端
+`cd src/frontend && npm run dev` → http://localhost:5173（Vite proxy `/api` → :8099）。
 
 純 API（不含前端）：`PYTHONPATH=src .venv/bin/uvicorn ddm_v2.main:app --app-dir src` → `/docs`。
 
@@ -49,12 +55,17 @@ API 在 `:8000`（`DDM_PORT` 可改）。bootstrap admin 員工編號＝`DDM_ADM
 ## 5. 驗證
 
 ```bash
+# 後端
 PYTHONPATH=src pytest                                  # unit（免 DB）+ integration（需 DATABASE_URL，否則 skip）
 PYTHONPATH=src python scripts/core_logic/run_all.py    # 核心邏輯黃金/反例（GM=28 / CM=29 等）
+
+# 前端（型別/建置/瀏覽器 e2e）
+cd src/frontend && npm run typecheck && npm run build
+E2E_BASE_URL=http://127.0.0.1:8099 npx playwright test  # 需 preview_server(:8099) 在跑
 ```
 
 ## 6. 從哪裡看
 
-- 前端：`docs/html_con/v2-workbench.html`
+- 前端：`src/frontend/`（`features/<tab>/` 各分頁；`shared/` 共用；藍本參考 `docs/html_con/`）
 - 後端 API：`src/ddm_v2/api/routes/v2/`、引擎 `src/ddm_v2/most_engine/`
 - 規格：`docs/core-logic/`、`docs/architecture/`；索引 `docs/DOC_REGISTRY.md`
