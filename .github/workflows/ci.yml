@@ -1,0 +1,115 @@
+name: CI
+
+# 重大驗證測試點通過，CI 才綠（見 ddm-v2/docs/CI_GATES.md）。
+on:
+  push:
+    branches: ['**']
+  pull_request:
+
+jobs:
+  backend:
+    name: 後端（unit + integration + 核心邏輯 + 乾淨依賴）
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: ddm-v2
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: ci
+          POSTGRES_PASSWORD: ci
+          POSTGRES_DB: ddm_ci
+        ports: ['5432:5432']
+        options: >-
+          --health-cmd "pg_isready -U ci -d ddm_ci"
+          --health-interval 5s --health-timeout 5s --health-retries 20
+    env:
+      DATABASE_URL: postgresql+asyncpg://ci:ci@localhost:5432/ddm_ci
+      AUTH_DEV_USER: IEC141289
+      PYTHONPATH: src
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      # 只裝「宣告的」依賴 → 漏宣告 runtime 依賴(如 openpyxl)會在 import/測試時爆
+      - name: 安裝依賴
+        run: pip install -e ".[dev]"
+      - name: 乾淨 import（app 建得起來，含所有 router/service）
+        run: python -c "from ddm_v2.main import create_app; create_app(); print('app OK')"
+      - name: Migrate + seed（整合測試要有 rule-set/worksheet，否則 skip）
+        run: |
+          alembic upgrade head
+          python scripts/dev_seed_v2.py
+          python scripts/dev_seed_templates.py
+      - name: 核心邏輯黃金/反例（GM=28 / CM=29 / Level R1–R9）
+        run: python scripts/core_logic/run_all.py
+      - name: pytest（unit + integration）
+        run: pytest -q
+
+  frontend:
+    name: 前端（typecheck + build）
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: ddm-v2/src/frontend
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+      - run: npm ci
+      - run: npm run typecheck
+      - run: npm run build
+
+  e2e:
+    name: 端對端（瀏覽器 smoke，含真實 DB）
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: ci
+          POSTGRES_PASSWORD: ci
+          POSTGRES_DB: ddm_ci
+        ports: ['5432:5432']
+        options: >-
+          --health-cmd "pg_isready -U ci -d ddm_ci"
+          --health-interval 5s --health-timeout 5s --health-retries 20
+    env:
+      DATABASE_URL: postgresql+asyncpg://ci:ci@localhost:5432/ddm_ci
+      AUTH_DEV_USER: IEC141289
+      PYTHONPATH: src
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+      - name: 後端依賴 + migrate + seed
+        working-directory: ddm-v2
+        run: |
+          pip install -e ".[dev]"
+          alembic upgrade head
+          python scripts/dev_seed_v2.py
+          python scripts/dev_seed_templates.py
+          python scripts/dev_seed_30rows.py
+      - name: 建置前端
+        working-directory: ddm-v2/src/frontend
+        run: |
+          npm ci
+          npm run build
+          npx playwright install --with-deps chromium
+      - name: 起 preview_server（前端+API 同源）
+        working-directory: ddm-v2
+        run: |
+          nohup python scripts/preview_server.py > /tmp/preview.log 2>&1 &
+          for i in $(seq 1 20); do curl -sf http://127.0.0.1:8099/ >/dev/null && break; sleep 1; done
+      - name: Playwright smoke
+        working-directory: ddm-v2/src/frontend
+        env:
+          E2E_BASE_URL: http://127.0.0.1:8099
+        run: npx playwright test --reporter=line
