@@ -23,6 +23,7 @@ from fastapi.staticfiles import StaticFiles
 
 from ddm_v2.api.routes.v2.admin_users import router as v2_admin_router
 from ddm_v2.api.routes.v2.calculate import router as v2_router  # 含 /api/v2/me
+from ddm_v2.api.routes.v2.catalog import router as v2_catalog_router
 from ddm_v2.api.routes.v2.export import router as v2_export_router
 from ddm_v2.api.routes.v2.import_excel import router as v2_import_router
 from ddm_v2.api.routes.v2.motion_template import router as v2_motion_template_router
@@ -43,6 +44,7 @@ app.include_router(v2_export_router)
 app.include_router(v2_import_router)
 app.include_router(v2_ruleset_router)
 app.include_router(v2_admin_router)
+app.include_router(v2_catalog_router)
 
 # 已建置的前端靜態資源（Vite 產物在 dist/assets）
 if (DIST / "assets").is_dir():

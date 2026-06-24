@@ -21,6 +21,7 @@ from fastapi.staticfiles import StaticFiles
 # v2 定點重建路由
 from ddm_v2.api.routes.v2.admin_users import router as v2_admin_router
 from ddm_v2.api.routes.v2.calculate import router as v2_calculate_router
+from ddm_v2.api.routes.v2.catalog import router as v2_catalog_router
 from ddm_v2.api.routes.v2.export import router as v2_export_router
 from ddm_v2.api.routes.v2.import_excel import router as v2_import_router
 from ddm_v2.api.routes.v2.motion_template import router as v2_motion_template_router
@@ -114,6 +115,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     app.include_router(v2_import_router)
     app.include_router(v2_ruleset_router)
     app.include_router(v2_admin_router)
+    app.include_router(v2_catalog_router)
 
     _register_exception_handlers(app)
 
