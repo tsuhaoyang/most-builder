@@ -34,7 +34,7 @@ services:
       db:
         condition: service_healthy
     ports:
-      - "${DDM_PORT:-8000}:8000"
+      - "${DDM_PORT:-8877}:8000"
     environment:
       DDM_ROOT_DIR: /app
       DDM_DATA_DIR: /app/data

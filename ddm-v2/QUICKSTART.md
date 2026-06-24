@@ -47,7 +47,7 @@ PYTHONPATH=src .venv/bin/python scripts/preview_server.py       # http://localho
 docker compose up -d --build   # 起 db + app；entrypoint 自動 alembic upgrade + 種 admin app_users
 ```
 
-- API/前端在 `:8000`（用 `DDM_PORT` 改成空閒 port，例如 prod 上 `DDM_PORT=8100`）。
+- API/前端在 `:8877`（預設；用 `DDM_PORT` 可改成其他空閒 port）。
 - **DB 預設不對外發佈**：app 走容器內部網路（service name `db`），所以**不會跟主機既有的 Postgres（5432）衝突**。要主機 psql/alembic 才疊 `docker-compose.dev.yml`。
 - bootstrap admin 員工編號＝`DDM_ADMIN_EMPLOYEE_NO`（設成你真實員編）。
 - 容器名固定為 `ddm-v2` / `ddm-v2-db`；若同主機要跑多套，請設 `COMPOSE_PROJECT_NAME` 避免撞名。

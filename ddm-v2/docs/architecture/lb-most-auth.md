@@ -24,7 +24,7 @@ ForwardAuth。cookie 為 host-only（不分 port），所以使用者在 `http:/
 | `DDM_LB_VERIFY_URL` | LB verify 端點（MOST 容器可達） | `http://<server-ip>/auth/verify` |
 | `DDM_SESSION_COOKIE_NAME` | 與 LB 一致 | `session_id` |
 | `DDM_ADMIN_EMPLOYEE_NO` | 開機自動建為 admin 的員編（設成**你真實員編**） | 你的員編 |
-| `DDM_PORT` | MOST 對外 port | 例 `8100` |
+| `DDM_PORT` | MOST 對外 port | 例 `8877` |
 | `AUTH_DEV_USER` | 本地 dev 用；**部署時不要設** | （留空） |
 
 ## 過渡部署（verify 模式、自己的 port）
@@ -36,16 +36,16 @@ export DDM_AUTH_MODE=verify
 export DDM_LB_VERIFY_URL=http://<server-ip>/auth/verify
 export DDM_SESSION_COOKIE_NAME=session_id      # 須與 LB 的 SESSION_COOKIE_NAME 相同
 export DDM_ADMIN_EMPLOYEE_NO=<你的真實員編>
-export DDM_PORT=8100                            # MOST 對外 port
+export DDM_PORT=8877                            # MOST 對外 port
 docker compose up -d --build                    # 起 db + ddm-v2（前端已 build 進 image）
 ```
 
-MOST 服務於 `http://<server-ip>:8100/`（前端 + `/api/v2` 同一容器同源）。
+MOST 服務於 `http://<server-ip>:8877/`（前端 + `/api/v2` 同一容器同源）。
 
 ## 使用流程（給使用者）
 
 1. 先到 LB 入口 `http://<server-ip>/` 用公司帳號登入（取得 session cookie）。
-2. 開 `http://<server-ip>:8100/` → 直接進 MOST，身分即你的員編。
+2. 開 `http://<server-ip>:8877/` → 直接進 MOST，身分即你的員編。
 3. 角色:第一次進來的人自動建為 **viewer**（唯讀）。由 admin 到「⑦ 使用者」分頁授予 IE/manager/admin。
    - 第一個 admin = `DDM_ADMIN_EMPLOYEE_NO`（開機種入），所以那一定要是真實、會登入的員編。
 4. session 1 小時到期 → 回 LB 重新登入即可。
