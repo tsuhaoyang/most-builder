@@ -7,7 +7,10 @@ __pycache__
 .env
 data
 docs
-frontend
 tests
 docker-wheels
-src/frontend
+# 前端原始碼需保留給 Docker 的 node build stage；只排除產物與相依
+src/frontend/node_modules
+src/frontend/dist
+src/frontend/test-results
+src/frontend/playwright-report

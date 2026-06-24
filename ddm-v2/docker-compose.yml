@@ -45,6 +45,13 @@ services:
       DDM_CORS_ALLOW_HEADERS: ${DDM_CORS_ALLOW_HEADERS:-Authorization,Content-Type}
       DDM_CORS_ALLOW_CREDENTIALS: ${DDM_CORS_ALLOW_CREDENTIALS:-true}
       DATABASE_URL: postgresql+asyncpg://${POSTGRES_USER:-ddm_user}:${POSTGRES_PASSWORD:-ddm_pass}@db:5432/${POSTGRES_DB:-ddm_v2}
+      # 身分來源：gateway（預設，信任 ForwardAuth header）｜ verify（自驗 LB session，可直接開 port）
+      DDM_AUTH_MODE: ${DDM_AUTH_MODE:-gateway}
+      DDM_LB_VERIFY_URL: ${DDM_LB_VERIFY_URL:-}
+      DDM_SESSION_COOKIE_NAME: ${DDM_SESSION_COOKIE_NAME:-session_id}
+      ENV: ${ENV:-development}
+      # 開機自動建為 admin 的員工編號（設成你「真實的員編」才能登入後就是 admin）
+      DDM_ADMIN_EMPLOYEE_NO: ${DDM_ADMIN_EMPLOYEE_NO:-IEC141289}
 
 volumes:
   ddm-v2-pgdata:

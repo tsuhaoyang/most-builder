@@ -11,10 +11,12 @@ from __future__ import annotations
 import logging
 import os
 from contextlib import asynccontextmanager
+from pathlib import Path
 
 from fastapi import FastAPI, Request, status
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import JSONResponse, RedirectResponse
+from fastapi.responses import FileResponse, JSONResponse, RedirectResponse
+from fastapi.staticfiles import StaticFiles
 
 # v2 定點重建路由
 from ddm_v2.api.routes.v2.admin_users import router as v2_admin_router
@@ -115,8 +117,16 @@ def create_app(settings: Settings | None = None) -> FastAPI:
 
     _register_exception_handlers(app)
 
-    @app.get("/")
-    def root() -> RedirectResponse:
+    # 服務已建置的 React 前端（src/frontend/dist）：有 build 就在根目錄出 SPA，否則導 /docs。
+    dist = Path(__file__).resolve().parents[1] / "frontend" / "dist"
+    if (dist / "assets").is_dir():
+        app.mount("/assets", StaticFiles(directory=dist / "assets"), name="assets")
+
+    @app.get("/", response_model=None)
+    def root():
+        index = dist / "index.html"
+        if index.exists():
+            return FileResponse(index)
         return RedirectResponse(url="/docs", status_code=302)
 
     return app

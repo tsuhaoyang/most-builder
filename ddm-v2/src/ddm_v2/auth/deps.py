@@ -31,7 +31,7 @@ class CurrentUser:
 
 
 async def current_user(request: Request, session: AsyncSession = Depends(get_db_session)) -> CurrentUser:
-    ident = resolve_identity(request)
+    ident = await resolve_identity(request)
     if ident is None:
         raise HTTPException(status_code=401, detail="未認證（缺 gateway 身分；本地請設環境變數 AUTH_DEV_USER）")
     u = (await session.execute(select(AppUser).where(AppUser.employee_no == ident.employee_no))).scalar_one_or_none()

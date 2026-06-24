@@ -1,3 +1,16 @@
+# ---- Stage 1: 建置 React 前端 → /fe/dist ----
+FROM node:20-slim AS frontend
+ARG HTTP_PROXY
+ARG HTTPS_PROXY
+ARG NO_PROXY
+ENV HTTP_PROXY=${HTTP_PROXY} HTTPS_PROXY=${HTTPS_PROXY} NO_PROXY=${NO_PROXY}
+WORKDIR /fe
+COPY src/frontend/package.json src/frontend/package-lock.json ./
+RUN npm ci
+COPY src/frontend/ ./
+RUN npm run build
+
+# ---- Stage 2: Python runtime（API + 前端 dist 同一容器） ----
 FROM python:3.11-slim
 
 # Accept proxy settings as build-time args (forwarded from host env by docker-compose)
@@ -29,6 +42,8 @@ COPY src ./src
 COPY alembic.ini ./
 COPY migrations ./migrations
 COPY entrypoint.sh ./entrypoint.sh
+# 前端 build 產物（main.py 會在根目錄服務此 SPA）
+COPY --from=frontend /fe/dist ./src/frontend/dist
 
 RUN pip install --upgrade pip \
     && pip install -e . \
