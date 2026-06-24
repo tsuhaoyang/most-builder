@@ -53,6 +53,24 @@ export function buildPayload(c: CycleState, ruleSetCode: string): Record<string,
   return p
 }
 
+// CycleIn payload → CycleState（範本插入用；buildPayload 的逆向）
+export function payloadToState(p: Record<string, any>): CycleState { // eslint-disable-line @typescript-eslint/no-explicit-any
+  const s = defaultCycle()
+  s.seq = p.seq === 'CM' ? 'CM' : 'GM'
+  const toA = (o: any): ASlot => ({ reach: o?.reach_cm || 0, twist: o?.twist_deg || 0, foot: o?.foot_cm || 0 }) // eslint-disable-line @typescript-eslint/no-explicit-any
+  s.a0 = toA(p.a0); s.a6 = toA(p.a6)
+  s.g = p.g2?.g_code || ''; s.gMod = p.g2?.modifiers || {}; s.b1 = p.b1?.b_code ?? null
+  if (s.seq === 'GM') {
+    s.a3 = toA(p.a3); s.b4 = p.b4?.b_code ?? null
+    s.p_base = p.p5?.p_base_code || ''; s.p_addons = p.p5?.p_addon_codes || []; s.precision = !!p.p5?.precision
+  } else {
+    const m = (p.m3?.m_components || [])[0] || {}
+    s.m = { verb: m.verb_code || '', distance: m.distance_cm || 30, angle: m.angle_deg || 90, rev: m.revolutions || 1, dia: m.diameter_cm || 10 }
+    s.x = p.x4?.x_code || 'x_none'; s.x_sec = p.x4?.x_seconds || 0; s.i = p.i5?.i_code || 'i_none'
+  }
+  return s
+}
+
 const HAND_NAME: Record<string, string> = { RH: '右手', LH: '左手', BH: '雙手' }
 export function shortNarr(c: CycleState, label: (kind: string, code: string) => string, vname: (kind: string, id: string) => string): string {
   const hand = HAND_NAME[c.handCode] || ''
