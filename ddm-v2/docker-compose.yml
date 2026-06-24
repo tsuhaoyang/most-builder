@@ -51,6 +51,8 @@ services:
       ENV: ${ENV:-development}
       # 開機自動建為 admin 的員工編號（設成你「真實的員編」才能登入後就是 admin）
       DDM_ADMIN_EMPLOYEE_NO: ${DDM_ADMIN_EMPLOYEE_NO:-IEC141289}
+      # true＝開機自動種 rule-set + demo worksheet(5555) + 詞彙 + 範本（idempotent，過渡建議開）
+      DDM_SEED_DEMO: ${DDM_SEED_DEMO:-false}
 
 volumes:
   ddm-v2-pgdata:

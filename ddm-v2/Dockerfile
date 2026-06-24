@@ -41,6 +41,7 @@ COPY pyproject.toml README.md ./
 COPY src ./src
 COPY alembic.ini ./
 COPY migrations ./migrations
+COPY scripts ./scripts
 COPY entrypoint.sh ./entrypoint.sh
 # 前端 build 產物（main.py 會在根目錄服務此 SPA）
 COPY --from=frontend /fe/dist ./src/frontend/dist

@@ -44,6 +44,14 @@ async def seed():
 asyncio.run(seed())
 PYEOF
 
+# 種子資料：rule-set（MINIMOST_FACTORY_V1，計算必需）+ demo worksheet(5555) + 詞彙 + 範本。
+# 皆 idempotent。DDM_SEED_DEMO=true 才執行（過渡部署建議開；正式上線改自管資料時關掉）。
+if [ "${DDM_SEED_DEMO:-false}" = "true" ]; then
+  echo "[entrypoint] DDM_SEED_DEMO=true → seeding rule-set + demo worksheet + templates (idempotent)..."
+  python3 scripts/dev_seed_v2.py || echo "[entrypoint] dev_seed_v2 failed (continuing)"
+  python3 scripts/dev_seed_templates.py || echo "[entrypoint] dev_seed_templates failed (continuing)"
+fi
+
 echo "[entrypoint] Starting DDM v2..."
 exec uvicorn ddm_v2.main:app \
     --host 0.0.0.0 \
