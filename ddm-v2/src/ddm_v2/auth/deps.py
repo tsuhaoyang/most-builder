@@ -1,6 +1,7 @@
 """FastAPI 授權依賴（rbac-spec §4/§6）：current_user（JIT viewer）+ require_role 守門。"""
 from __future__ import annotations
 
+import os
 import uuid
 from dataclasses import dataclass
 
@@ -33,7 +34,14 @@ class CurrentUser:
 async def current_user(request: Request, session: AsyncSession = Depends(get_db_session)) -> CurrentUser:
     ident = await resolve_identity(request)
     if ident is None:
-        raise HTTPException(status_code=401, detail="未認證（缺 gateway 身分；本地請設環境變數 AUTH_DEV_USER）")
+        mode = os.getenv("DDM_AUTH_MODE", "gateway").lower()
+        if mode == "verify":
+            detail = ("未認證（verify 模式）：拿不到有效身分。可能原因—無 session cookie、"
+                      "cookie 名稱與 LB 不符（DDM_SESSION_COOKIE_NAME），或 MOST 連不到 "
+                      f"DDM_LB_VERIFY_URL={os.getenv('DDM_LB_VERIFY_URL', '(未設)')}")
+        else:
+            detail = "未認證（gateway 模式）：缺 gateway 注入的 X-Username；本地請設 AUTH_DEV_USER"
+        raise HTTPException(status_code=401, detail=detail)
     u = (await session.execute(select(AppUser).where(AppUser.employee_no == ident.employee_no))).scalar_one_or_none()
     if u is None:  # JIT：第一次出現 → 建 viewer（無角色），待 admin 授予
         u = AppUser(id=uuid.uuid4(), employee_no=ident.employee_no, external_user_id=ident.external_user_id,
