@@ -1,0 +1,9 @@
+# 開發用 override：把 DB 發佈到主機，方便本機跑 psql / alembic。
+# 用法（明確疊加；prod 不要用）：
+#   docker compose -f docker-compose.yml -f docker-compose.dev.yml up -d db
+# 若主機 5432 已被佔用，設 POSTGRES_HOST_PORT 為空閒 port，例如：
+#   POSTGRES_HOST_PORT=15432 docker compose -f docker-compose.yml -f docker-compose.dev.yml up -d db
+services:
+  db:
+    ports:
+      - "${POSTGRES_HOST_PORT:-5432}:5432"

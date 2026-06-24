@@ -18,7 +18,9 @@ python3.12 -m venv .venv
 
 # 2.2 PostgreSQL（任選）
 #   A) 自己的 PG：建好 DB，設 DATABASE_URL
-#   B) 用 compose 只起 DB：docker compose up -d db
+#   B) 用 compose 只起 DB（需主機存取 → 疊 dev override 才會發佈 port）：
+#      docker compose -f docker-compose.yml -f docker-compose.dev.yml up -d db
+#      （主機 5432 被佔用時：POSTGRES_HOST_PORT=15432 ... 並改下面 URL 的 port）
 export DATABASE_URL="postgresql+asyncpg://USER:PASS@localhost:5432/ddm_v2"
 
 # 2.3 遷移 + 種子
@@ -42,10 +44,13 @@ PYTHONPATH=src .venv/bin/python scripts/preview_server.py       # http://localho
 ## 3. Docker 一鍵
 
 ```bash
-docker compose up        # 起 db + app；entrypoint 自動 alembic upgrade + 種 admin app_users
+docker compose up -d --build   # 起 db + app；entrypoint 自動 alembic upgrade + 種 admin app_users
 ```
 
-API 在 `:8000`（`DDM_PORT` 可改）。bootstrap admin 員工編號＝`DDM_ADMIN_EMPLOYEE_NO`（預設 IEC141289）。
+- API/前端在 `:8000`（用 `DDM_PORT` 改成空閒 port，例如 prod 上 `DDM_PORT=8100`）。
+- **DB 預設不對外發佈**：app 走容器內部網路（service name `db`），所以**不會跟主機既有的 Postgres（5432）衝突**。要主機 psql/alembic 才疊 `docker-compose.dev.yml`。
+- bootstrap admin 員工編號＝`DDM_ADMIN_EMPLOYEE_NO`（設成你真實員編）。
+- 容器名固定為 `ddm-v2` / `ddm-v2-db`；若同主機要跑多套，請設 `COMPOSE_PROJECT_NAME` 避免撞名。
 
 ## 4. 身分（RBAC）
 
