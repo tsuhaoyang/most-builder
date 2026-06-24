@@ -20,6 +20,9 @@ services:
   ddm-v2:
     build:
       context: .
+      # build 時用主機網路：公司 proxy 常常 build 容器(bridge)路由不到 → Network unreachable。
+      # 走 host 網路 → 主機連得到 proxy，pip/npm 就連得到。
+      network: host
       args:
         HTTP_PROXY: ${HTTP_PROXY:-}
         HTTPS_PROXY: ${HTTPS_PROXY:-}
