@@ -1,4 +1,4 @@
-"""dev seed（v2）：rule_set 工廠 v1 + 最小階層（site→…→worksheet）+ 詞彙。
+"""dev seed（v2）：rule_set 工廠 v1＋v2（ADR-014）+ 最小階層（site→…→worksheet）+ 詞彙。
 
 讓持久化 demo 有 worksheet 可掛、wi_rows 有 vocab 可指。idempotent（已存在則略過）。
 跑：  DATABASE_URL=... PYTHONPATH=src python scripts/dev_seed_v2.py
@@ -14,6 +14,7 @@ from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 
 import ddm_v2.models.v2 as M
 from ddm_v2.seed.v2.rule_set_seed import seed_rule_set_factory_v1
+from ddm_v2.seed.v2.rule_set_seed_v2 import seed_rule_set_factory_v2
 
 # 固定 UUID（demo 可引用）
 SITE = uuid.UUID("11111111-1111-1111-1111-111111111111")
@@ -31,9 +32,15 @@ async def main() -> None:
     Session = async_sessionmaker(engine, expire_on_commit=False)
     async with Session() as s:
         # rule_set（+ 子表）
-        rs = (await s.execute(select(M.RuleSet).where(M.RuleSet.code == "MINIMOST_FACTORY_V1"))).scalar_one_or_none()
+        rs_v1 = (await s.execute(select(M.RuleSet).where(M.RuleSet.code == "MINIMOST_FACTORY_V1"))).scalar_one_or_none()
+        if rs_v1 is None:
+            rs_v1 = seed_rule_set_factory_v1(s)
+            print("seeded rule_set:", rs_v1.code)
+        else:
+            print("rule_set exists:", rs_v1.code)
+        rs = (await s.execute(select(M.RuleSet).where(M.RuleSet.code == "MINIMOST_FACTORY_V2"))).scalar_one_or_none()
         if rs is None:
-            rs = seed_rule_set_factory_v1(s)
+            rs = seed_rule_set_factory_v2(s)  # V2＝v3 IE 認證字典（ADR-014）；新 worksheet 預設
             print("seeded rule_set:", rs.code)
         else:
             print("rule_set exists:", rs.code)

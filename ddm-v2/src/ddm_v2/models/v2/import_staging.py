@@ -8,7 +8,8 @@ from __future__ import annotations
 from uuid import UUID
 
 from sqlalchemy import CheckConstraint, ForeignKey, Integer, Text, text
-from sqlalchemy.dialects.postgresql import JSONB, UUID as PG_UUID
+from sqlalchemy.dialects.postgresql import JSONB
+from sqlalchemy.dialects.postgresql import UUID as PG_UUID
 from sqlalchemy.orm import Mapped, mapped_column
 
 from ddm_v2.models.v2.base import Base, TimestampMixin, uuid_pk

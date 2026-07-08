@@ -81,8 +81,8 @@ I_OPTIONS = [
 # ───────────────────────── DB 插入 ─────────────────────────
 def seed_rule_set_factory_v1(session: Any) -> Any:
     """插入工廠 rule-set 與所有子表（published）。回傳 RuleSet。"""
-    from ddm_v2.models.v2.rule_set import RuleSet
     from ddm_v2.models.v2 import rule_set_tables as rt
+    from ddm_v2.models.v2.rule_set import RuleSet
 
     rs = RuleSet(id=uuid.uuid4(), code=RULE_SET["code"], name_zh=RULE_SET["name_zh"],
                  status="published", system_tmu_multiplier=RULE_SET["system_tmu_multiplier"])

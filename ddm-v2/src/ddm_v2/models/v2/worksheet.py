@@ -22,7 +22,8 @@ from sqlalchemy import (
     UniqueConstraint,
     text,
 )
-from sqlalchemy.dialects.postgresql import JSONB, UUID as PG_UUID
+from sqlalchemy.dialects.postgresql import JSONB
+from sqlalchemy.dialects.postgresql import UUID as PG_UUID
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from ddm_v2.models.v2.base import Base, TimestampMixin, uuid_pk
@@ -72,12 +73,16 @@ class MostWorksheet(Base, TimestampMixin):
     default_rule_set_id: Mapped[UUID | None] = mapped_column(
         PG_UUID(as_uuid=True), ForeignKey("rule_sets.id", ondelete="RESTRICT")
     )
+    allowance_percent: Mapped[float | None] = mapped_column(Numeric(6, 3))  # 工序表級寬放%（standard = normal×(1+%/100)；OQ-002）
     status: Mapped[str] = mapped_column(Text, nullable=False, server_default=text("'draft'"))
 
     process_version: Mapped[ProcessVersion] = relationship(back_populates="worksheet")
     rows: Mapped[list[WiRow]] = relationship(back_populates="worksheet", order_by="WiRow.seq_no")
 
-    __table_args__ = (CheckConstraint(_STATUS_CK, name="status"),)
+    __table_args__ = (
+        CheckConstraint(_STATUS_CK, name="status"),
+        CheckConstraint("allowance_percent IS NULL OR allowance_percent >= 0", name="ck_most_worksheets_allowance_nonneg"),
+    )
 
 
 class WiRow(Base, TimestampMixin):
@@ -99,6 +104,13 @@ class WiRow(Base, TimestampMixin):
     simo_group_id: Mapped[str | None] = mapped_column(Text)
     provenance: Mapped[str] = mapped_column(Text, nullable=False, server_default=text("'manual'"))
     source_row_id: Mapped[UUID | None] = mapped_column(PG_UUID(as_uuid=True))  # clone 血緣
+    # impl-04：模組實體化追溯（同 NULL 或同非 NULL）
+    source_module_id: Mapped[UUID | None] = mapped_column(
+        PG_UUID(as_uuid=True),
+        ForeignKey("motion_modules.id", ondelete="SET NULL"),
+        nullable=True,
+    )
+    source_module_version: Mapped[int | None] = mapped_column(Integer)
 
     worksheet: Mapped[MostWorksheet] = relationship(back_populates="rows")
     cycle: Mapped[MostCycle | None] = relationship(back_populates="wi_row", uselist=False, cascade="all, delete-orphan")

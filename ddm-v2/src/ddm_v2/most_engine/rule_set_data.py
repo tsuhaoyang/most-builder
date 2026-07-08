@@ -7,11 +7,13 @@
 """
 from __future__ import annotations
 
-import math
-from dataclasses import dataclass, field
+from dataclasses import dataclass
+from decimal import ROUND_HALF_UP, Decimal
 from typing import NamedTuple
 
 TMU_TO_SEC = 0.036
+_TMU_TO_SEC_D = Decimal("0.036")
+_Q3 = Decimal("0.001")
 
 
 class RuleSetIncomplete(ValueError):
@@ -47,6 +49,7 @@ class RuleSetData:
     m_hand: tuple[tuple[float | None, int], ...]
     x_options: dict[str, tuple[str, float | None]]  # code -> (mode, fixed_seconds)
     i_index: dict[str, int]
+    m_foot: tuple[tuple[float | None, int], ...] = ()  # V2 起：M 腳步獨立帶；空=回退 ladder（V1 回放相容）
 
     # ── 純查表 helper（「如何讀這份資料」）──
     def band_index(self, component: str, value: float) -> int | None:
@@ -59,34 +62,49 @@ class RuleSetData:
                 return idx
         return bands[-1][1] if bands else None
 
-    def ladder_tmu(self, cm: float) -> int:
+    def ladder_tmu(self, cm: float) -> int | None:
+        """距離階梯。超出最大有限帶且無 overflow 帶 → None（引擎轉 M_DISTANCE_RANGE）。"""
         if not cm or cm <= 0:
             return 0
         for max_cm, tmu in self.m_ladder:
             if max_cm is None or cm <= max_cm:
                 return tmu
-        return self.m_ladder[-1][1] if self.m_ladder else 0
+        return None
 
-    def rotation_tmu(self, diameter_cm: float, revolutions: int) -> int:
+    def foot_tmu(self, cm: float) -> int | None:
+        """M 腳步帶（V2）；rule-set 無 foot 資料（V1）→ 回退 ladder（回放相容，E9）。"""
+        if not self.m_foot:
+            return self.ladder_tmu(cm)
+        if not cm or cm <= 0:
+            return 0
+        for max_cm, tmu in self.m_foot:
+            if max_cm is None or cm <= max_cm:
+                return tmu
+        return None
+
+    def rotation_tmu(self, diameter_cm: float, revolutions: int) -> int | None:
+        """旋轉查表。無對應（直徑/圈數超出值表）→ None（引擎轉 M_ROTATION_RANGE）。"""
         rev = max(1, min(3, int(round(revolutions or 1))))
         for max_dia, rv, tmu in self.m_rotation:
             if rv == rev and (max_dia is None or diameter_cm <= max_dia):
                 return tmu
-        return 0
+        return None
 
-    def hand_tmu(self, deg: float) -> int:
+    def hand_tmu(self, deg: float) -> int | None:
+        """手度查表。超出（>180 且無 overflow）→ None（引擎轉 M_HAND_RANGE）。"""
         if not deg or deg <= 0:
             return 0
         for max_deg, tmu in self.m_hand:
             if max_deg is None or deg <= max_deg:
                 return tmu
-        return self.m_hand[-1][1] if self.m_hand else 0
+        return None
 
     @staticmethod
-    def seconds_to_tmu(seconds: float) -> int:
+    def seconds_to_tmu(seconds: float) -> float:
+        """秒→TMU：Decimal 除法 ROUND_HALF_UP 保留 3 位（E2，ADR-014 取代舊 ceil 裁決）。"""
         if seconds is None or seconds <= 0:
-            return 0
-        return math.ceil(seconds / TMU_TO_SEC)
+            return 0.0
+        return float((Decimal(str(seconds)) / _TMU_TO_SEC_D).quantize(_Q3, rounding=ROUND_HALF_UP))
 
     def validate_complete(self) -> None:
         """發布/使用前完整性檢查：缺任一必要表即報錯（不可默默回 0）。"""
@@ -133,6 +151,7 @@ def build_rule_set_data(
     m_hand_rows: list[tuple[float | None, int]],          # (max_deg, tmu)
     x_rows: list[tuple[str, str, float | None]],          # (code, mode, fixed_seconds)
     i_rows: list[tuple[str, int]],                        # (code, index)
+    m_foot_rows: list[tuple[float | None, int]] | None = None,  # (max_cm, tmu)；None/空＝V1 無獨立腳步帶
 ) -> RuleSetData:
     """通用建構：供 providers（in-memory / DB）共用，確保形狀一致。"""
     a_bands: dict[str, list[tuple[float | None, int]]] = {}
@@ -155,4 +174,5 @@ def build_rule_set_data(
         m_hand=_sort_bands(m_hand_rows),
         x_options={c: (mode, fsec) for c, mode, fsec in x_rows},
         i_index={c: i for c, i in i_rows},
+        m_foot=_sort_bands(m_foot_rows) if m_foot_rows else (),
     )

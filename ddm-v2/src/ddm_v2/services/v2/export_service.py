@@ -45,7 +45,10 @@ async def wi_preview(session: AsyncSession, ws_id: uuid.UUID) -> dict[str, Any]:
                 "order": lv.get("order"), "number": lv.get("number"), "number_count": lv.get("number_count"),
             },
         })
-    return {"worksheet_id": str(ws_id), "status": data["status"], "rows": rows, "total_tmu": data["total_tmu"]}
+    return {"worksheet_id": str(ws_id), "status": data["status"], "rows": rows, "total_tmu": data["total_tmu"],
+            # 時間投影（impl-02 §3）：normal=引擎輸出；standard=normal×(1+allowance%/100)，allowance 未設＝None（OQ-002）
+            "normal_seconds": data["normal_seconds"], "allowance_percent": data["allowance_percent"],
+            "standard_seconds": data["standard_seconds"]}
 
 
 async def to_excel_bytes(session: AsyncSession, ws_id: uuid.UUID) -> bytes:
@@ -57,6 +60,11 @@ async def to_excel_bytes(session: AsyncSession, ws_id: uuid.UUID) -> bytes:
     ws = wb.active
     ws.title = "WI"
     ws.append(["MODEL", "", "ANALYST", "", "TOTAL TMU", prev["total_tmu"]])
+    # 時間欄（impl-02 §3）：正常秒＝引擎輸出；標準秒＝normal×(1+allowance%/100)。
+    # allowance 未設（NULL）→ 寬放%/標準秒留空：OQ-002 慣例——allowance 未定案前不得以 normal 假充 standard。
+    ws.append(["正常秒", prev["normal_seconds"],
+               "寬放%", prev["allowance_percent"] if prev["allowance_percent"] is not None else "",
+               "標準秒", prev["standard_seconds"] if prev["standard_seconds"] is not None else ""])
     ws.append([])
     header = ["STEP", "SUB活動", "Key Parts", "HAND", "METHOD",
               "A", "B", "G", "A/M", "B/X", "P/I", "A", "Freq", "SIMO", "TMU",

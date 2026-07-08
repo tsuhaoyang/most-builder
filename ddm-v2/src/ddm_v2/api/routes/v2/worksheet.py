@@ -27,6 +27,8 @@ async def save_worksheet(worksheet_id: uuid.UUID, payload: WorksheetSaveIn, sess
         raise HTTPException(status_code=404, detail=f"rule-set 不存在：{e}")
     except svc.NotEditable as e:
         raise HTTPException(status_code=409, detail=str(e))
+    except svc.SimoPairInvalid as e:
+        raise HTTPException(status_code=422, detail={"code": "SIMO_PAIR_INVALID", "message": str(e)})
     except RuleSetIncomplete as e:
         raise HTTPException(status_code=409, detail=str(e))
     except SequenceError as e:

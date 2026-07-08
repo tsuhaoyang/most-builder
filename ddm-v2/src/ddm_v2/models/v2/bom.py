@@ -5,11 +5,11 @@
 """
 from __future__ import annotations
 
-from datetime import datetime
 from uuid import UUID
 
-from sqlalchemy import CheckConstraint, DateTime, ForeignKey, Integer, Numeric, Text, text
-from sqlalchemy.dialects.postgresql import JSONB, UUID as PG_UUID
+from sqlalchemy import CheckConstraint, ForeignKey, Integer, Numeric, Text, text
+from sqlalchemy.dialects.postgresql import JSONB
+from sqlalchemy.dialects.postgresql import UUID as PG_UUID
 from sqlalchemy.orm import Mapped, mapped_column
 
 from ddm_v2.models.v2.base import Base, TimestampMixin, uuid_pk

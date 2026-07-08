@@ -13,8 +13,16 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from ddm_v2.auth.deps import CurrentUser, current_user, require_role
 from ddm_v2.database import get_db_session
 from ddm_v2.schemas.v2.catalog import (
-    ProductIn, ProductOut, ProductPatch, SiteOut, SkuIn, SkuOut, SkuPatch,
-    WorksheetCreateIn, WorksheetCreateOut, WorksheetSummaryOut,
+    ProductIn,
+    ProductOut,
+    ProductPatch,
+    SiteOut,
+    SkuIn,
+    SkuOut,
+    SkuPatch,
+    WorksheetCreateIn,
+    WorksheetCreateOut,
+    WorksheetSummaryOut,
 )
 from ddm_v2.services.v2 import catalog_service as svc
 

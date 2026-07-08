@@ -11,7 +11,7 @@ from ddm_v2.most_engine.calculate import (
     compute_cycle,
     compute_table,
 )
-from ddm_v2.most_engine.providers import build_from_seed, load_rule_set_from_db
+from ddm_v2.most_engine.providers import build_from_seed, build_from_seed_v2, load_rule_set_from_db
 from ddm_v2.most_engine.rule_set_data import RuleSetData, RuleSetIncomplete, build_rule_set_data
 
 __all__ = [
@@ -19,6 +19,7 @@ __all__ = [
     "RuleSetIncomplete",
     "build_rule_set_data",
     "build_from_seed",
+    "build_from_seed_v2",
     "load_rule_set_from_db",
     "compute_cycle",
     "compute_table",

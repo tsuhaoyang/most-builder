@@ -52,6 +52,7 @@ class RuleBOption(Base):
     label_en: Mapped[str | None] = mapped_column(Text)
     index_value: Mapped[int] = mapped_column(Integer, nullable=False)
     is_default: Mapped[bool] = mapped_column(Boolean, nullable=False, server_default=text("FALSE"))
+    sentence_text_zh: Mapped[str | None] = mapped_column(Text)  # 敘事用字（V2；NULL 回退 label_zh）
     sort_order: Mapped[int] = mapped_column(Integer, nullable=False, server_default=text("0"))
 
     __table_args__ = (UniqueConstraint("rule_set_id", "code", name="uq_rule_b_options_rule_set_id_code"),)
@@ -70,6 +71,7 @@ class RuleGAction(Base):
     modifier_key: Mapped[str | None] = mapped_column(Text)
     requires_modifier: Mapped[bool] = mapped_column(Boolean, nullable=False, server_default=text("FALSE"))
     base_tmu: Mapped[int] = mapped_column(Integer, nullable=False)
+    sentence_text_zh: Mapped[str | None] = mapped_column(Text)
     sort_order: Mapped[int] = mapped_column(Integer, nullable=False, server_default=text("0"))
 
     __table_args__ = (UniqueConstraint("rule_set_id", "code", name="uq_rule_g_actions_rule_set_id_code"),)
@@ -88,6 +90,7 @@ class RulePBase(Base):
     category: Mapped[str | None] = mapped_column(Text)
     direction_mode: Mapped[str | None] = mapped_column(Text)
     base_tmu: Mapped[int] = mapped_column(Integer, nullable=False)
+    sentence_text_zh: Mapped[str | None] = mapped_column(Text)
     sort_order: Mapped[int] = mapped_column(Integer, nullable=False, server_default=text("0"))
 
     __table_args__ = (UniqueConstraint("rule_set_id", "code", name="uq_rule_p_bases_rule_set_id_code"),)
@@ -106,9 +109,14 @@ class RulePAddon(Base):
     delta_tmu: Mapped[int] = mapped_column(Integer, nullable=False)
     needs_precision: Mapped[bool] = mapped_column(Boolean, nullable=False, server_default=text("FALSE"))
     max_select: Mapped[int] = mapped_column(Integer, nullable=False, server_default=text("2"))
+    display_rule: Mapped[str] = mapped_column(Text, nullable=False, server_default=text("'show_self'"))  # 敘事三態（E6）
+    sentence_text_zh: Mapped[str | None] = mapped_column(Text)
     sort_order: Mapped[int] = mapped_column(Integer, nullable=False, server_default=text("0"))
 
-    __table_args__ = (UniqueConstraint("rule_set_id", "code", name="uq_rule_p_addons_rule_set_id_code"),)
+    __table_args__ = (
+        CheckConstraint("display_rule IN ('show_self','hidden','prefix_visible_term')", name="ck_rule_p_addons_display_rule"),
+        UniqueConstraint("rule_set_id", "code", name="uq_rule_p_addons_rule_set_id_code"),
+    )
 
 
 class RuleMLadderBand(Base):
@@ -123,6 +131,20 @@ class RuleMLadderBand(Base):
     sort_order: Mapped[int] = mapped_column(Integer, nullable=False, server_default=text("0"))
 
 
+class RuleMFootBand(Base):
+    """M 腳步帶（V2 起與階梯分離——C2 定案採 v3 值）。V1 無資料時引擎回退 ladder（回放相容）。"""
+
+    __tablename__ = "rule_m_foot_bands"
+
+    id: Mapped[UUID] = mapped_column(PG_UUID(as_uuid=True), primary_key=True)
+    rule_set_id: Mapped[UUID] = _rule_set_fk()
+    max_cm: Mapped[float | None] = mapped_column(Numeric(10, 3))
+    tmu: Mapped[int] = mapped_column(Integer, nullable=False)
+    sort_order: Mapped[int] = mapped_column(Integer, nullable=False, server_default=text("0"))
+
+    __table_args__ = (UniqueConstraint("rule_set_id", "sort_order", name="uq_rule_m_foot_bands_rule_set_id_sort"),)
+
+
 class RuleMVerb(Base):
     """M 動詞與計價方式。pricing_kind∈{fixed,ladder,foot,hand,rotate}。"""
 
@@ -135,6 +157,7 @@ class RuleMVerb(Base):
     label_en: Mapped[str | None] = mapped_column(Text)
     pricing_kind: Mapped[str] = mapped_column(Text, nullable=False)
     fixed_tmu: Mapped[int | None] = mapped_column(Integer)  # pricing_kind=fixed 時用
+    sentence_text_zh: Mapped[str | None] = mapped_column(Text)
     sort_order: Mapped[int] = mapped_column(Integer, nullable=False, server_default=text("0"))
 
     __table_args__ = (
@@ -180,6 +203,7 @@ class RuleXOption(Base):
     label_en: Mapped[str | None] = mapped_column(Text)
     mode: Mapped[str] = mapped_column(Text, nullable=False)
     fixed_seconds: Mapped[float | None] = mapped_column(Numeric(10, 4))
+    sentence_text_zh: Mapped[str | None] = mapped_column(Text)
     sort_order: Mapped[int] = mapped_column(Integer, nullable=False, server_default=text("0"))
 
     __table_args__ = (
@@ -199,6 +223,11 @@ class RuleIOption(Base):
     label_zh: Mapped[str] = mapped_column(Text, nullable=False)
     label_en: Mapped[str | None] = mapped_column(Text)
     index_value: Mapped[int] = mapped_column(Integer, nullable=False)
+    vision_scope: Mapped[str | None] = mapped_column(Text)  # normal/outside（UI 分組；i_none 為 NULL）
+    sentence_text_zh: Mapped[str | None] = mapped_column(Text)
     sort_order: Mapped[int] = mapped_column(Integer, nullable=False, server_default=text("0"))
 
-    __table_args__ = (UniqueConstraint("rule_set_id", "code", name="uq_rule_i_options_rule_set_id_code"),)
+    __table_args__ = (
+        CheckConstraint("vision_scope IN ('normal','outside')", name="ck_rule_i_options_vision_scope"),
+        UniqueConstraint("rule_set_id", "code", name="uq_rule_i_options_rule_set_id_code"),
+    )

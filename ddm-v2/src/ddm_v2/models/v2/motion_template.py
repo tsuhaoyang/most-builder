@@ -10,7 +10,8 @@ from __future__ import annotations
 from uuid import UUID
 
 from sqlalchemy import Boolean, CheckConstraint, Text, text
-from sqlalchemy.dialects.postgresql import ARRAY, JSONB, UUID as PG_UUID
+from sqlalchemy.dialects.postgresql import ARRAY, JSONB
+from sqlalchemy.dialects.postgresql import UUID as PG_UUID
 from sqlalchemy.orm import Mapped, mapped_column
 
 from ddm_v2.models.v2.base import Base, TimestampMixin, uuid_pk

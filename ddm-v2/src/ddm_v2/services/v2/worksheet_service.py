@@ -21,6 +21,7 @@ from ddm_v2.models.v2.worksheet import LevelEntry, MostCycle, MostWorksheet, Pro
 from ddm_v2.most_engine import compute_cycle, load_rule_set_from_db
 from ddm_v2.most_engine.narrative import HAND_NAMES, build_narrative
 from ddm_v2.most_engine.providers import load_options_from_db
+from ddm_v2.most_engine.rule_set_data import TMU_TO_SEC
 from ddm_v2.schemas.v2.most import cycle_in_to_engine
 from ddm_v2.schemas.v2.worksheet import WorksheetSaveIn
 
@@ -37,6 +38,10 @@ class NotEditable(Exception):
     pass
 
 
+class SimoPairInvalid(Exception):
+    pass
+
+
 async def save_worksheet(session: AsyncSession, worksheet_id: uuid.UUID, payload: WorksheetSaveIn) -> dict[str, Any]:
     ws = await session.get(MostWorksheet, worksheet_id)
     if ws is None:
@@ -45,6 +50,10 @@ async def save_worksheet(session: AsyncSession, worksheet_id: uuid.UUID, payload
     if pv is not None and pv.status != "draft":
         raise NotEditable(f"版本狀態為 {pv.status}，已凍結不可存（請另存新檔）")
 
+    # 工序表級寬放%（OQ-002 / impl-02 §3）：payload 有帶才更新（加法相容——舊 client 不帶不影響既有值）；帶 null＝清除。
+    if "allowance_percent" in payload.model_fields_set:
+        ws.allowance_percent = payload.allowance_percent
+
     code = payload.rows[0].cycle.rule_set_code if payload.rows else "MINIMOST_FACTORY_V1"
     rs_row = (await session.execute(select(RuleSet).where(RuleSet.code == code))).scalar_one_or_none()
     if rs_row is None:
@@ -52,11 +61,60 @@ async def save_worksheet(session: AsyncSession, worksheet_id: uuid.UUID, payload
     rsdata = await load_rule_set_from_db(session, code)
     rsdata.validate_complete()  # 完整性 gating
 
-    # 後端敘事（FE-2）：rule-set 標籤 + vocab 名 → METHOD 句（單一權威）
+    # 後端敘事（FE-2/E6）：rule-set 標籤/句字/display_rule + vocab 名 → METHOD 句（單一權威）
     opts = await load_options_from_db(session, code)
-    labels = {"g": {o["code"]: o["label"] for o in opts["g"]},
-              "p_base": {o["code"]: o["label"] for o in opts["p_bases"]},
-              "m_verb": {o["code"]: o["label"] for o in opts["m_verbs"]}}
+
+    def _lmap(rows_: list[dict[str, Any]]) -> dict[str, dict[str, Any]]:
+        return {o["code"]: {"label": o.get("label"), "sentence": o.get("sentence"),
+                            "display_rule": o.get("display_rule")} for o in rows_}
+
+    labels = {"g": _lmap(opts["g"]), "p_base": _lmap(opts["p_bases"]), "p_addon": _lmap(opts["p_addons"]),
+              "m_verb": _lmap(opts["m_verbs"]), "x": _lmap(opts["x"]), "i": _lmap(opts["i"])}
+
+    # E5：SIMO 配對（simo_with_row_id）→ 群組（simo_group_id）正規化（union-find）
+    row_ids = {r.id for r in payload.rows}
+    parent: dict[Any, Any] = {}
+
+    def _find(k):
+        parent.setdefault(k, k)
+        while parent[k] != k:
+            parent[k] = parent[parent[k]]
+            k = parent[k]
+        return k
+
+    def _union(a, b):
+        ra, rb = _find(a), _find(b)
+        if ra != rb:
+            parent[rb] = ra
+
+    pair_used = False
+    for r in payload.rows:
+        pid = getattr(r, "simo_with_row_id", None)
+        if pid is None:
+            continue
+        if pid == r.id or pid not in row_ids:
+            raise SimoPairInvalid(f"列 {r.id} 的 SIMO 配對無效：{pid}")
+        pair_used = True
+        _union(r.id, pid)
+    explicit_groups: dict[str, set] = {}
+    for r in payload.rows:
+        if r.simo_group_id:
+            explicit_groups.setdefault(r.simo_group_id, set()).add(r.id)
+    for members in explicit_groups.values():
+        first = next(iter(members))
+        for m in members:
+            _union(first, m)
+    simo_group_of: dict[Any, str] = {}
+    if pair_used or explicit_groups:
+        roots: dict[Any, list] = {}
+        for r in payload.rows:
+            if r.id in parent or r.simo_group_id:
+                roots.setdefault(_find(r.id), []).append(r.id)
+        for n, (_root, members) in enumerate(sorted(roots.items(), key=lambda kv: str(kv[0])), start=1):
+            if len(members) >= 2:
+                gid = f"SIMO-{n}"
+                for m in members:
+                    simo_group_of[m] = gid
     vids = {vid for r in payload.rows for vid in (r.object_vocab_id, r.from_vocab_id, r.to_vocab_id) if vid}
     vname: dict[uuid.UUID, str] = {}
     if vids:
@@ -81,7 +139,7 @@ async def save_worksheet(session: AsyncSession, worksheet_id: uuid.UUID, payload
             sub_activity=r.sub_activity, key_parts=r.key_parts, hand=r.hand,
             object_vocab_id=r.object_vocab_id, from_vocab_id=r.from_vocab_id,
             to_vocab_id=r.to_vocab_id, tool_vocab_id=r.tool_vocab_id,
-            frequency=r.frequency, simo_group_id=r.simo_group_id, provenance="manual",
+            frequency=r.frequency, simo_group_id=simo_group_of.get(r.id, r.simo_group_id), provenance="manual",
         ))
         session.add(MostCycle(
             id=uuid.uuid4(), wi_row_id=r.id, seq_kind=result.seq, rule_set_id=rs_row.id,
@@ -111,11 +169,14 @@ async def read_worksheet(session: AsyncSession, worksheet_id: uuid.UUID) -> dict
     wrs = (await session.execute(select(WiRow).where(WiRow.worksheet_id == worksheet_id).order_by(WiRow.seq_no))).scalars().all()
     rows: list[dict[str, Any]] = []
     total = 0.0
+    simo_max: dict[str, float] = {}
     for wr in wrs:
         cyc = (await session.execute(select(MostCycle).where(MostCycle.wi_row_id == wr.id))).scalar_one_or_none()
         lv = (await session.execute(select(LevelEntry).where(LevelEntry.wi_row_id == wr.id))).scalar_one_or_none()
         eff = float(cyc.total_tmu or 0) * float(wr.frequency or 1) if cyc else 0.0
-        if not wr.simo_group_id:
+        if wr.simo_group_id:
+            simo_max[wr.simo_group_id] = max(simo_max.get(wr.simo_group_id, 0.0), eff)  # CL-04：群組取 max
+        else:
             total += eff
         rows.append({
             "wi_row_id": str(wr.id), "seq_no": wr.seq_no, "hand": wr.hand,
@@ -135,7 +196,12 @@ async def read_worksheet(session: AsyncSession, worksheet_id: uuid.UUID) -> dict
                       "order": lv.order_in_group, "number": lv.number, "number_count": lv.number_count,
                       "machine_count": lv.machine_count, "manpower": lv.manpower} if lv else None,
         })
-    return {"worksheet_id": worksheet_id, "status": ws.status, "rows": rows, "total_tmu": total}
+    total = round(total + sum(simo_max.values()), 3)
+    normal_seconds = round(total * TMU_TO_SEC, 4)
+    allowance = float(ws.allowance_percent) if ws.allowance_percent is not None else None
+    standard_seconds = round(normal_seconds * (1 + allowance / 100), 4) if allowance is not None else None
+    return {"worksheet_id": worksheet_id, "status": ws.status, "rows": rows, "total_tmu": total,
+            "normal_seconds": normal_seconds, "allowance_percent": allowance, "standard_seconds": standard_seconds}
 
 
 async def _version_info(session: AsyncSession, worksheet_id: uuid.UUID) -> dict[str, Any]:
@@ -180,7 +246,8 @@ async def clone_worksheet(session: AsyncSession, worksheet_id: uuid.UUID, actor:
     new_pv = ProcessVersion(id=uuid.uuid4(), sku_id=pv.sku_id, version_no=f"v{count + 1}",
                             status="draft", source_version_id=pv.id, created_by=actor)
     new_ws = MostWorksheet(id=uuid.uuid4(), process_version_id=new_pv.id, model_label=ws.model_label,
-                           analyst=ws.analyst, study_date=ws.study_date, default_rule_set_id=ws.default_rule_set_id, status="draft")
+                           analyst=ws.analyst, study_date=ws.study_date, default_rule_set_id=ws.default_rule_set_id,
+                           allowance_percent=ws.allowance_percent, status="draft")
     session.add(new_pv)
     session.add(new_ws)
     await session.flush()

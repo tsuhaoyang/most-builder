@@ -17,12 +17,18 @@ import pytest
 import pytest_asyncio
 from sqlalchemy import text
 
-from ddm_v2.most_engine import build_from_seed
+from ddm_v2.most_engine import build_from_seed, build_from_seed_v2
 
 
 @pytest.fixture(scope="session")
 def rs():
-    """工廠 rule-set（自 seed 建，免 DB）。"""
+    """工廠 rule-set V2（v3 IE 認證字典，ADR-014；自 seed 建，免 DB）——黃金測試主錨。"""
+    return build_from_seed_v2()
+
+
+@pytest.fixture(scope="session")
+def rs_v1():
+    """工廠 rule-set V1（歷史回放：快照隔離證明；含 gating/precision/舊階梯語意）。"""
     return build_from_seed()
 
 

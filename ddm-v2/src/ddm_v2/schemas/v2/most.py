@@ -9,23 +9,37 @@ from typing import Any, Literal
 
 from pydantic import BaseModel, Field
 
-DEFAULT_RULE_SET = "MINIMOST_FACTORY_V1"
+DEFAULT_RULE_SET = "MINIMOST_FACTORY_V2"  # ADR-014：v3 IE 認證字典；V1 僅供既有 cycle 回放
 
 
 # ── slot 輸入 ──
+class ManualOverride(BaseModel):
+    """E7：人工覆寫（值取代＋留痕）。"""
+
+    tmu: float
+    reason: str
+    by: str | None = None
+
+
 class ASlot(BaseModel):
     reach_cm: float = 0
     twist_deg: float = 0
     foot_cm: float = 0
+    repeat_count: int | None = None  # passthrough：A 格禁 repeat，由引擎 _no_repeat 擋（REPEAT_INVALID）
+    manual_override: ManualOverride | None = None
 
 
 class BSlot(BaseModel):
     b_code: str | None = None
+    repeat_count: int | None = None  # passthrough：B 格禁 repeat，由引擎 _no_repeat 擋（REPEAT_INVALID）
+    manual_override: ManualOverride | None = None
 
 
 class GSlot(BaseModel):
     g_code: str | None = None
-    modifiers: dict[str, bool] = Field(default_factory=dict)
+    modifiers: dict[str, bool] = Field(default_factory=dict)  # V1 gating 用；V2 資料下無作用
+    repeat_count: int | None = None  # 範圍驗證權威＝引擎 _repeat（REPEAT_INVALID）
+    manual_override: ManualOverride | None = None
 
 
 class MComponent(BaseModel):
@@ -38,21 +52,29 @@ class MComponent(BaseModel):
 
 class MSlot(BaseModel):
     m_components: list[MComponent] = Field(default_factory=list)
+    repeat_count: int | None = None  # 只乘動詞分量再 max（E4）；範圍驗證權威＝引擎
+    manual_override: ManualOverride | None = None
 
 
 class XSlot(BaseModel):
     x_code: str | None = None
     x_seconds: float = 0
+    repeat_count: int | None = None  # 範圍驗證權威＝引擎
+    manual_override: ManualOverride | None = None
 
 
 class PSlot(BaseModel):
     p_base_code: str | None = None
     p_addon_codes: list[str] = Field(default_factory=list)
-    precision: bool = False
+    precision: bool = False  # V1 對準精度 gating 用；V2 資料下無作用
+    repeat_count: int | None = None  # 範圍驗證權威＝引擎
+    manual_override: ManualOverride | None = None
 
 
 class ISlot(BaseModel):
     i_code: str | None = None
+    repeat_count: int | None = None  # 範圍驗證權威＝引擎
+    manual_override: ManualOverride | None = None
 
 
 class CycleIn(BaseModel):
@@ -96,7 +118,7 @@ def cycle_in_to_engine(c: CycleIn) -> dict[str, Any]:
 # ── 計算回應 ──
 class SlotBreakdown(BaseModel):
     letter: str
-    tmu: int
+    tmu: float
 
 
 class CalculateResponse(BaseModel):

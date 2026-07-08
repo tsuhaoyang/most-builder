@@ -9,7 +9,6 @@ from datetime import datetime
 from uuid import UUID
 
 from sqlalchemy import CheckConstraint, DateTime, Numeric, Text, text
-from sqlalchemy.dialects.postgresql import UUID as PG_UUID
 from sqlalchemy.orm import Mapped, mapped_column
 
 from ddm_v2.models.v2.base import Base, TimestampMixin, uuid_pk

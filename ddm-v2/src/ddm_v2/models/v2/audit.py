@@ -8,7 +8,8 @@ from datetime import datetime
 from uuid import UUID
 
 from sqlalchemy import DateTime, Index, Text, text
-from sqlalchemy.dialects.postgresql import JSONB, UUID as PG_UUID
+from sqlalchemy.dialects.postgresql import JSONB
+from sqlalchemy.dialects.postgresql import UUID as PG_UUID
 from sqlalchemy.orm import Mapped, mapped_column
 
 from ddm_v2.models.v2.base import Base, uuid_pk

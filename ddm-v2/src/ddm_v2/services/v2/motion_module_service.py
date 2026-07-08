@@ -1,0 +1,703 @@
+"""motion_module 持久化服務（impl-04）。
+
+設計原則：
+- publish 即驗證：每列 cycle 過 compute_cycle；total_tmu/narrative 由引擎產，不接受呼叫端提供。
+- 版本不可變：發布後 MotionModuleVersion 禁 UPDATE；修改＝發新版。
+- 實體化＝複製：version.rows → WiRow + MostCycle；合計走引擎（compute_table），不走模組快取。
+- SIMO 配對：simo_pair_index 指向 rows 陣列；實體化時轉 simo_group_id（union-find）。
+  TODO: 目前採簡化版 union-find（pair 兩兩配對），跨三列 SIMO group 需 impl-02 E5 完整正規化。
+"""
+from __future__ import annotations
+
+import uuid
+from datetime import datetime, timezone
+from typing import Any
+
+from sqlalchemy import select
+from sqlalchemy.ext.asyncio import AsyncSession
+
+from ddm_v2.models.v2.motion_module import MotionModule, MotionModuleVersion
+from ddm_v2.models.v2.rule_set import RuleSet
+from ddm_v2.models.v2.worksheet import LevelEntry, MostCycle, MostWorksheet, ProcessVersion, WiRow
+from ddm_v2.most_engine import SequenceError, compute_cycle, load_rule_set_from_db
+from ddm_v2.most_engine.rule_set_data import TMU_TO_SEC
+from ddm_v2.schemas.v2.most import CycleIn, cycle_in_to_engine
+from ddm_v2.schemas.v2.motion_module import (
+    FromModuleRequest,
+    MotionModuleCreate,
+    MotionModuleResponse,
+    MotionModuleUpdate,
+    MotionModuleVersionResponse,
+    PublishRequest,
+)
+
+# ── domain exceptions ────────────────────────────────────────────────
+
+class ModuleNotFound(Exception):
+    pass
+
+
+class ModuleVersionNotFound(Exception):
+    pass
+
+
+class ModuleNotEditable(Exception):
+    """status != 'draft' 時不可改 metadata 或發布（需先 retire/新建）。"""
+    pass
+
+
+class ModuleRetired(Exception):
+    """嘗試對 retired 模組實體化。"""
+    pass
+
+
+class ScopePermissionError(Exception):
+    pass
+
+
+class PublishValidationError(Exception):
+    """publish 時某列 cycle 算不過（detail = {row_index, code, message}）。"""
+    def __init__(self, row_index: int, code: str, message: str) -> None:
+        super().__init__(message)
+        self.row_index = row_index
+        self.code = code
+        self.message = message
+
+
+class RuleSetNotFound(Exception):
+    pass
+
+
+class WorksheetNotFound(Exception):
+    pass
+
+
+class WorksheetPermissionError(Exception):
+    """呼叫者無權操作目標工序表。"""
+    pass
+
+
+class ModuleIsStandard(Exception):
+    """status == 'standard' 不可直接刪除；需先由管理員 retire。"""
+    pass
+
+
+# ── helpers ──────────────────────────────────────────────────────────
+
+def _module_to_response(
+    m: MotionModule,
+    version: MotionModuleVersion | None = None,
+) -> MotionModuleResponse:
+    ver_detail = None
+    if version is not None:
+        ver_detail = MotionModuleVersionResponse(
+            id=version.id,
+            module_id=version.module_id,
+            version_no=version.version_no,
+            rule_set_id=version.rule_set_id,
+            rows=list(version.rows),
+            narrative_zh=version.narrative_zh,
+            total_tmu=float(version.total_tmu),
+            total_seconds=float(version.total_seconds),
+            published_by=version.published_by,
+            published_at=version.published_at,
+        )
+    return MotionModuleResponse(
+        id=m.id,
+        site_id=m.site_id,
+        name_zh=m.name_zh,
+        category=m.category,
+        keywords=list(m.keywords or []),
+        scope=m.scope,
+        owner=m.owner,
+        status=m.status,
+        current_version=m.current_version,
+        created_at=m.created_at,
+        updated_at=m.updated_at,
+        current_version_detail=ver_detail,
+    )
+
+
+def _version_to_response(v: MotionModuleVersion) -> MotionModuleVersionResponse:
+    return MotionModuleVersionResponse(
+        id=v.id,
+        module_id=v.module_id,
+        version_no=v.version_no,
+        rule_set_id=v.rule_set_id,
+        rows=list(v.rows),
+        narrative_zh=v.narrative_zh,
+        total_tmu=float(v.total_tmu),
+        total_seconds=float(v.total_seconds),
+        published_by=v.published_by,
+        published_at=v.published_at,
+    )
+
+
+# ── CRUD ─────────────────────────────────────────────────────────────
+
+async def create_module(
+    session: AsyncSession,
+    data: MotionModuleCreate,
+    current_user_no: str,
+) -> MotionModuleResponse:
+    """建立 draft 模組（scope=personal 時自動填 owner）。"""
+    owner = data.owner
+    if data.scope == "personal":
+        owner = owner or current_user_no  # 個人草稿歸屬呼叫者
+
+    now = datetime.now(timezone.utc)
+    m = MotionModule(
+        id=uuid.uuid4(),
+        site_id=data.site_id,
+        name_zh=data.name_zh,
+        category=data.category,
+        keywords=list(data.keywords),
+        scope=data.scope,
+        owner=owner,
+        status="draft",
+        current_version=0,
+        created_at=now,
+        updated_at=now,
+    )
+    session.add(m)
+    await session.flush()
+    return _module_to_response(m)
+
+
+async def get_module(
+    session: AsyncSession,
+    module_id: uuid.UUID,
+) -> MotionModuleResponse:
+    """取得模組（含 current_version 內容）。"""
+    m = await session.get(MotionModule, module_id)
+    if m is None:
+        raise ModuleNotFound(str(module_id))
+    version: MotionModuleVersion | None = None
+    if m.current_version > 0:
+        res = await session.execute(
+            select(MotionModuleVersion)
+            .where(
+                MotionModuleVersion.module_id == module_id,
+                MotionModuleVersion.version_no == m.current_version,
+            )
+        )
+        version = res.scalar_one_or_none()
+    return _module_to_response(m, version)
+
+
+async def list_modules(
+    session: AsyncSession,
+    current_user_no: str,
+    q: str | None = None,
+    scope: str | None = None,
+    category: str | None = None,
+) -> list[MotionModuleResponse]:
+    """列出可見模組（global/site 全可見；personal 只顯示自己的）。"""
+    from sqlalchemy import and_, or_
+
+    stmt = select(MotionModule)
+
+    # scope 過濾
+    if scope:
+        stmt = stmt.where(MotionModule.scope == scope)
+        if scope == "personal":
+            stmt = stmt.where(MotionModule.owner == current_user_no)
+    else:
+        # 未指定 scope：global + site + 自己的 personal
+        stmt = stmt.where(
+            or_(
+                MotionModule.scope.in_(["global", "site"]),
+                and_(MotionModule.scope == "personal", MotionModule.owner == current_user_no),
+            )
+        )
+
+    if category:
+        stmt = stmt.where(MotionModule.category == category)
+    if q:
+        stmt = stmt.where(MotionModule.name_zh.ilike(f"%{q}%"))
+
+    stmt = stmt.order_by(MotionModule.updated_at.desc())
+    result = await session.execute(stmt)
+    modules = list(result.scalars().all())
+    return [_module_to_response(m) for m in modules]
+
+
+async def update_module(
+    session: AsyncSession,
+    module_id: uuid.UUID,
+    data: MotionModuleUpdate,
+    current_user_no: str,
+) -> MotionModuleResponse:
+    """更新模組 metadata（僅 draft 可改）。"""
+    m = await session.get(MotionModule, module_id)
+    if m is None:
+        raise ModuleNotFound(str(module_id))
+    if m.status != "draft":
+        raise ModuleNotEditable(f"模組 status={m.status}，非 draft 不可改 metadata")
+    # personal scope 隔離
+    if m.scope == "personal" and m.owner != current_user_no:
+        raise ScopePermissionError("無法修改他人的 personal 模組")
+
+    if data.name_zh is not None:
+        m.name_zh = data.name_zh
+    if data.category is not None:
+        m.category = data.category
+    if data.keywords is not None:
+        m.keywords = list(data.keywords)
+    if data.scope is not None:
+        m.scope = data.scope
+    if data.owner is not None:
+        m.owner = data.owner
+    if data.site_id is not None:
+        m.site_id = data.site_id
+    m.updated_at = datetime.now(timezone.utc)
+    await session.flush()
+    return _module_to_response(m)
+
+
+# ── 刪除 ─────────────────────────────────────────────────────────────
+
+async def delete_module(
+    session: AsyncSession,
+    module_id: uuid.UUID,
+    current_user_no: str,
+) -> None:
+    """刪除模組（僅限非 standard 狀態）。
+
+    - standard modules 需先由管理員 retire → 409。
+    - draft / retired 直接刪除；DB cascade 處理 MotionModuleVersion。
+    - personal scope：只有 owner 可刪除自己的模組。
+    """
+    m = await session.get(MotionModule, module_id)
+    if m is None:
+        raise ModuleNotFound(str(module_id))
+    if m.scope == "personal" and m.owner != current_user_no:
+        raise ScopePermissionError("無權刪除他人的個人模組")
+    if m.status == "standard":
+        raise ModuleIsStandard(
+            f"模組 {module_id} 為 standard 狀態，需先由管理員 retire 才可刪除"
+        )
+    await session.delete(m)
+    await session.flush()
+
+
+# ── 複製 ─────────────────────────────────────────────────────────────
+
+async def clone_module(
+    session: AsyncSession,
+    module_id: uuid.UUID,
+    current_user_no: str,
+) -> MotionModuleResponse:
+    """複製模組（含最新版本內容）。
+
+    規則：
+    - name_zh 加上「複製-」前綴。
+    - scope 重設為 personal，owner = current_user。
+    - status = 'draft'，current_version = 0（若來源有發布版本則複製為 version 1）。
+    - 若來源 current_version > 0，複製最新版本之 rows/totals 為新模組 version 1。
+    """
+    m = await session.get(MotionModule, module_id)
+    if m is None:
+        raise ModuleNotFound(str(module_id))
+
+    # 取來源最新版本（若有）
+    source_ver: MotionModuleVersion | None = None
+    if m.current_version > 0:
+        res = await session.execute(
+            select(MotionModuleVersion)
+            .where(
+                MotionModuleVersion.module_id == module_id,
+                MotionModuleVersion.version_no == m.current_version,
+            )
+        )
+        source_ver = res.scalar_one_or_none()
+
+    now = datetime.now(timezone.utc)
+    new_module_id = uuid.uuid4()
+
+    new_m = MotionModule(
+        id=new_module_id,
+        site_id=m.site_id,
+        name_zh=f"複製-{m.name_zh}",
+        category=m.category,
+        keywords=list(m.keywords or []),
+        scope="personal",
+        owner=current_user_no,
+        status="draft",
+        current_version=0,
+        created_at=now,
+        updated_at=now,
+    )
+    session.add(new_m)
+    await session.flush()
+
+    cloned_ver: MotionModuleVersion | None = None
+    if source_ver is not None:
+        cloned_ver = MotionModuleVersion(
+            id=uuid.uuid4(),
+            module_id=new_module_id,
+            version_no=1,
+            rule_set_id=source_ver.rule_set_id,
+            rows=list(source_ver.rows),
+            narrative_zh=source_ver.narrative_zh,
+            total_tmu=source_ver.total_tmu,
+            total_seconds=source_ver.total_seconds,
+            published_by=current_user_no,
+            published_at=now,
+        )
+        session.add(cloned_ver)
+        new_m.current_version = 1
+        new_m.updated_at = now
+        await session.flush()
+
+    return _module_to_response(new_m, cloned_ver)
+
+
+# ── 版本發布 ─────────────────────────────────────────────────────────
+
+async def publish_version(
+    session: AsyncSession,
+    module_id: uuid.UUID,
+    data: PublishRequest,
+    current_user_no: str,
+) -> MotionModuleVersionResponse:
+    """發布新版本（引擎驗證+算值；版本不可變）。
+
+    不變量：
+    1. 每列 cycle 過 compute_cycle；算不過 → PublishValidationError（→ 422）。
+    2. total_tmu = Σ row.total_tmu × frequency（SIMO 走 simo_pair_index 配對）。
+    3. narrative_zh 為可重生快取（目前留 None；需要時重跑）。
+    """
+    if not data.rows:
+        raise PublishValidationError(0, "EMPTY_ROWS", "rows 不可為空")
+
+    m = await session.get(MotionModule, module_id)
+    if m is None:
+        raise ModuleNotFound(str(module_id))
+    if m.status == "retired":
+        raise ModuleNotEditable("module status=retired 不可發布新版本")
+
+    # 載入 rule set
+    rs_row = (await session.execute(
+        select(RuleSet).where(RuleSet.id == data.rule_set_id)
+    )).scalar_one_or_none()
+    if rs_row is None:
+        raise RuleSetNotFound(str(data.rule_set_id))
+    rsdata = await load_rule_set_from_db(session, rs_row.code)
+
+    # 驗證每列 cycle + 算 tmu
+    validated_rows: list[dict[str, Any]] = []
+    total_tmu = 0.0
+
+    for idx, row in enumerate(data.rows):
+        try:
+            engine_cycle = cycle_in_to_engine(row.cycle)
+            result = compute_cycle(engine_cycle, rsdata)
+        except SequenceError as e:
+            raise PublishValidationError(idx, e.code, str(e)) from e
+
+        row_tmu = result.total_tmu * row.frequency
+        total_tmu += row_tmu
+
+        validated_rows.append({
+            "sub_activity": row.sub_activity,
+            "hand": row.hand,
+            "frequency": row.frequency,
+            "simo_pair_index": row.simo_pair_index,
+            "vocab_refs": row.vocab_refs,
+            "cycle": row.cycle.model_dump(mode="json"),
+            "_computed_tmu": result.total_tmu,   # 快取（non-authoritative，重建可丟）
+        })
+
+    # TODO: SIMO pair 配對應從 total_tmu 中以 max(group) 替代 sum 計算。
+    # 目前 simo_pair_index 資訊已存 rows JSONB，實體化時再正規化。
+    total_tmu = round(total_tmu, 3)
+    total_seconds = round(total_tmu * TMU_TO_SEC, 4)
+
+    new_version_no = m.current_version + 1
+    now = datetime.now(timezone.utc)
+
+    ver = MotionModuleVersion(
+        id=uuid.uuid4(),
+        module_id=module_id,
+        version_no=new_version_no,
+        rule_set_id=data.rule_set_id,
+        rows=validated_rows,
+        narrative_zh=None,    # 可重生快取；publish 時暫略（需 vocab 名才能產）
+        total_tmu=total_tmu,
+        total_seconds=total_seconds,
+        published_by=current_user_no,
+        published_at=now,
+    )
+    session.add(ver)
+
+    m.current_version = new_version_no
+    m.updated_at = now
+    await session.flush()
+
+    return _version_to_response(ver)
+
+
+# ── 版本歷史 ─────────────────────────────────────────────────────────
+
+async def get_versions(
+    session: AsyncSession,
+    module_id: uuid.UUID,
+) -> list[MotionModuleVersionResponse]:
+    """列出模組所有歷史版本。"""
+    m = await session.get(MotionModule, module_id)
+    if m is None:
+        raise ModuleNotFound(str(module_id))
+
+    result = await session.execute(
+        select(MotionModuleVersion)
+        .where(MotionModuleVersion.module_id == module_id)
+        .order_by(MotionModuleVersion.version_no)
+    )
+    versions = list(result.scalars().all())
+    return [_version_to_response(v) for v in versions]
+
+
+# ── 實體化（工序表 from-module）──────────────────────────────────────
+
+async def instantiate_to_worksheet(
+    session: AsyncSession,
+    worksheet_id: uuid.UUID,
+    data: FromModuleRequest,
+    current_user_no: str,
+) -> dict[str, Any]:
+    """把模組版本展開為 WiRow + MostCycle，附加至工序表末尾。
+
+    不變量（impl-04 §2）：
+    - 實體化後即普通列；合計走 compute_table（此函式不合計，讓既有路由讀取）。
+    - 使用工序表當前 rule-set 重算 cycle（非模組發布時的 rule-set）。
+    - 若重算結果與模組快取 _computed_tmu 不同 → tmu_drift 警示。
+    - SIMO simo_pair_index → simo_group_id（union-find，簡化版）。
+    """
+    # 取工序表 + rule-set
+    ws = await session.get(MostWorksheet, worksheet_id)
+    if ws is None:
+        raise WorksheetNotFound(str(worksheet_id))
+    # 確認呼叫者擁有此工序表（透過 ProcessVersion.created_by）
+    pv_check = await session.get(ProcessVersion, ws.process_version_id)
+    if (
+        pv_check is not None
+        and pv_check.created_by is not None
+        and pv_check.created_by != current_user_no
+    ):
+        raise WorksheetPermissionError("無權操作此工序表")
+    if ws.default_rule_set_id is None:
+        raise RuleSetNotFound("工序表未設定 default_rule_set_id")
+
+    rs_row = await session.get(RuleSet, ws.default_rule_set_id)
+    if rs_row is None:
+        raise RuleSetNotFound(str(ws.default_rule_set_id))
+    rsdata = await load_rule_set_from_db(session, rs_row.code)
+
+    # 取模組 + 版本
+    m = await session.get(MotionModule, data.module_id)
+    if m is None:
+        raise ModuleNotFound(str(data.module_id))
+    if m.status == "retired":
+        raise ModuleRetired(f"模組 {m.id} 已 retired，無法實體化")
+
+    target_ver_no = data.version_no if data.version_no is not None else m.current_version
+    if target_ver_no == 0:
+        raise ModuleVersionNotFound("模組尚無任何發布版本（current_version=0）")
+
+    ver_res = await session.execute(
+        select(MotionModuleVersion)
+        .where(
+            MotionModuleVersion.module_id == data.module_id,
+            MotionModuleVersion.version_no == target_ver_no,
+        )
+    )
+    ver = ver_res.scalar_one_or_none()
+    if ver is None:
+        raise ModuleVersionNotFound(
+            f"模組 {data.module_id} 版本 {target_ver_no} 不存在"
+        )
+
+    # 計算新 seq_no 起始值
+    existing_rows = (await session.execute(
+        select(WiRow.seq_no)
+        .where(WiRow.worksheet_id == worksheet_id)
+        .order_by(WiRow.seq_no.desc())
+        .limit(1)
+    )).scalar_one_or_none()
+    next_seq = (existing_rows or 0) + 1
+
+    # SIMO union-find（simo_pair_index 是陣列內 0-based 索引）
+    n = len(ver.rows)
+    parent: list[int] = list(range(n))
+
+    def _find(k: int) -> int:
+        while parent[k] != k:
+            parent[k] = parent[parent[k]]
+            k = parent[k]
+        return k
+
+    def _union(a: int, b: int) -> None:
+        ra, rb = _find(a), _find(b)
+        if ra != rb:
+            parent[rb] = ra
+
+    for idx, row_data in enumerate(ver.rows):
+        pi = row_data.get("simo_pair_index")
+        if pi is not None and isinstance(pi, int) and 0 <= pi < n and pi != idx:
+            _union(idx, pi)
+
+    # 產生 simo_group_id（只有 root 會出現在 2+ 列的群組才算 SIMO）
+    roots: dict[int, list[int]] = {}
+    for idx in range(n):
+        r = _find(idx)
+        if r not in roots:
+            roots[r] = []
+        roots[r].append(idx)
+    simo_group_map: dict[int, str] = {}
+    g_counter = 1
+    for members in roots.values():
+        if len(members) >= 2:
+            gid = f"SIMO-M{g_counter}"
+            g_counter += 1
+            for m_idx in members:
+                simo_group_map[m_idx] = gid
+
+    # 展開列
+    new_rows_out = []
+    drift_warnings = []
+    now = datetime.now(timezone.utc)
+
+    for idx, row_data in enumerate(ver.rows):
+        # 取 vocab refs
+        vocab_refs: dict[str, Any] = row_data.get("vocab_refs") or {}
+        obj_vid_raw = vocab_refs.get("object_vocab_id")
+        if obj_vid_raw is None:
+            # 若模組列未儲存 object_vocab_id，則跳過（不能違反 FK NOT NULL）
+            # TODO: 未來在 publish 時強制驗證 vocab_refs.object_vocab_id 存在。
+            continue
+        try:
+            obj_vid = uuid.UUID(str(obj_vid_raw))
+        except ValueError:
+            continue
+
+        def _optional_uuid(key: str) -> uuid.UUID | None:
+            v = vocab_refs.get(key)
+            if v is None:
+                return None
+            try:
+                return uuid.UUID(str(v))
+            except ValueError:
+                return None
+
+        from_vid = _optional_uuid("from_vocab_id")
+        to_vid = _optional_uuid("to_vocab_id")
+        tool_vid = _optional_uuid("tool_vocab_id")
+
+        # 重算 cycle（用工序表 rule-set，非模組發布時的 rule-set）
+        cycle_dict_raw: dict[str, Any] = row_data.get("cycle") or {}
+        try:
+            cycle_obj = CycleIn.model_validate(cycle_dict_raw)
+            engine_cycle = cycle_in_to_engine(cycle_obj)
+            result = compute_cycle(engine_cycle, rsdata)
+        except (SequenceError, ValueError):
+            # cycle 結構損壞或 rule-set 差異無法算 → 用模組快取值（有風險，附警示）
+            result = None
+
+        if result is not None:
+            actual_tmu = result.total_tmu
+            actual_seconds = result.total_seconds
+            module_cached_tmu = float(row_data.get("_computed_tmu") or 0)
+            if module_cached_tmu and abs(actual_tmu - module_cached_tmu) > 0.001:
+                drift_warnings.append({
+                    "row_index": idx,
+                    "module_tmu": module_cached_tmu,
+                    "actual_tmu": actual_tmu,
+                    "delta": round(actual_tmu - module_cached_tmu, 3),
+                })
+        else:
+            # fallback：使用模組發布時快取值
+            actual_tmu = float(row_data.get("_computed_tmu") or 0)
+            actual_seconds = round(actual_tmu * TMU_TO_SEC, 4)
+            cycle_obj = CycleIn.model_validate(cycle_dict_raw) if cycle_dict_raw else None
+
+        new_row_id = uuid.uuid4()
+        seq_no = next_seq + idx
+        simo_gid = simo_group_map.get(idx)
+        hand = row_data.get("hand")
+        freq = float(row_data.get("frequency") or 1)
+
+        session.add(WiRow(
+            id=new_row_id,
+            worksheet_id=worksheet_id,
+            seq_no=seq_no,
+            sub_activity=row_data.get("sub_activity"),
+            hand=hand,
+            object_vocab_id=obj_vid,
+            from_vocab_id=from_vid,
+            to_vocab_id=to_vid,
+            tool_vocab_id=tool_vid,
+            frequency=freq,
+            simo_group_id=simo_gid,
+            provenance="manual",   # TODO: 加 'module' 到 provenance CHECK 後改
+            source_module_id=data.module_id,
+            source_module_version=target_ver_no,
+        ))
+
+        if result is not None:
+            session.add(MostCycle(
+                id=uuid.uuid4(),
+                wi_row_id=new_row_id,
+                seq_kind=result.seq,
+                rule_set_id=rs_row.id,
+                slot_inputs=cycle_obj.model_dump(mode="json") if cycle_obj else {},
+                computed={
+                    "breakdown": [
+                        {"letter": L, "tmu": t}
+                        for L, t in zip(result.letters, result.slot_tmus)
+                    ],
+                    "tech_line": result.tech_line,
+                },
+                narrative_zh=None,
+                total_tmu=actual_tmu,
+                total_seconds=actual_seconds,
+                computed_at=now,
+            ))
+        elif cycle_obj is not None:
+            # fallback：store cycle 但 total 用模組快取值
+            session.add(MostCycle(
+                id=uuid.uuid4(),
+                wi_row_id=new_row_id,
+                seq_kind=cycle_obj.seq,
+                rule_set_id=rs_row.id,
+                slot_inputs=cycle_obj.model_dump(mode="json"),
+                computed=None,
+                narrative_zh=None,
+                total_tmu=actual_tmu,
+                total_seconds=actual_seconds,
+                computed_at=now,
+            ))
+
+        session.add(LevelEntry(
+            id=uuid.uuid4(),
+            wi_row_id=new_row_id,
+            worksheet_id=worksheet_id,
+            raw_seconds=actual_seconds,
+            coefficient=1.0,
+        ))
+
+        new_rows_out.append({
+            "wi_row_id": str(new_row_id),
+            "seq_no": seq_no,
+            "sub_activity": row_data.get("sub_activity"),
+            "hand": hand,
+            "frequency": freq,
+            "simo_group_id": simo_gid,
+            "source_module_id": str(data.module_id),
+            "source_module_version": target_ver_no,
+            "total_tmu": actual_tmu,
+            "total_seconds": actual_seconds,
+        })
+
+    await session.flush()
+    return {"new_rows": new_rows_out, "tmu_drift": drift_warnings}

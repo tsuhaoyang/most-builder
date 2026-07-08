@@ -13,6 +13,7 @@ from ddm_v2.models.v2.base import Base, TimestampMixin
 from ddm_v2.models.v2.bom import BomImport, BomItem
 from ddm_v2.models.v2.codes import CodePrefixRegistry
 from ddm_v2.models.v2.import_staging import ExcelImport, ImportProfile
+from ddm_v2.models.v2.motion_module import MotionModule, MotionModuleVersion
 from ddm_v2.models.v2.motion_template import MotionTemplate
 from ddm_v2.models.v2.org import Product, Site, Sku
 from ddm_v2.models.v2.rule_set import RuleSet
@@ -21,6 +22,7 @@ from ddm_v2.models.v2.rule_set_tables import (
     RuleBOption,
     RuleGAction,
     RuleIOption,
+    RuleMFootBand,
     RuleMHandBand,
     RuleMLadderBand,
     RuleMRotationBand,
@@ -57,6 +59,7 @@ __all__ = [
     "RulePBase",
     "RulePAddon",
     "RuleMLadderBand",
+    "RuleMFootBand",
     "RuleMVerb",
     "RuleMRotationBand",
     "RuleMHandBand",
@@ -67,6 +70,8 @@ __all__ = [
     "BomItem",
     "AuditLog",
     "AppUser",
+    "MotionModule",
+    "MotionModuleVersion",
     "MotionTemplate",
     "ExcelImport",
     "ImportProfile",

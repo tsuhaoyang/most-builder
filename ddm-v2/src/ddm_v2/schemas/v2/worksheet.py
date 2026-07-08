@@ -33,7 +33,8 @@ class WiRowSaveIn(BaseModel):
     to_vocab_id: uuid.UUID | None = None
     tool_vocab_id: uuid.UUID | None = None
     frequency: float = 1
-    simo_group_id: str | None = None
+    simo_group_id: str | None = None            # 儲存形式（群組）
+    simo_with_row_id: uuid.UUID | None = None   # 輸入形式（E5 配對，service 正規化為群組）
     narrative: str | None = None        # 敘述（前端合成；存 most_cycles.narrative_zh，供匯出 METHOD）
     cycle: CycleIn
     level: LevelFieldsIn = Field(default_factory=LevelFieldsIn)
@@ -41,6 +42,8 @@ class WiRowSaveIn(BaseModel):
 
 class WorksheetSaveIn(BaseModel):
     rows: list[WiRowSaveIn] = Field(default_factory=list)
+    # 工序表級寬放%（OQ-002）：選填；未帶＝不動既有值（加法相容），帶 null＝清除。
+    allowance_percent: float | None = Field(default=None, ge=0)
 
 
 class WorksheetReadOut(BaseModel):
@@ -48,3 +51,7 @@ class WorksheetReadOut(BaseModel):
     status: str
     rows: list[dict[str, Any]]
     total_tmu: float
+    # 時間投影（impl-02 §3）：normal＝引擎輸出；standard＝normal×(1+allowance%/100)，allowance 未設時為 null（OQ-002）。
+    normal_seconds: float
+    allowance_percent: float | None = None
+    standard_seconds: float | None = None

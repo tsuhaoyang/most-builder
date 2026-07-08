@@ -7,7 +7,7 @@ production 版（API 用）；演算法與 scripts/core_logic/level_system_valid
 from __future__ import annotations
 
 import re
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from typing import Any
 
 _LABEL_RE = re.compile(r"^(sub|cub)\d+$")
