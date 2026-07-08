@@ -31,8 +31,22 @@ class ModuleRowIn(BaseModel):
 class PublishRequest(BaseModel):
     """POST /motion-modules/{id}/publish body。"""
 
-    rows: list[ModuleRowIn] = Field(..., min_length=1)
+    # SM-2：max_length=100 防止惡意發布數千列導致引擎 OOM。
+    rows: list[ModuleRowIn] = Field(..., min_length=1, max_length=100)
     rule_set_id: uuid.UUID           # 發布當下使用的規則版本 ID
+
+
+# ── apply-back 請求（工序表同步回模組庫） ────────────────────────────
+class VersionFromRowsRequest(BaseModel):
+    """POST /motion-modules/{id}/versions/from-rows body。
+
+    語義（F-03b §3）：把已修改的 rows 同步回模組，建立新版本；
+    不改 module.status，讓使用者自行決定是否 promote。
+    """
+
+    # SM-2：同 publish 限制，防 OOM。
+    rows: list[ModuleRowIn] = Field(..., min_length=1, max_length=100)
+    rule_set_id: uuid.UUID           # 驗算使用的規則版本 ID
 
 
 # ── 實體化請求（工序表 from-module）───────────────────────────────────
@@ -56,13 +70,16 @@ class MotionModuleCreate(BaseModel):
 
 
 class MotionModuleUpdate(BaseModel):
-    """PUT /motion-modules/{id} body（全選填，只送想改的欄位）。"""
+    """PUT /motion-modules/{id} body（全選填，只送想改的欄位）。
+
+    SM-4：owner 欄位已移除，不允許呼叫方重新指派 owner；
+    owner 在 create 時由 service 設定，之後不可更改。
+    """
 
     name_zh: str | None = Field(None, min_length=1, max_length=200)
     category: str | None = None
     keywords: list[str] | None = None
     scope: Literal["personal", "site", "global"] | None = None
-    owner: str | None = None
     site_id: uuid.UUID | None = None
 
 

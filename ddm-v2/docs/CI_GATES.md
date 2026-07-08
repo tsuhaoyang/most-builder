@@ -31,6 +31,7 @@
 | **Worksheet repeat/覆寫（E4/E7）** | repeat+manual_override 經 CycleIn 存→讀回：`slot_inputs` 原樣保留、TMU 乘算/覆寫正確、tech_line 含 `M48`/`G10*`、narrative 含 `×3`；repeat=0 存檔 422 | `tests/integration/test_worksheet_v2_engine.py` |
 | **匯出** | wi-preview / excel(openpyxl) / lb-csv / lb-api | `tests/integration/test_export.py` |
 | **匯入** | upload→map(正規化/警告/分秒) / profile；RBAC；openpyxl | `tests/integration/test_import.py` |
+| **Motion Modules（impl-04）** | create→get；SM-1 IDOR；SM-2 max rows；SM-3 scope escalation；SM-4 owner immutable；SM-5 publish guard；SM-6 reorder RBAC；SM-7 apply-back version increment；DELETE happy+409；clone；instantiate | `tests/integration/test_motion_modules.py` |
 | 前端（全分頁） | 載入/身分/分頁渲染/匯入精靈 | `src/frontend/e2e/smoke.spec.ts` |
 | 依賴完整性 | `create_app()` 乾淨 import；端點測試抓 lazy import | CI「乾淨 import」step + 上列各端點測試 |
 

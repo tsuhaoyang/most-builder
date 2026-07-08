@@ -1,14 +1,18 @@
 """motion_modules API 路由（impl-04）。
 
 路由清單：
-  GET    /api/v2/motion-modules                     列表+關鍵字搜尋
-  POST   /api/v2/motion-modules                     建立模組（draft）
-  GET    /api/v2/motion-modules/{id}                取模組詳情（含 current version）
-  PUT    /api/v2/motion-modules/{id}                改 metadata（限 draft）
-  POST   /api/v2/motion-modules/{id}/publish        發布新版本
-  POST   /api/v2/motion-modules/{id}/promote        升格（personal→site/global）[501 placeholder]
-  GET    /api/v2/motion-modules/{id}/versions       版本歷史
-  POST   /api/v2/worksheets/{wid}/rows/from-module  實體化至工序表
+  GET    /api/v2/motion-modules                          列表+關鍵字搜尋
+  POST   /api/v2/motion-modules                          建立模組（draft）
+  GET    /api/v2/motion-modules/{id}                     取模組詳情（含 current version）
+  PUT    /api/v2/motion-modules/{id}                     改 metadata（限 draft）
+  DELETE /api/v2/motion-modules/{id}                     刪除模組
+  POST   /api/v2/motion-modules/{id}/clone               複製模組
+  POST   /api/v2/motion-modules/{id}/publish             發布新版本
+  POST   /api/v2/motion-modules/{id}/versions/from-rows  apply-back（工序表同步回模組庫）
+  POST   /api/v2/motion-modules/{id}/promote             升格（personal→site/global）[501 placeholder]
+  GET    /api/v2/motion-modules/{id}/versions            版本歷史
+  PUT    /api/v2/motion-modules/reorder                  排序（IE 以上）
+  POST   /api/v2/worksheets/{wid}/rows/from-module       實體化至工序表
 """
 from __future__ import annotations
 
@@ -29,6 +33,7 @@ from ddm_v2.schemas.v2.motion_module import (
     MotionModuleVersionResponse,
     PublishRequest,
     ReorderRequest,
+    VersionFromRowsRequest,
 )
 from ddm_v2.services.v2 import motion_module_service as svc
 
@@ -56,7 +61,10 @@ async def create_module(
     session: AsyncSession = Depends(get_db_session),
     user: CurrentUser = Depends(require_role("IE")),
 ) -> MotionModuleResponse:
-    return await svc.create_module(session, payload, user.employee_no)
+    try:
+        return await svc.create_module(session, payload, user.employee_no, user.level)
+    except svc.ScopePermissionError as e:
+        raise HTTPException(status_code=403, detail=str(e))
 
 
 # ── 取詳情 ───────────────────────────────────────────────────────────
@@ -65,10 +73,11 @@ async def create_module(
 async def get_module(
     module_id: uuid.UUID,
     session: AsyncSession = Depends(get_db_session),
-    _: CurrentUser = Depends(current_user),
+    user: CurrentUser = Depends(current_user),
 ) -> MotionModuleResponse:
     try:
-        return await svc.get_module(session, module_id)
+        # SM-1：傳入 user.employee_no 供 service 進行 personal scope 能見度檢查
+        return await svc.get_module(session, module_id, user.employee_no)
     except svc.ModuleNotFound:
         raise HTTPException(status_code=404, detail=f"模組不存在：{module_id}")
 
@@ -79,7 +88,8 @@ async def get_module(
 @router.put("/motion-modules/reorder", status_code=200)
 async def reorder_modules(
     payload: ReorderRequest,
-    _: CurrentUser = Depends(current_user),
+    # SM-6：reorder 需要 IE 以上角色（修改 module 顯示順序屬 IE 工作域）。
+    _: CurrentUser = Depends(require_role("IE")),
 ) -> dict:
     # TODO: motion_modules 尚無 seq_no 欄位；前端在 local state 管理顯示順序。
     # 待 seq_no 欄位加入後，在此持久化 ordered_ids 對應的新順序。
@@ -96,7 +106,8 @@ async def update_module(
     user: CurrentUser = Depends(require_role("IE")),
 ) -> MotionModuleResponse:
     try:
-        return await svc.update_module(session, module_id, payload, user.employee_no)
+        # SM-3：傳入 user.level 供 service 進行 scope escalation 檢查
+        return await svc.update_module(session, module_id, payload, user.employee_no, user.level)
     except svc.ModuleNotFound:
         raise HTTPException(status_code=404, detail=f"模組不存在：{module_id}")
     except svc.ModuleNotEditable as e:
@@ -160,6 +171,49 @@ async def publish_version(
         raise HTTPException(status_code=404, detail=f"模組不存在：{module_id}")
     except svc.ModuleNotEditable as e:
         raise HTTPException(status_code=409, detail=str(e))
+    except svc.ScopePermissionError as e:
+        # SM-5：publish 時的 ownership guard → 403
+        raise HTTPException(status_code=403, detail=str(e))
+    except svc.RuleSetNotFound as e:
+        raise HTTPException(status_code=404, detail=f"rule-set 不存在：{e}")
+    except svc.PublishValidationError as e:
+        raise HTTPException(
+            status_code=422,
+            detail={
+                "code": e.code,
+                "row_index": e.row_index,
+                "message": e.message,
+            },
+        )
+    except SequenceError as e:
+        raise HTTPException(
+            status_code=422,
+            detail={"code": e.code, "message": str(e)},
+        )
+
+
+# ── apply-back：從工序表列同步回模組庫（SM-7）────────────────────────
+
+@router.post(
+    "/motion-modules/{module_id}/versions/from-rows",
+    response_model=MotionModuleVersionResponse,
+    status_code=201,
+)
+async def create_version_from_rows(
+    module_id: uuid.UUID,
+    payload: VersionFromRowsRequest,
+    session: AsyncSession = Depends(get_db_session),
+    user: CurrentUser = Depends(require_role("IE")),
+) -> MotionModuleVersionResponse:
+    """apply-back：把已修改的 rows 同步回模組，建立新版本（F-03b §3）。"""
+    try:
+        return await svc.create_version_from_rows(session, module_id, payload, user.employee_no)
+    except svc.ModuleNotFound:
+        raise HTTPException(status_code=404, detail=f"模組不存在：{module_id}")
+    except svc.ModuleNotEditable as e:
+        raise HTTPException(status_code=409, detail=str(e))
+    except svc.ScopePermissionError as e:
+        raise HTTPException(status_code=403, detail=str(e))
     except svc.RuleSetNotFound as e:
         raise HTTPException(status_code=404, detail=f"rule-set 不存在：{e}")
     except svc.PublishValidationError as e:
@@ -200,10 +254,11 @@ async def promote_module(
 async def get_versions(
     module_id: uuid.UUID,
     session: AsyncSession = Depends(get_db_session),
-    _: CurrentUser = Depends(current_user),
+    user: CurrentUser = Depends(current_user),
 ) -> list[MotionModuleVersionResponse]:
     try:
-        return await svc.get_versions(session, module_id)
+        # SM-1 gap fix：傳入 user.employee_no 供 service 進行 personal scope 能見度檢查
+        return await svc.get_versions(session, module_id, user.employee_no)
     except svc.ModuleNotFound:
         raise HTTPException(status_code=404, detail=f"模組不存在：{module_id}")
 

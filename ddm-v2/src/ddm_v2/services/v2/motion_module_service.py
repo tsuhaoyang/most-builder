@@ -16,6 +16,7 @@ from typing import Any
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from ddm_v2.auth.deps import ROLE_ORDER
 from ddm_v2.models.v2.motion_module import MotionModule, MotionModuleVersion
 from ddm_v2.models.v2.rule_set import RuleSet
 from ddm_v2.models.v2.worksheet import LevelEntry, MostCycle, MostWorksheet, ProcessVersion, WiRow
@@ -29,7 +30,11 @@ from ddm_v2.schemas.v2.motion_module import (
     MotionModuleUpdate,
     MotionModuleVersionResponse,
     PublishRequest,
+    VersionFromRowsRequest,
 )
+
+# SM-3：最低 manager 層級，從 ROLE_ORDER 取值（Fix-3：消除魔術常數）。
+_MANAGER_LEVEL = ROLE_ORDER["manager"]
 
 # ── domain exceptions ────────────────────────────────────────────────
 
@@ -139,8 +144,16 @@ async def create_module(
     session: AsyncSession,
     data: MotionModuleCreate,
     current_user_no: str,
+    current_user_level: int = 0,
 ) -> MotionModuleResponse:
-    """建立 draft 模組（scope=personal 時自動填 owner）。"""
+    """建立 draft 模組（scope=personal 時自動填 owner）。
+
+    SM-3：只有 manager/admin 可建立 scope=site/global 模組。
+    """
+    # SM-3：scope escalation guard
+    if data.scope in ("site", "global") and current_user_level < _MANAGER_LEVEL:
+        raise ScopePermissionError("只有 manager/admin 可建立 site/global scope 模組")
+
     owner = data.owner
     if data.scope == "personal":
         owner = owner or current_user_no  # 個人草稿歸屬呼叫者
@@ -167,11 +180,19 @@ async def create_module(
 async def get_module(
     session: AsyncSession,
     module_id: uuid.UUID,
+    current_user_no: str,
 ) -> MotionModuleResponse:
-    """取得模組（含 current_version 內容）。"""
+    """取得模組（含 current_version 內容）。
+
+    SM-1：personal scope 的模組只有 owner 可見；
+    對他人不可見的模組回 404（不洩漏存在性，IDOR 防護）。
+    """
     m = await session.get(MotionModule, module_id)
     if m is None:
         raise ModuleNotFound(str(module_id))
+    # SM-1：personal scope 隔離
+    if m.scope == "personal" and m.owner != current_user_no:
+        raise ModuleNotFound(str(module_id))  # 404 not 403，避免洩漏存在性
     version: MotionModuleVersion | None = None
     if m.current_version > 0:
         res = await session.execute(
@@ -227,8 +248,13 @@ async def update_module(
     module_id: uuid.UUID,
     data: MotionModuleUpdate,
     current_user_no: str,
+    current_user_level: int = 0,
 ) -> MotionModuleResponse:
-    """更新模組 metadata（僅 draft 可改）。"""
+    """更新模組 metadata（僅 draft 可改）。
+
+    SM-3：scope 升格至 site/global 需要 manager/admin 角色。
+    SM-4：owner 欄位已從 MotionModuleUpdate schema 移除，不允許重新指派。
+    """
     m = await session.get(MotionModule, module_id)
     if m is None:
         raise ModuleNotFound(str(module_id))
@@ -237,6 +263,9 @@ async def update_module(
     # personal scope 隔離
     if m.scope == "personal" and m.owner != current_user_no:
         raise ScopePermissionError("無法修改他人的 personal 模組")
+    # SM-3：scope escalation guard
+    if data.scope in ("site", "global") and current_user_level < _MANAGER_LEVEL:
+        raise ScopePermissionError("只有 manager/admin 可將模組設為 site/global scope")
 
     if data.name_zh is not None:
         m.name_zh = data.name_zh
@@ -246,8 +275,7 @@ async def update_module(
         m.keywords = list(data.keywords)
     if data.scope is not None:
         m.scope = data.scope
-    if data.owner is not None:
-        m.owner = data.owner
+    # SM-4：owner 欄位已從 MotionModuleUpdate 移除，此處不更新 owner。
     if data.site_id is not None:
         m.site_id = data.site_id
     m.updated_at = datetime.now(timezone.utc)
@@ -298,6 +326,9 @@ async def clone_module(
     """
     m = await session.get(MotionModule, module_id)
     if m is None:
+        raise ModuleNotFound(str(module_id))
+    # SM-1 gap fix：clone 也要隱藏他人的 personal module（不洩漏存在性）
+    if m.scope == "personal" and m.owner != current_user_no:
         raise ModuleNotFound(str(module_id))
 
     # 取來源最新版本（若有）
@@ -371,9 +402,15 @@ async def publish_version(
     if not data.rows:
         raise PublishValidationError(0, "EMPTY_ROWS", "rows 不可為空")
 
-    m = await session.get(MotionModule, module_id)
+    module_row = await session.execute(
+        select(MotionModule).where(MotionModule.id == module_id).with_for_update()
+    )
+    m = module_row.scalar_one_or_none()
     if m is None:
         raise ModuleNotFound(str(module_id))
+    # SM-5：ownership guard — personal 模組只有 owner 可發布新版本
+    if m.scope == "personal" and m.owner != current_user_no:
+        raise ScopePermissionError("只能發布自己的 personal 模組")
     if m.status == "retired":
         raise ModuleNotEditable("module status=retired 不可發布新版本")
 
@@ -438,16 +475,113 @@ async def publish_version(
     return _version_to_response(ver)
 
 
+# ── apply-back：從 rows 建立新版本（F-03b §3）────────────────────────
+
+async def create_version_from_rows(
+    session: AsyncSession,
+    module_id: uuid.UUID,
+    data: VersionFromRowsRequest,
+    current_user_no: str,
+) -> MotionModuleVersionResponse:
+    """把 rows 同步回模組，建立新版本（apply-back）。
+
+    語義（F-03b §3）：使用者在 ProcessWorkspace 修改 worksheet rows 後，
+    想把修改同步回 module library；建立新 MotionModuleVersion，
+    不改 module.status（讓使用者自行決定是否 promote）。
+
+    與 publish_version 的差異：
+    - personal 模組必須是 owner 才能 apply-back。
+    - 用途是 workspace 內的「快速同步」，不等同正式發布流程。
+    """
+    module_row = await session.execute(
+        select(MotionModule).where(MotionModule.id == module_id).with_for_update()
+    )
+    m = module_row.scalar_one_or_none()
+    if m is None:
+        raise ModuleNotFound(str(module_id))
+    # ownership guard：personal 模組只有 owner 可 apply-back
+    if m.scope == "personal" and m.owner != current_user_no:
+        raise ScopePermissionError("只能 apply-back 自己的 personal 模組")
+    if m.status == "retired":
+        raise ModuleNotEditable("module status=retired 不可建立新版本")
+
+    # 載入 rule set
+    rs_row = (await session.execute(
+        select(RuleSet).where(RuleSet.id == data.rule_set_id)
+    )).scalar_one_or_none()
+    if rs_row is None:
+        raise RuleSetNotFound(str(data.rule_set_id))
+    rsdata = await load_rule_set_from_db(session, rs_row.code)
+
+    # 驗算每列 cycle + 算 tmu（與 publish_version 相同邏輯）
+    validated_rows: list[dict[str, Any]] = []
+    total_tmu = 0.0
+
+    for idx, row in enumerate(data.rows):
+        try:
+            engine_cycle = cycle_in_to_engine(row.cycle)
+            result = compute_cycle(engine_cycle, rsdata)
+        except SequenceError as e:
+            raise PublishValidationError(idx, e.code, str(e)) from e
+
+        row_tmu = result.total_tmu * row.frequency
+        total_tmu += row_tmu
+
+        validated_rows.append({
+            "sub_activity": row.sub_activity,
+            "hand": row.hand,
+            "frequency": row.frequency,
+            "simo_pair_index": row.simo_pair_index,
+            "vocab_refs": row.vocab_refs,
+            "cycle": row.cycle.model_dump(mode="json"),
+            "_computed_tmu": result.total_tmu,
+        })
+
+    total_tmu = round(total_tmu, 3)
+    total_seconds = round(total_tmu * TMU_TO_SEC, 4)
+
+    new_version_no = m.current_version + 1
+    now = datetime.now(timezone.utc)
+
+    ver = MotionModuleVersion(
+        id=uuid.uuid4(),
+        module_id=module_id,
+        version_no=new_version_no,
+        rule_set_id=data.rule_set_id,
+        rows=validated_rows,
+        narrative_zh=None,
+        total_tmu=total_tmu,
+        total_seconds=total_seconds,
+        published_by=current_user_no,
+        published_at=now,
+    )
+    session.add(ver)
+
+    m.current_version = new_version_no
+    m.updated_at = now
+    await session.flush()
+
+    return _version_to_response(ver)
+
+
 # ── 版本歷史 ─────────────────────────────────────────────────────────
 
 async def get_versions(
     session: AsyncSession,
     module_id: uuid.UUID,
+    current_user_no: str,
 ) -> list[MotionModuleVersionResponse]:
-    """列出模組所有歷史版本。"""
+    """列出模組所有歷史版本。
+
+    SM-1 gap fix：personal scope 的模組只有 owner 可見版本歷史；
+    對他人不可見的模組回 404（不洩漏存在性）。
+    """
     m = await session.get(MotionModule, module_id)
     if m is None:
         raise ModuleNotFound(str(module_id))
+    # SM-1 gap fix：personal scope 隔離
+    if m.scope == "personal" and m.owner != current_user_no:
+        raise ModuleNotFound(str(module_id))  # 404 不洩漏存在性
 
     result = await session.execute(
         select(MotionModuleVersion)
