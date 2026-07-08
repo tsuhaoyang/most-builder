@@ -14,3 +14,4 @@ __pycache__/
 ddm-v2/data/
 # 大型參考二進位（不納版）
 ddm-v2/docs/*.pdf
+ddm-v3/

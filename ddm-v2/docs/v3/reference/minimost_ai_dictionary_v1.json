@@ -1,0 +1,1352 @@
+{
+  "metadata": {
+    "name": "MiniMOST AI Dictionary",
+    "version": "1.0",
+    "language": "zh-TW",
+    "seconds_per_tmu": 0.036,
+    "created_at": "2026-06-25T08:08:19",
+    "purpose": "Machine-readable dictionary for Vue/FastAPI MiniMOST workbench and AI code generation.",
+    "notes": [
+      "All Simplified Chinese terms provided by the user were normalized to Traditional Chinese.",
+      "I parameter: duplicated normal-vision wording in the source was normalized into outside-vision variants for the 24/32 TMU rows.",
+      "Unselected optional controls use default_tmu = 0 where explicitly confirmed for M; A optional controls also include default_none to support max logic safely."
+    ]
+  },
+  "sequence_models": [
+    {
+      "code": "GENERAL_MOVE",
+      "name_zh": "一般移動",
+      "slots": [
+        "A1",
+        "B1",
+        "G",
+        "A2",
+        "B2",
+        "P",
+        "A3"
+      ],
+      "sequence": "A B G A B P A"
+    },
+    {
+      "code": "CONTROLLED_MOVE",
+      "name_zh": "控制移動",
+      "slots": [
+        "A1",
+        "B1",
+        "G",
+        "M",
+        "X",
+        "I",
+        "A2"
+      ],
+      "sequence": "A B G M X I A"
+    }
+  ],
+  "slot_definitions": {
+    "A1": {
+      "parameter": "A",
+      "name_zh": "距離(A)-取得",
+      "ui_type": "modal_group",
+      "calculation": "max(reach_distance_tmu, hand_degree_tmu, foot_step_tmu)"
+    },
+    "A2": {
+      "parameter": "A",
+      "name_zh": "距離(A)-移動",
+      "ui_type": "modal_group",
+      "calculation": "max(reach_distance_tmu, hand_degree_tmu, foot_step_tmu)"
+    },
+    "A3": {
+      "parameter": "A",
+      "name_zh": "距離(A)-返回",
+      "ui_type": "select",
+      "calculation": "selected_reach_distance_tmu"
+    },
+    "B1": {
+      "parameter": "B",
+      "name_zh": "身體動作(B)-取得時",
+      "ui_type": "select",
+      "calculation": "selected_option_tmu"
+    },
+    "B2": {
+      "parameter": "B",
+      "name_zh": "身體動作(B)-移動時",
+      "ui_type": "select",
+      "calculation": "selected_option_tmu"
+    },
+    "G": {
+      "parameter": "G",
+      "name_zh": "取得控制(G)",
+      "ui_type": "select",
+      "calculation": "selected_option_tmu"
+    },
+    "P": {
+      "parameter": "P",
+      "name_zh": "放置(P)",
+      "ui_type": "modal_group",
+      "calculation": "base_tmu + sum(selected_modifier_tmu)"
+    },
+    "M": {
+      "parameter": "M",
+      "name_zh": "控制移動(M)",
+      "ui_type": "modal_group",
+      "calculation": "max(verb_tmu, hand_degree_tmu, foot_step_tmu)"
+    },
+    "X": {
+      "parameter": "X",
+      "name_zh": "製程時間(X)",
+      "ui_type": "select_with_optional_seconds_input",
+      "calculation": "fixed_seconds/0.036 or user_input_seconds/0.036"
+    },
+    "I": {
+      "parameter": "I",
+      "name_zh": "對位/檢查(I)",
+      "ui_type": "select",
+      "calculation": "selected_option_tmu"
+    }
+  },
+  "parameters": {
+    "A": {
+      "display_name_zh": "距離(A)",
+      "applies_to_slots": [
+        "A1",
+        "A2",
+        "A3"
+      ],
+      "sentence_rule": "A generally contributes movement context; MI text can use slot label plus selected range if needed.",
+      "controls": {
+        "reach_distance": {
+          "required": true,
+          "default_tmu": null,
+          "options": [
+            {
+              "option_code": "A_REACH_LE_1_2_5CM",
+              "display_text_zh": "<=1(2.5)",
+              "condition_zh": "<=2.5cm",
+              "tmu_value": 0
+            },
+            {
+              "option_code": "A_REACH_LE_2_5CM",
+              "display_text_zh": "<=2(5)",
+              "condition_zh": "<=5cm",
+              "tmu_value": 1
+            },
+            {
+              "option_code": "A_REACH_LE_4_10CM",
+              "display_text_zh": "<=4(10)",
+              "condition_zh": "<=10cm",
+              "tmu_value": 3
+            },
+            {
+              "option_code": "A_REACH_LE_8_20CM",
+              "display_text_zh": "<=8(20)",
+              "condition_zh": "<=20cm",
+              "tmu_value": 6
+            },
+            {
+              "option_code": "A_REACH_LE_14_35CM",
+              "display_text_zh": "<=14(35)",
+              "condition_zh": "<=35cm",
+              "tmu_value": 10
+            },
+            {
+              "option_code": "A_REACH_LE_24_60CM",
+              "display_text_zh": "<=24(60)",
+              "condition_zh": "<=60cm",
+              "tmu_value": 16
+            },
+            {
+              "option_code": "A_REACH_GT_24_60CM",
+              "display_text_zh": ">24(60)",
+              "condition_zh": ">60cm",
+              "tmu_value": 24
+            }
+          ]
+        },
+        "hand_degree": {
+          "required": false,
+          "default_tmu": 0,
+          "options": [
+            {
+              "option_code": "A_HAND_LE_30",
+              "display_text_zh": "<=30",
+              "condition_zh": "<=30°",
+              "tmu_value": 0
+            },
+            {
+              "option_code": "A_HAND_LE_60",
+              "display_text_zh": "<=60",
+              "condition_zh": "<=60°",
+              "tmu_value": 1
+            },
+            {
+              "option_code": "A_HAND_LE_120",
+              "display_text_zh": "<=120",
+              "condition_zh": "<=120°",
+              "tmu_value": 3
+            },
+            {
+              "option_code": "A_HAND_LE_180",
+              "display_text_zh": "<=180",
+              "condition_zh": "<=180°",
+              "tmu_value": 6
+            }
+          ]
+        },
+        "foot_step": {
+          "required": false,
+          "default_tmu": 0,
+          "options": [
+            {
+              "option_code": "A_STEP_LE_8_20CM",
+              "display_text_zh": "<=8(20)",
+              "condition_zh": "<=20cm",
+              "tmu_value": 6
+            },
+            {
+              "option_code": "A_STEP_LE_12_30CM",
+              "display_text_zh": "<=12(30)",
+              "condition_zh": "<=30cm",
+              "tmu_value": 10
+            },
+            {
+              "option_code": "A_STEP_LE_18_45CM_1STEP",
+              "display_text_zh": "<=18(45)1步",
+              "condition_zh": "<=45cm / 1步",
+              "tmu_value": 16
+            },
+            {
+              "option_code": "A_STEP_LE_26_65CM",
+              "display_text_zh": "<=26(65)",
+              "condition_zh": "<=65cm",
+              "tmu_value": 24
+            },
+            {
+              "option_code": "A_STEP_GT_26_65CM_2STEP",
+              "display_text_zh": ">26(65)2步",
+              "condition_zh": ">65cm / 2步",
+              "tmu_value": 32
+            }
+          ]
+        }
+      },
+      "rules": [
+        {
+          "rule_code": "A1_MODAL_MAX",
+          "target_slot": "A1",
+          "expression": "max(reach_distance_tmu, hand_degree_tmu, foot_step_tmu)"
+        },
+        {
+          "rule_code": "A2_MODAL_MAX",
+          "target_slot": "A2",
+          "expression": "max(reach_distance_tmu, hand_degree_tmu, foot_step_tmu)"
+        },
+        {
+          "rule_code": "A3_DIRECT_REACH",
+          "target_slot": "A3",
+          "expression": "selected_reach_distance_tmu"
+        }
+      ]
+    },
+    "B": {
+      "display_name_zh": "身體動作(B)",
+      "applies_to_slots": [
+        "B1",
+        "B2"
+      ],
+      "ui_type": "select",
+      "selection": {
+        "type": "single",
+        "allow_none": false
+      },
+      "options": [
+        {
+          "option_code": "B_EYE_MOVE",
+          "display_text_zh": "眼部動作",
+          "sentence_text_zh": "眼部動作",
+          "helper_text_zh": "",
+          "tmu_value": 10
+        },
+        {
+          "option_code": "B_BEND_OR_SIT",
+          "display_text_zh": "起身或彎腰/坐",
+          "sentence_text_zh": "起身或彎腰/坐",
+          "helper_text_zh": "",
+          "tmu_value": 32
+        },
+        {
+          "option_code": "B_STAND",
+          "display_text_zh": "站",
+          "sentence_text_zh": "站",
+          "helper_text_zh": "",
+          "tmu_value": 42
+        }
+      ],
+      "rules": [
+        {
+          "rule_code": "B_SINGLE_SELECT",
+          "expression": "selected_option_tmu"
+        }
+      ]
+    },
+    "G": {
+      "display_name_zh": "取得控制(G)",
+      "applies_to_slots": [
+        "G"
+      ],
+      "ui_type": "select",
+      "selection": {
+        "type": "single"
+      },
+      "display_rule": "display_text_zh shown in UI; sentence_text_zh used in MI; helper_text_zh is visual helper only.",
+      "options": [
+        {
+          "option_code": "G_LIGHT_PRESS",
+          "display_text_zh": "輕按",
+          "sentence_text_zh": "輕按",
+          "helper_text_zh": "",
+          "tmu_value": 3
+        },
+        {
+          "option_code": "G_TOUCH",
+          "display_text_zh": "接觸",
+          "sentence_text_zh": "接觸",
+          "helper_text_zh": "",
+          "tmu_value": 3
+        },
+        {
+          "option_code": "G_LIGHT_TAP",
+          "display_text_zh": "輕拍",
+          "sentence_text_zh": "輕拍",
+          "helper_text_zh": "",
+          "tmu_value": 3
+        },
+        {
+          "option_code": "G_GRASP",
+          "display_text_zh": "抓握",
+          "sentence_text_zh": "抓握",
+          "helper_text_zh": "",
+          "tmu_value": 6
+        },
+        {
+          "option_code": "G_PICK",
+          "display_text_zh": "抓取",
+          "sentence_text_zh": "抓取",
+          "helper_text_zh": "",
+          "tmu_value": 6
+        },
+        {
+          "option_code": "G_REGRASP",
+          "display_text_zh": "重新抓握",
+          "sentence_text_zh": "重新抓握",
+          "helper_text_zh": "",
+          "tmu_value": 6
+        },
+        {
+          "option_code": "G_TRANSFER_HAND",
+          "display_text_zh": "換手(轉移)",
+          "sentence_text_zh": "換手",
+          "helper_text_zh": "轉移",
+          "tmu_value": 10
+        },
+        {
+          "option_code": "G_SELECT",
+          "display_text_zh": "拿取(選取)",
+          "sentence_text_zh": "拿取",
+          "helper_text_zh": "選取",
+          "tmu_value": 10
+        },
+        {
+          "option_code": "G_SELECT_SMALL",
+          "display_text_zh": "拿取(選取-小)",
+          "sentence_text_zh": "拿取",
+          "helper_text_zh": "選取-小",
+          "tmu_value": 16
+        },
+        {
+          "option_code": "G_SEPARATE",
+          "display_text_zh": "拔出(分離)",
+          "sentence_text_zh": "拔出",
+          "helper_text_zh": "分離",
+          "tmu_value": 16
+        },
+        {
+          "option_code": "G_COLLECT",
+          "display_text_zh": "拿取(收集)",
+          "sentence_text_zh": "拿取",
+          "helper_text_zh": "收集",
+          "tmu_value": 24
+        }
+      ],
+      "rules": [
+        {
+          "rule_code": "G_SINGLE_SELECT",
+          "expression": "selected_option_tmu"
+        }
+      ]
+    },
+    "P": {
+      "display_name_zh": "放置(P)",
+      "applies_to_slots": [
+        "P"
+      ],
+      "ui_type": "modal_group",
+      "selection": {
+        "base_action": {
+          "type": "single",
+          "required": true
+        },
+        "modifiers": {
+          "type": "multi",
+          "max_selected": 2,
+          "mutually_exclusive": [
+            [
+              "P_INSERT",
+              "P_SNAP_FIT"
+            ]
+          ]
+        }
+      },
+      "base_actions": [
+        {
+          "option_code": "P_THROW",
+          "display_text_zh": "丟",
+          "sentence_text_zh": "丟",
+          "helper_text_zh": "",
+          "tmu_value": 3
+        },
+        {
+          "option_code": "P_HOLD",
+          "display_text_zh": "保持住",
+          "sentence_text_zh": "保持住",
+          "helper_text_zh": "",
+          "tmu_value": 3
+        },
+        {
+          "option_code": "P_PLACE_NO_DIRECTION",
+          "display_text_zh": "放(無方向)",
+          "sentence_text_zh": "放",
+          "helper_text_zh": "無方向",
+          "tmu_value": 6
+        },
+        {
+          "option_code": "P_PLACE_MULTI_DIRECTION",
+          "display_text_zh": "放(多種方向)",
+          "sentence_text_zh": "放",
+          "helper_text_zh": "多種方向",
+          "tmu_value": 10
+        },
+        {
+          "option_code": "P_PLACE_ONE_DIRECTION",
+          "display_text_zh": "放(一種方向)",
+          "sentence_text_zh": "放",
+          "helper_text_zh": "一種方向",
+          "tmu_value": 16
+        },
+        {
+          "option_code": "P_ASSEMBLE_MULTI_DIRECTION",
+          "display_text_zh": "組(多種方向)",
+          "sentence_text_zh": "組",
+          "helper_text_zh": "多種方向",
+          "tmu_value": 10
+        },
+        {
+          "option_code": "P_ASSEMBLE_ONE_DIRECTION",
+          "display_text_zh": "組(一種方向)",
+          "sentence_text_zh": "組",
+          "helper_text_zh": "一種方向",
+          "tmu_value": 16
+        }
+      ],
+      "modifiers": [
+        {
+          "option_code": "P_ALIGN_LT_4MM",
+          "display_text_zh": "對準(精度<4mm)",
+          "sentence_text_zh": "對準",
+          "helper_text_zh": "精度<4mm",
+          "tmu_value": 8,
+          "display_rule": "prefix_visible_term"
+        },
+        {
+          "option_code": "P_INSERT",
+          "display_text_zh": "插入",
+          "sentence_text_zh": "插入",
+          "helper_text_zh": "",
+          "tmu_value": 8,
+          "display_rule": "show_self"
+        },
+        {
+          "option_code": "P_DIFFICULT_HANDLE",
+          "display_text_zh": "較難處理",
+          "sentence_text_zh": "",
+          "helper_text_zh": "",
+          "tmu_value": 8,
+          "display_rule": "hidden"
+        },
+        {
+          "option_code": "P_SNAP_FIT",
+          "display_text_zh": "卡合",
+          "sentence_text_zh": "卡合",
+          "helper_text_zh": "",
+          "tmu_value": 16,
+          "display_rule": "show_self"
+        },
+        {
+          "option_code": "P_APPLY_PRESSURE",
+          "display_text_zh": "施加壓力",
+          "sentence_text_zh": "",
+          "helper_text_zh": "",
+          "tmu_value": 16,
+          "display_rule": "hidden"
+        }
+      ],
+      "sentence_algorithm": [
+        "Start from base_action.sentence_text_zh.",
+        "If P_INSERT selected, visible_term becomes '插入'.",
+        "If P_SNAP_FIT selected, visible_term becomes '卡合'.",
+        "If P_ALIGN_LT_4MM selected, prefix '對準' before visible_term.",
+        "P_DIFFICULT_HANDLE and P_APPLY_PRESSURE add TMU only and do not display.",
+        "P_INSERT and P_SNAP_FIT cannot both be selected."
+      ],
+      "rules": [
+        {
+          "rule_code": "P_BASE_PLUS_MODIFIERS",
+          "expression": "base_tmu + sum(selected_modifier_tmu)"
+        },
+        {
+          "rule_code": "P_MODIFIER_MAX_2",
+          "expression": "count(selected_modifiers) <= 2"
+        },
+        {
+          "rule_code": "P_INSERT_SNAPFIT_MUTEX",
+          "expression": "not (P_INSERT and P_SNAP_FIT)"
+        }
+      ],
+      "examples": [
+        {
+          "selected": [
+            "P_ASSEMBLE_ONE_DIRECTION",
+            "P_ALIGN_LT_4MM",
+            "P_DIFFICULT_HANDLE"
+          ],
+          "tmu": 32,
+          "mi_text": "對準組"
+        },
+        {
+          "selected": [
+            "P_PLACE_ONE_DIRECTION",
+            "P_ALIGN_LT_4MM",
+            "P_INSERT"
+          ],
+          "tmu": 32,
+          "mi_text": "對準插入"
+        },
+        {
+          "selected": [
+            "P_PLACE_ONE_DIRECTION",
+            "P_ALIGN_LT_4MM",
+            "P_SNAP_FIT"
+          ],
+          "tmu": 40,
+          "mi_text": "對準卡合"
+        }
+      ]
+    },
+    "M": {
+      "display_name_zh": "控制移動(M)",
+      "applies_to_slots": [
+        "M"
+      ],
+      "ui_type": "modal_group",
+      "controls": {
+        "verb": {
+          "required": true,
+          "options": [
+            {
+              "option_code": "M_PRESS_BUTTON",
+              "display_text_zh": "按動按鈕",
+              "sentence_text_zh": "按動按鈕",
+              "helper_text_zh": "",
+              "input_type": "fixed_tmu",
+              "tmu_value": 3
+            },
+            {
+              "option_code": "M_SLIDE_OUT_SCREW",
+              "display_text_zh": "滑出螺絲",
+              "sentence_text_zh": "滑出螺絲",
+              "helper_text_zh": "",
+              "input_type": "fixed_tmu",
+              "tmu_value": 3
+            },
+            {
+              "option_code": "M_理_LE_1_2_5CM",
+              "display_text_zh": "理(<=1(2.5))",
+              "sentence_text_zh": "理",
+              "helper_text_zh": "<=1(2.5)",
+              "condition_zh": "<=2.5cm",
+              "input_type": "distance_range",
+              "tmu_value": 3
+            },
+            {
+              "option_code": "M_理_LE_4_10CM",
+              "display_text_zh": "理(<=4(10))",
+              "sentence_text_zh": "理",
+              "helper_text_zh": "<=4(10)",
+              "condition_zh": "<=10cm",
+              "input_type": "distance_range",
+              "tmu_value": 6
+            },
+            {
+              "option_code": "M_理_LE_10_25CM",
+              "display_text_zh": "理(<=10(25))",
+              "sentence_text_zh": "理",
+              "helper_text_zh": "<=10(25)",
+              "condition_zh": "<=25cm",
+              "input_type": "distance_range",
+              "tmu_value": 10
+            },
+            {
+              "option_code": "M_理_LE_18_45CM",
+              "display_text_zh": "理(<=18(45))",
+              "sentence_text_zh": "理",
+              "helper_text_zh": "<=18(45)",
+              "condition_zh": "<=45cm",
+              "input_type": "distance_range",
+              "tmu_value": 16
+            },
+            {
+              "option_code": "M_理_LE_30_75CM",
+              "display_text_zh": "理(<=30(75))",
+              "sentence_text_zh": "理",
+              "helper_text_zh": "<=30(75)",
+              "condition_zh": "<=75cm",
+              "input_type": "distance_range",
+              "tmu_value": 24
+            },
+            {
+              "option_code": "M_穿_LE_1_2_5CM",
+              "display_text_zh": "穿(<=1(2.5))",
+              "sentence_text_zh": "穿",
+              "helper_text_zh": "<=1(2.5)",
+              "condition_zh": "<=2.5cm",
+              "input_type": "distance_range",
+              "tmu_value": 3
+            },
+            {
+              "option_code": "M_穿_LE_4_10CM",
+              "display_text_zh": "穿(<=4(10))",
+              "sentence_text_zh": "穿",
+              "helper_text_zh": "<=4(10)",
+              "condition_zh": "<=10cm",
+              "input_type": "distance_range",
+              "tmu_value": 6
+            },
+            {
+              "option_code": "M_穿_LE_10_25CM",
+              "display_text_zh": "穿(<=10(25))",
+              "sentence_text_zh": "穿",
+              "helper_text_zh": "<=10(25)",
+              "condition_zh": "<=25cm",
+              "input_type": "distance_range",
+              "tmu_value": 10
+            },
+            {
+              "option_code": "M_穿_LE_18_45CM",
+              "display_text_zh": "穿(<=18(45))",
+              "sentence_text_zh": "穿",
+              "helper_text_zh": "<=18(45)",
+              "condition_zh": "<=45cm",
+              "input_type": "distance_range",
+              "tmu_value": 16
+            },
+            {
+              "option_code": "M_穿_LE_30_75CM",
+              "display_text_zh": "穿(<=30(75))",
+              "sentence_text_zh": "穿",
+              "helper_text_zh": "<=30(75)",
+              "condition_zh": "<=75cm",
+              "input_type": "distance_range",
+              "tmu_value": 24
+            },
+            {
+              "option_code": "M_推_LE_1_2_5CM",
+              "display_text_zh": "推(<=1(2.5))",
+              "sentence_text_zh": "推",
+              "helper_text_zh": "<=1(2.5)",
+              "condition_zh": "<=2.5cm",
+              "input_type": "distance_range",
+              "tmu_value": 3
+            },
+            {
+              "option_code": "M_推_LE_4_10CM",
+              "display_text_zh": "推(<=4(10))",
+              "sentence_text_zh": "推",
+              "helper_text_zh": "<=4(10)",
+              "condition_zh": "<=10cm",
+              "input_type": "distance_range",
+              "tmu_value": 6
+            },
+            {
+              "option_code": "M_推_LE_10_25CM",
+              "display_text_zh": "推(<=10(25))",
+              "sentence_text_zh": "推",
+              "helper_text_zh": "<=10(25)",
+              "condition_zh": "<=25cm",
+              "input_type": "distance_range",
+              "tmu_value": 10
+            },
+            {
+              "option_code": "M_推_LE_18_45CM",
+              "display_text_zh": "推(<=18(45))",
+              "sentence_text_zh": "推",
+              "helper_text_zh": "<=18(45)",
+              "condition_zh": "<=45cm",
+              "input_type": "distance_range",
+              "tmu_value": 16
+            },
+            {
+              "option_code": "M_推_LE_30_75CM",
+              "display_text_zh": "推(<=30(75))",
+              "sentence_text_zh": "推",
+              "helper_text_zh": "<=30(75)",
+              "condition_zh": "<=75cm",
+              "input_type": "distance_range",
+              "tmu_value": 24
+            },
+            {
+              "option_code": "M_拉_LE_1_2_5CM",
+              "display_text_zh": "拉(<=1(2.5))",
+              "sentence_text_zh": "拉",
+              "helper_text_zh": "<=1(2.5)",
+              "condition_zh": "<=2.5cm",
+              "input_type": "distance_range",
+              "tmu_value": 3
+            },
+            {
+              "option_code": "M_拉_LE_4_10CM",
+              "display_text_zh": "拉(<=4(10))",
+              "sentence_text_zh": "拉",
+              "helper_text_zh": "<=4(10)",
+              "condition_zh": "<=10cm",
+              "input_type": "distance_range",
+              "tmu_value": 6
+            },
+            {
+              "option_code": "M_拉_LE_10_25CM",
+              "display_text_zh": "拉(<=10(25))",
+              "sentence_text_zh": "拉",
+              "helper_text_zh": "<=10(25)",
+              "condition_zh": "<=25cm",
+              "input_type": "distance_range",
+              "tmu_value": 10
+            },
+            {
+              "option_code": "M_拉_LE_18_45CM",
+              "display_text_zh": "拉(<=18(45))",
+              "sentence_text_zh": "拉",
+              "helper_text_zh": "<=18(45)",
+              "condition_zh": "<=45cm",
+              "input_type": "distance_range",
+              "tmu_value": 16
+            },
+            {
+              "option_code": "M_拉_LE_30_75CM",
+              "display_text_zh": "拉(<=30(75))",
+              "sentence_text_zh": "拉",
+              "helper_text_zh": "<=30(75)",
+              "condition_zh": "<=75cm",
+              "input_type": "distance_range",
+              "tmu_value": 24
+            },
+            {
+              "option_code": "M_貼附_LE_1_2_5CM",
+              "display_text_zh": "貼附(<=1(2.5))",
+              "sentence_text_zh": "貼附",
+              "helper_text_zh": "<=1(2.5)",
+              "condition_zh": "<=2.5cm",
+              "input_type": "distance_range",
+              "tmu_value": 3
+            },
+            {
+              "option_code": "M_貼附_LE_4_10CM",
+              "display_text_zh": "貼附(<=4(10))",
+              "sentence_text_zh": "貼附",
+              "helper_text_zh": "<=4(10)",
+              "condition_zh": "<=10cm",
+              "input_type": "distance_range",
+              "tmu_value": 6
+            },
+            {
+              "option_code": "M_貼附_LE_10_25CM",
+              "display_text_zh": "貼附(<=10(25))",
+              "sentence_text_zh": "貼附",
+              "helper_text_zh": "<=10(25)",
+              "condition_zh": "<=25cm",
+              "input_type": "distance_range",
+              "tmu_value": 10
+            },
+            {
+              "option_code": "M_貼附_LE_18_45CM",
+              "display_text_zh": "貼附(<=18(45))",
+              "sentence_text_zh": "貼附",
+              "helper_text_zh": "<=18(45)",
+              "condition_zh": "<=45cm",
+              "input_type": "distance_range",
+              "tmu_value": 16
+            },
+            {
+              "option_code": "M_貼附_LE_30_75CM",
+              "display_text_zh": "貼附(<=30(75))",
+              "sentence_text_zh": "貼附",
+              "helper_text_zh": "<=30(75)",
+              "condition_zh": "<=75cm",
+              "input_type": "distance_range",
+              "tmu_value": 24
+            },
+            {
+              "option_code": "M_去除_LE_1_2_5CM",
+              "display_text_zh": "去除(<=1(2.5))",
+              "sentence_text_zh": "去除",
+              "helper_text_zh": "<=1(2.5)",
+              "condition_zh": "<=2.5cm",
+              "input_type": "distance_range",
+              "tmu_value": 3
+            },
+            {
+              "option_code": "M_去除_LE_4_10CM",
+              "display_text_zh": "去除(<=4(10))",
+              "sentence_text_zh": "去除",
+              "helper_text_zh": "<=4(10)",
+              "condition_zh": "<=10cm",
+              "input_type": "distance_range",
+              "tmu_value": 6
+            },
+            {
+              "option_code": "M_去除_LE_10_25CM",
+              "display_text_zh": "去除(<=10(25))",
+              "sentence_text_zh": "去除",
+              "helper_text_zh": "<=10(25)",
+              "condition_zh": "<=25cm",
+              "input_type": "distance_range",
+              "tmu_value": 10
+            },
+            {
+              "option_code": "M_去除_LE_18_45CM",
+              "display_text_zh": "去除(<=18(45))",
+              "sentence_text_zh": "去除",
+              "helper_text_zh": "<=18(45)",
+              "condition_zh": "<=45cm",
+              "input_type": "distance_range",
+              "tmu_value": 16
+            },
+            {
+              "option_code": "M_去除_LE_30_75CM",
+              "display_text_zh": "去除(<=30(75))",
+              "sentence_text_zh": "去除",
+              "helper_text_zh": "<=30(75)",
+              "condition_zh": "<=75cm",
+              "input_type": "distance_range",
+              "tmu_value": 24
+            },
+            {
+              "option_code": "M_撕除_LE_1_2_5CM",
+              "display_text_zh": "撕除(<=1(2.5))",
+              "sentence_text_zh": "撕除",
+              "helper_text_zh": "<=1(2.5)",
+              "condition_zh": "<=2.5cm",
+              "input_type": "distance_range",
+              "tmu_value": 3
+            },
+            {
+              "option_code": "M_撕除_LE_4_10CM",
+              "display_text_zh": "撕除(<=4(10))",
+              "sentence_text_zh": "撕除",
+              "helper_text_zh": "<=4(10)",
+              "condition_zh": "<=10cm",
+              "input_type": "distance_range",
+              "tmu_value": 6
+            },
+            {
+              "option_code": "M_撕除_LE_10_25CM",
+              "display_text_zh": "撕除(<=10(25))",
+              "sentence_text_zh": "撕除",
+              "helper_text_zh": "<=10(25)",
+              "condition_zh": "<=25cm",
+              "input_type": "distance_range",
+              "tmu_value": 10
+            },
+            {
+              "option_code": "M_撕除_LE_18_45CM",
+              "display_text_zh": "撕除(<=18(45))",
+              "sentence_text_zh": "撕除",
+              "helper_text_zh": "<=18(45)",
+              "condition_zh": "<=45cm",
+              "input_type": "distance_range",
+              "tmu_value": 16
+            },
+            {
+              "option_code": "M_撕除_LE_30_75CM",
+              "display_text_zh": "撕除(<=30(75))",
+              "sentence_text_zh": "撕除",
+              "helper_text_zh": "<=30(75)",
+              "condition_zh": "<=75cm",
+              "input_type": "distance_range",
+              "tmu_value": 24
+            },
+            {
+              "option_code": "M_折_LE_1_2_5CM",
+              "display_text_zh": "折(<=1(2.5))",
+              "sentence_text_zh": "折",
+              "helper_text_zh": "<=1(2.5)",
+              "condition_zh": "<=2.5cm",
+              "input_type": "distance_range",
+              "tmu_value": 3
+            },
+            {
+              "option_code": "M_折_LE_4_10CM",
+              "display_text_zh": "折(<=4(10))",
+              "sentence_text_zh": "折",
+              "helper_text_zh": "<=4(10)",
+              "condition_zh": "<=10cm",
+              "input_type": "distance_range",
+              "tmu_value": 6
+            },
+            {
+              "option_code": "M_折_LE_10_25CM",
+              "display_text_zh": "折(<=10(25))",
+              "sentence_text_zh": "折",
+              "helper_text_zh": "<=10(25)",
+              "condition_zh": "<=25cm",
+              "input_type": "distance_range",
+              "tmu_value": 10
+            },
+            {
+              "option_code": "M_折_LE_18_45CM",
+              "display_text_zh": "折(<=18(45))",
+              "sentence_text_zh": "折",
+              "helper_text_zh": "<=18(45)",
+              "condition_zh": "<=45cm",
+              "input_type": "distance_range",
+              "tmu_value": 16
+            },
+            {
+              "option_code": "M_折_LE_30_75CM",
+              "display_text_zh": "折(<=30(75))",
+              "sentence_text_zh": "折",
+              "helper_text_zh": "<=30(75)",
+              "condition_zh": "<=75cm",
+              "input_type": "distance_range",
+              "tmu_value": 24
+            },
+            {
+              "option_code": "M_擦拭_LE_1_2_5CM",
+              "display_text_zh": "擦拭(<=1(2.5))",
+              "sentence_text_zh": "擦拭",
+              "helper_text_zh": "<=1(2.5)",
+              "condition_zh": "<=2.5cm",
+              "input_type": "distance_range",
+              "tmu_value": 3
+            },
+            {
+              "option_code": "M_擦拭_LE_4_10CM",
+              "display_text_zh": "擦拭(<=4(10))",
+              "sentence_text_zh": "擦拭",
+              "helper_text_zh": "<=4(10)",
+              "condition_zh": "<=10cm",
+              "input_type": "distance_range",
+              "tmu_value": 6
+            },
+            {
+              "option_code": "M_擦拭_LE_10_25CM",
+              "display_text_zh": "擦拭(<=10(25))",
+              "sentence_text_zh": "擦拭",
+              "helper_text_zh": "<=10(25)",
+              "condition_zh": "<=25cm",
+              "input_type": "distance_range",
+              "tmu_value": 10
+            },
+            {
+              "option_code": "M_擦拭_LE_18_45CM",
+              "display_text_zh": "擦拭(<=18(45))",
+              "sentence_text_zh": "擦拭",
+              "helper_text_zh": "<=18(45)",
+              "condition_zh": "<=45cm",
+              "input_type": "distance_range",
+              "tmu_value": 16
+            },
+            {
+              "option_code": "M_擦拭_LE_30_75CM",
+              "display_text_zh": "擦拭(<=30(75))",
+              "sentence_text_zh": "擦拭",
+              "helper_text_zh": "<=30(75)",
+              "condition_zh": "<=75cm",
+              "input_type": "distance_range",
+              "tmu_value": 24
+            },
+            {
+              "option_code": "M_撕開_LE_1_2_5CM",
+              "display_text_zh": "撕開(<=1(2.5))",
+              "sentence_text_zh": "撕開",
+              "helper_text_zh": "<=1(2.5)",
+              "condition_zh": "<=2.5cm",
+              "input_type": "distance_range",
+              "tmu_value": 3
+            },
+            {
+              "option_code": "M_撕開_LE_4_10CM",
+              "display_text_zh": "撕開(<=4(10))",
+              "sentence_text_zh": "撕開",
+              "helper_text_zh": "<=4(10)",
+              "condition_zh": "<=10cm",
+              "input_type": "distance_range",
+              "tmu_value": 6
+            },
+            {
+              "option_code": "M_撕開_LE_10_25CM",
+              "display_text_zh": "撕開(<=10(25))",
+              "sentence_text_zh": "撕開",
+              "helper_text_zh": "<=10(25)",
+              "condition_zh": "<=25cm",
+              "input_type": "distance_range",
+              "tmu_value": 10
+            },
+            {
+              "option_code": "M_撕開_LE_18_45CM",
+              "display_text_zh": "撕開(<=18(45))",
+              "sentence_text_zh": "撕開",
+              "helper_text_zh": "<=18(45)",
+              "condition_zh": "<=45cm",
+              "input_type": "distance_range",
+              "tmu_value": 16
+            },
+            {
+              "option_code": "M_撕開_LE_30_75CM",
+              "display_text_zh": "撕開(<=30(75))",
+              "sentence_text_zh": "撕開",
+              "helper_text_zh": "<=30(75)",
+              "condition_zh": "<=75cm",
+              "input_type": "distance_range",
+              "tmu_value": 24
+            },
+            {
+              "option_code": "M_ROTATE_D12_1",
+              "display_text_zh": "旋轉(圈數-直徑<=12.5cm, 1圈)",
+              "sentence_text_zh": "旋轉",
+              "helper_text_zh": "直徑<=12.5cm / 1圈",
+              "input_type": "rotation",
+              "tmu_value": 16
+            },
+            {
+              "option_code": "M_ROTATE_D12_2",
+              "display_text_zh": "旋轉(圈數-直徑<=12.5cm, 2圈)",
+              "sentence_text_zh": "旋轉",
+              "helper_text_zh": "直徑<=12.5cm / 2圈",
+              "input_type": "rotation",
+              "tmu_value": 32
+            },
+            {
+              "option_code": "M_ROTATE_D12_3",
+              "display_text_zh": "旋轉(圈數-直徑<=12.5cm, 3圈)",
+              "sentence_text_zh": "旋轉",
+              "helper_text_zh": "直徑<=12.5cm / 3圈",
+              "input_type": "rotation",
+              "tmu_value": 42
+            },
+            {
+              "option_code": "M_ROTATE_D50_1",
+              "display_text_zh": "旋轉(圈數-直徑<=50cm, 1圈)",
+              "sentence_text_zh": "旋轉",
+              "helper_text_zh": "直徑<=50cm / 1圈",
+              "input_type": "rotation",
+              "tmu_value": 24
+            },
+            {
+              "option_code": "M_ROTATE_D50_2",
+              "display_text_zh": "旋轉(圈數-直徑<=50cm, 2圈)",
+              "sentence_text_zh": "旋轉",
+              "helper_text_zh": "直徑<=50cm / 2圈",
+              "input_type": "rotation",
+              "tmu_value": 42
+            }
+          ]
+        },
+        "hand_degree": {
+          "required": false,
+          "default_tmu": 0,
+          "options": [
+            {
+              "option_code": "M_HAND_NONE",
+              "display_text_zh": "未選擇手度",
+              "condition_zh": "default_none",
+              "tmu_value": 0
+            },
+            {
+              "option_code": "M_HAND_LE_90",
+              "display_text_zh": "<=90",
+              "condition_zh": "<=90°",
+              "tmu_value": 6
+            },
+            {
+              "option_code": "M_HAND_LE_180",
+              "display_text_zh": "<=180",
+              "condition_zh": "<=180°",
+              "tmu_value": 10
+            }
+          ]
+        },
+        "foot_step": {
+          "required": false,
+          "default_tmu": 0,
+          "options": [
+            {
+              "option_code": "M_STEP_NONE",
+              "display_text_zh": "無腳步移動",
+              "condition_zh": "default_none",
+              "tmu_value": 0
+            },
+            {
+              "option_code": "M_STEP_LE_10_25CM",
+              "display_text_zh": "<=10(25)",
+              "condition_zh": "<=25cm",
+              "tmu_value": 10
+            },
+            {
+              "option_code": "M_STEP_LE_16_40CM",
+              "display_text_zh": "<=16(40)",
+              "condition_zh": "<=40cm",
+              "tmu_value": 16
+            },
+            {
+              "option_code": "M_STEP_LE_22_55CM",
+              "display_text_zh": "<=22(55)",
+              "condition_zh": "<=55cm",
+              "tmu_value": 24
+            },
+            {
+              "option_code": "M_STEP_LE_30_75CM",
+              "display_text_zh": "<=30(75)",
+              "condition_zh": "<=75cm",
+              "tmu_value": 32
+            },
+            {
+              "option_code": "M_STEP_GT_30_75CM",
+              "display_text_zh": ">30(75)",
+              "condition_zh": ">75cm",
+              "tmu_value": 42
+            }
+          ]
+        }
+      },
+      "rules": [
+        {
+          "rule_code": "M_MODAL_MAX",
+          "expression": "max(verb_tmu, hand_degree_tmu, foot_step_tmu)"
+        },
+        {
+          "rule_code": "M_HAND_OPTIONAL_DEFAULT_ZERO",
+          "expression": "if hand_degree is null then hand_degree_tmu = 0"
+        },
+        {
+          "rule_code": "M_FOOT_OPTIONAL_DEFAULT_ZERO",
+          "expression": "if foot_step is null then foot_step_tmu = 0"
+        }
+      ],
+      "examples": [
+        {
+          "selected": {
+            "verb": "理(<=4(10))",
+            "hand_degree": "<=180",
+            "foot_step": null
+          },
+          "tmu": 10,
+          "mi_text": "理"
+        }
+      ]
+    },
+    "X": {
+      "display_name_zh": "製程時間(X)",
+      "applies_to_slots": [
+        "X"
+      ],
+      "ui_type": "select_with_optional_seconds_input",
+      "selection": {
+        "type": "single"
+      },
+      "seconds_per_tmu": 0.036,
+      "options": [
+        {
+          "option_code": "X_PRESS_MACHINE",
+          "display_text_zh": "並壓合機台",
+          "sentence_text_zh": "並壓合機台",
+          "seconds_source": "user_input_seconds",
+          "fixed_seconds": null,
+          "tmu_value": null,
+          "calculation": "user_input_seconds / 0.036"
+        },
+        {
+          "option_code": "X_SNAP_PRESS_MACHINE",
+          "display_text_zh": "並卡合&壓合機台",
+          "sentence_text_zh": "並卡合&壓合機台",
+          "seconds_source": "user_input_seconds",
+          "fixed_seconds": null,
+          "tmu_value": null,
+          "calculation": "user_input_seconds / 0.036"
+        },
+        {
+          "option_code": "X_HOT_MELT_MACHINE",
+          "display_text_zh": "並熱熔機台",
+          "sentence_text_zh": "並熱熔機台",
+          "seconds_source": "user_input_seconds",
+          "fixed_seconds": null,
+          "tmu_value": null,
+          "calculation": "user_input_seconds / 0.036"
+        },
+        {
+          "option_code": "X_DISPENSE_GLUE",
+          "display_text_zh": "並點膠",
+          "sentence_text_zh": "並點膠",
+          "seconds_source": "user_input_seconds",
+          "fixed_seconds": null,
+          "tmu_value": null,
+          "calculation": "user_input_seconds / 0.036"
+        },
+        {
+          "option_code": "X_SCREW_FIX",
+          "display_text_zh": "並鎖附固定(鎖附順序如圖所示)",
+          "sentence_text_zh": "並鎖附固定",
+          "seconds_source": "fixed_seconds",
+          "fixed_seconds": 0.216,
+          "tmu_value": 6,
+          "calculation": "fixed_seconds / 0.036"
+        },
+        {
+          "option_code": "X_LASER_MARK",
+          "display_text_zh": "並鐳雕",
+          "sentence_text_zh": "並鐳雕",
+          "seconds_source": "user_input_seconds",
+          "fixed_seconds": null,
+          "tmu_value": null,
+          "calculation": "user_input_seconds / 0.036"
+        },
+        {
+          "option_code": "X_SCAN_PPID",
+          "display_text_zh": "刷PPID",
+          "sentence_text_zh": "刷PPID",
+          "seconds_source": "fixed_seconds",
+          "fixed_seconds": 0.216,
+          "tmu_value": 6,
+          "calculation": "fixed_seconds / 0.036"
+        },
+        {
+          "option_code": "X_SCAN_WORK_ORDER_QR",
+          "display_text_zh": "刷工單二維碼",
+          "sentence_text_zh": "刷工單二維碼",
+          "seconds_source": "fixed_seconds",
+          "fixed_seconds": 0.216,
+          "tmu_value": 6,
+          "calculation": "fixed_seconds / 0.036"
+        },
+        {
+          "option_code": "X_SCAN_BARCODE",
+          "display_text_zh": "刷條形碼",
+          "sentence_text_zh": "刷條形碼",
+          "seconds_source": "fixed_seconds",
+          "fixed_seconds": 0.216,
+          "tmu_value": 6,
+          "calculation": "fixed_seconds / 0.036"
+        }
+      ],
+      "rules": [
+        {
+          "rule_code": "X_SINGLE_SELECT",
+          "expression": "selected_option"
+        },
+        {
+          "rule_code": "X_FIXED_SECONDS",
+          "expression": "fixed_seconds / 0.036"
+        },
+        {
+          "rule_code": "X_USER_INPUT_SECONDS",
+          "expression": "user_input_seconds / 0.036"
+        },
+        {
+          "rule_code": "X_REQUIRED_SECONDS_IF_DYNAMIC",
+          "expression": "if seconds_source == user_input_seconds then user_input_seconds required"
+        }
+      ]
+    },
+    "I": {
+      "display_name_zh": "對位/檢查(I)",
+      "applies_to_slots": [
+        "I"
+      ],
+      "ui_type": "select",
+      "selection": {
+        "type": "single"
+      },
+      "options": [
+        {
+          "option_code": "I_CHECK_NORMAL",
+          "display_text_zh": "並檢查(正常視線範圍)",
+          "sentence_text_zh": "並檢查",
+          "helper_text_zh": "正常視線範圍",
+          "tmu_value": 6
+        },
+        {
+          "option_code": "I_CONFIRM_NORMAL",
+          "display_text_zh": "並確認(正常視線範圍)",
+          "sentence_text_zh": "並確認",
+          "helper_text_zh": "正常視線範圍",
+          "tmu_value": 6
+        },
+        {
+          "option_code": "I_ALIGN_POINT_NORMAL",
+          "display_text_zh": "並對準(正常視線範圍到點)",
+          "sentence_text_zh": "並對準",
+          "helper_text_zh": "正常視線範圍到點",
+          "tmu_value": 10
+        },
+        {
+          "option_code": "I_ALIGN_TWO_POINTS_NORMAL",
+          "display_text_zh": "並對齊(正常視線範圍到兩點)",
+          "sentence_text_zh": "並對齊",
+          "helper_text_zh": "正常視線範圍到兩點",
+          "tmu_value": 16
+        },
+        {
+          "option_code": "I_CHECK_OUTSIDE",
+          "display_text_zh": "並檢查(正常視線範圍外)",
+          "sentence_text_zh": "並檢查",
+          "helper_text_zh": "正常視線範圍外",
+          "tmu_value": 16
+        },
+        {
+          "option_code": "I_CONFIRM_OUTSIDE",
+          "display_text_zh": "並確認(正常視線範圍外)",
+          "sentence_text_zh": "並確認",
+          "helper_text_zh": "正常視線範圍外",
+          "tmu_value": 16
+        },
+        {
+          "option_code": "I_ALIGN_POINT_OUTSIDE",
+          "display_text_zh": "並對準(正常視線範圍外到點)",
+          "sentence_text_zh": "並對準",
+          "helper_text_zh": "正常視線範圍外到點",
+          "tmu_value": 24
+        },
+        {
+          "option_code": "I_ALIGN_TWO_POINTS_OUTSIDE",
+          "display_text_zh": "並對齊(正常視線範圍外到兩點)",
+          "sentence_text_zh": "並對齊",
+          "helper_text_zh": "正常視線範圍外到兩點",
+          "tmu_value": 32
+        }
+      ],
+      "rules": [
+        {
+          "rule_code": "I_SINGLE_SELECT",
+          "expression": "selected_option_tmu"
+        }
+      ]
+    }
+  }
+}

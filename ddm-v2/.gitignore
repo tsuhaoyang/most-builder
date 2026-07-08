@@ -10,3 +10,5 @@ data/runtime-db.json.lock
 data/runtime-db.sqlite3
 data/runtime-db.legacy-json.json
 data/*.corrupt-*.json
+# Claude Code local config (agents, skills, memory — never commit)
+.claude/

@@ -219,3 +219,24 @@ python3 scripts/core_logic/level_system_validator.py
 ---
 
 *本目錄與兩個 validator 同步維護；新增測試前，先在此說明「驗什麼、封什麼」，再實作。*
+
+
+---
+
+## V2 重錨過帳表（ADR-014，2026-07-05）
+
+黃金集已全面重錨至 `MINIMOST_FACTORY_V2`；V1 案例保留為「回放測試」（快照隔離證明）。逐類過帳：
+
+| 類別 | 判定 | 說明 |
+|---|---|---|
+| GM=28、A 帶全部、B 全部、SIMO/freq、結構守門 | **值不變** | 兩版資料一致 |
+| CM=29 | **語意重標定（C1）** | 輸入明確為「推 45cm＝18 吋檔」；新增反例：推 18cm→M10 |
+| M 階梯/腳步全部 | **值變更（C1/C2）** | 理 20cm：24→10；推 30cm：24→16；腳步 30cm→16（獨立帶）；>75→422 |
+| X 連續秒 | **值變更（E2）** | 10s：278→277.778；5s：139→138.889；0.216→6.000 不變 |
+| G gating 反例（接觸未勾→0） | **移至 V1 回放段** | V2 接觸=3（選項即語意） |
+| P 對準精度 gating | **移至 V1 回放段** | V2 直接 +8；新增 P_ADDON_CONFLICT / P_ADDON_NO_BASE 反例 |
+| A3 返回、repeat、override、I/X 新檔位、範圍錯誤 | **新增** | E1/E4/E7/C5/E9 全套黃金＋反例 |
+| X 動態秒數 ≤0/未填 | **新增** | CL-01 §2 X（v3 認證「必須輸入正數」）：mode=seconds 且秒數未填/0 → 422 `X_SECONDS_REQUIRED`；負秒維持 `X_NEGATIVE` 先攔（區分「符號錯誤」與「未填」）。舊案例「X 0 秒→0」改列反例 |
+| R116 CM 解構 | **值變更（E2）** | 300→299.778 |
+
+執行點：`tests/unit/test_most_engine.py`（37）＋`test_narrative.py`（6）＋`scripts/core_logic/minimost_sequence_validator.py`（83）＋`engine_golden_test.py`（54，含 V1 回放段 5 例）＋`run_all.py` 彙總。

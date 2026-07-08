@@ -1,5 +1,28 @@
 # MiniMOST Sequence Model — 核心邏輯規格（Core Logic Spec）
 
+> ## ⚖️ V2 修訂（ADR-014，2026-07-05 起生效——本節為權威，與下文衝突時以本節為準）
+>
+> **值權威**＝`docs/v3/reference/minimost_ai_dictionary_v1.json`（v3 IE 認證字典）；rule-set **`MINIMOST_FACTORY_V2`**（由 `scripts/import_v3_dictionary.py` 程式轉換產生，禁手抄）。V1 僅供既有 cycle 快照回放。已實作並由黃金測試鎖定（pytest 57／validators 82+26+54 全綠）。與下文 V1 敘述的差異：
+>
+> | # | 變更 | V1（下文舊敘述） | **V2（現行權威）** |
+> |---|---|---|---|
+> | C1 | M 距離階梯單位 | ≤1/4/10/18/30「cm」→3/6/10/16/24、>30→42 | 門檻是吋，cm 正確值 **≤2.5/10/25/45/75**→3/6/10/16/24；**無 overflow，>75 → 422 M_DISTANCE_RANGE**。黃金 CM=29 的「推 18」＝18 吋＝45cm |
+> | C2 | M 腳步 | 同 M 階梯（§4.5 舊文「同 A 腳步帶」為筆誤） | **獨立帶** ≤25/40/55/75→10/16/24/32、>75→42（`rule_m_foot_bands`） |
+> | E2 | X 捨入 | `ceil(sec/0.036)`（舊 Q3 裁決，superseded） | **half-up 3 位**（10s→277.778；0.216s→6.000） |
+> | C6 | G 修飾 gating | 未勾修飾→0 | **移除**（選項即完整語意；V2 資料 requires_modifier=false，引擎邏輯保留讀資料） |
+> | — | P 對準精度 | 勾「精度<4mm」才 +8 | 選項自含精度語意，**直接 +8**；新增 **插入⊥卡合 → P_ADDON_CONFLICT**、**有附加無 base → P_ADDON_NO_BASE** |
+> | E1 | A3 返回格 | 三分量取 max | **僅計伸手**；twist/foot 非零 → 422 A_RETURN_COMPONENT |
+> | C5 | I 檔位 | 4 檔（0/6/10/16） | **八檔＋i_none**：檢查/確認×正常 6、對準到點 10、對齊兩點 16、視線外 16/16/24/32（`vision_scope`） |
+> | C5 | X 檔位 | 4 檔 | **九檔＋x_none**（壓合/卡合&壓合/熱熔/點膠/鎖附 0.216→6/鐳雕/刷PPID/刷工單/刷條形碼） |
+> | — | 旋轉/手度 | >12.5 無上限、3 圈檔 | 直徑≤50 封頂、大直徑無 3 圈檔（→422 M_ROTATION_RANGE）；手度 ≤180 封頂（→422 M_HAND_RANGE） |
+> | E4 | slot repeat | 無 | G/P/X/I 整格 ×repeat（1..99）；**M 僅乘動詞分量再 max**；A/B 禁用 |
+> | E7 | 人工覆寫 | 無 | slot `manual_override{tmu,reason,by}`：值取代＋留痕＋tech_line 標 `*` |
+> | E5 | SIMO 輸入 | 顯式 simo_group_id | ＋`simo_with_row_id` 配對輸入（service union-find 正規化為群組；引擎仍群組取 max） |
+> | — | 寬放 | 無 | worksheet 級 `allowance_percent`（standard=normal×(1+%/100)；OQ-002） |
+>
+> 實作規格＝[docs/v3/impl/impl-01](../v3/impl/impl-01-rule-set-factory-v2.md)（值表）＋[impl-02](../v3/impl/impl-02-engine-changes.md)（引擎 E1–E9＋黃金過帳）。可執行規格＝`scripts/core_logic/minimost_sequence_validator.py`（已重錨 V2）。
+
+
 **文件類型：** 核心邏輯規格（Core Logic / Function Spec）
 **版本：** **1.0 — 已確認核心**（低風險項採建議預設；待 IE 確認項見 [Level spec §14 統一清單](./level-system-core-logic-spec.md#14--需找人ie確認清單user-尚未回答須對外確認)）
 **建立日期：** 2026-06-16　**升版：** 2026-06-16（v0.1→v1.0）
@@ -209,11 +232,11 @@ M = max( partialM(component) for component with verb )   ；無分量 → 0
 | 理 / 穿 / 推 / 拉 / 貼附（+1205：去除/撕除/折/擦拭/撕开） | 距離階梯 | 見下「距離階梯」 |
 | 旋轉 | 旋轉 | 直徑≤12.5cm：1圈16 / 2圈32 / 3圈42；直徑≤50cm：1圈24 / 2圈42 |
 | 手度 | 角度 | ≤90°→6；>90°（≤180°）→10 |
-| 腳步 | 距離階梯（腳） | 同 A 腳步帶 |
+| 腳步 | 距離階梯（腳） | ⚠️ V1 文（筆誤）；V2＝獨立腳步帶（頂部修訂表 C2） |
 
-**距離階梯（JS `ladderTmu` / SEED `ladder_bands`，一致）：**
+**距離階梯：⚠️ 本表為 V1 舊值（把吋數誤存為 cm）——V2 權威值見頂部修訂表 C1（≤2.5/10/25/45/75 cm，無 overflow）。**
 
-| 上界 cm | ≤1 | ≤4 | ≤10 | ≤18 | ≤30 | >30 |
+| 上界 cm（V1 舊） | ≤1 | ≤4 | ≤10 | ≤18 | ≤30 | >30 |
 |---------|----|----|----|----|----|----|
 | TMU | 3 | 6 | 10 | 16 | 24 | 42 |
 

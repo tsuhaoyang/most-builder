@@ -10,6 +10,7 @@ docs/
 ├── core-logic/      核心邏輯（權威）：MOST 計算、Level System、驗證
 ├── architecture/    系統架構、資料模型、前端資料流、RBAC
 ├── decisions/       決策記錄（OQ / ADR）
+├── v3/              v3（IE 認證版）→ v2 整合文件庫（分析/藍圖/實作規格/權威參考）
 ├── roadmap/         路線圖草案（phase2）
 ├── user-spec/       使用者提供的規格草案
 ├── reference/       維運/參考筆記
@@ -47,7 +48,21 @@ docs/
 
 ## decisions/（決策記錄）
 
-OQ-001~006、ADR-010~013：見 [decisions/README.md](decisions/README.md)。（ADR-012 3D 渲染架構、ADR-013 Excel 匯入架構）
+OQ-001~006、ADR-010~018：見 [decisions/README.md](decisions/README.md)。（ADR-012 3D 渲染、ADR-013 Excel 匯入、**ADR-014~018＝v3 整合決策**：值權威 / NL 解析 / 檢索架構 / 組件庫 / 工作流，均 proposed）
+
+## v3/（v3 → v2 整合文件庫）
+
+| 文件 | 主旨 | 狀態 |
+|------|------|------|
+| [v3/README.md](v3/README.md) | 整合文件庫索引與閱讀順序 | ✅ |
+| [v3/v2-v3-core-logic-diff-and-integration.md](v3/v2-v3-core-logic-diff-and-integration.md) | v2↔v3 核心邏輯逐格差異盤點＋裁決 C1–C10（已定案） | ✅ 定稿 |
+| [v3/v3-to-v2-refactor-blueprint.md](v3/v3-to-v2-refactor-blueprint.md) | 整合總體策略、六 Phase 實施順序 | ✅ 定稿 |
+| [v3/impl/](v3/impl/)（impl-01~06） | 各 Phase 實作細節規格（值表/引擎/檢索/組件庫/NLP/工作流） | 🔄 P0 產出 |
+| [v3/verification-code-audit.md](v3/verification-code-audit.md) | **程式碼查證報告**：docs/v3 宣稱 vs ddm-v3 實碼逐條對照、更正 C-1~C-12、三層系統補充 | ✅ 2026-07-05 |
+| [v3/analysis/](v3/analysis/README.md) | **可執行規格庫**：v3 全功能萃取——core-logic CL-01~04＋features F-01~08（AI 可直接實作）＋DISC-01~15 討論清單＋reference 證據底稿 | ✅ 2026-07-05 |
+| [v3/reference/](v3/reference/) | v3 權威來源複本（**字典 JSON＝值權威**、wi-parser-upgrade） | 📌 參考 |
+
+> ⚠️ 值權威變更（ADR-014 proposed）：`v3/reference/minimost_ai_dictionary_v1.json` 為 MiniMOST 值的唯一權威；`sample_excel/` 降為歷史參考。
 
 ## roadmap/（路線圖草案）
 
@@ -76,4 +91,4 @@ OQ-001~006、ADR-010~013：見 [decisions/README.md](decisions/README.md)。（A
 
 ---
 
-*最後更新：2026-06-21（alpha：docs 結構化分類）*
+*最後更新：2026-07-05（v3 analysis 可執行規格庫）*

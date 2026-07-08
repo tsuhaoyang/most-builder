@@ -19,10 +19,15 @@
 | [OQ-004-concurrent-access.md](OQ-004-concurrent-access.md) | 使用者工作區、後台發布、跨廠區產品版本與共享資料一致性 | 🟡 討論中 |
 | [OQ-005-custom-tool-elements.md](OQ-005-custom-tool-elements.md) | 非標準 MOST 元件、自定義工具元素與其治理方式 | 🟡 討論中 |
 | [OQ-006-phase1-implementation-open-questions.md](OQ-006-phase1-implementation-open-questions.md) | 從決策推進到 Phase 1 實作後浮現的細節問題 | 🟢 已定案 |
-| [ADR-010-nl-to-most-backlog.md](ADR-010-nl-to-most-backlog.md) | 自然語言 → MOST：暫不實作與後續條件 | 🟢 已定案 |
+| [ADR-010-nl-to-most-backlog.md](ADR-010-nl-to-most-backlog.md) | 自然語言 → MOST：暫不實作與後續條件 | ⚪ superseded by ADR-015 |
 | [ADR-011-schema-evolution-and-contract-stability.md](ADR-011-schema-evolution-and-contract-stability.md) | v2 實作期變更政策：契約穩定 + schema 加法演進（避免整合問題） | 🟢 已定案 |
 | [ADR-012-3d-rendering-architecture.md](ADR-012-3d-rendering-architecture.md) | 3D 模擬渲染架構：Web 3D 資產管線(A) 為基礎 + Pixel Streaming(B) 未來可選；workbench 新分頁 | 🟢 已定案 |
 | [ADR-013-excel-import-architecture.md](ADR-013-excel-import-architecture.md) | Excel 匯入：資料驅動(profile)+staging 暫存+預覽；增量 2a(ingest)→2b(enrich/commit) | 🟢 已定案 |
+| [ADR-014-v3-dictionary-as-value-authority.md](ADR-014-v3-dictionary-as-value-authority.md) | v3 IE 認證字典為值權威；rule-set `MINIMOST_FACTORY_V2`＋黃金重錨 | 🟢 accepted |
+| [ADR-015-nl-parsing-in-scope.md](ADR-015-nl-parsing-in-scope.md) | NL 解析納入 scope（DraftParserPort、建議層隔離）；取代 ADR-010 | 🟢 accepted |
+| [ADR-016-search-infrastructure.md](ADR-016-search-infrastructure.md) | 檢索架構：pg_trgm＋pgvector 混合、search_documents 投影、EmbeddingProvider port | 🟡 proposed |
+| [ADR-017-motion-modules-library.md](ADR-017-motion-modules-library.md) | 組件庫 motion_modules：合併範本與 v3 MI 語句概念（registry＋實體化快照） | 🟡 proposed |
+| [ADR-018-workflow-and-role-convergence.md](ADR-018-workflow-and-role-convergence.md) | 審核工作流五態＋角色收斂（accepted 前 P5 凍結） | 🟡 proposed |
 
 ## 主題歸屬
 

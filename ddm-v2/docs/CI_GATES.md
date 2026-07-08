@@ -7,7 +7,8 @@
 1. **凡 `src/` import 的第三方套件，必在 `pyproject.toml` `dependencies`**（不是只 dev）。CI 用宣告的依賴跑 → 漏宣告會紅。
 2. **每個 feature（每組端點）至少一個整合測試**涵蓋：正常路徑 + 一個邊界/RBAC。
 3. 改核心邏輯（引擎/rule-set/level）→ 必過 `core_logic/run_all.py` 黃金值。
-4. 前端改動 → typecheck + build + Playwright smoke 綠。
+4. **值權威（ADR-014）**：黃金錨＝`MINIMOST_FACTORY_V2`（v3 IE 認證字典）；`rule_set_seed_v2.py` 為 converter 產物**禁手改**（改值＝改字典 JSON 後重跑 `scripts/import_v3_dictionary.py`）；V1 回放測試必須維持綠（快照隔離）。
+5. 前端改動 → typecheck + build + Playwright smoke 綠。
 
 ## Feature → 驗證測試點 → script
 
@@ -24,6 +25,10 @@
 | **SOP 版本** | versions / clone / publish / 再發布 409 / RBAC | `tests/integration/test_worksheet.py` |
 | **使用者管理** | list / upsert / patch；bad role 422；自鎖 409；404；viewer 403 | `tests/integration/test_admin_users.py` |
 | **目錄/結構** | Site→Product→Sku→建立工序表；停用(is_active)；RBAC 403；404；重複 sku 409 | `tests/integration/test_catalog.py` |
+| **計算 V2（ADR-014）** | `POST /minimost/calculate` 走 `MINIMOST_FACTORY_V2`：GM=28 / CM=29（推45cm=18吋檔）/ 推18cm→M10 反例；覆寫值取代+tech_line 標 `*` | `tests/integration/test_calculate_v2.py` |
+| **計算錯誤碼（E1/E3/E4/E7）** | API 422：`A_RETURN_COMPONENT` / `P_ADDON_CONFLICT` / `OVERRIDE_INVALID`（檢 `detail.code`）；repeat 超界（0/100/1.5）422（schema 攔） | `tests/integration/test_calculate_v2.py` |
+| **Worksheet SIMO（E5）** | `simo_with_row_id` 配對→存檔正規化為同一 `simo_group_id`、合計取群組 max；配對指向不存在列/自指 → 422 `SIMO_PAIR_INVALID` | `tests/integration/test_worksheet_v2_engine.py` |
+| **Worksheet repeat/覆寫（E4/E7）** | repeat+manual_override 經 CycleIn 存→讀回：`slot_inputs` 原樣保留、TMU 乘算/覆寫正確、tech_line 含 `M48`/`G10*`、narrative 含 `×3`；repeat=0 存檔 422 | `tests/integration/test_worksheet_v2_engine.py` |
 | **匯出** | wi-preview / excel(openpyxl) / lb-csv / lb-api | `tests/integration/test_export.py` |
 | **匯入** | upload→map(正規化/警告/分秒) / profile；RBAC；openpyxl | `tests/integration/test_import.py` |
 | 前端（全分頁） | 載入/身分/分頁渲染/匯入精靈 | `src/frontend/e2e/smoke.spec.ts` |

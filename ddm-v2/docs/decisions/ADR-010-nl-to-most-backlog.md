@@ -1,6 +1,6 @@
 # ADR-010: Natural language → MOST sequence (backlog)
 
-**Status:** Proposed / not implemented  
+**Status:** Superseded by [ADR-015](ADR-015-nl-parsing-in-scope.md)（2026-07-05）  
 **Date:** 2026-04-19  
 
 ## Context
