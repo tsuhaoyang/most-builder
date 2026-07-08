@@ -8,63 +8,48 @@ import { RuleSetViewer } from './features/rule-set/RuleSetViewer'
 import { SopPanel } from './features/sop/SopPanel'
 import { ExportPanel } from './features/export/Export'
 import { UsersPanel } from './features/users/UsersPanel'
-
-const TABS = [
-  { id: 'wi', label: '① WI 工時表' },
-  { id: 'level', label: '② Level System' },
-  { id: 'master', label: '③ 主數據' },
-  { id: 'ruleset', label: '④ Rule-set' },
-  { id: 'sop', label: '⑤ SOP 版本' },
-  { id: 'export', label: '⑥ 匯出' },
-  { id: 'users', label: '⑦ 使用者' },
-] as const
+import { WorksheetBar } from './features/catalog/WorksheetBar'
+import { CatalogPanel } from './features/catalog/CatalogPanel'
+import { AppLayout } from './features/layout/AppLayout'
+import { MostWorkbenchV3 } from './features/workbench-v3/MostWorkbenchV3'
 
 export default function App() {
   const [tab, setTab] = useState<string>('wi')
   const [importOpen, setImportOpen] = useState(false)
   const { data: me } = useMe()
 
-  return (
-    <div className="pb-10">
-      <header className="bg-gradient-to-br from-slate-800 to-slate-900 text-white px-4 py-3">
-        <div className="max-w-6xl mx-auto flex items-center justify-between">
-          <div>
-            <p className="text-[0.65rem] text-amber-300/90 uppercase tracking-wider">v2 · React + TS · API 驅動</p>
-            <h1 className="text-xl font-bold">MOST Workbench</h1>
+  const renderContent = () => {
+    switch (tab) {
+      case 'workbench-v3': return <MostWorkbenchV3 />
+      case 'wi':      return <WiWorkbench />
+      case 'level':   return <LevelSystem />
+      case 'master':  return <MasterData />
+      case 'ruleset': return <RuleSetViewer />
+      case 'sop':     return <SopPanel />
+      case 'export':  return <ExportPanel />
+      case 'users':   return <UsersPanel />
+      case 'catalog': return <CatalogPanel />
+      default:
+        return (
+          <div className="bg-white rounded-xl border p-6 text-slate-500 text-sm">
+            {tab}：功能開發中（待移植自 v3）
           </div>
-          <span className="text-sm">👤 {me?.employee_no ?? '…'} {me ? `· ${me.roles.join(',') || 'viewer'}` : ''}</span>
-        </div>
-      </header>
+        )
+    }
+  }
 
-      <nav className="bg-white border-b sticky top-0 z-20">
-        <div className="max-w-6xl mx-auto px-4 flex flex-wrap gap-1 py-2 text-sm">
-          {TABS.map(t => (
-            <button key={t.id} onClick={() => setTab(t.id)} aria-selected={tab === t.id}
-              className={`px-3 py-1.5 rounded-lg border ${tab === t.id ? 'bg-slate-900 text-white' : ''}`}>
-              {t.label}
-            </button>
-          ))}
-          {canEdit(me) && (
-            <button onClick={() => setImportOpen(true)} className="ml-auto px-3 py-1.5 rounded-lg border border-blue-300 text-blue-700">
-              📥 匯入 Excel
-            </button>
-          )}
-        </div>
-      </nav>
+  return (
+    <AppLayout
+      activeTab={tab}
+      onTabChange={setTab}
+      me={me}
+      canEdit={canEdit(me)}
+      onImportClick={() => setImportOpen(true)}
+    >
+      {/* WorksheetBar sits above the active feature panel, inside the scrollable main area */}
+      <WorksheetBar />
       {importOpen && <ImportModal onClose={() => setImportOpen(false)} />}
-
-      <main className="max-w-6xl mx-auto px-4 py-4">
-        {tab === 'wi' ? <WiWorkbench />
-          : tab === 'level' ? <LevelSystem />
-          : tab === 'master' ? <MasterData />
-          : tab === 'ruleset' ? <RuleSetViewer />
-          : tab === 'sop' ? <SopPanel />
-          : tab === 'export' ? <ExportPanel />
-          : tab === 'users' ? <UsersPanel />
-          : <div className="bg-white rounded-xl border p-6 text-slate-500">
-              {TABS.find(t => t.id === tab)?.label}：待遷移（藍本見 docs/html_con/v2-workbench.html）。
-            </div>}
-      </main>
-    </div>
+      {renderContent()}
+    </AppLayout>
   )
 }
