@@ -162,6 +162,27 @@ async def save_worksheet(session: AsyncSession, worksheet_id: uuid.UUID, payload
     return await read_worksheet(session, worksheet_id)
 
 
+# 尚未啟用——需等 ADR-019 定案後，統一掛接所有讀取端點（GET/export/versions/clone/save）
+# 參考 docs/decisions/ADR-019-worksheet-access-control.md
+async def check_read_access(
+    session: AsyncSession,
+    worksheet_id: uuid.UUID,
+    employee_no: str,
+    is_manager_or_above: bool,
+) -> None:
+    """IDOR 防護（Fix-1）：viewer / IE 只可讀自己建立（ProcessVersion.created_by）的工序表；
+    manager / admin 無限制。存取失敗一律 raise WorksheetNotFound（404，不洩漏存在性）。
+    """
+    if is_manager_or_above:
+        return
+    ws = await session.get(MostWorksheet, worksheet_id)
+    if ws is None:
+        raise WorksheetNotFound(str(worksheet_id))
+    pv = await session.get(ProcessVersion, ws.process_version_id)
+    if pv is None or pv.created_by != employee_no:
+        raise WorksheetNotFound(str(worksheet_id))
+
+
 async def read_worksheet(session: AsyncSession, worksheet_id: uuid.UUID) -> dict[str, Any]:
     ws = await session.get(MostWorksheet, worksheet_id)
     if ws is None:

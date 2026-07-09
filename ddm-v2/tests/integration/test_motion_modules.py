@@ -903,3 +903,59 @@ async def test_update_scope_escalation_blocked(client):
     )
     assert up.status_code == 403, up.text
     assert "detail" in up.json()
+
+
+# ── T-3d：provenance read-back ──────────────────────────────────────────────
+
+@pytest.mark.skip(reason="Worksheet 讀取 IDOR 防護待 ADR-019 定案後統一實作（目前 check_read_access 未掛入路由）")
+async def test_read_worksheet_idor_blocked_pending_adr():
+    """
+    驗證非擁有者 GET /worksheets/{id} 應得 404。
+    目前此防護被撤回（只防一道門，export/versions/clone 仍可繞過），
+    等 ADR-019 worksheet-access-control 實作後移除此 skip。
+    """
+    pass
+
+
+async def test_provenance_read_back_after_instantiate(client):
+    """T-3d：instantiate 後 GET /worksheets/{ws_id} 回傳的 rows 中
+    source_module_id == 模組 id 且 source_module_version 非 None。
+    （Fix-2：驗證 F-03b §2 provenance 欄位在讀取時正確回傳）
+    """
+    ws_id = await _clone_demo_ws(client)
+    rs_id = await _get_rule_set_id(client)
+    if rs_id is None:
+        pytest.skip("DB 無 rule_set，略過")
+
+    sfx = uuid.uuid4().hex[:6]
+    r = await client.post("/api/v2/motion-modules", json={
+        "name_zh": f"UT-Prov-{sfx}",
+        "scope": "global",
+    })
+    assert r.status_code == 201, r.text
+    mid = r.json()["id"]
+
+    pub = await client.post(f"/api/v2/motion-modules/{mid}/publish", json={
+        "rule_set_id": rs_id,
+        "rows": [_gm_row_pub(vocab_refs={"object_vocab_id": _OBJ_SEEDED})],
+    })
+    assert pub.status_code == 201, pub.text
+    version_no = pub.json()["version_no"]
+
+    inst = await client.post(
+        f"/api/v2/worksheets/{ws_id}/rows/from-module",
+        json={"module_id": mid},
+    )
+    assert inst.status_code == 201, inst.text
+    assert len(inst.json()["new_rows"]) >= 1
+
+    # provenance read-back：GET worksheet → source_module_id / source_module_version 已記錄
+    ws_resp = await client.get(f"/api/v2/worksheets/{ws_id}")
+    assert ws_resp.status_code == 200, ws_resp.text
+    rows = ws_resp.json()["rows"]
+
+    inst_rows = [row for row in rows if row.get("source_module_id") == mid]
+    assert len(inst_rows) >= 1, f"應找到 source_module_id={mid} 的列，實際 rows={[r.get('source_module_id') for r in rows]}"
+    for row in inst_rows:
+        assert row["source_module_version"] is not None, "source_module_version 不應為 None"
+        assert row["source_module_version"] == version_no
