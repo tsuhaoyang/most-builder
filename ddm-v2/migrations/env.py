@@ -8,7 +8,6 @@ from sqlalchemy import pool
 from sqlalchemy.engine import Connection
 from sqlalchemy.ext.asyncio import async_engine_from_config
 
-from ddm_v2.database import get_engine
 from ddm_v2.models.v2 import Base  # v2 定點重建基線（舊 models 已不納入版本鏈）
 from ddm_v2.settings import get_settings
 

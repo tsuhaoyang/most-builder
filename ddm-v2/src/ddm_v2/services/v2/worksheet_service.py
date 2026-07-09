@@ -187,6 +187,9 @@ async def read_worksheet(session: AsyncSession, worksheet_id: uuid.UUID) -> dict
             "tool_vocab_id": str(wr.tool_vocab_id) if wr.tool_vocab_id else None,
             "frequency": float(wr.frequency),
             "simo_group_id": wr.simo_group_id,
+            # F-03b §2 provenance（軟參考，非 FK）
+            "source_module_id": str(wr.source_module_id) if wr.source_module_id else None,
+            "source_module_version": wr.source_module_version,
             "cycle": {"seq_kind": cyc.seq_kind, "total_tmu": float(cyc.total_tmu), "total_seconds": float(cyc.total_seconds),
                       "tech_line": (cyc.computed or {}).get("tech_line"), "narrative": cyc.narrative_zh,
                       "rule_set_id": str(cyc.rule_set_id), "slot_inputs": cyc.slot_inputs} if cyc else None,

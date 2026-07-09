@@ -700,6 +700,7 @@ async def instantiate_to_worksheet(
     # 展開列
     new_rows_out = []
     drift_warnings = []
+    skipped_vocab_missing = 0
     now = datetime.now(timezone.utc)
 
     for idx, row_data in enumerate(ver.rows):
@@ -707,12 +708,16 @@ async def instantiate_to_worksheet(
         vocab_refs: dict[str, Any] = row_data.get("vocab_refs") or {}
         obj_vid_raw = vocab_refs.get("object_vocab_id")
         if obj_vid_raw is None:
-            # 若模組列未儲存 object_vocab_id，則跳過（不能違反 FK NOT NULL）
-            # TODO: 未來在 publish 時強制驗證 vocab_refs.object_vocab_id 存在。
+            # WiRow.object_vocab_id 為 NOT NULL FK，無法建立 WiRow。
+            # 計數並繼續（非靜默跳過）；呼叫端從 skipped_vocab_missing 得知。
+            # TODO: 未來在 publish_version 時強制驗證 vocab_refs.object_vocab_id 存在，
+            #       可在根源消除此 skip 路徑。
+            skipped_vocab_missing += 1
             continue
         try:
             obj_vid = uuid.UUID(str(obj_vid_raw))
         except ValueError:
+            skipped_vocab_missing += 1
             continue
 
         def _optional_uuid(key: str) -> uuid.UUID | None:
@@ -834,4 +839,8 @@ async def instantiate_to_worksheet(
         })
 
     await session.flush()
-    return {"new_rows": new_rows_out, "tmu_drift": drift_warnings}
+    return {
+        "new_rows": new_rows_out,
+        "tmu_drift": drift_warnings,
+        "skipped_vocab_missing": skipped_vocab_missing,
+    }

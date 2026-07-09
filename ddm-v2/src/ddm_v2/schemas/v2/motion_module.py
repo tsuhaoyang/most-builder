@@ -135,6 +135,8 @@ class InstantiateResponse(BaseModel):
     new_rows: list[InstantiatedRowOut]
     tmu_drift: list[dict[str, Any]] = Field(default_factory=list)
     # 每個 drift 項目：{"row_index": int, "module_tmu": float, "actual_tmu": float, "delta": float}
+    skipped_vocab_missing: int = 0
+    # 因 vocab_refs.object_vocab_id 缺失而跳過的列數（WiRow.object_vocab_id NOT NULL 不可省）
 
 
 # ── 排序請求（stub） ──────────────────────────────────────────────────
