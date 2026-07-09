@@ -237,10 +237,28 @@ async def list_modules(
 
     if category:
         stmt = stmt.where(MotionModule.category == category)
-    if q:
-        stmt = stmt.where(MotionModule.name_zh.ilike(f"%{q}%"))
 
-    stmt = stmt.order_by(MotionModule.updated_at.desc())
+    if q:
+        # Fix-1：直接在 motion_modules 表用 pg_trgm similarity 排序，
+        # scope/category WHERE 已在上方加入 stmt，不會被截斷。
+        # Fix-2：trgm 不可用時降級到 ILIKE。
+        from sqlalchemy import func as sa_func
+        stmt_q = stmt.where(
+            sa_func.similarity(MotionModule.name_zh, q) > 0.05
+        ).order_by(
+            sa_func.similarity(MotionModule.name_zh, q).desc()
+        )
+        try:
+            result = await session.execute(stmt_q)
+            modules = list(result.scalars().all())
+            return [_module_to_response(m) for m in modules]
+        except Exception:
+            # trgm 不可用時降級到 ILIKE
+            stmt = stmt.where(MotionModule.name_zh.ilike(f"%{q}%"))
+            stmt = stmt.order_by(MotionModule.updated_at.desc())
+    else:
+        stmt = stmt.order_by(MotionModule.updated_at.desc())
+
     result = await session.execute(stmt)
     modules = list(result.scalars().all())
     return [_module_to_response(m) for m in modules]
@@ -383,6 +401,27 @@ async def clone_module(
         new_m.current_version = 1
         new_m.updated_at = now
         await session.flush()
+
+    # Fix-3：clone 後寫入 search_documents（同 publish_version 模式）
+    try:
+        async with session.begin_nested():
+            from ddm_v2.search.normalization import build_content_norm
+            content = build_content_norm(new_m.name_zh, "", list(new_m.keywords or []))
+            await session.execute(text("""
+                INSERT INTO search_documents (id, doc_type, ref_id, rule_set_id, content_norm, scope, owner, updated_at)
+                VALUES (gen_random_uuid(), 'motion_module', :ref_id, :rule_set_id, :content, :scope, :owner, now())
+                ON CONFLICT (doc_type, ref_id) DO UPDATE
+                  SET content_norm = EXCLUDED.content_norm, scope = EXCLUDED.scope,
+                      owner = EXCLUDED.owner, embedding = NULL, updated_at = now()
+            """), {
+                "ref_id": str(new_m.id),
+                "rule_set_id": str(cloned_ver.rule_set_id) if cloned_ver else None,
+                "content": content,
+                "scope": new_m.scope,
+                "owner": new_m.owner,
+            })
+    except Exception as exc:
+        logger.warning("clone search 投影失敗 module=%s: %s", new_m.id, exc)
 
     return _module_to_response(new_m, cloned_ver)
 

@@ -4,7 +4,7 @@
 //   [WI 選取器 (Compact WI Picker)] | [製程大綱 (ProcessOutline)]
 import { useEffect, useMemo, useRef, useState } from 'react'
 import {
-  useWiTemplates,
+  useMotionModules,
   useInstantiateToWorksheet,
   useVersionFromRows,
   type MotionModuleSummary,
@@ -166,8 +166,21 @@ interface ApplyBackPending {
 export function ProcessWorkspace() {
   const activeWs = useWorkspace(s => s.activeWs)
 
-  // WI template list (same data as Tab 2 WI Pool)
-  const { data: wiTemplates = [], isLoading: wiLoading } = useWiTemplates()
+  // Panel 1: search state (debounced → API query)
+  const [search, setSearch] = useState('')
+  const [debouncedQ, setDebouncedQ] = useState('')
+
+  useEffect(() => {
+    const t = setTimeout(() => setDebouncedQ(search.trim()), 300)
+    return () => clearTimeout(t)
+  }, [search])
+
+  // WI template list (category=wi-template); q is delegated to backend search
+  const { data: wiTemplates = [], isLoading: wiLoading } = useMotionModules(
+    debouncedQ
+      ? { category: 'wi-template', q: debouncedQ }
+      : { category: 'wi-template' }
+  )
 
   // Current worksheet rows (for ProcessOutline panel)
   const { data: wsData } = useWorksheet(activeWs ?? '')
@@ -183,7 +196,6 @@ export function ProcessWorkspace() {
 
   // Panel 1: WI Selector state
   const [selected, setSelected] = useState<Set<string>>(new Set())
-  const [search, setSearch] = useState('')
 
   // Panel 2: local display order (mirrors DB seq_no; reorder is local-only per spec)
   const apiRows: WsReadRow[] = useMemo(() => wsData?.rows ?? [], [wsData])
@@ -218,13 +230,6 @@ export function ProcessWorkspace() {
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
-
-  // Panel 1: filtered WI templates (client-side search)
-  const filteredWi = useMemo(() => {
-    const q = search.trim().toLowerCase()
-    if (!q) return wiTemplates
-    return wiTemplates.filter((m: MotionModuleSummary) => m.name_zh.toLowerCase().includes(q))
-  }, [wiTemplates, search])
 
   // Panel 1 handlers
   function toggleSelect(id: string) {
@@ -403,12 +408,12 @@ export function ProcessWorkspace() {
             {wiLoading && (
               <p className="text-xs text-slate-400 text-center py-4">載入中…</p>
             )}
-            {!wiLoading && filteredWi.length === 0 && (
+            {!wiLoading && wiTemplates.length === 0 && (
               <p className="text-xs text-slate-400 text-center py-4 leading-relaxed">
                 {search ? '無相符 WI' : '尚無 WI 模板，請先至 Tab 2 建立'}
               </p>
             )}
-            {filteredWi.map((mod: MotionModuleSummary) => {
+            {wiTemplates.map((mod: MotionModuleSummary) => {
               const isChecked = selected.has(mod.id)
               const tmu = mod.total_tmu ?? 0
               return (

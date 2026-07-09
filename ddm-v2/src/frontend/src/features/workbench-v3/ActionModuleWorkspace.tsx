@@ -89,10 +89,19 @@ export function ActionModuleWorkspace() {
 
   // Pool state
   const [searchQ, setSearchQ] = useState('')
+  const [debouncedQ, setDebouncedQ] = useState('')
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set())
 
+  // Debounce searchQ → debouncedQ (300ms), then let API do the filtering
+  useEffect(() => {
+    const t = setTimeout(() => setDebouncedQ(searchQ.trim()), 300)
+    return () => clearTimeout(t)
+  }, [searchQ])
+
   // API hooks
-  const { data: modules = [], isLoading: modulesLoading } = useMotionModules({ scope: 'personal' })
+  const { data: modules = [], isLoading: modulesLoading } = useMotionModules(
+    debouncedQ ? { scope: 'personal', q: debouncedQ } : { scope: 'personal' }
+  )
   const createModule = useCreateModule()
   const updateModule = useUpdateModule()
   const deleteModule = useDeleteModule()
@@ -394,13 +403,6 @@ export function ActionModuleWorkspace() {
     setActiveTab('tab2')
   }
 
-  // ── Pool filtered list ────────────────────────────────────────────────────────
-  const filteredModules = useMemo(() => {
-    const q = searchQ.trim().toLowerCase()
-    if (!q) return modules
-    return modules.filter(m => m.name_zh.toLowerCase().includes(q))
-  }, [modules, searchQ])
-
   // ── Module card helpers ───────────────────────────────────────────────────────
   function getModuleSeq(mod: MotionModuleSummary): string {
     const seq = mod.rows[0]?.cycle?.seq
@@ -561,12 +563,12 @@ export function ActionModuleWorkspace() {
               {modulesLoading && (
                 <p className="text-slate-400 text-sm text-center py-4">載入中…</p>
               )}
-              {!modulesLoading && filteredModules.length === 0 && (
+              {!modulesLoading && modules.length === 0 && (
                 <p className="text-slate-400 text-sm text-center py-4">
                   {searchQ ? '無相符模組' : '尚無個人模組，請在左側新增。'}
                 </p>
               )}
-              {filteredModules.map(mod => {
+              {modules.map(mod => {
                 const isSelected = selectedIds.has(mod.id)
                 const modSeq = getModuleSeq(mod)
                 const modTmu = getModuleTmu(mod)
