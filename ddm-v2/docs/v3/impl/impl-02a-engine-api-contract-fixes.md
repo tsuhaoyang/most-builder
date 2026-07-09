@@ -39,4 +39,7 @@
 
 ## 執行結果（agent 回報後由協調者補記）
 
-- [ ] Fix-1 ／ [ ] Fix-2 ／ [ ] Fix-3 ／ [ ] validator PASS
+- [x] Fix-1 — schema 卸下範圍約束，REPEAT_INVALID 經 API 可達（測試：repeat_count=0/-1/100 case，integration test_calculate_repeat_invalid_422）
+- [x] Fix-2 — ASlot/BSlot 加 passthrough 欄，REPEAT_INVALID 從 A/B 可達（測試：a0.repeat_count=2 case，integration test_calculate_repeat_on_a_slot_422）
+- [x] Fix-3 — _x_tmu 已有 X_SECONDS_REQUIRED 防線（0/未填）+ X_NEGATIVE（負值，語意區分，impl-02 §2 決策保留）；unit test_x_zero_or_missing_seconds_raises + test_x_negative_raises 通過；minimost_sequence_validator.py 已同步；impl-02-engine-changes.md §2 已列 X_SECONDS_REQUIRED；新增 integration test_calculate_x_seconds_required_422（0/未填→X_SECONDS_REQUIRED，-1→X_NEGATIVE）
+- [ ] validator PASS（待 ddm-validator 跑 run_all.py + pytest 確認）

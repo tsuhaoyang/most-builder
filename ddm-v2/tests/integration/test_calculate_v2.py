@@ -106,6 +106,30 @@ async def test_calculate_repeat_on_a_slot_422(client):
     assert r.json()["detail"]["code"] == "REPEAT_INVALID"
 
 
+async def test_calculate_x_seconds_required_422(client):
+    """Fix-3（CL-01 §2 X）：x_press（mode=seconds）帶 x_seconds=0 或未填 → 422 X_SECONDS_REQUIRED。
+    負值走 X_NEGATIVE（語意區分，impl-02 §2 決策；不合併至 X_SECONDS_REQUIRED）。
+    """
+    base_cm = dict(CM_GOLD)
+    # x_seconds=0 → X_SECONDS_REQUIRED
+    cyc_zero = dict(base_cm, x4={"x_code": "x_press", "x_seconds": 0})
+    r = await _calc(client, cyc_zero)
+    assert r.status_code == 422, r.text
+    assert r.json()["detail"]["code"] == "X_SECONDS_REQUIRED"
+
+    # x_seconds 未填（預設 0）→ X_SECONDS_REQUIRED
+    cyc_missing = dict(base_cm, x4={"x_code": "x_press"})
+    r = await _calc(client, cyc_missing)
+    assert r.status_code == 422, r.text
+    assert r.json()["detail"]["code"] == "X_SECONDS_REQUIRED"
+
+    # x_seconds=-1 → X_NEGATIVE（語意區分：方向/符號錯誤 ≠ 必填未填）
+    cyc_neg = dict(base_cm, x4={"x_code": "x_press", "x_seconds": -1})
+    r = await _calc(client, cyc_neg)
+    assert r.status_code == 422, r.text
+    assert r.json()["detail"]["code"] == "X_NEGATIVE"
+
+
 async def test_calculate_override_applies_and_marks_star(client):
     """E7 正常路徑：覆寫值取代 + tech_line 標 *（G6→16：28-6+16=38）。"""
     cyc = dict(GM_GOLD, g2={"g_code": "g_grasp", "manual_override": {"tmu": 16, "reason": "IE 實測", "by": "IEC141289"}})
