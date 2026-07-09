@@ -32,6 +32,7 @@
 | **匯出** | wi-preview / excel(openpyxl) / lb-csv / lb-api | `tests/integration/test_export.py` |
 | **匯入** | upload→map(正規化/警告/分秒) / profile；RBAC；openpyxl | `tests/integration/test_import.py` |
 | **Motion Modules（impl-04）** | create→get；SM-1 IDOR；SM-2 max rows；SM-3 scope escalation；SM-4 owner immutable；SM-5 publish guard；SM-6 reorder RBAC；SM-7 apply-back version increment；DELETE happy+409；clone；instantiate；**ADR-019 Option A 迴歸（viewer 可讀任意 worksheet→200）** | `tests/integration/test_motion_modules.py` |
+| **搜尋基礎設施（impl-03）** | normalize 標點/空白/lower；build_content_norm 多欄串接；NullProvider 降級 semantic=False；空查詢不碰 DB；RRF 融合：兩路共鍵排首且 match_type=fused；單路鍵 rank=1000 懲罰、仍在結果、match_type=fused | `tests/unit/test_search.py` |
 | 前端（全分頁） | 載入/身分/分頁渲染/匯入精靈 | `src/frontend/e2e/smoke.spec.ts` |
 | 依賴完整性 | `create_app()` 乾淨 import；端點測試抓 lazy import | CI「乾淨 import」step + 上列各端點測試 |
 

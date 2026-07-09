@@ -9,11 +9,12 @@
 """
 from __future__ import annotations
 
+import logging
 import uuid
 from datetime import datetime, timezone
 from typing import Any
 
-from sqlalchemy import select
+from sqlalchemy import select, text
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from ddm_v2.auth.deps import ROLE_ORDER
@@ -32,6 +33,8 @@ from ddm_v2.schemas.v2.motion_module import (
     PublishRequest,
     VersionFromRowsRequest,
 )
+
+logger = logging.getLogger(__name__)
 
 # SM-3：最低 manager 層級，從 ROLE_ORDER 取值（Fix-3：消除魔術常數）。
 _MANAGER_LEVEL = ROLE_ORDER["manager"]
@@ -471,6 +474,37 @@ async def publish_version(
     m.current_version = new_version_no
     m.updated_at = now
     await session.flush()
+
+    # search_documents upsert（search/ 模組；失敗不阻斷發布）
+    try:
+        from ddm_v2.search.normalization import build_content_norm
+        content = build_content_norm(
+            m.name_zh,
+            "",  # module 尚無 description 欄
+            list(m.keywords or []),
+        )
+        upsert_sql = text("""
+            INSERT INTO search_documents (id, doc_type, ref_id, rule_set_id, content_norm, scope, owner, updated_at)
+            VALUES (gen_random_uuid(), 'motion_module', :ref_id, :rule_set_id, :content, :scope, :owner, now())
+            ON CONFLICT (doc_type, ref_id) DO UPDATE
+              SET content_norm = EXCLUDED.content_norm,
+                  rule_set_id = EXCLUDED.rule_set_id,
+                  scope = EXCLUDED.scope,
+                  owner = EXCLUDED.owner,
+                  embedding = NULL,
+                  embedding_model = NULL,
+                  updated_at = now()
+        """)
+        async with session.begin_nested():
+            await session.execute(upsert_sql, {
+                "ref_id": str(module_id),
+                "rule_set_id": str(data.rule_set_id),
+                "content": content,
+                "scope": m.scope,
+                "owner": m.owner,
+            })
+    except Exception as exc:
+        logger.warning("search 投影失敗 module=%s: %s", module_id, exc)
 
     return _version_to_response(ver)
 
