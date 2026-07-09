@@ -1,8 +1,15 @@
 // Tab 3: 製程途程工作區 (ProcessWorkspace) — F-03 三層組裝 L3 + E-06/E-07
+// F-03b §3: apply-back（從工序表行發布模組新版本，真實對接後端）
 // Two-panel layout:
 //   [WI 選取器 (Compact WI Picker)] | [製程大綱 (ProcessOutline)]
 import { useEffect, useMemo, useRef, useState } from 'react'
-import { useWiTemplates, useInstantiateToWorksheet, type MotionModuleSummary } from './api'
+import {
+  useWiTemplates,
+  useInstantiateToWorksheet,
+  useVersionFromRows,
+  type MotionModuleSummary,
+  type ApplyBackRowIn,
+} from './api'
 import { useWorkbenchV3Store } from './store'
 import { useWorkspace } from '../../shared/workspace'
 import { useWorksheet } from '../wi-workbench/api'
@@ -24,6 +31,59 @@ function Toast({ toast }: { toast: ToastState | null }) {
   )
 }
 
+// ── Apply-back 確認對話框（F-03b §3.3）────────────────────────────────────────
+interface ApplyBackDialogProps {
+  moduleName: string
+  moduleVersion: number
+  rowCount: number
+  isPending: boolean
+  onConfirm: () => void
+  onCancel: () => void
+}
+
+function ApplyBackDialog({ moduleName, moduleVersion, rowCount, isPending, onConfirm, onCancel }: ApplyBackDialogProps) {
+  return (
+    <div
+      className="fixed inset-0 z-50 flex items-center justify-center bg-black/30"
+      onClick={e => { if (e.target === e.currentTarget) onCancel() }}
+    >
+      <div className="bg-white rounded-xl shadow-xl p-6 max-w-sm w-full mx-4">
+        <h3 className="font-semibold text-sm mb-3">確認發布新版本</h3>
+        <p className="text-sm text-slate-700 mb-1">
+          將從目前工序表內容建立新版本：
+        </p>
+        <p className="text-sm font-medium text-blue-700 mb-4 truncate" title={moduleName}>
+          {moduleName} <span className="text-slate-400 font-normal">v{moduleVersion}</span>
+        </p>
+        <p className="text-xs text-slate-500 mb-3">
+          共 {rowCount} 列將同步回模組庫
+        </p>
+        <div className="text-xs text-slate-500 bg-slate-50 rounded p-3 mb-5 space-y-1">
+          <p>現有流程繼續使用快照，不受影響</p>
+          <p>模組版本將升為新版本（舊版本保留可查）</p>
+          <p>其他流程將顯示「來源有新版本可用」提示</p>
+        </div>
+        <div className="flex gap-2 justify-end">
+          <button
+            onClick={onCancel}
+            disabled={isPending}
+            className="px-3 py-1.5 text-sm border border-slate-200 rounded hover:bg-slate-50 disabled:opacity-40"
+          >
+            取消
+          </button>
+          <button
+            onClick={onConfirm}
+            disabled={isPending}
+            className="px-3 py-1.5 text-sm bg-blue-600 text-white rounded hover:bg-blue-700 disabled:opacity-40"
+          >
+            {isPending ? '發布中…' : '確認發布'}
+          </button>
+        </div>
+      </div>
+    </div>
+  )
+}
+
 // ── Row item in ProcessOutline ─────────────────────────────────────────────────
 interface RowItemProps {
   row: WsReadRow
@@ -32,13 +92,12 @@ interface RowItemProps {
   onMoveUp: () => void
   onMoveDown: () => void
   onDelete: () => void
+  /** 不為 undefined 代表此列可 apply-back（有 source_module_id） */
+  onApplyBack?: () => void
 }
 
-function RowItem({ row, index, total, onMoveUp, onMoveDown, onDelete }: RowItemProps) {
+function RowItem({ row, index, total, onMoveUp, onMoveDown, onDelete, onApplyBack }: RowItemProps) {
   const tmu = row.cycle?.total_tmu ?? 0
-  // source_module_id may be present in the raw response dict (backend serializes it
-  // for instantiated rows) even though WsReadRow typedef doesn't declare it.
-  const sourceModuleId = (row as unknown as Record<string, unknown>).source_module_id as string | undefined
 
   return (
     <div className="flex items-center gap-2 p-2 rounded border border-slate-200 bg-slate-50 text-sm">
@@ -49,7 +108,7 @@ function RowItem({ row, index, total, onMoveUp, onMoveDown, onDelete }: RowItemP
         <p className="truncate text-slate-700" title={row.cycle?.narrative ?? undefined}>
           {row.cycle?.narrative ?? `列 ${row.seq_no}`}
         </p>
-        {sourceModuleId && (
+        {row.source_module_id && (
           <span className="text-[10px] text-slate-400 bg-slate-200 px-1 py-0.5 rounded">
             來自模組
           </span>
@@ -57,6 +116,15 @@ function RowItem({ row, index, total, onMoveUp, onMoveDown, onDelete }: RowItemP
       </div>
       <b className="text-sm flex-shrink-0" style={{ color: '#1a73e8' }}>{tmu}T</b>
       <div className="flex gap-0.5 flex-shrink-0 items-center">
+        {onApplyBack && (
+          <button
+            onClick={onApplyBack}
+            className="text-blue-500 hover:text-blue-700 px-1 leading-none text-[10px] font-medium border border-blue-200 rounded"
+            title="套用為新版本（同步回模組庫）"
+          >
+            回
+          </button>
+        )}
         <button
           onClick={onMoveUp}
           disabled={index === 0}
@@ -85,6 +153,15 @@ function RowItem({ row, index, total, onMoveUp, onMoveDown, onDelete }: RowItemP
   )
 }
 
+// ── Apply-back 待確認狀態 ──────────────────────────────────────────────────────
+interface ApplyBackPending {
+  moduleId: string
+  moduleVersion: number
+  moduleName: string
+  rows: ApplyBackRowIn[]
+  ruleSetId: string
+}
+
 // ── ProcessWorkspace ───────────────────────────────────────────────────────────
 export function ProcessWorkspace() {
   const activeWs = useWorkspace(s => s.activeWs)
@@ -93,10 +170,13 @@ export function ProcessWorkspace() {
   const { data: wiTemplates = [], isLoading: wiLoading } = useWiTemplates()
 
   // Current worksheet rows (for ProcessOutline panel)
-  const { data: wsData } = useWorksheet(activeWs)
+  const { data: wsData } = useWorksheet(activeWs ?? '')
 
   // Instantiate mutation
   const instantiate = useInstantiateToWorksheet()
+
+  // Apply-back mutation (F-03b §3)
+  const versionFromRows = useVersionFromRows()
 
   // Cross-tab store
   const { clearPendingWiIds } = useWorkbenchV3Store()
@@ -122,6 +202,9 @@ export function ProcessWorkspace() {
     setToast({ msg, type })
     toastTimer.current = setTimeout(() => setToast(null), 3500)
   }
+
+  // Apply-back confirmation state
+  const [applyBackPending, setApplyBackPending] = useState<ApplyBackPending | null>(null)
 
   // Consume pendingWiIds from store on mount (F-03 跨層傳送 Tab2→Tab3, E-07)
   const consumedRef = useRef(false)
@@ -183,7 +266,7 @@ export function ProcessWorkspace() {
     }
     if (hasDrift) {
       // Show drift warning after brief delay so it doesn't overlap
-      setTimeout(() => showToast('⚠ 部分 WI TMU 因規則集不同已調整', 'warn'), 400)
+      setTimeout(() => showToast('部分 WI TMU 因規則集不同已調整', 'warn'), 400)
     }
     if (errors.length > 0) {
       setTimeout(
@@ -216,6 +299,66 @@ export function ProcessWorkspace() {
     showToast('功能即將推出', 'warn')
   }
 
+  // Apply-back: prepare confirmation state (F-03b §3.2 Step 2-3)
+  // Fix-B: dual-key (sourceModuleId, sourceModuleVersion) prevents mixing rows from different
+  //        instantiations of the same module.
+  function handlePrepareApplyBack(sourceModuleId: string, sourceModuleVersion: number) {
+    // Collect all rows sharing the same (source_module_id, source_module_version) pair
+    const sourceRows = localOrder.filter(r =>
+      r.source_module_id === sourceModuleId &&
+      r.source_module_version === sourceModuleVersion
+    )
+    if (sourceRows.length === 0) return
+
+    // Get rule_set_id from first row with a cycle (all rows from same module share rule set)
+    const ruleSetId = sourceRows.find(r => r.cycle?.rule_set_id)?.cycle?.rule_set_id
+    if (!ruleSetId) {
+      showToast('無法取得規則集 ID，請重新載入', 'err')
+      return
+    }
+
+    // Map WsReadRow → ApplyBackRowIn
+    // slot_inputs IS the CycleIn JSON (stored via cycle.model_dump(mode="json"))
+    // Fix-A: reconstruct vocab_refs from existing row fields so the backend
+    //        instantiate_to_worksheet does not silently skip rows with empty vocab_refs.
+    const rows: ApplyBackRowIn[] = sourceRows.map(r => ({
+      sub_activity: r.sub_activity ?? null,
+      hand: r.hand ?? 'BH',
+      frequency: Math.max(1, Math.round(r.frequency)),
+      simo_pair_index: null,
+      vocab_refs: {
+        ...(r.object_vocab_id ? { object_vocab_id: r.object_vocab_id } : {}),
+        ...(r.from_vocab_id   ? { from_vocab_id:   r.from_vocab_id  } : {}),
+        ...(r.to_vocab_id     ? { to_vocab_id:     r.to_vocab_id    } : {}),
+        ...(r.tool_vocab_id   ? { tool_vocab_id:   r.tool_vocab_id  } : {}),
+      },
+      cycle: r.cycle?.slot_inputs,
+    }))
+
+    // Resolve module name from WI template list (best-effort; fallback to short ID)
+    const module = wiTemplates.find((m: MotionModuleSummary) => m.id === sourceModuleId)
+    const moduleName = module?.name_zh ?? `模組 ${sourceModuleId.slice(0, 8)}`
+
+    setApplyBackPending({ moduleId: sourceModuleId, moduleVersion: sourceModuleVersion, moduleName, rows, ruleSetId })
+  }
+
+  // Apply-back: actually call the API (F-03b §3.2 Step 4+)
+  async function handleApplyBackConfirm() {
+    if (!applyBackPending) return
+    try {
+      const result = await versionFromRows.mutateAsync({
+        moduleId: applyBackPending.moduleId,
+        rows: applyBackPending.rows,
+        ruleSetId: applyBackPending.ruleSetId,
+      })
+      setApplyBackPending(null)
+      showToast(`已建立版本 v${result.version_no}`, 'ok')
+    } catch (err) {
+      // 409 / 422 / 403 detail 由 apiPost 解開為 Error.message
+      showToast((err as Error).message, 'err')
+    }
+  }
+
   // Process stats
   const totalRows = localOrder.length
   const totalTmu = useMemo(
@@ -229,6 +372,19 @@ export function ProcessWorkspace() {
   return (
     <>
       <Toast toast={toast} />
+
+      {/* Apply-back 確認對話框（F-03b §3.3）*/}
+      {applyBackPending && (
+        <ApplyBackDialog
+          moduleName={applyBackPending.moduleName}
+          moduleVersion={applyBackPending.moduleVersion}
+          rowCount={applyBackPending.rows.length}
+          isPending={versionFromRows.isPending}
+          onConfirm={handleApplyBackConfirm}
+          onCancel={() => setApplyBackPending(null)}
+        />
+      )}
+
       <div className="flex gap-3 h-full min-h-0">
 
         {/* ── Panel 1: WI 選取器 ─────────────────────────────────────────── */}
@@ -344,29 +500,16 @@ export function ProcessWorkspace() {
                 onMoveUp={() => moveUp(i)}
                 onMoveDown={() => moveDown(i)}
                 onDelete={() => handleDelete(i)}
+                // graceful degrade: onApplyBack 僅在有 source_module_id + source_module_version 時傳入 (F-03b §3)
+                // Fix-B: pass version so dual-key filter works correctly
+                onApplyBack={
+                  row.source_module_id && row.source_module_version != null
+                    ? () => handlePrepareApplyBack(row.source_module_id!, row.source_module_version!)
+                    : undefined
+                }
               />
             ))}
           </div>
-
-          {/* Apply-back button (E-06 §5 顯式操作 + J-06 確認對話框) */}
-          {localOrder.some(r => (r as unknown as Record<string, unknown>).source_module_id) && (
-            <div className="p-3 border-t">
-              <button
-                onClick={() => {
-                  if (
-                    window.confirm(
-                      '此 WI 模組將發布新版本（v{n+1}）\n現有流程項快照不受影響。\n確認？',
-                    )
-                  ) {
-                    showToast('功能即將推出', 'warn')
-                  }
-                }}
-                className="w-full px-3 py-1.5 border border-blue-200 text-blue-700 rounded text-sm hover:bg-blue-50"
-              >
-                套用為新版本
-              </button>
-            </div>
-          )}
         </div>
 
       </div>

@@ -36,14 +36,37 @@ export const useSaveWorksheet = (wsId: string) =>
 
 // 讀回整份 worksheet（切換版本 / 開啟時載入；後端權威）
 export interface WsReadRow {
-  wi_row_id: string; seq_no: number; hand: string | null
-  object_vocab_id: string; from_vocab_id: string | null; to_vocab_id: string | null
-  frequency: number; simo_group_id: string | null
-  cycle: { seq_kind: string; total_tmu: number; total_seconds: number; narrative: string | null; slot_inputs: unknown } | null
+  wi_row_id: string
+  seq_no: number
+  hand: string | null
+  sub_activity: string | null
+  object_vocab_id: string
+  from_vocab_id: string | null
+  to_vocab_id: string | null
+  tool_vocab_id: string | null
+  frequency: number
+  simo_group_id: string | null
+  /** F-03b §2 provenance — nullable 軟參考（非 FK） */
+  source_module_id: string | null
+  source_module_version: number | null
+  cycle: {
+    seq_kind: string
+    total_tmu: number
+    total_seconds: number
+    narrative: string | null
+    /** 原始 CycleIn JSON（後端權威）— apply-back 時整包回傳 */
+    slot_inputs: unknown
+    /** 計算時使用的 rule-set UUID（apply-back 回傳給後端） */
+    rule_set_id: string
+  } | null
   level: {
-    coefficient: number; ascription: string | null; level: string | null
-    countersignature: string | null; parent_countersignature: string | null
-    number: string | null; number_count: number | null
+    coefficient: number
+    ascription: string | null
+    level: string | null
+    countersignature: string | null
+    parent_countersignature: string | null
+    number: string | null
+    number_count: number | null
   } | null
 }
 export interface WsRead { worksheet_id: string; status: string; total_tmu: number; rows: WsReadRow[] }

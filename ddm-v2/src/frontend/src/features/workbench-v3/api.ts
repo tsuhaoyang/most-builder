@@ -185,3 +185,53 @@ export const useInstantiateToWorksheet = () => {
     },
   })
 }
+
+// ── Apply-back（F-03b §3）：從工序表列發布模組新版本 ─────────────────────
+
+/** POST /motion-modules/{id}/versions/from-rows 的回應 */
+export interface VersionFromRowsResult {
+  id: string
+  module_id: string
+  version_no: number
+  rule_set_id: string
+  rows: unknown[]
+  narrative_zh: string | null
+  total_tmu: number
+  total_seconds: number
+  published_by: string
+  published_at: string
+}
+
+/** 送給 from-rows 的單列資料（slot_inputs 即 CycleIn JSON，直接回傳後端） */
+export interface ApplyBackRowIn {
+  sub_activity: string | null
+  hand: string
+  frequency: number
+  simo_pair_index: number | null
+  vocab_refs: Record<string, unknown>
+  cycle: unknown   // WsReadRow.cycle.slot_inputs — 原始 CycleIn JSON
+}
+
+export const useVersionFromRows = () => {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: ({
+      moduleId,
+      rows,
+      ruleSetId,
+    }: {
+      moduleId: string
+      rows: ApplyBackRowIn[]
+      ruleSetId: string
+    }) =>
+      apiPost<VersionFromRowsResult>(
+        `/api/v2/motion-modules/${moduleId}/versions/from-rows`,
+        { rows, rule_set_id: ruleSetId },
+      ),
+    onSuccess: () => {
+      // 重整模組列表（新版本已發布）
+      qc.invalidateQueries({ queryKey: [QK] })
+      qc.invalidateQueries({ queryKey: [WI_QK] })
+    },
+  })
+}
