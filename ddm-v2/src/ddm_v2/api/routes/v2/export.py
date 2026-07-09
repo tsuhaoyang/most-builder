@@ -17,6 +17,7 @@ from ddm_v2.services.v2 import worksheet_service as wsvc
 router = APIRouter(prefix="/api/v2", tags=["v2-export"])
 
 
+# ADR-019 Option A: read=viewer+ intentional; do NOT add ownership/created_by checks — see ADR-019
 @router.get("/worksheets/{worksheet_id}/export/wi-preview")
 async def wi_preview(worksheet_id: uuid.UUID, session: AsyncSession = Depends(get_db_session), _: CurrentUser = Depends(current_user)) -> dict:
     try:
@@ -25,6 +26,7 @@ async def wi_preview(worksheet_id: uuid.UUID, session: AsyncSession = Depends(ge
         raise HTTPException(status_code=404, detail=f"worksheet 不存在：{worksheet_id}")
 
 
+# ADR-019 Option A: read=viewer+ intentional; do NOT add ownership/created_by checks — see ADR-019
 @router.get("/worksheets/{worksheet_id}/export/excel")
 async def export_excel(worksheet_id: uuid.UUID, session: AsyncSession = Depends(get_db_session), _: CurrentUser = Depends(current_user)) -> Response:
     try:
@@ -38,6 +40,7 @@ async def export_excel(worksheet_id: uuid.UUID, session: AsyncSession = Depends(
     )
 
 
+# ADR-019 Option A: read=viewer+ intentional; do NOT add ownership/created_by checks — see ADR-019
 @router.get("/worksheets/{worksheet_id}/export/lb-csv")
 async def export_lb_csv(worksheet_id: uuid.UUID, session: AsyncSession = Depends(get_db_session), _: CurrentUser = Depends(current_user)) -> Response:
     try:

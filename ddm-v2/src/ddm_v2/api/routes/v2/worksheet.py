@@ -36,6 +36,7 @@ async def save_worksheet(worksheet_id: uuid.UUID, payload: WorksheetSaveIn, sess
     return WorksheetReadOut(**result)
 
 
+# ADR-019 Option A: read=viewer+ intentional; do NOT add ownership/created_by checks — see ADR-019
 @router.get("/worksheets/{worksheet_id}", response_model=WorksheetReadOut)
 async def read_worksheet(worksheet_id: uuid.UUID, session: AsyncSession = Depends(get_db_session),
                          _: CurrentUser = Depends(current_user)) -> WorksheetReadOut:
@@ -46,6 +47,7 @@ async def read_worksheet(worksheet_id: uuid.UUID, session: AsyncSession = Depend
     return WorksheetReadOut(**result)
 
 
+# ADR-019 Option A: read=viewer+ intentional; do NOT add ownership/created_by checks — see ADR-019
 @router.get("/worksheets/{worksheet_id}/versions")
 async def worksheet_versions(worksheet_id: uuid.UUID, session: AsyncSession = Depends(get_db_session),
                              _: CurrentUser = Depends(current_user)) -> dict:

@@ -70,6 +70,7 @@ async def update_sku(sku_id: uuid.UUID, patch: SkuPatch, session: AsyncSession =
     return await svc.update_sku(session, sku_id, patch)
 
 
+# ADR-019 Option A: listing=viewer+ intentional; UUID enumerable by design — see ADR-019
 @router.get("/skus/{sku_id}/worksheets", response_model=list[WorksheetSummaryOut])
 async def list_worksheets(sku_id: uuid.UUID, session: AsyncSession = Depends(get_db_session),
                           _: CurrentUser = Depends(current_user)):

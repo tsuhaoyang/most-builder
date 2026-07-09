@@ -1,6 +1,7 @@
 # ADR-019: Worksheet 讀取端點的存取控制（ownership vs site scoping vs 維持 spec）
 
-**狀態：** Proposed（待人工決策）
+**狀態：** Accepted（2026-07-09）
+**決定：** Option A — 維持現行 RBAC spec，讀取 = viewer+（任何已登入使用者）
 **日期：** 2026-07-09
 **關聯：** [../architecture/rbac-spec.md](../architecture/rbac-spec.md) §4/§7、ADR-018（workflow/role convergence）、ADR-017
 **參考先例（Vault）：** `02-Memory/MultiTenant-Ownership-Check-Blind-Spot.md`、`02-Memory/API-IDOR-Scope-Filter-Blind-Spot.md`、`01-Canonical/FullStack/Backend-Architecture.md`（爆炸半徑測試）、`01-Canonical/FullStack/Python-Code-Quality.md` P-03
@@ -55,20 +56,13 @@
 
 ---
 
-## 決策（Proposed，二選一交人工拍板）
+## 決策（Accepted — Option A）
 
-本 ADR **不自行定案**，因為決策樞紐是一個架構師無法代答的商業問題（見下）。收斂為兩個可行候選 + 一個否決項，並推薦「回頭成本最低」的起點。
+選擇 Option A 的主要理由：MOST 工廠環境中，工時標準屬組織共享知識，同公司員工互相看到彼此 SKU 的工時標準不構成敏感資訊洩漏。Option C（site scoping）列為 backlog，待多廠區隱私需求明確後再評估。
 
-### 樞紐問題（人工必須回答）
+### 採用：Option A（對齊 spec）+ 預留 Option C 的 site 軸
 
-> **同一公司的不同廠區（site）之間，工時標準文件需不需要互相保密？**
->
-> - 「不需要／全公司共享標準庫」 → **Option A**。
-> - 「需要，A 廠不該看 B 廠的工序表」 → **Option C**。
-
-### 推薦起點：Option A（對齊 spec）+ 預留 Option C 的 site 軸
-
-推薦**現在**採 Option A（乾淨對齊 RBAC spec §4，把撤回的 patch 收尾），並在設計上**預先把 `site_id` 釘為未來 scoping 的唯一軸**，使 A→C 是「加一個 filter」而非「重新設計」。理由見下節。
+採 Option A（乾淨對齊 RBAC spec §4，把撤回的 patch 收尾），並在設計上**預先把 `site_id` 釘為未來 scoping 的唯一軸**，使 A→C 是「加一個 filter」而非「重新設計」。
 
 ---
 

@@ -907,13 +907,9 @@ async def test_update_scope_escalation_blocked(client):
 
 # ── T-3d：provenance read-back ──────────────────────────────────────────────
 
-@pytest.mark.skip(reason="Worksheet 讀取 IDOR 防護待 ADR-019 定案後統一實作（目前 check_read_access 未掛入路由）")
+@pytest.mark.skip(reason="ADR-019 選定 Option A（讀=viewer+全開），此測試不再適用。若日後切換到 Option C（site scoping），移除此 skip 並實作防護。")
 async def test_read_worksheet_idor_blocked_pending_adr():
-    """
-    驗證非擁有者 GET /worksheets/{id} 應得 404。
-    目前此防護被撤回（只防一道門，export/versions/clone 仍可繞過），
-    等 ADR-019 worksheet-access-control 實作後移除此 skip。
-    """
+    """ADR-019 已定案 Option A（讀=viewer+），此測試場景不再成立。日後切 Option C 時移除 skip 並實作對應防護。"""
     pass
 
 
@@ -959,3 +955,18 @@ async def test_provenance_read_back_after_instantiate(client):
     for row in inst_rows:
         assert row["source_module_version"] is not None, "source_module_version 不應為 None"
         assert row["source_module_version"] == version_no
+
+
+# ── ADR-019 Option A 迴歸測試 ──────────────────────────────────────────────
+
+async def test_viewer_can_read_any_worksheet(client):
+    """ADR-019 Option A: 任何已登入使用者（viewer）可讀 worksheet（讀=viewer+全開）。
+
+    迴歸防護：確保 ADR-019 Option A 決策不被回歸為 Option C（site scoping）或其他存取管控。
+    若日後改為 Option C，此測試應與 test_read_worksheet_idor_blocked_pending_adr 一同重構。
+    """
+    ws_id = await _clone_demo_ws(client)
+    # 用非擁有者的 viewer 身份讀取（ZZZMMVIEWER999 為 JIT viewer，與 worksheet 擁有者無關）
+    h = {"X-Username": "ZZZMMVIEWER999"}
+    r = await client.get(f"/api/v2/worksheets/{ws_id}", headers=h)
+    assert r.status_code == 200, r.text

@@ -63,6 +63,11 @@ MOST：① 讀 header 取身分(員工編號)  ② 查本地 app_users 取 MOST 
 
 JIT：第一次出現的員工編號 → 自動建一筆 **viewer**（無 MOST 角色），由 admin 授予。
 
+> ⚠️ **worksheet 讀取為刻意全開設計**：UUID 非機密，可經 `GET /skus/{id}/worksheets` 列舉。
+> MOST 工廠環境中，工時標準屬組織共享知識。禁止以 `created_by` 作為讀取授權鍵——
+> 那是 audit 欄位，不是 ownership 軸（詳見 ADR-019 Option A）。
+> 若需跨廠區隔離，請走 Option C（site_ids 階層），不要補半套 ownership check。
+
 ---
 
 ## 5. 資料模型：`app_users`（MOST 本地授權）

@@ -33,7 +33,7 @@ class NotEditable(Exception):
 
 async def list_rule_sets(session: AsyncSession) -> list[dict[str, Any]]:
     rows = (await session.execute(select(RuleSet).order_by(RuleSet.created_at))).scalars().all()
-    return [{"code": r.code, "name_zh": r.name_zh, "status": r.status, "multiplier": float(r.system_tmu_multiplier)} for r in rows]
+    return [{"id": str(r.id), "code": r.code, "name_zh": r.name_zh, "status": r.status, "multiplier": float(r.system_tmu_multiplier)} for r in rows]
 
 
 async def _rows(session: AsyncSession, model: type, rs_id: uuid.UUID) -> list[Any]:
