@@ -111,14 +111,19 @@ class WiRow(Base, TimestampMixin):
         nullable=True,
     )
     source_module_version: Mapped[int | None] = mapped_column(Integer)
+    source_import_id: Mapped[UUID | None] = mapped_column(
+        PG_UUID(as_uuid=True), ForeignKey("excel_imports.id", ondelete="SET NULL"), nullable=True
+    )  # 2b: 匯入批次血緣
 
     worksheet: Mapped[MostWorksheet] = relationship(back_populates="rows")
     cycle: Mapped[MostCycle | None] = relationship(back_populates="wi_row", uselist=False, cascade="all, delete-orphan")
     level_entry: Mapped[LevelEntry | None] = relationship(back_populates="wi_row", uselist=False, cascade="all, delete-orphan")
 
     __table_args__ = (
+        # 短名 + naming_convention "ck_%(table_name)s_%(constraint_name)s" → 實際 DB 名帶 ck_wi_rows_ 前綴。
+        # v2_0001 誤用長名（已含 ck_ 前綴）導致雙前綴；v2_0015 migration 已用 raw SQL DROP IF EXISTS 修正。
         CheckConstraint("hand IS NULL OR hand IN ('LH','RH','BH')", name="hand"),
-        CheckConstraint("provenance IN ('manual','bom_draft')", name="provenance"),  # 2b 再加 'imported'
+        CheckConstraint("provenance IN ('manual','bom_draft','imported')", name="provenance"),  # 2b: 加 imported
         CheckConstraint("frequency > 0", name="frequency_pos"),
         UniqueConstraint("worksheet_id", "seq_no", name="uq_wi_rows_worksheet_id_seq_no"),
     )

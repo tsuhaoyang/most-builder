@@ -19,7 +19,7 @@ from sqlalchemy.orm import Mapped, mapped_column
 from ddm_v2.models.v2.base import Base, TimestampMixin, uuid_pk
 
 _KIND_CK = "kind IN ('object','component','tool','from','to','hand')"
-_SOURCE_CK = "source_system IN ('local','mes','erp','plm')"
+_SOURCE_CK = "source_system IN ('local','mes','erp','plm','imported')"  # 2b: 加 imported（匯入批次建立的詞彙）
 
 
 class WorkVocabItem(Base, TimestampMixin):

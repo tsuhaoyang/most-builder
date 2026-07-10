@@ -1,5 +1,6 @@
 import { useState } from 'react'
-import { useUploadImport, useMapColumns, useCreateProfile, type UploadOut, type PreviewOut, type ProfileOut } from './api'
+import { useUploadImport, useMapColumns, useCreateProfile, useSubmitImport, type UploadOut, type PreviewOut, type ProfileOut, type SubmitOut } from './api'
+import { useWorkspace } from '../../shared/workspace'
 
 const FIELD_ZH: Record<string, string> = {
   description: '描述（必）', part_no: '料號', hand: '手', seconds: '秒（工時）',
@@ -7,18 +8,28 @@ const FIELD_ZH: Record<string, string> = {
 }
 const txt = (v: unknown) => (v === null || v === undefined ? '' : String(v))
 
+const STEP_LABELS = ['上傳', '對應欄位', '預覽', '提交'] as const
+const STEP_KEYS = ['upload', 'map', 'preview', 'done'] as const
+
 export function ImportModal({ onClose }: { onClose: () => void }) {
   const upload = useUploadImport()
   const mapCols = useMapColumns()
   const createProfile = useCreateProfile()
+  const submit = useSubmitImport()
+  const activeWs = useWorkspace(s => s.activeWs)
 
   const [up, setUp] = useState<UploadOut | null>(null)
   const [sheet, setSheet] = useState(''); const [headerRow, setHeaderRow] = useState(0); const [timeUnit, setTimeUnit] = useState('sec')
   const [colMap, setColMap] = useState<Record<string, number>>({})
   const [preview, setPreview] = useState<PreviewOut | null>(null)
+  const [submitted, setSubmitted] = useState<SubmitOut | null>(null)
   const [profileName, setProfileName] = useState(''); const [msg, setMsg] = useState('')
 
-  const step: 'upload' | 'map' | 'preview' = preview ? 'preview' : up ? 'map' : 'upload'
+  const step: 'upload' | 'map' | 'preview' | 'done' =
+    submitted ? 'done' :
+    preview ? 'preview' :
+    up ? 'map' : 'upload'
+
   const curSheet = up?.sheets.find(s => s.name === sheet)
   const fail = (e: unknown) => setMsg('⚠️ ' + (e as Error).message)
 
@@ -26,7 +37,7 @@ export function ImportModal({ onClose }: { onClose: () => void }) {
     setMsg('')
     upload.mutate(file, {
       onSuccess: (d) => {
-        setUp(d); setPreview(null)
+        setUp(d); setPreview(null); setSubmitted(null)
         setSheet(d.suggested_sheet ?? d.sheets[0]?.name ?? '')
         setHeaderRow(d.suggested_header_row ?? 0)
         setColMap({})
@@ -51,6 +62,19 @@ export function ImportModal({ onClose }: { onClose: () => void }) {
     createProfile.mutate({ name: profileName.trim(), sheet_hint: sheet, header_row: headerRow, column_map: cleanMap(colMap), time_unit: timeUnit },
       { onSuccess: () => setMsg('✓ 已存為對應範本（Profile）'), onError: fail })
   }
+  function doSubmit() {
+    if (!up || !preview) return
+    const wsId = activeWs
+    if (!wsId) { setMsg('⚠️ 請先在 WI 工作台選擇一個工序表，再回來提交'); return }
+    setMsg('')
+    submit.mutate(
+      { importId: up.import_id, body: { worksheet_id: wsId } },
+      {
+        onSuccess: (d) => { setSubmitted(d); setMsg('') },
+        onError: (e) => fail(e),
+      }
+    )
+  }
 
   return (
     <div className="fixed inset-0 bg-black/40 z-50 flex items-center justify-center p-4" onClick={onClose}>
@@ -58,7 +82,11 @@ export function ImportModal({ onClose }: { onClose: () => void }) {
         <div className="flex items-center justify-between px-4 py-3 border-b sticky top-0 bg-white">
           <h2 className="font-semibold">📥 匯入 Excel
             <span className="ml-2 text-xs text-slate-400">
-              {['上傳', '對應欄位', '預覽'].map((s, i) => <span key={s} className={i === ['upload', 'map', 'preview'].indexOf(step) ? 'text-sky-600 font-medium' : ''}>{i ? ' › ' : ''}{s}</span>)}
+              {STEP_LABELS.map((s, i) => (
+                <span key={s} className={i === STEP_KEYS.indexOf(step) ? 'text-sky-600 font-medium' : ''}>
+                  {i ? ' › ' : ''}{s}
+                </span>
+              ))}
             </span>
           </h2>
           <button onClick={onClose} className="text-slate-400 hover:text-slate-700 text-xl leading-none">✕</button>
@@ -150,14 +178,52 @@ export function ImportModal({ onClose }: { onClose: () => void }) {
                   </tbody>
                 </table>
               </div>
-              <p className="text-xs text-slate-500">提交至工時表（含關鍵字→MOST 草稿）為 Phase 2b 規劃功能。本步驟先確認解析與對應正確，並可存對應範本重用。</p>
               <div className="flex flex-wrap items-center gap-2">
                 <input className="border rounded px-2 py-1 text-sm" placeholder="對應範本名稱" value={profileName} onChange={e => setProfileName(e.target.value)} />
                 <button onClick={saveProfile} disabled={createProfile.isPending} className="px-3 py-1.5 bg-emerald-600 text-white rounded text-sm disabled:opacity-40">存為對應範本</button>
                 <button onClick={() => setPreview(null)} className="px-3 py-1.5 border rounded text-sm">← 改對應</button>
                 <span className="text-xs text-slate-500">{msg}</span>
               </div>
+              <div className="border-t pt-3 flex items-center justify-between">
+                <div className="text-sm text-slate-600">
+                  共 <span className="font-medium">{preview.n}</span> 列可提交至目前工序表
+                  {!activeWs && (
+                    <span className="ml-2 text-amber-600">（請先在 WI 工作台選擇工序表）</span>
+                  )}
+                </div>
+                <button
+                  onClick={doSubmit}
+                  disabled={submit.isPending || !activeWs}
+                  className="px-4 py-2 bg-sky-600 text-white rounded-lg text-sm hover:bg-sky-700 disabled:opacity-50"
+                >
+                  {submit.isPending ? '提交中…' : '提交到工序表 →'}
+                </button>
+              </div>
             </>
+          )}
+
+          {step === 'done' && submitted && (
+            <div className="space-y-3 text-sm">
+              <div className="p-4 bg-green-50 border border-green-200 rounded-lg">
+                <p className="font-medium text-green-800">✓ 匯入完成，已建立 {submitted.n_rows} 列</p>
+                <div className="mt-2 text-green-700 space-y-1">
+                  <p>MOST 草稿已推斷：{submitted.n_with_analysis} 列</p>
+                  <p>需人工補 MOST：{submitted.n_need_review} 列</p>
+                </div>
+              </div>
+              {submitted.warnings.length > 0 && (
+                <div className="p-3 bg-amber-50 border border-amber-200 rounded-lg text-amber-800">
+                  <p className="font-medium mb-1">警告（{submitted.warnings.length}）</p>
+                  <ul className="list-disc list-inside space-y-0.5">
+                    {submitted.warnings.map((w, i) => <li key={i}>{w}</li>)}
+                  </ul>
+                </div>
+              )}
+              <p className="text-slate-500">已提交的列在 WI 工作台的工序表中可見；MOST 草稿欄位需 IE 填入。</p>
+              <button onClick={onClose} className="px-4 py-2 bg-slate-100 rounded-lg hover:bg-slate-200">
+                關閉
+              </button>
+            </div>
           )}
         </div>
       </div>

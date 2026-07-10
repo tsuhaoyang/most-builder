@@ -24,3 +24,21 @@ export const useMapColumns = () =>
 
 export const useCreateProfile = () =>
   useMutation({ mutationFn: (body: ProfileIn) => apiPost<ProfileOut>('/api/v2/imports/profiles', body) })
+
+export interface SubmitIn {
+  worksheet_id: string
+  rule_set_code?: string | null
+}
+export interface SubmitOut {
+  worksheet_id: string
+  n_rows: number
+  n_with_analysis: number
+  n_need_review: number
+  warnings: string[]
+}
+
+export const useSubmitImport = () =>
+  useMutation({
+    mutationFn: ({ importId, body }: { importId: string; body: SubmitIn }) =>
+      apiPost<SubmitOut>(`/api/v2/imports/${importId}/submit`, body),
+  })

@@ -7,6 +7,7 @@ from __future__ import annotations
 import uuid
 
 from fastapi import APIRouter, Depends, File, HTTPException, UploadFile
+from pydantic import BaseModel
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -111,3 +112,50 @@ async def delete_profile(profile_id: uuid.UUID, session: AsyncSession = Depends(
     if p is not None:
         await session.delete(p)
         await session.flush()
+
+
+# ── Phase 2b：提交 staged rows → worksheet ──────────────────────────────────────
+
+class SubmitIn(BaseModel):
+    worksheet_id: uuid.UUID
+    rule_set_code: str | None = None
+
+
+class SubmitOut(BaseModel):
+    worksheet_id: str
+    n_rows: int
+    n_with_analysis: int
+    n_need_review: int
+    warnings: list[str]
+
+
+@router.post("/{import_id}/submit", response_model=SubmitOut)
+async def submit_import(
+    import_id: uuid.UUID,
+    payload: SubmitIn,
+    session: AsyncSession = Depends(get_db_session),
+    actor: CurrentUser = Depends(require_role("IE")),
+) -> SubmitOut:
+    """Phase 2b：staged rows → worksheet WiRow（stub MOST cycle，IE 後補分析）。"""
+    try:
+        result = await import_service.submit_to_worksheet(
+            session, import_id, payload.worksheet_id, payload.rule_set_code, actor.employee_no
+        )
+    except ValueError as e:
+        code = str(e)
+        if code == "import_not_found":
+            raise HTTPException(status_code=404, detail="匯入批次不存在")
+        if code == "already_submitted":
+            # Fix-H2：已提交批次不得重複提交
+            raise HTTPException(status_code=409, detail="此匯入批次已完成提交，如需再次匯入請重新上傳")
+        if code == "import_not_mapped":
+            raise HTTPException(status_code=409, detail="匯入批次尚未完成欄位對應（status 須為 mapped）")
+        if code == "worksheet_not_found":
+            raise HTTPException(status_code=404, detail="工序表不存在")
+        if code == "worksheet_not_draft":
+            # Fix-H3：只允許提交到 draft 工序表
+            raise HTTPException(status_code=409, detail="工序表已發布或退役，無法新增列（須為 draft 狀態）")
+        if code == "no_staged_rows":
+            raise HTTPException(status_code=422, detail="無暫存列可提交")
+        raise HTTPException(status_code=422, detail=str(e))
+    return SubmitOut(**result)

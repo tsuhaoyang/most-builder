@@ -33,10 +33,13 @@ class ExcelImport(Base, TimestampMixin):
     time_unit: Mapped[str | None] = mapped_column(Text)  # 'sec' | 'min'
     staged_rows: Mapped[list | None] = mapped_column(JSONB)  # 正規化後的列
     imported_by: Mapped[str | None] = mapped_column(Text)
+    submitted_worksheet_id: Mapped[UUID | None] = mapped_column(
+        PG_UUID(as_uuid=True), ForeignKey("most_worksheets.id", ondelete="SET NULL"), nullable=True
+    )  # 2b: 提交後回填目標 worksheet
     notes: Mapped[str | None] = mapped_column(Text)
 
     __table_args__ = (
-        CheckConstraint("status IN ('uploaded','mapped','committed','failed')", name="status"),
+        CheckConstraint("status IN ('uploaded','mapped','submitted','committed','failed')", name="status"),
     )
 
 
