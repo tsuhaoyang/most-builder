@@ -31,6 +31,7 @@ from ddm_v2.models.v2.rule_set_tables import (
     RulePBase,
     RuleXOption,
 )
+from ddm_v2.models.v2.synonym import RuleOptionSynonym
 from ddm_v2.models.v2.vocab import WorkVocabItem
 from ddm_v2.models.v2.worksheet import (
     LevelEntry,
@@ -75,4 +76,5 @@ __all__ = [
     "MotionTemplate",
     "ExcelImport",
     "ImportProfile",
+    "RuleOptionSynonym",
 ]

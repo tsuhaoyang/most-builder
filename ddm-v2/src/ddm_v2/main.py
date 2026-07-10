@@ -26,8 +26,10 @@ from ddm_v2.api.routes.v2.export import router as v2_export_router
 from ddm_v2.api.routes.v2.import_excel import router as v2_import_router
 from ddm_v2.api.routes.v2.motion_module import router as v2_motion_module_router
 from ddm_v2.api.routes.v2.motion_template import router as v2_motion_template_router
+from ddm_v2.api.routes.v2.nl_draft import router as v2_nl_draft_router
 from ddm_v2.api.routes.v2.rule_set import router as v2_ruleset_router
 from ddm_v2.api.routes.v2.search import router as v2_search_router
+from ddm_v2.api.routes.v2.synonyms import router as v2_synonyms_router
 from ddm_v2.api.routes.v2.vocab import router as v2_vocab_router
 from ddm_v2.api.routes.v2.worksheet import router as v2_worksheet_router
 from ddm_v2.database import get_engine
@@ -120,6 +122,8 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     app.include_router(v2_admin_router)
     app.include_router(v2_catalog_router)
     app.include_router(v2_search_router)
+    app.include_router(v2_synonyms_router)
+    app.include_router(v2_nl_draft_router)
 
     _register_exception_handlers(app)
 
