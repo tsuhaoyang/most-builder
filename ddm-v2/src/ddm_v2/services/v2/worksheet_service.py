@@ -24,6 +24,7 @@ from ddm_v2.most_engine.providers import load_options_from_db
 from ddm_v2.most_engine.rule_set_data import TMU_TO_SEC
 from ddm_v2.schemas.v2.most import cycle_in_to_engine
 from ddm_v2.schemas.v2.worksheet import WorksheetSaveIn
+from ddm_v2.services.v2.audit_service import log_audit
 
 
 class WorksheetNotFound(Exception):
@@ -229,11 +230,20 @@ async def publish_worksheet(session: AsyncSession, worksheet_id: uuid.UUID, acto
         raise WorksheetNotFound(str(worksheet_id))
     pv = await session.get(ProcessVersion, ws.process_version_id)
     if pv.status != "draft":
-        raise NotEditable(f"版本狀態為 {pv.status}，無法發布")
-    pv.status = "published"
+        raise NotEditable(f"版本狀態為 {pv.status}，無法核准")
+    pv.status = "approved"
     pv.published_at = datetime.now(timezone.utc)
     pv.published_by = actor
-    ws.status = "published"
+    ws.status = "approved"
+    await log_audit(
+        session,
+        entity_type="process_version",
+        entity_id=pv.id,
+        action="approve",
+        from_status="draft",
+        to_status="approved",
+        actor=actor or "unknown",
+    )
     await session.flush()
     return await _version_info(session, worksheet_id)
 

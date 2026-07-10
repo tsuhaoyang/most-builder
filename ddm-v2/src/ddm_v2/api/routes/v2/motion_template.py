@@ -22,6 +22,7 @@ from ddm_v2.schemas.v2.motion_template import (
     MotionTemplateOut,
     MotionTemplatePatchIn,
 )
+from ddm_v2.services.v2.audit_service import log_audit
 
 router = APIRouter(prefix="/api/v2", tags=["v2-motion-templates"])
 
@@ -83,13 +84,23 @@ async def create_template(payload: MotionTemplateIn, session: AsyncSession = Dep
 
 
 @router.post("/motion-templates/{template_id}/promote", response_model=MotionTemplateOut)
-async def promote_template(template_id: uuid.UUID, session: AsyncSession = Depends(get_db_session), _: CurrentUser = Depends(require_role("approver"))) -> MotionTemplateOut:
-    """草稿 → 廠標準（manager+）。"""
+async def promote_template(template_id: uuid.UUID, session: AsyncSession = Depends(get_db_session), approver: CurrentUser = Depends(require_role("approver"))) -> MotionTemplateOut:
+    """草稿 → 廠標準（approver+）。"""
     t = await session.get(MotionTemplate, template_id)
     if t is None:
         raise HTTPException(status_code=404, detail="範本不存在")
+    prev_status = t.status
     t.status = "standard"
     t.owner = None
+    await log_audit(
+        session,
+        entity_type="motion_template",
+        entity_id=template_id,
+        action="promote",
+        from_status=prev_status,
+        to_status="standard",
+        actor=approver.employee_no,
+    )
     await session.flush()
     return _out(t)
 

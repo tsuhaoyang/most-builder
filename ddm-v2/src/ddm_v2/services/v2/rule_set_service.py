@@ -17,6 +17,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from ddm_v2.models.v2 import rule_set_tables as rt
 from ddm_v2.models.v2.rule_set import RuleSet
+from ddm_v2.services.v2.audit_service import log_audit
 
 
 class RuleSetNotFound(Exception):
@@ -131,5 +132,14 @@ async def publish(session: AsyncSession, code: str, actor: str | None = None) ->
     rs.status = "published"
     rs.published_at = datetime.now(timezone.utc)
     rs.published_by = actor
+    await log_audit(
+        session,
+        entity_type="rule_set",
+        entity_id=rs.id,
+        action="publish",
+        from_status="draft",
+        to_status="published",
+        actor=actor or "unknown",
+    )
     await session.flush()
     return {"code": code, "status": "published"}

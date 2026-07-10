@@ -120,3 +120,49 @@ async def test_publish_analyst_returns_403(client):
     # analyst 嘗試 publish → require_role("approver") 攔截 → 403
     r = await client.post(f"/api/v2/worksheets/{new}/publish", headers={"X-Username": analyst_user})
     assert r.status_code == 403, r.text
+
+
+async def test_publish_creates_audit_log(client):
+    """publish → workflow_audit_log 有一筆 entity_type=process_version, action=approve。
+
+    F-06 / ADR-018 裁決 3 驗收：publish 操作必須寫入不可變稽核記錄。
+    conftest 無 db_session fixture；直接建立 SQLAlchemy session 查 DB
+    （同 test_motion_modules._set_module_status 模式）。
+    日後 GET /api/v2/audit-log 端點完成（impl-06c）後可改為 API 斷言。
+    """
+    import os
+
+    from sqlalchemy import select
+    from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
+
+    from ddm_v2.models.v2.audit import WorkflowAuditLog
+
+    if not await _seeded(client):
+        pytest.skip("demo worksheet 未種（先跑 dev_seed_v2.py）")
+
+    # 取一個乾淨 draft worksheet
+    new = (await client.post(f"/api/v2/worksheets/{WS}/clone")).json()["new_worksheet_id"]
+
+    # 執行 publish（admin 身分已在 client fixture 注入）
+    r = await client.post(f"/api/v2/worksheets/{new}/publish")
+    assert r.status_code == 200, r.text
+
+    # 直接查 DB：確認稽核記錄已寫入（無 GET /api/v2/audit-log endpoint；impl-06c 補）
+    engine = create_async_engine(os.environ["DATABASE_URL"])
+    try:
+        _Session = async_sessionmaker(engine, expire_on_commit=False)
+        async with _Session() as session:
+            entries = (await session.execute(
+                select(WorkflowAuditLog).where(
+                    WorkflowAuditLog.action == "approve",
+                    WorkflowAuditLog.entity_type == "process_version",
+                )
+            )).scalars().all()
+    finally:
+        await engine.dispose()
+
+    assert len(entries) >= 1, "publish 後 workflow_audit_log 應有至少一筆 action=approve 記錄"
+    last = entries[-1]
+    assert last.entity_type == "process_version"
+    assert last.to_status == "approved"
+    assert last.actor != "", "actor 不應為空字串（publish 由 admin 執行，actor=IEC141289）"

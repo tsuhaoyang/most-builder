@@ -28,7 +28,7 @@ from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from ddm_v2.models.v2.base import Base, TimestampMixin, uuid_pk
 
-_STATUS_CK = "status IN ('draft','published','retired')"
+_STATUS_CK = "status IN ('draft','approved','retired')"
 
 
 class ProcessVersion(Base, TimestampMixin):

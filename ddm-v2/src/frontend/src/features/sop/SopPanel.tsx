@@ -5,10 +5,10 @@ import { useMe, canEdit, canPublish } from '../../shared/auth/useMe'
 
 const BADGE: Record<string, string> = {
   draft: 'bg-amber-100 text-amber-800',
-  published: 'bg-emerald-100 text-emerald-800',
-  archived: 'bg-slate-200 text-slate-600',
+  approved: 'bg-emerald-100 text-emerald-800',
+  retired: 'bg-slate-200 text-slate-600',
 }
-const STATUS_ZH: Record<string, string> = { draft: '草稿', published: '已發布', archived: '已封存' }
+const STATUS_ZH: Record<string, string> = { draft: '草稿', approved: '已核准', retired: '已退役' }
 
 export function SopPanel() {
   const { data: me } = useMe()
