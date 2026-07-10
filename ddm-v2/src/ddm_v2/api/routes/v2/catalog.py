@@ -1,7 +1,7 @@
 """目錄/結構 API：Site / Product / Sku / 在 SKU 下建立工序表。
 
 歸屬鏈：Site → Product → Sku → ProcessVersion(版本) → MostWorksheet(工序表)。
-讀＝任何登入者；建立/修改＝IE+；停用＝PATCH is_active=false（軟，FK 為 RESTRICT）。
+讀＝任何登入者；建立/修改＝analyst+；停用＝PATCH is_active=false（軟，FK 為 RESTRICT）。
 """
 from __future__ import annotations
 
@@ -42,13 +42,13 @@ async def list_products(site_id: uuid.UUID | None = None, session: AsyncSession 
 
 @router.post("/products", response_model=ProductOut, status_code=201)
 async def create_product(payload: ProductIn, session: AsyncSession = Depends(get_db_session),
-                         _: CurrentUser = Depends(require_role("IE"))):
+                         _: CurrentUser = Depends(require_role("analyst"))):
     return await svc.create_product(session, payload)
 
 
 @router.patch("/products/{product_id}", response_model=ProductOut)
 async def update_product(product_id: uuid.UUID, patch: ProductPatch, session: AsyncSession = Depends(get_db_session),
-                         _: CurrentUser = Depends(require_role("IE"))):
+                         _: CurrentUser = Depends(require_role("analyst"))):
     return await svc.update_product(session, product_id, patch)
 
 
@@ -60,13 +60,13 @@ async def list_skus(product_id: uuid.UUID | None = None, session: AsyncSession =
 
 @router.post("/skus", response_model=SkuOut, status_code=201)
 async def create_sku(payload: SkuIn, session: AsyncSession = Depends(get_db_session),
-                     _: CurrentUser = Depends(require_role("IE"))):
+                     _: CurrentUser = Depends(require_role("analyst"))):
     return await svc.create_sku(session, payload)
 
 
 @router.patch("/skus/{sku_id}", response_model=SkuOut)
 async def update_sku(sku_id: uuid.UUID, patch: SkuPatch, session: AsyncSession = Depends(get_db_session),
-                     _: CurrentUser = Depends(require_role("IE"))):
+                     _: CurrentUser = Depends(require_role("analyst"))):
     return await svc.update_sku(session, sku_id, patch)
 
 
@@ -79,5 +79,5 @@ async def list_worksheets(sku_id: uuid.UUID, session: AsyncSession = Depends(get
 
 @router.post("/skus/{sku_id}/worksheets", response_model=WorksheetCreateOut, status_code=201)
 async def create_worksheet(sku_id: uuid.UUID, payload: WorksheetCreateIn, session: AsyncSession = Depends(get_db_session),
-                           user: CurrentUser = Depends(require_role("IE"))):
+                           user: CurrentUser = Depends(require_role("analyst"))):
     return await svc.create_worksheet(session, sku_id, payload, actor=user.employee_no)

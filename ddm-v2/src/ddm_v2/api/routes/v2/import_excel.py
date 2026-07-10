@@ -1,6 +1,6 @@
 """v2 Excel 匯入 API（Phase 2a，ADR-013）：upload → map(preview) → staging；profiles 可重用。
 
-讀＝viewer+；上傳/對應/存 profile＝IE+。2a 只到 staging，不進 worksheet（提交政策＝2b）。
+讀＝viewer+；上傳/對應/存 profile＝analyst+。2a 只到 staging，不進 worksheet（提交政策＝2b）。
 """
 from __future__ import annotations
 
@@ -37,7 +37,7 @@ def _profile_out(p: ImportProfile) -> ProfileOut:
 @router.post("/upload", response_model=UploadOut)
 async def upload(file: UploadFile = File(...), worksheet_id: uuid.UUID | None = None,
                  session: AsyncSession = Depends(get_db_session),
-                 actor: CurrentUser = Depends(require_role("IE"))) -> UploadOut:
+                 actor: CurrentUser = Depends(require_role("analyst"))) -> UploadOut:
     content = await file.read()
     try:
         raw = import_service.parse_workbook(content)
@@ -63,7 +63,7 @@ async def upload(file: UploadFile = File(...), worksheet_id: uuid.UUID | None = 
 
 @router.post("/{import_id}/map", response_model=PreviewOut)
 async def map_columns(import_id: uuid.UUID, payload: MapIn, session: AsyncSession = Depends(get_db_session),
-                      _: CurrentUser = Depends(require_role("IE"))) -> PreviewOut:
+                      _: CurrentUser = Depends(require_role("analyst"))) -> PreviewOut:
     rec = await session.get(ExcelImport, import_id)
     if rec is None:
         raise HTTPException(status_code=404, detail="匯入批次不存在")
@@ -96,7 +96,7 @@ async def list_profiles(session: AsyncSession = Depends(get_db_session), _: Curr
 
 @router.post("/profiles", response_model=ProfileOut, status_code=201)
 async def create_profile(payload: ProfileIn, session: AsyncSession = Depends(get_db_session),
-                         actor: CurrentUser = Depends(require_role("IE"))) -> ProfileOut:
+                         actor: CurrentUser = Depends(require_role("analyst"))) -> ProfileOut:
     p = ImportProfile(id=uuid.uuid4(), name=payload.name, sheet_hint=payload.sheet_hint,
                       header_row=payload.header_row, column_map=payload.column_map,
                       time_unit=payload.time_unit, owner=actor.employee_no)
@@ -107,7 +107,7 @@ async def create_profile(payload: ProfileIn, session: AsyncSession = Depends(get
 
 @router.delete("/profiles/{profile_id}", status_code=204)
 async def delete_profile(profile_id: uuid.UUID, session: AsyncSession = Depends(get_db_session),
-                         _: CurrentUser = Depends(require_role("IE"))) -> None:
+                         _: CurrentUser = Depends(require_role("analyst"))) -> None:
     p = await session.get(ImportProfile, profile_id)
     if p is not None:
         await session.delete(p)
@@ -134,9 +134,9 @@ async def submit_import(
     import_id: uuid.UUID,
     payload: SubmitIn,
     session: AsyncSession = Depends(get_db_session),
-    actor: CurrentUser = Depends(require_role("IE")),
+    actor: CurrentUser = Depends(require_role("analyst")),
 ) -> SubmitOut:
-    """Phase 2b：staged rows → worksheet WiRow（stub MOST cycle，IE 後補分析）。"""
+    """Phase 2b：staged rows → worksheet WiRow（stub MOST cycle，analyst 後補分析）。"""
     try:
         result = await import_service.submit_to_worksheet(
             session, import_id, payload.worksheet_id, payload.rule_set_code, actor.employee_no

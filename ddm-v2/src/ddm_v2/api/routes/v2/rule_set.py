@@ -34,7 +34,7 @@ async def get_full(code: str, session: AsyncSession = Depends(get_db_session), _
 
 @router.post("/rule-sets/{code}/clone-draft")
 async def clone_draft(code: str, payload: CloneDraftIn, session: AsyncSession = Depends(get_db_session),
-                      _: CurrentUser = Depends(require_role("IE"))) -> dict:
+                      _: CurrentUser = Depends(require_role("analyst"))) -> dict:
     try:
         return await svc.clone_draft(session, code, payload.new_code, payload.name_zh)
     except svc.RuleSetNotFound:
@@ -45,7 +45,7 @@ async def clone_draft(code: str, payload: CloneDraftIn, session: AsyncSession = 
 
 @router.put("/rule-sets/{code}/full")
 async def put_full(code: str, full: dict[str, Any] = Body(...), session: AsyncSession = Depends(get_db_session),
-                   _: CurrentUser = Depends(require_role("IE"))) -> dict:
+                   _: CurrentUser = Depends(require_role("analyst"))) -> dict:
     try:
         return await svc.replace_children(session, code, full)
     except svc.RuleSetNotFound:
@@ -56,7 +56,7 @@ async def put_full(code: str, full: dict[str, Any] = Body(...), session: AsyncSe
 
 @router.post("/rule-sets/{code}/publish")
 async def publish(code: str, session: AsyncSession = Depends(get_db_session),
-                  user: CurrentUser = Depends(require_role("manager"))) -> dict:
+                  user: CurrentUser = Depends(require_role("approver"))) -> dict:
     try:
         return await svc.publish(session, code, actor=user.employee_no)
     except svc.RuleSetNotFound:

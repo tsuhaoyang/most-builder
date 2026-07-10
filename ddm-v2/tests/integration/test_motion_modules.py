@@ -318,7 +318,7 @@ async def test_sm3_ie_cannot_create_global_module(client):
     ur = await client.post("/api/v2/admin/users", json={
         "employee_no": ie_user,
         "display_name": "SM3 IE Only",
-        "roles": ["IE"],
+        "roles": ["analyst"],
         "site_ids": [],
     })
     assert ur.status_code == 200, ur.text
@@ -351,7 +351,7 @@ async def test_sm3_manager_can_create_site_module(client):
     ur = await client.post("/api/v2/admin/users", json={
         "employee_no": mgr_user,
         "display_name": "SM3 Manager",
-        "roles": ["manager"],
+        "roles": ["approver"],
         "site_ids": [],
     })
     assert ur.status_code == 200, ur.text
@@ -404,7 +404,7 @@ async def test_sm5_publish_personal_module_blocked_for_others(client):
     await client.post("/api/v2/admin/users", json={
         "employee_no": ie_user,
         "display_name": "SM5 IE",
-        "roles": ["IE"],
+        "roles": ["analyst"],
         "site_ids": [],
     })
     h = {"X-Username": ie_user}
@@ -495,7 +495,7 @@ async def test_sm7_apply_back_ownership_guard(client):
     await client.post("/api/v2/admin/users", json={
         "employee_no": ie_user,
         "display_name": "SM7 IE",
-        "roles": ["IE"],
+        "roles": ["analyst"],
         "site_ids": [],
     })
     h = {"X-Username": ie_user}
@@ -643,7 +643,7 @@ async def test_delete_other_personal_module_blocked(client):
     await client.post("/api/v2/admin/users", json={
         "employee_no": ie_user,
         "display_name": "T1c IE Del",
-        "roles": ["IE"],
+        "roles": ["analyst"],
         "site_ids": [],
     })
 
@@ -701,7 +701,7 @@ async def test_clone_other_personal_module_blocked(client):
     await client.post("/api/v2/admin/users", json={
         "employee_no": ie_user,
         "display_name": "T2b IE Clone",
-        "roles": ["IE"],
+        "roles": ["analyst"],
         "site_ids": [],
     })
 
@@ -807,7 +807,7 @@ async def test_instantiate_to_other_worksheet_blocked(client):
     await client.post("/api/v2/admin/users", json={
         "employee_no": ie_user,
         "display_name": "T3c IE Inst",
-        "roles": ["IE"],
+        "roles": ["analyst"],
         "site_ids": [],
     })
 
@@ -882,7 +882,7 @@ async def test_update_scope_escalation_blocked(client):
     await client.post("/api/v2/admin/users", json={
         "employee_no": ie_user,
         "display_name": "T6 IE ScopeUpd",
-        "roles": ["IE"],
+        "roles": ["analyst"],
         "site_ids": [],
     })
 
@@ -970,3 +970,25 @@ async def test_viewer_can_read_any_worksheet(client):
     h = {"X-Username": "ZZZMMVIEWER999"}
     r = await client.get(f"/api/v2/worksheets/{ws_id}", headers=h)
     assert r.status_code == 200, r.text
+
+
+# ── GAP-1 補充：approver gate 負向測試 ───────────────────────────────────────
+
+async def test_promote_analyst_returns_403(client):
+    """analyst 身分（level=1）無法 promote；require_role("approver") 守門（role check 先於 501）。
+
+    F-06 RBAC 驗收：promote endpoint 對 analyst 確實回 403，而非 501 或其他碼。
+    admin（IEC141289）呼叫同一端點得 501（已由 test_promote_501 覆蓋）。
+    """
+    analyst_user = "GAPTEST_ANALYST_PROM_001"
+    ur = await client.post("/api/v2/admin/users", json={
+        "employee_no": analyst_user,
+        "display_name": "Gap Test Analyst Promote",
+        "roles": ["analyst"],
+        "site_ids": [],
+    })
+    assert ur.status_code == 200, ur.text
+    mid = str(uuid.uuid4())  # 不需真實存在（role check 先於存在性檢查）
+    h = {"X-Username": analyst_user}
+    r = await client.post(f"/api/v2/motion-modules/{mid}/promote", headers=h)
+    assert r.status_code == 403, r.text

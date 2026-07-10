@@ -13,7 +13,7 @@ from ddm_v2.auth.identity import resolve_identity
 from ddm_v2.database import get_db_session
 from ddm_v2.models.v2.auth import AppUser
 
-ROLE_ORDER = {"viewer": 0, "IE": 1, "manager": 2, "admin": 3}
+ROLE_ORDER = {"viewer": 0, "analyst": 1, "approver": 2, "admin": 3}
 
 
 @dataclass

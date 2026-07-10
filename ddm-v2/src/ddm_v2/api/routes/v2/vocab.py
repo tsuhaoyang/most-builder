@@ -36,7 +36,7 @@ async def list_vocab(kind: str | None = Query(default=None), session: AsyncSessi
 
 
 @router.post("/vocab", response_model=VocabItemOut, status_code=201)
-async def create_vocab(payload: VocabItemIn, session: AsyncSession = Depends(get_db_session), _: CurrentUser = Depends(require_role("IE"))) -> VocabItemOut:
+async def create_vocab(payload: VocabItemIn, session: AsyncSession = Depends(get_db_session), _: CurrentUser = Depends(require_role("analyst"))) -> VocabItemOut:
     v = WorkVocabItem(id=uuid.uuid4(), kind=payload.kind, name_zh=payload.name_zh, name_en=payload.name_en,
                       external_code=payload.external_code or None, source_system=payload.source_system, site_id=payload.site_id)
     session.add(v)
@@ -45,7 +45,7 @@ async def create_vocab(payload: VocabItemIn, session: AsyncSession = Depends(get
 
 
 @router.patch("/vocab/{item_id}", response_model=VocabItemOut)
-async def patch_vocab(item_id: uuid.UUID, payload: VocabPatchIn, session: AsyncSession = Depends(get_db_session), _: CurrentUser = Depends(require_role("IE"))) -> VocabItemOut:
+async def patch_vocab(item_id: uuid.UUID, payload: VocabPatchIn, session: AsyncSession = Depends(get_db_session), _: CurrentUser = Depends(require_role("analyst"))) -> VocabItemOut:
     v = await session.get(WorkVocabItem, item_id)
     if v is None or not v.is_active:
         raise HTTPException(status_code=404, detail=f"詞彙不存在：{item_id}")
@@ -60,7 +60,7 @@ async def patch_vocab(item_id: uuid.UUID, payload: VocabPatchIn, session: AsyncS
 
 
 @router.delete("/vocab/{item_id}", status_code=204)
-async def soft_delete_vocab(item_id: uuid.UUID, session: AsyncSession = Depends(get_db_session), _: CurrentUser = Depends(require_role("IE"))) -> None:
+async def soft_delete_vocab(item_id: uuid.UUID, session: AsyncSession = Depends(get_db_session), _: CurrentUser = Depends(require_role("analyst"))) -> None:
     v = await session.get(WorkVocabItem, item_id)
     if v is None or not v.is_active:
         raise HTTPException(status_code=404, detail=f"詞彙不存在：{item_id}")

@@ -1,6 +1,6 @@
 """v2 動作範本庫 API：list / create / patch / delete / match。
 
-讀＝viewer+；建立/修改/刪除＝IE+。
+讀＝viewer+；建立/修改/刪除＝analyst+。
 match：以描述關鍵字比對範本（P2 匯入自動建 MOST 用），讀權限即可。
 """
 from __future__ import annotations
@@ -35,7 +35,7 @@ def _out(t: MotionTemplate) -> MotionTemplateOut:
 
 
 def _can_modify(t: MotionTemplate, user: CurrentUser) -> bool:
-    """標準＝manager+ 才可改/刪；草稿＝擁有者本人或 manager+。"""
+    """標準＝approver+ 才可改/刪；草稿＝擁有者本人或 approver+。"""
     if t.status == "standard":
         return user.level >= 2
     return user.level >= 2 or (t.owner == user.employee_no)
@@ -69,7 +69,7 @@ async def list_templates(session: AsyncSession = Depends(get_db_session), user: 
 
 
 @router.post("/motion-templates", response_model=MotionTemplateOut, status_code=201)
-async def create_template(payload: MotionTemplateIn, session: AsyncSession = Depends(get_db_session), actor: CurrentUser = Depends(require_role("IE"))) -> MotionTemplateOut:
+async def create_template(payload: MotionTemplateIn, session: AsyncSession = Depends(get_db_session), actor: CurrentUser = Depends(require_role("analyst"))) -> MotionTemplateOut:
     """一律建為個人草稿（owner=建立者）；要成標準走 /promote。"""
     t = MotionTemplate(
         id=uuid.uuid4(), name_zh=payload.name_zh, name_en=payload.name_en, category=payload.category,
@@ -83,7 +83,7 @@ async def create_template(payload: MotionTemplateIn, session: AsyncSession = Dep
 
 
 @router.post("/motion-templates/{template_id}/promote", response_model=MotionTemplateOut)
-async def promote_template(template_id: uuid.UUID, session: AsyncSession = Depends(get_db_session), _: CurrentUser = Depends(require_role("manager"))) -> MotionTemplateOut:
+async def promote_template(template_id: uuid.UUID, session: AsyncSession = Depends(get_db_session), _: CurrentUser = Depends(require_role("approver"))) -> MotionTemplateOut:
     """草稿 → 廠標準（manager+）。"""
     t = await session.get(MotionTemplate, template_id)
     if t is None:
@@ -95,12 +95,12 @@ async def promote_template(template_id: uuid.UUID, session: AsyncSession = Depen
 
 
 @router.patch("/motion-templates/{template_id}", response_model=MotionTemplateOut)
-async def patch_template(template_id: uuid.UUID, payload: MotionTemplatePatchIn, session: AsyncSession = Depends(get_db_session), user: CurrentUser = Depends(require_role("IE"))) -> MotionTemplateOut:
+async def patch_template(template_id: uuid.UUID, payload: MotionTemplatePatchIn, session: AsyncSession = Depends(get_db_session), user: CurrentUser = Depends(require_role("analyst"))) -> MotionTemplateOut:
     t = await session.get(MotionTemplate, template_id)
     if t is None:
         raise HTTPException(status_code=404, detail="範本不存在")
     if not _can_modify(t, user):
-        raise HTTPException(status_code=403, detail="標準範本需 manager+；草稿僅擁有者可改")
+        raise HTTPException(status_code=403, detail="標準範本需 approver+；草稿僅擁有者可改")
     if payload.name_zh is not None:
         t.name_zh = payload.name_zh
     if payload.name_en is not None:
@@ -120,12 +120,12 @@ async def patch_template(template_id: uuid.UUID, payload: MotionTemplatePatchIn,
 
 
 @router.delete("/motion-templates/{template_id}", status_code=204)
-async def delete_template(template_id: uuid.UUID, session: AsyncSession = Depends(get_db_session), user: CurrentUser = Depends(require_role("IE"))) -> None:
+async def delete_template(template_id: uuid.UUID, session: AsyncSession = Depends(get_db_session), user: CurrentUser = Depends(require_role("analyst"))) -> None:
     t = await session.get(MotionTemplate, template_id)
     if t is None:
         return
     if not _can_modify(t, user):
-        raise HTTPException(status_code=403, detail="標準範本需 manager+；草稿僅擁有者可刪")
+        raise HTTPException(status_code=403, detail="標準範本需 approver+；草稿僅擁有者可刪")
     await session.delete(t)
     await session.flush()
 

@@ -63,7 +63,7 @@ test('workbench-v3 tab3: ProcessWorkspace 結構與 apply-back dialog（mocked A
       return route.fulfill({
         status: 200,
         contentType: 'application/json',
-        body: JSON.stringify({ employee_no: 'IEC141289', roles: ['IE'], level: 1 }),
+        body: JSON.stringify({ employee_no: 'IEC141289', roles: ['analyst'], level: 1 }),
       })
     }
 

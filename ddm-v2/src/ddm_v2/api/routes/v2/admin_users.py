@@ -17,7 +17,7 @@ from ddm_v2.schemas.v2.auth import AppUserOut, AppUserPatchIn, AppUserUpsertIn
 
 router = APIRouter(prefix="/api/v2/admin", tags=["v2-admin"])
 
-_VALID_ROLES = {"admin", "manager", "IE"}
+_VALID_ROLES = {"admin", "approver", "analyst"}
 
 
 def _out(u: AppUser) -> AppUserOut:

@@ -48,12 +48,12 @@ export function SopPanel() {
           <button disabled={!canPublish(me) || !isDraft || publish.isPending}
             onClick={() => publish.mutate(undefined, { onSuccess: refresh })}
             className="px-3 py-1.5 bg-emerald-600 text-white rounded text-sm disabled:opacity-40">
-            發布此版本{!canPublish(me) && '（需 manager）'}
+            發布此版本{!canPublish(me) && '（需 approver）'}
           </button>
           <button disabled={!canEdit(me) || clone.isPending}
             onClick={() => clone.mutate(undefined, { onSuccess: (r) => { switchTo(r.new_worksheet_id) } })}
             className="px-3 py-1.5 bg-blue-600 text-white rounded text-sm disabled:opacity-40">
-            另存新檔（開新草稿）{!canEdit(me) && '（需 IE）'}
+            另存新檔（開新草稿）{!canEdit(me) && '（需 analyst）'}
           </button>
         </div>
       </div>

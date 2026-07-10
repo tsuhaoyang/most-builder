@@ -18,7 +18,7 @@ router = APIRouter(prefix="/api/v2", tags=["v2-worksheet"])
 
 @router.put("/worksheets/{worksheet_id}", response_model=WorksheetReadOut)
 async def save_worksheet(worksheet_id: uuid.UUID, payload: WorksheetSaveIn, session: AsyncSession = Depends(get_db_session),
-                         user: CurrentUser = Depends(require_role("IE"))) -> WorksheetReadOut:
+                         user: CurrentUser = Depends(require_role("analyst"))) -> WorksheetReadOut:
     try:
         result = await svc.save_worksheet(session, worksheet_id, payload)
     except svc.WorksheetNotFound:
@@ -59,7 +59,7 @@ async def worksheet_versions(worksheet_id: uuid.UUID, session: AsyncSession = De
 
 @router.post("/worksheets/{worksheet_id}/publish")
 async def publish_worksheet(worksheet_id: uuid.UUID, session: AsyncSession = Depends(get_db_session),
-                            user: CurrentUser = Depends(require_role("manager"))) -> dict:
+                            user: CurrentUser = Depends(require_role("approver"))) -> dict:
     try:
         return await svc.publish_worksheet(session, worksheet_id, actor=user.employee_no)
     except svc.WorksheetNotFound:
@@ -70,7 +70,7 @@ async def publish_worksheet(worksheet_id: uuid.UUID, session: AsyncSession = Dep
 
 @router.post("/worksheets/{worksheet_id}/clone")
 async def clone_worksheet(worksheet_id: uuid.UUID, session: AsyncSession = Depends(get_db_session),
-                          user: CurrentUser = Depends(require_role("IE"))) -> dict:
+                          user: CurrentUser = Depends(require_role("analyst"))) -> dict:
     try:
         return await svc.clone_worksheet(session, worksheet_id, actor=user.employee_no)
     except svc.WorksheetNotFound:

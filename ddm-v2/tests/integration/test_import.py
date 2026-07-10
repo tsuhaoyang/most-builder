@@ -139,7 +139,7 @@ async def test_submit_worksheet_not_found_returns_404(client):
 
 
 async def test_submit_viewer_returns_403(client):
-    """viewer 身分無法 submit（require_role("IE") 守門）。"""
+    """viewer 身分無法 submit（require_role("analyst") 守門）。"""
     iid = (await client.post("/api/v2/imports/upload", files=_files())).json()["import_id"]
     r = await client.post(
         f"/api/v2/imports/{iid}/submit",

@@ -97,3 +97,26 @@ async def test_rbac_viewer_cannot_clone(client):
         pytest.skip("demo worksheet 未種")
     r = await client.post(f"/api/v2/worksheets/{WS}/clone", headers={"X-Username": "ZZZWSVIEWER"})
     assert r.status_code == 403
+
+
+async def test_publish_analyst_returns_403(client):
+    """analyst 身分（level=1）無法 publish；require_role("approver") 守門。
+
+    F-06 RBAC 驗收：approver gate 對 analyst 確實回 403（非 200/409）。
+    """
+    if not await _seeded(client):
+        pytest.skip("demo worksheet 未種（先跑 dev_seed_v2.py）")
+    # admin（IEC141289）clone demo 表，取一個可操作的 draft
+    new = (await client.post(f"/api/v2/worksheets/{WS}/clone")).json()["new_worksheet_id"]
+    # 建立 analyst 用戶（roles=["analyst"]，level=1 < approver level=2）
+    analyst_user = "GAPTEST_ANALYST_WS_001"
+    ur = await client.post("/api/v2/admin/users", json={
+        "employee_no": analyst_user,
+        "display_name": "Gap Test Analyst WS",
+        "roles": ["analyst"],
+        "site_ids": [],
+    })
+    assert ur.status_code == 200, ur.text
+    # analyst 嘗試 publish → require_role("approver") 攔截 → 403
+    r = await client.post(f"/api/v2/worksheets/{new}/publish", headers={"X-Username": analyst_user})
+    assert r.status_code == 403, r.text

@@ -1,8 +1,8 @@
 """同義詞維護 API（impl-05）。
 
 GET    /api/v2/rule-sets/{code}/synonyms          → list（viewer+）
-POST   /api/v2/rule-sets/{code}/synonyms          → 201 created（IE+）
-DELETE /api/v2/rule-sets/{code}/synonyms/{syn_id} → 204（IE+）
+POST   /api/v2/rule-sets/{code}/synonyms          → 201 created（analyst+）
+DELETE /api/v2/rule-sets/{code}/synonyms/{syn_id} → 204（analyst+）
 
 409 衝突回應：{"detail": {"code": "SYNONYM_CONFLICT", "existing": {...}}}
 """
@@ -43,7 +43,7 @@ async def create_synonym(
     code: str,
     payload: SynonymIn,
     session: AsyncSession = Depends(get_db_session),
-    user: CurrentUser = Depends(require_role("IE")),
+    user: CurrentUser = Depends(require_role("analyst")),
 ) -> dict:
     try:
         return await svc.create_synonym(
@@ -73,7 +73,7 @@ async def delete_synonym(
     code: str,
     syn_id: str,
     session: AsyncSession = Depends(get_db_session),
-    _: CurrentUser = Depends(require_role("IE")),
+    _: CurrentUser = Depends(require_role("analyst")),
 ) -> Response:
     try:
         await svc.delete_synonym(session, syn_id, code)

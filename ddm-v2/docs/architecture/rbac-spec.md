@@ -28,7 +28,7 @@
 | 面向 | 由誰負責 | 說明 |
 |------|----------|------|
 | **認證 Authentication（你是誰）** | **委派 Traefik ForwardAuth（auth_service）** | MOST 不做 OAuth / token 驗證、不存密碼。Gateway 已驗證並注入身分 header |
-| **授權 Authorization（你能做什麼）** | **MOST 本地** | MOST 自管角色（IE/manager/admin），不沿用 LB 的 `X-User-Role` |
+| **授權 Authorization（你能做什麼）** | **MOST 本地** | MOST 自管角色（analyst/approver/admin），不沿用 LB 的 `X-User-Role` |
 
 理由：token 只帶身分、無 MOST 角色；微服務下**每個服務自管授權**（最懂自己的資源）。
 
@@ -51,15 +51,15 @@ MOST：① 讀 header 取身分(員工編號)  ② 查本地 app_users 取 MOST 
 
 ## 4. 角色與權限矩陣
 
-角色：**admin > manager > IE > viewer**（viewer＝已登入但未授予 MOST 角色）。
+角色：**admin > approver > analyst > viewer**（viewer＝已登入但未授予 MOST 角色）。
 
 | 動作 | 需要角色 |
 |------|----------|
 | 讀（檢視 WI/Level/Rule-set/匯出預覽） | viewer+（任何已登入者） |
-| 編輯（worksheet save、level 標註、vocab CRUD、rule-set 草稿編輯） | **IE+** |
-| 發布（worksheet publish、rule-set publish）、另存新檔 | **manager+** |
+| 編輯（worksheet save、level 標註、vocab CRUD、rule-set 草稿編輯） | **analyst+** |
+| 發布（worksheet publish、rule-set publish）、另存新檔 | **approver+** |
 | 使用者角色管理（授予/停用） | **admin** |
-| Rule-set 建立草稿(clone) | IE+（可調） |
+| Rule-set 建立草稿(clone) | analyst+（可調） |
 
 JIT：第一次出現的員工編號 → 自動建一筆 **viewer**（無 MOST 角色），由 admin 授予。
 
@@ -78,7 +78,7 @@ JIT：第一次出現的員工編號 → 自動建一筆 **viewer**（無 MOST �
 | `employee_no` | text UNIQUE | **穩定鍵**（= X-Username） |
 | `external_user_id` | text | 輔助（= X-User-Id），可空 |
 | `display_name` | text | 顯示名（= X-Username 或 X-User-Id 衍生） |
-| `roles` | text[]（或多列關聯） | `admin`/`manager`/`IE`（空＝viewer） |
+| `roles` | text[]（或多列關聯） | `admin`/`approver`/`analyst`（空＝viewer） |
 | `site_ids` | uuid[] | 可存取廠區（空＝預設由 X-Plant-Code） |
 | `is_active` | bool | 停用 |
 | `created_at`/`updated_at` | timestamptz | |

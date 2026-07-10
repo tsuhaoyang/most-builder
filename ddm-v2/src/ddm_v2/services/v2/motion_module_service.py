@@ -36,8 +36,8 @@ from ddm_v2.schemas.v2.motion_module import (
 
 logger = logging.getLogger(__name__)
 
-# SM-3：最低 manager 層級，從 ROLE_ORDER 取值（Fix-3：消除魔術常數）。
-_MANAGER_LEVEL = ROLE_ORDER["manager"]
+# SM-3：最低 approver 層級，從 ROLE_ORDER 取值（Fix-3：消除魔術常數）。
+_MANAGER_LEVEL = ROLE_ORDER["approver"]
 
 # ── domain exceptions ────────────────────────────────────────────────
 
@@ -155,7 +155,7 @@ async def create_module(
     """
     # SM-3：scope escalation guard
     if data.scope in ("site", "global") and current_user_level < _MANAGER_LEVEL:
-        raise ScopePermissionError("只有 manager/admin 可建立 site/global scope 模組")
+        raise ScopePermissionError("只有 approver/admin 可建立 site/global scope 模組")
 
     owner = data.owner
     if data.scope == "personal":
@@ -286,7 +286,7 @@ async def update_module(
         raise ScopePermissionError("無法修改他人的 personal 模組")
     # SM-3：scope escalation guard
     if data.scope in ("site", "global") and current_user_level < _MANAGER_LEVEL:
-        raise ScopePermissionError("只有 manager/admin 可將模組設為 site/global scope")
+        raise ScopePermissionError("只有 approver/admin 可將模組設為 site/global scope")
 
     if data.name_zh is not None:
         m.name_zh = data.name_zh

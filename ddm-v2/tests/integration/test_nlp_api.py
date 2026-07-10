@@ -44,8 +44,8 @@ async def test_list_synonyms_empty_returns_200(client):
     assert isinstance(r.json(), list)
 
 
-async def test_create_synonym_ie_role(client):
-    """POST synonyms（IE role）→ 201；回傳含 id / parameter / synonym_norm。
+async def test_create_synonym_analyst_role(client):
+    """POST synonyms（analyst role）→ 201；回傳含 id / parameter / synonym_norm。
 
     F-06 §4：「增同義詞…200 且 nl-draft 立即可命中」（此處驗 201 建立）。
     """
@@ -154,7 +154,7 @@ async def test_create_synonym_empty_after_normalize_returns_422(client):
     assert resp.status_code == 422, resp.text
 
 
-async def test_delete_synonym_ie_role(client):
+async def test_delete_synonym_analyst_role(client):
     """建立同義詞後 DELETE → 204；GET list 確認已移除。
 
     F-06 §3：DELETE /api/v2/rule-sets/{code}/synonyms/{syn_id}（IE+）。

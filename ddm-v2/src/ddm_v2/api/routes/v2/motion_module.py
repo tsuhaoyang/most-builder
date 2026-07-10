@@ -11,7 +11,7 @@
   POST   /api/v2/motion-modules/{id}/versions/from-rows  apply-back（工序表同步回模組庫）
   POST   /api/v2/motion-modules/{id}/promote             升格（personal→site/global）[501 placeholder]
   GET    /api/v2/motion-modules/{id}/versions            版本歷史
-  PUT    /api/v2/motion-modules/reorder                  排序（IE 以上）
+  PUT    /api/v2/motion-modules/reorder                  排序（analyst 以上）
   POST   /api/v2/worksheets/{wid}/rows/from-module       實體化至工序表
 """
 from __future__ import annotations
@@ -59,7 +59,7 @@ async def list_modules(
 async def create_module(
     payload: MotionModuleCreate,
     session: AsyncSession = Depends(get_db_session),
-    user: CurrentUser = Depends(require_role("IE")),
+    user: CurrentUser = Depends(require_role("analyst")),
 ) -> MotionModuleResponse:
     try:
         return await svc.create_module(session, payload, user.employee_no, user.level)
@@ -88,8 +88,8 @@ async def get_module(
 @router.put("/motion-modules/reorder", status_code=200)
 async def reorder_modules(
     payload: ReorderRequest,
-    # SM-6：reorder 需要 IE 以上角色（修改 module 顯示順序屬 IE 工作域）。
-    _: CurrentUser = Depends(require_role("IE")),
+    # SM-6：reorder 需要 analyst 以上角色（修改 module 顯示順序屬 analyst 工作域）。
+    _: CurrentUser = Depends(require_role("analyst")),
 ) -> dict:
     # TODO: motion_modules 尚無 seq_no 欄位；前端在 local state 管理顯示順序。
     # 待 seq_no 欄位加入後，在此持久化 ordered_ids 對應的新順序。
@@ -103,7 +103,7 @@ async def update_module(
     module_id: uuid.UUID,
     payload: MotionModuleUpdate,
     session: AsyncSession = Depends(get_db_session),
-    user: CurrentUser = Depends(require_role("IE")),
+    user: CurrentUser = Depends(require_role("analyst")),
 ) -> MotionModuleResponse:
     try:
         # SM-3：傳入 user.level 供 service 進行 scope escalation 檢查
@@ -122,7 +122,7 @@ async def update_module(
 async def delete_module(
     module_id: uuid.UUID,
     session: AsyncSession = Depends(get_db_session),
-    user: CurrentUser = Depends(require_role("IE")),
+    user: CurrentUser = Depends(require_role("analyst")),
 ) -> None:
     try:
         await svc.delete_module(session, module_id, user.employee_no)
@@ -144,7 +144,7 @@ async def delete_module(
 async def clone_module(
     module_id: uuid.UUID,
     session: AsyncSession = Depends(get_db_session),
-    user: CurrentUser = Depends(require_role("IE")),
+    user: CurrentUser = Depends(require_role("analyst")),
 ) -> MotionModuleResponse:
     try:
         return await svc.clone_module(session, module_id, user.employee_no)
@@ -163,7 +163,7 @@ async def publish_version(
     module_id: uuid.UUID,
     payload: PublishRequest,
     session: AsyncSession = Depends(get_db_session),
-    user: CurrentUser = Depends(require_role("IE")),
+    user: CurrentUser = Depends(require_role("analyst")),
 ) -> MotionModuleVersionResponse:
     try:
         return await svc.publish_version(session, module_id, payload, user.employee_no)
@@ -203,7 +203,7 @@ async def create_version_from_rows(
     module_id: uuid.UUID,
     payload: VersionFromRowsRequest,
     session: AsyncSession = Depends(get_db_session),
-    user: CurrentUser = Depends(require_role("IE")),
+    user: CurrentUser = Depends(require_role("analyst")),
 ) -> MotionModuleVersionResponse:
     """apply-back：把已修改的 rows 同步回模組，建立新版本（F-03b §3）。"""
     try:
@@ -237,7 +237,7 @@ async def create_version_from_rows(
 @router.post("/motion-modules/{module_id}/promote", status_code=501)
 async def promote_module(
     module_id: uuid.UUID,
-    _: CurrentUser = Depends(require_role("manager")),
+    _: CurrentUser = Depends(require_role("approver")),
 ) -> dict:
     raise HTTPException(
         status_code=501,
@@ -274,7 +274,7 @@ async def instantiate_to_worksheet(
     worksheet_id: uuid.UUID,
     payload: FromModuleRequest,
     session: AsyncSession = Depends(get_db_session),
-    user: CurrentUser = Depends(require_role("IE")),
+    user: CurrentUser = Depends(require_role("analyst")),
 ) -> InstantiateResponse:
     try:
         result = await svc.instantiate_to_worksheet(

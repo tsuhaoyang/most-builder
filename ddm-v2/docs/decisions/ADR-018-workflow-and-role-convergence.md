@@ -20,7 +20,7 @@
 - 表結構見 §2（workflow_audit_log）；`僅追加`原則不可違反（無 update/delete 路徑）。
 
 ### 裁決 4：角色改名
-- `IE` → `analyst`（程式碼、DB CHECK、API 全部改名）
+- `IE` → `analyst`（程式碼、DB 資料、API 全部改名；`roles` 欄為 text[]，無 CHECK 約束，無需改 constraint）
 - `manager` → `approver`（同上）
 - `viewer` / `admin` 名稱不變
 - 改名與 workflow migration 合併在 impl-06 一次完成

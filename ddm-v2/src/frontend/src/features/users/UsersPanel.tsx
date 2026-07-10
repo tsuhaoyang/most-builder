@@ -3,7 +3,7 @@ import { useQueryClient } from '@tanstack/react-query'
 import { useUsers, useUpsertUser, usePatchUser } from './api'
 import { useMe, isAdmin } from '../../shared/auth/useMe'
 
-const ROLES = ['IE', 'manager', 'admin'] as const
+const ROLES = ['analyst', 'approver', 'admin'] as const
 const roleLabel = (rs: string[]) => rs.length ? rs.join(' · ') : 'viewer（唯讀）'
 
 export function UsersPanel() {
@@ -12,7 +12,7 @@ export function UsersPanel() {
   const { data: users = [], isLoading, error } = useUsers()
   const upsert = useUpsertUser()
   const patch = usePatchUser()
-  const [emp, setEmp] = useState(''); const [name, setName] = useState(''); const [newRoles, setNewRoles] = useState<string[]>(['IE'])
+  const [emp, setEmp] = useState(''); const [name, setName] = useState(''); const [newRoles, setNewRoles] = useState<string[]>(['analyst'])
   const [msg, setMsg] = useState('')
 
   const admin = isAdmin(me)
@@ -31,14 +31,14 @@ export function UsersPanel() {
   const addUser = () => {
     if (!emp.trim()) return
     upsert.mutate({ employee_no: emp.trim(), display_name: name.trim() || undefined, roles: newRoles },
-      { onSuccess: () => { setEmp(''); setName(''); setNewRoles(['IE']); setMsg('✓ 已新增/更新'); refresh() }, onError: fail })
+      { onSuccess: () => { setEmp(''); setName(''); setNewRoles(['analyst']); setMsg('✓ 已新增/更新'); refresh() }, onError: fail })
   }
 
   return (
     <div className="space-y-4">
       <div className="bg-white rounded-xl border p-4">
         <h2 className="font-semibold mb-1">使用者與角色</h2>
-        <p className="text-xs text-slate-500">角色階層 viewer &lt; IE &lt; manager &lt; admin（admin 限定管理）。穩定鍵＝員工編號；身分由閘道帶入。無勾選＝viewer（唯讀）。</p>
+        <p className="text-xs text-slate-500">角色階層 viewer &lt; analyst &lt; approver &lt; admin（admin 限定管理）。穩定鍵＝員工編號；身分由閘道帶入。無勾選＝viewer（唯讀）。</p>
       </div>
 
       <div className="bg-white rounded-xl border p-4">

@@ -9,7 +9,7 @@ from pydantic import BaseModel, Field
 class AppUserUpsertIn(BaseModel):
     employee_no: str
     display_name: str | None = None
-    roles: list[str] = Field(default_factory=list)        # admin/manager/IE（空=viewer）
+    roles: list[str] = Field(default_factory=list)        # admin/approver/analyst（空=viewer）
     site_ids: list[uuid.UUID] = Field(default_factory=list)
 
 
