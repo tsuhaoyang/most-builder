@@ -32,14 +32,19 @@ def upgrade() -> None:
     )
 
     # 2. pgvector（需要 pgvector image；不可用時記錄 warning 並繼續）
+    # 用 SAVEPOINT 包裹，避免失敗後讓整個 alembic transaction 進入 aborted 狀態。
     vector_available = False
     try:
+        conn.execute(__import__("sqlalchemy").text("SAVEPOINT sp_vector"))
         conn.execute(
             __import__("sqlalchemy").text("CREATE EXTENSION IF NOT EXISTS vector")
         )
+        conn.execute(__import__("sqlalchemy").text("RELEASE SAVEPOINT sp_vector"))
         vector_available = True
         logger.info("v2_0013: pgvector extension 建立成功")
     except Exception as e:  # pragma: no cover
+        conn.execute(__import__("sqlalchemy").text("ROLLBACK TO SAVEPOINT sp_vector"))
+        conn.execute(__import__("sqlalchemy").text("RELEASE SAVEPOINT sp_vector"))
         logger.warning(
             "v2_0013: pgvector extension 不可用（%s）；embedding 欄位降為 TEXT NULL", e
         )
