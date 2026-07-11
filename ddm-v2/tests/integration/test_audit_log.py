@@ -101,3 +101,26 @@ async def test_list_filter_entity_type(client):
     assert r2.status_code == 200, r2.text
     for item in r2.json()["items"]:
         assert item["entity_type"] == "motion_module"
+
+
+# ── site_id 過濾 ──────────────────────────────────────────────────────
+
+async def test_list_filter_site_id(client):
+    """?site_id=<不存在的 UUID> → 200 且 process_version 筆為 0。
+
+    使用不存在的 site_id（全零 UUID 末三位 099）過濾，
+    期望 process_version 類型的紀錄全被過濾掉（0 筆），
+    但 API 仍回傳 200 OK（非 404）。
+    """
+    NONEXISTENT_SITE = "00000000-0000-0000-0000-000000000099"
+
+    r = await client.get("/api/v2/audit-log", params={"site_id": NONEXISTENT_SITE})
+    assert r.status_code == 200, f"預期 200，得到 {r.status_code}：{r.text}"
+    body = r.json()
+    assert "total" in body and "items" in body
+
+    # process_version 類型必須全被過濾掉
+    pv_items = [item for item in body["items"] if item["entity_type"] == "process_version"]
+    assert len(pv_items) == 0, (
+        f"不存在的 site_id 應過濾掉所有 process_version，但仍有 {len(pv_items)} 筆：{pv_items}"
+    )

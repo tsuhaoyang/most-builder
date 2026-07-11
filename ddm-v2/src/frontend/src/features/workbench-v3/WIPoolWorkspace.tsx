@@ -215,14 +215,14 @@ export function WIPoolWorkspace() {
 
   function handleAddToComposer() {
     const toAdd = l1Modules.filter(m => pickerSelected.has(m.id))
-    const unpublished = toAdd.filter(m => m.status !== 'published')
+    const unpublished = toAdd.filter(m => m.status !== 'standard')
     if (unpublished.length > 0) {
       showToast(
-        `此模組尚未發布，無法加入 WI：${unpublished.map(m => m.name_zh).join('、')}`,
+        `此模組尚未核定（非 standard），無法加入 WI：${unpublished.map(m => m.name_zh).join('、')}`,
         'err',
       )
     }
-    const valid = toAdd.filter(m => m.status === 'published')
+    const valid = toAdd.filter(m => m.status === 'standard')
     if (valid.length > 0) {
       setComposerModules(prev => [...prev, ...valid])
     }
@@ -433,7 +433,7 @@ export function WIPoolWorkspace() {
             )}
             {composerModules.map((mod, i) => {
               const modTmu = mod.total_tmu ?? 0
-              const isUnpublished = mod.status !== 'published'
+              const isUnpublished = mod.status !== 'standard'
               return (
                 <div
                   key={`${mod.id}-${i}`}
