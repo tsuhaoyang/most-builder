@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import type { Me } from '../../shared/auth/useMe'
-import { isAdmin } from '../../shared/auth/useMe'
+import { canEdit, isAdmin } from '../../shared/auth/useMe'
 import type { NavItem } from './sidebar.types'
 
 // ─── Nav item definitions (UX spec §1.2, fixed order) ────────────────────────
@@ -16,12 +16,11 @@ const PRIMARY_NAV: NavItem[] = [
   { id: 'export',       label: '匯出',               shortLabel: '出' },
   { id: 'ruleset',      label: 'Rule-set',            shortLabel: 'R', minRole: 'admin' },
   { id: 'users',        label: '使用者管理',          shortLabel: '人', minRole: 'admin' },
+  { id: 'dictionaries', label: '字典管理',             shortLabel: '典', minRole: 'analyst' },
 ]
 
-/** Legacy v2 tabs kept accessible — shown below a divider as secondary items. */
-const SECONDARY_NAV: NavItem[] = [
-  { id: 'sop', label: 'SOP 版本', shortLabel: 'S', secondary: true },
-]
+/** Legacy v2 tabs (L-04: SOP retired; kept as empty array for future use). */
+const SECONDARY_NAV: NavItem[] = []
 
 const SIDEBAR_BG = '#304156'
 
@@ -105,8 +104,12 @@ export interface SidebarProps {
 export function Sidebar({ activeTab, onTabChange, me, mobileOpen, onMobileClose }: SidebarProps) {
   const [collapsed, setCollapsed] = useState(false)
 
-  const canSeeItem = (item: NavItem): boolean =>
-    item.minRole !== 'admin' || isAdmin(me)
+  const canSeeItem = (item: NavItem): boolean => {
+    if (!item.minRole) return true
+    if (item.minRole === 'admin') return isAdmin(me)
+    if (item.minRole === 'analyst') return canEdit(me)
+    return true
+  }
 
   /** Tab change handler for mobile: also closes the slide-in panel */
   const handleMobileTabChange = (id: string) => {
@@ -119,18 +122,6 @@ export function Sidebar({ activeTab, onTabChange, me, mobileOpen, onMobileClose 
     <nav className="flex-1 overflow-y-auto py-2">
       <NavList
         items={PRIMARY_NAV}
-        activeTab={activeTab}
-        onTabChange={onTab}
-        collapsed={isCollapsed}
-        canSeeItem={canSeeItem}
-      />
-      {/* Separator before secondary (legacy) items */}
-      <div
-        className="my-2 mx-2"
-        style={{ borderTop: '1px solid rgba(255,255,255,0.1)' }}
-      />
-      <NavList
-        items={SECONDARY_NAV}
         activeTab={activeTab}
         onTabChange={onTab}
         collapsed={isCollapsed}

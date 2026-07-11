@@ -22,6 +22,7 @@ class VocabPatchIn(BaseModel):
     name_zh: str | None = None
     name_en: str | None = None
     external_code: str | None = None
+    is_active: bool | None = None
 
 
 class VocabItemOut(BaseModel):

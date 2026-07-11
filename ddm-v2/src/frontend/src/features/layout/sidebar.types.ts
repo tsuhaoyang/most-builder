@@ -12,6 +12,7 @@ export type TabId =
   | 'users'
   | 'master'
   | 'sop'
+  | 'dictionaries'
 
 /** A single item in the sidebar navigation. */
 export interface NavItem {
@@ -21,8 +22,8 @@ export interface NavItem {
   label: string
   /** Short label (1–2 CJK chars or 1 Latin char) shown when sidebar is collapsed */
   shortLabel: string
-  /** If 'admin', the item is hidden for non-admin roles */
-  minRole?: 'admin'
+  /** Minimum role required to see this item. 'analyst' = level ≥ 1; 'admin' = level ≥ 3 */
+  minRole?: 'analyst' | 'admin'
   /** Secondary items are shown below a divider (legacy v2 tabs kept for access) */
   secondary?: boolean
 }

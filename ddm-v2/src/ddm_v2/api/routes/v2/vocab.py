@@ -26,11 +26,25 @@ def _out(v: WorkVocabItem) -> VocabItemOut:
 
 
 @router.get("/vocab", response_model=list[VocabItemOut])
-async def list_vocab(kind: str | None = Query(default=None), session: AsyncSession = Depends(get_db_session), _: CurrentUser = Depends(current_user)) -> list[VocabItemOut]:
-    stmt = select(WorkVocabItem).where(WorkVocabItem.is_active.is_(True), WorkVocabItem.deleted_at.is_(None))
+async def list_vocab(
+    kind: str | None = Query(default=None),
+    q: str | None = Query(default=None),
+    limit: int | None = Query(default=None, ge=1, le=500),
+    offset: int = Query(default=0, ge=0),
+    include_inactive: bool = Query(default=False),
+    session: AsyncSession = Depends(get_db_session),
+    _: CurrentUser = Depends(current_user),
+) -> list[VocabItemOut]:
+    stmt = select(WorkVocabItem).where(WorkVocabItem.deleted_at.is_(None))
+    if not include_inactive:
+        stmt = stmt.where(WorkVocabItem.is_active.is_(True))
     if kind:
         stmt = stmt.where(WorkVocabItem.kind == kind)
-    stmt = stmt.order_by(WorkVocabItem.kind, WorkVocabItem.name_zh)
+    if q:
+        stmt = stmt.where(WorkVocabItem.name_zh.ilike(f"%{q}%"))
+    stmt = stmt.order_by(WorkVocabItem.kind, WorkVocabItem.name_zh).offset(offset)
+    if limit is not None:
+        stmt = stmt.limit(limit)
     rows = (await session.execute(stmt)).scalars().all()
     return [_out(v) for v in rows]
 
@@ -47,7 +61,7 @@ async def create_vocab(payload: VocabItemIn, session: AsyncSession = Depends(get
 @router.patch("/vocab/{item_id}", response_model=VocabItemOut)
 async def patch_vocab(item_id: uuid.UUID, payload: VocabPatchIn, session: AsyncSession = Depends(get_db_session), _: CurrentUser = Depends(require_role("analyst"))) -> VocabItemOut:
     v = await session.get(WorkVocabItem, item_id)
-    if v is None or not v.is_active:
+    if v is None or v.deleted_at is not None:
         raise HTTPException(status_code=404, detail=f"詞彙不存在：{item_id}")
     if payload.name_zh is not None:
         v.name_zh = payload.name_zh
@@ -55,6 +69,8 @@ async def patch_vocab(item_id: uuid.UUID, payload: VocabPatchIn, session: AsyncS
         v.name_en = payload.name_en
     if payload.external_code is not None:
         v.external_code = payload.external_code or None
+    if payload.is_active is not None:
+        v.is_active = payload.is_active
     await session.flush()
     return _out(v)
 
@@ -62,7 +78,7 @@ async def patch_vocab(item_id: uuid.UUID, payload: VocabPatchIn, session: AsyncS
 @router.delete("/vocab/{item_id}", status_code=204)
 async def soft_delete_vocab(item_id: uuid.UUID, session: AsyncSession = Depends(get_db_session), _: CurrentUser = Depends(require_role("analyst"))) -> None:
     v = await session.get(WorkVocabItem, item_id)
-    if v is None or not v.is_active:
+    if v is None or v.deleted_at is not None:
         raise HTTPException(status_code=404, detail=f"詞彙不存在：{item_id}")
     v.is_active = False
     v.deleted_at = datetime.now(timezone.utc)
