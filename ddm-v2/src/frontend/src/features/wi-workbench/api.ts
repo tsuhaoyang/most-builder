@@ -71,4 +71,4 @@ export interface WsReadRow {
 }
 export interface WsRead { worksheet_id: string; status: string; total_tmu: number; rows: WsReadRow[] }
 export const useWorksheet = (wsId: string) =>
-  useQuery({ queryKey: ['worksheet', wsId], queryFn: () => apiGet<WsRead>(`/api/v2/worksheets/${wsId}`), refetchOnWindowFocus: false })
+  useQuery({ queryKey: ['worksheet', wsId], queryFn: () => apiGet<WsRead>(`/api/v2/worksheets/${wsId}`), refetchOnWindowFocus: false, enabled: !!wsId })
