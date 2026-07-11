@@ -38,13 +38,15 @@
 | **workflow_audit_log（impl-06b）** | publish process_version → action=approve / entity_type=process_version / to_status=approved / actor 非空；DB 直查驗證（conftest 無 db_session；端點 impl-06c 補） | `tests/integration/test_worksheet.py` |
 | **NLP 同義詞 + nl-draft（impl-05）** | synonyms list(200)/create IE(201)/duplicate(409+SYNONYM_CONFLICT)/viewer(403)/delete(204)；**option_code 不存在→422 OPTION_CODE_NOT_FOUND（Fix-T1）**；**全形空白 normalize 後空→422 VALIDATION_ERROR（Fix-T3）**；nl-draft GM 治具防護(F-05 §4.1)；v3 治具全套單元（壓合站/壓合位置/治具→GM；執行/進行/**機台（CM 觸發詞，Fix-T2）**→CM）；normalize OR 兜底消除（Fix-Low-T：測试机器→測試機器；機台機臺→機臺機臺） | `tests/unit/test_nlp.py`、`tests/integration/test_nlp_api.py` |
 | 前端（全分頁） | 載入/身分/分頁渲染/匯入精靈 | `src/frontend/e2e/smoke.spec.ts` |
+| **前端 UX 合規（v3 規格）** | §A-01/02/03 Sidebar 結構/背景色/折疊/角色可見性；§B-01/B-02/B-03 workbench-v3 NlDraft+Slot Strip；§C-01 MiCompositionTable gap 文件化；§E-04/05/06 WI Pool 三層 Tab；§G-01/G-02 分析案件+RBAC gating；§H-01 字典管理頁；§I-01 viewer RBAC；§L-03/04 退役確認（33 條，Type A mocked-API，無需 preview_server） | `src/frontend/e2e/ux-compliance.spec.ts` |
 | 依賴完整性 | `create_app()` 乾淨 import；端點測試抓 lazy import | CI「乾淨 import」step + 上列各端點測試 |
 
 ## CI jobs（`.github/workflows/ci.yml`）
 
 - **backend**：postgres service → 裝宣告依賴 → 乾淨 import → migrate+seed → core_logic → `pytest`
 - **frontend**：`npm ci` → typecheck → build
-- **e2e**：full stack（seed + build + preview_server :8099）→ Playwright
+- **e2e（smoke）**：full stack（seed + build + preview_server :8099）→ `smoke.spec.ts`
+- **e2e（ux-compliance）**：Type A mocked-API；只需 Vite dev server 或 preview_server 提供靜態資源 → `ux-compliance.spec.ts`（33 條，E2E_BASE_URL=`http://localhost:5173`）
 
 ## 本機快速重現 CI
 

@@ -19,10 +19,8 @@ test('sidebar navigation renders each migrated feature', async ({ page }) => {
   await page.getByRole('button', { name: /Rule-set/ }).click()
   await expect(page.getByText(/A — 移動距離/)).toBeVisible()
 
-  // SOP 版本 tab (secondary / legacy item in sidebar)
-  await page.getByRole('button', { name: /SOP/ }).click()
-  await expect(page.getByText(/作用中/).first()).toBeVisible()
-  await expect(page.getByText(/同 SKU 全部版本/)).toBeVisible()
+  // NOTE: SOP 版本 tab has been retired (L-04). Removed from test.
+  // NOTE: 主數據 tab has been retired (L-03). Not present in sidebar.
 
   // 使用者管理 tab
   await page.getByRole('button', { name: /使用者/ }).click()
@@ -32,6 +30,16 @@ test('sidebar navigation renders each migrated feature', async ({ page }) => {
   // 匯出 tab
   await page.getByRole('button', { name: /匯出/ }).click()
   await expect(page.getByRole('heading', { name: '匯出' })).toBeVisible()
+
+  // 字典管理 tab (admin-gated; seed user IEC141289 is admin) — smoke check (H-01)
+  await page.getByRole('button', { name: /字典管理/ }).click()
+  await expect(page.getByRole('heading', { name: '字典管理' })).toBeVisible()
+
+  // 分析案件 tab — smoke check (G-01)
+  await page.getByRole('button', { name: /分析案件/ }).click()
+  // Case list renders filter tabs
+  await expect(page.getByRole('button', { name: '全部' })).toBeVisible()
+  await expect(page.getByRole('button', { name: '草稿' })).toBeVisible()
 })
 
 test('import wizard opens from header button', async ({ page }) => {
