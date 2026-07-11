@@ -294,3 +294,28 @@ async def clone_worksheet(session: AsyncSession, worksheet_id: uuid.UUID, actor:
 
 async def list_versions(session: AsyncSession, worksheet_id: uuid.UUID) -> dict[str, Any]:
     return await _version_info(session, worksheet_id)
+
+
+async def retire_worksheet(session: AsyncSession, worksheet_id: uuid.UUID, actor: str | None = None) -> dict[str, Any]:
+    """將已核准的工序表退役（admin 專屬）。"""
+    ws = await session.get(MostWorksheet, worksheet_id)
+    if ws is None:
+        raise WorksheetNotFound(str(worksheet_id))
+    pv = await session.get(ProcessVersion, ws.process_version_id)
+    if pv is None:
+        raise WorksheetNotFound(str(worksheet_id))
+    if pv.status != "approved":
+        raise NotEditable("not_approved")
+    pv.status = "retired"
+    ws.status = "retired"
+    await log_audit(
+        session,
+        entity_type="process_version",
+        entity_id=pv.id,
+        action="retire",
+        from_status="approved",
+        to_status="retired",
+        actor=actor or "unknown",
+    )
+    await session.flush()
+    return await _version_info(session, worksheet_id)

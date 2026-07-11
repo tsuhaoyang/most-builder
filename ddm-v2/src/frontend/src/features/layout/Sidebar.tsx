@@ -20,8 +20,7 @@ const PRIMARY_NAV: NavItem[] = [
 
 /** Legacy v2 tabs kept accessible — shown below a divider as secondary items. */
 const SECONDARY_NAV: NavItem[] = [
-  { id: 'master', label: '主數據',   shortLabel: '數', secondary: true },
-  { id: 'sop',    label: 'SOP 版本', shortLabel: 'S',  secondary: true },
+  { id: 'sop', label: 'SOP 版本', shortLabel: 'S', secondary: true },
 ]
 
 const SIDEBAR_BG = '#304156'

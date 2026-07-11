@@ -3,7 +3,6 @@ import { useMe, canEdit } from './shared/auth/useMe'
 import { ImportModal } from './features/import/ImportModal'
 import { WiWorkbench } from './features/wi-workbench/WiWorkbench'
 import { LevelSystem } from './features/level-system/LevelSystem'
-import { MasterData } from './features/master-data/MasterData'
 import { RuleSetViewer } from './features/rule-set/RuleSetViewer'
 import { SopPanel } from './features/sop/SopPanel'
 import { ExportPanel } from './features/export/Export'
@@ -23,7 +22,6 @@ export default function App() {
       case 'workbench-v3': return <MostWorkbenchV3 />
       case 'wi':      return <WiWorkbench />
       case 'level':   return <LevelSystem />
-      case 'master':  return <MasterData />
       case 'ruleset': return <RuleSetViewer />
       case 'sop':     return <SopPanel />
       case 'export':  return <ExportPanel />

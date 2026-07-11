@@ -1,4 +1,4 @@
-"""匯出服務：WI 1128 預覽 / Excel / LB csv / LB API 接口（payload）。
+"""匯出服務：WI 1128 預覽 / Excel / LB csv / LB API 接口（payload）/ 三 sheet 管理報表。
 
 依據 system-architecture-v2 §8.1。皆由 worksheet_service.read_worksheet 的權威資料衍生。
 LB API 的 request model 由 User 後續提供；此處先做 adapter 接口（先回 dry-run payload）。
@@ -10,10 +10,15 @@ import io
 import uuid
 from typing import Any
 
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from ddm_v2.models.v2.audit import WorkflowAuditLog
+from ddm_v2.models.v2.org import Product, Site, Sku
+from ddm_v2.models.v2.worksheet import MostWorksheet, ProcessVersion, WiRow
 from ddm_v2.most_engine import level as level_engine
-from ddm_v2.services.v2.worksheet_service import read_worksheet
+from ddm_v2.most_engine.rule_set_data import TMU_TO_SEC
+from ddm_v2.services.v2.worksheet_service import WorksheetNotFound, read_worksheet
 
 
 def _parse_tech(tech: str | None) -> list[dict[str, Any]]:
@@ -139,3 +144,126 @@ async def lb_api_payload(session: AsyncSession, ws_id: uuid.UUID) -> dict[str, A
         "worksheet_id": str(ws_id),
         "payload": output,
     }
+
+
+_STATUS_ZH = {"draft": "草稿", "approved": "已核准", "retired": "已退役"}
+
+
+async def to_report_xlsx_bytes(session: AsyncSession, ws_id: uuid.UUID) -> bytes:
+    """三 sheet 管理報表：案件資訊 / 動作明細 / 簽核歷程。"""
+    from openpyxl import Workbook
+
+    ws_model = await session.get(MostWorksheet, ws_id)
+    if ws_model is None:
+        raise WorksheetNotFound(str(ws_id))
+
+    pv = await session.get(ProcessVersion, ws_model.process_version_id)
+    sku = await session.get(Sku, pv.sku_id)
+    product = await session.get(Product, sku.product_id)
+    site = await session.get(Site, product.site_id)
+
+    # 計算彙總；allowance_percent 為百分比值（e.g. 15.0 代表 15%），None = 未設定。
+    # OQ-002：allowance 未設定時標準秒留空，不得以 normal 假充 standard。
+    data = await read_worksheet(session, ws_id)
+    total_tmu = data["total_tmu"] or 0.0
+    wi_row_count = len(data["rows"])
+    total_normal_sec = round(total_tmu * TMU_TO_SEC, 3)
+    allowance_percent: float | None = data.get("allowance_percent")  # None or float %
+    total_standard_sec: float | None = (
+        round(total_normal_sec * (1 + allowance_percent / 100), 3)
+        if allowance_percent is not None
+        else None
+    )
+
+    process_name = sku.name_zh or sku.sku_code
+
+    wb = Workbook()
+
+    # ── Sheet 1：案件資訊（垂直 key-value）──
+    ws1 = wb.active
+    ws1.title = "案件資訊"
+    rows_info = [
+        ("廠區", site.name_zh),
+        ("產品", product.name_zh),
+        ("機種", sku.name_zh or sku.sku_code),
+        ("製程", process_name),
+        ("版本號", pv.version_no),
+        ("狀態", _STATUS_ZH.get(pv.status, pv.status)),
+        ("步驟總數", wi_row_count),
+        ("總 TMU", round(total_tmu, 2)),
+        ("總正常秒", total_normal_sec),
+        ("寬放率", allowance_percent if allowance_percent is not None else ""),
+        ("總標準秒", total_standard_sec if total_standard_sec is not None else ""),
+        ("核准時間", pv.published_at.strftime("%Y-%m-%d %H:%M:%S") if pv.published_at else ""),
+    ]
+    for key, val in rows_info:
+        ws1.append([key, val])
+
+    # ── Sheet 2：動作明細──
+    ws2 = wb.create_sheet("動作明細")
+    ws2.append(["序號", "說明", "序列模型", "頻率", "插槽明細", "步驟TMU", "正常秒(4位)", "標準秒(4位)", "SIMO組"])
+    for r in data["rows"]:
+        cyc = r.get("cycle") or {}
+        slot_inputs: dict[str, Any] = cyc.get("slot_inputs") or {}
+        # 展開 slot_inputs：把各 key 的 value dict 中各欄的 key=value 連接
+        slot_parts: list[str] = []
+        for slot_key, slot_val in slot_inputs.items():
+            if isinstance(slot_val, dict):
+                for k, v in slot_val.items():
+                    if k != "manual_override" and v not in (None, 0, "", [], {}):
+                        slot_parts.append(f"{slot_key}({k})={v}")
+            else:
+                if slot_val not in (None, 0, "", [], {}):
+                    slot_parts.append(f"{slot_key}={slot_val}")
+        slot_detail = " | ".join(slot_parts) if slot_parts else ""
+
+        step_tmu = float(cyc.get("total_tmu") or 0)
+        freq = float(r.get("frequency") or 1)
+        normal_sec = round(step_tmu * TMU_TO_SEC, 4)
+        standard_sec: float | None = (
+            round(normal_sec * (1 + allowance_percent / 100), 4)
+            if allowance_percent is not None
+            else None
+        )
+
+        simo_gid = r.get("simo_group_id") or ""
+        simo_display = str(simo_gid)[:8] if simo_gid else ""
+
+        ws2.append([
+            r["seq_no"],
+            r.get("sub_activity") or "",
+            cyc.get("seq_kind") or "",
+            freq,
+            slot_detail,
+            step_tmu,
+            normal_sec,
+            standard_sec if standard_sec is not None else "",
+            simo_display,
+        ])
+
+    # ── Sheet 3：簽核歷程──
+    ws3 = wb.create_sheet("簽核歷程")
+    ws3.append(["時間", "動作", "從狀態", "至狀態", "執行者", "備註"])
+    audit_rows = (
+        await session.execute(
+            select(WorkflowAuditLog)
+            .where(
+                WorkflowAuditLog.entity_type == "process_version",
+                WorkflowAuditLog.entity_id == pv.id,
+            )
+            .order_by(WorkflowAuditLog.created_at.asc())
+        )
+    ).scalars().all()
+    for entry in audit_rows:
+        ws3.append([
+            entry.created_at.strftime("%Y-%m-%d %H:%M:%S") if entry.created_at else "",
+            entry.action,
+            _STATUS_ZH.get(entry.from_status or "", entry.from_status or ""),
+            _STATUS_ZH.get(entry.to_status or "", entry.to_status or ""),
+            entry.actor,
+            entry.comment or "",
+        ])
+
+    buf = io.BytesIO()
+    wb.save(buf)
+    return buf.getvalue()

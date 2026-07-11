@@ -118,3 +118,52 @@ async def test_export_lb_api_dry_run(client):
     r = await client.post(f"/api/v2/worksheets/{WS}/export/lb-api")
     assert r.status_code == 200
     assert "payload" in r.json()
+
+
+async def test_export_report_xlsx_happy_path(client):
+    """三 sheet 報表：200、content-type=xlsx、Content-Disposition 含 MOST_Report。"""
+    if not await _seeded(client):
+        pytest.skip("demo worksheet 未種（先跑 dev_seed_v2.py）")
+    r = await client.get(f"/api/v2/worksheets/{WS}/export/report.xlsx")
+    assert r.status_code == 200, r.text
+    ct = r.headers.get("content-type", "")
+    assert "spreadsheet" in ct or "octet-stream" in ct, ct
+    cd = r.headers.get("content-disposition", "")
+    assert "MOST_Report" in cd, cd
+
+
+async def test_export_report_xlsx_sheets_structure(client):
+    """三 sheet 各自存在，Sheet1 含「廠區」row，Sheet2 含欄位標頭，Sheet3 含簽核欄位。"""
+    if not await _seeded(client):
+        pytest.skip("demo worksheet 未種（先跑 dev_seed_v2.py）")
+    from openpyxl import load_workbook
+
+    r = await client.get(f"/api/v2/worksheets/{WS}/export/report.xlsx")
+    assert r.status_code == 200
+    wb = load_workbook(io.BytesIO(r.content))
+    # Sheet 1：案件資訊
+    assert "案件資訊" in wb.sheetnames
+    ws1 = wb["案件資訊"]
+    keys = [ws1.cell(row=i, column=1).value for i in range(1, ws1.max_row + 1)]
+    assert "廠區" in keys
+    assert "總 TMU" in keys
+    assert "總標準秒" in keys
+    # Sheet 2：動作明細
+    assert "動作明細" in wb.sheetnames
+    ws2 = wb["動作明細"]
+    header2 = [ws2.cell(row=1, column=c).value for c in range(1, 10)]
+    assert "序號" in header2
+    assert "步驟TMU" in header2
+    # Sheet 3：簽核歷程
+    assert "簽核歷程" in wb.sheetnames
+    ws3 = wb["簽核歷程"]
+    header3 = [ws3.cell(row=1, column=c).value for c in range(1, 7)]
+    assert "時間" in header3
+    assert "執行者" in header3
+
+
+async def test_export_report_xlsx_not_found(client):
+    """不存在的 worksheet_id → 404。"""
+    fake_id = uuid.uuid4()
+    r = await client.get(f"/api/v2/worksheets/{fake_id}/export/report.xlsx")
+    assert r.status_code == 404

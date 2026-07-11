@@ -60,3 +60,17 @@ async def export_lb_api(worksheet_id: uuid.UUID, session: AsyncSession = Depends
         return await exp.lb_api_payload(session, worksheet_id)
     except wsvc.WorksheetNotFound:
         raise HTTPException(status_code=404, detail=f"worksheet 不存在：{worksheet_id}")
+
+
+# ADR-019 Option A: read=viewer+ intentional; do NOT add ownership/created_by checks — see ADR-019
+@router.get("/worksheets/{worksheet_id}/export/report.xlsx")
+async def export_report_xlsx(worksheet_id: uuid.UUID, session: AsyncSession = Depends(get_db_session), _: CurrentUser = Depends(current_user)) -> Response:
+    try:
+        data = await exp.to_report_xlsx_bytes(session, worksheet_id)
+    except wsvc.WorksheetNotFound:
+        raise HTTPException(status_code=404, detail=f"worksheet 不存在：{worksheet_id}")
+    return Response(
+        content=data,
+        media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        headers={"Content-Disposition": f'attachment; filename="MOST_Report_{worksheet_id}.xlsx"'},
+    )

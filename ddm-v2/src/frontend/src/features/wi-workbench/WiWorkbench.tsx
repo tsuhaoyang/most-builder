@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'react'
 import { useQueryClient } from '@tanstack/react-query'
-import { useRuleSetOptions, useVocab, useTemplates, useCalculate, useSaveWorksheet, useWorksheet } from './api'
+import { useRuleSetOptions, useVocab, useCalculate, useSaveWorksheet, useWorksheet } from './api'
 import { useWiStore, type Row } from './store'
 import { useMe, canEdit } from '../../shared/auth/useMe'
 import { useWorkspace } from '../../shared/workspace'
@@ -9,7 +9,7 @@ import { apiPost } from '../../shared/api/client'
 import { ComboBox } from '../../shared/ui/ComboBox'
 import { Hint } from '../../shared/ui/Hint'
 import { useCreateVocab, type VocabIn } from '../master-data/api'
-import { defaultCycle, buildPayload, payloadToState, aBandOpts, shortNarr, type CycleState, type ASlot } from './cycle'
+import { defaultCycle, buildPayload, aBandOpts, shortNarr, type CycleState, type ASlot } from './cycle'
 import { useLevelStore } from '../level-system/store'
 import { derive, type LevelCell, type GroupMeta } from '../level-system/logic'
 
@@ -29,7 +29,6 @@ export function WiWorkbench() {
   const { data: me } = useMe()
   const { data: opts } = useRuleSetOptions()
   const { data: vocab = [] } = useVocab()
-  const { data: templates = [] } = useTemplates()
   const calc = useCalculate()
   const createVocab = useCreateVocab()
   const activeWs = useWorkspace(s => s.activeWs)
@@ -38,7 +37,6 @@ export function WiWorkbench() {
   const { data: wsData } = useWorksheet(activeWs)
   const { rows, addRow, delRow, setRows, totalTmu } = useWiStore()
 
-  const [mode, setMode] = useState<'quick' | 'precise'>('quick')
   const [cur, setCur] = useState<CycleState>(defaultCycle())
   const [tmu, setTmu] = useState<number | null>(null)
   const [tech, setTech] = useState('')
@@ -68,7 +66,7 @@ export function WiWorkbench() {
     useLevelStore.getState().hydrate(lm, gm, wsData.rows.length)
   }, [wsData, setRows])
 
-  // 後端權威計算（debounce）：兩種模式都用同一份 cur → buildPayload
+  // 後端權威計算（debounce）：cur → buildPayload
   const payload = useMemo(() => (opts ? buildPayload(cur, opts.code) : null), [cur, opts])
   useEffect(() => {
     if (!payload) { setTmu(null); setTech(''); return }
@@ -90,8 +88,6 @@ export function WiWorkbench() {
     const m: Record<string, { code: string; label: string }[]> = { g: opts.g, p_base: opts.p_bases, m_verb: opts.m_verbs }
     return m[kind]?.find(o => o.code === code)?.label ?? ''
   }
-  const std = templates.filter(t => t.status === 'standard')
-
   // 詞彙填空（可搜尋 + ＋新增→寫回主數據→即時連動）
   const mkVocab = (kind: string, nvKey: 'obj' | 'from' | 'to', ph: string) => (
     <ComboBox options={vopts(kind)} value={cur.nv[nvKey]} placeholder={ph}
@@ -178,12 +174,6 @@ export function WiWorkbench() {
     )
   }
 
-  function insertTemplate(id: string) {
-    const t = std.find(x => x.id === id); if (!t) return
-    const next = payloadToState(t.cycle_template as Record<string, unknown>)
-    setCur({ ...next, nv: cur.nv, handCode: cur.handCode, freq: cur.freq, simoGroup: cur.simoGroup })
-  }
-
   function add() {
     if (tmu == null) return
     addRow({
@@ -245,43 +235,24 @@ export function WiWorkbench() {
           <h2 className="font-semibold">編輯一條工序</h2>
           <label className="text-sm flex items-center gap-1"><input type="radio" checked={gm} onChange={() => set({ seq: 'GM' })} /> 一般移動(取放)</label>
           <label className="text-sm flex items-center gap-1"><input type="radio" checked={!gm} onChange={() => set({ seq: 'CM' })} /> 控制移動(推拉鎖)</label>
-          <div className="ml-auto flex gap-1 text-sm">
-            <button className={`px-2 py-1 rounded border ${mode === 'quick' ? 'bg-slate-900 text-white' : ''}`} onClick={() => setMode('quick')}>⚡ 快速</button>
-            <button className={`px-2 py-1 rounded border ${mode === 'precise' ? 'bg-slate-900 text-white' : ''}`} onClick={() => setMode('precise')}>🔧 精確</button>
-          </div>
         </div>
 
-        {mode === 'quick' ? (
-          <div className="space-y-1">
-            <div className="flex flex-wrap items-center gap-2 text-sm">
-              <span className="text-slate-500">手</span>
-              <Sel value={cur.handCode} onChange={v => set({ handCode: v })} opts={HANDS} cls="border rounded px-1 py-0.5 text-sm" />
-              <span className="text-slate-500">動作</span>
-              <ComboBox options={std.map(t => ({ v: t.id, l: t.name_zh }))} value="" placeholder="搜尋常見動作…" onPick={v => v && insertTemplate(v)} />
-              <span className="text-slate-500">物件</span>{mkVocab('object', 'obj', '—物件—')}
-              <span className="text-slate-500">從</span>{mkVocab('from', 'from', '—從—')}
-              <span className="text-slate-500">到</span>{mkVocab('to', 'to', '—到—')}
-            </div>
-            <p className="text-xs text-slate-400">選「動作」會自動帶入七格與 TMU；要逐格微調或用完整句子請切「🔧 精確」，內容會保留。</p>
-          </div>
-        ) : (
-          <div className="space-y-2">
+        <div className="space-y-2">
+          <p className={line}>
+            {<Sel value={cur.handCode} onChange={v => set({ handCode: v })} opts={HANDS} cls="border rounded px-1 py-0.5 text-sm" />}
+            {' 從 '}{mkVocab('from', 'from', '—來源—')}{' ，'}{aBlock(cur.a0, s => set({ a0: s }))}{' '}{bBlock('b1')}
+            {' 以 '}{gBlock()}{' 取得「'}{mkVocab('object', 'obj', '—物件—')}{'」。'}
+          </p>
+          {gm ? (
             <p className={line}>
-              {<Sel value={cur.handCode} onChange={v => set({ handCode: v })} opts={HANDS} cls="border rounded px-1 py-0.5 text-sm" />}
-              {' 從 '}{mkVocab('from', 'from', '—來源—')}{' ，'}{aBlock(cur.a0, s => set({ a0: s }))}{' '}{bBlock('b1')}
-              {' 以 '}{gBlock()}{' 取得「'}{mkVocab('object', 'obj', '—物件—')}{'」。'}
+              {'隨後 '}{aBlock(cur.a3, s => set({ a3: s }))}{' '}{bBlock('b4')}
+              {' 到 '}{mkVocab('to', 'to', '—目的地—')}{' ，以 '}{pBlock()}{' 放置。'}
             </p>
-            {gm ? (
-              <p className={line}>
-                {'隨後 '}{aBlock(cur.a3, s => set({ a3: s }))}{' '}{bBlock('b4')}
-                {' 到 '}{mkVocab('to', 'to', '—目的地—')}{' ，以 '}{pBlock()}{' 放置。'}
-              </p>
-            ) : (
-              <p className={line}>{'在 '}{mkVocab('to', 'to', '—地點—')}{' ，'}{mBlock()}{' 實施控制移動。'}</p>
-            )}
-            <p className={line}>{'最後 '}{aBlock(cur.a6, s => set({ a6: s }))}{' 返回。'}</p>
-          </div>
-        )}
+          ) : (
+            <p className={line}>{'在 '}{mkVocab('to', 'to', '—地點—')}{' ，'}{mBlock()}{' 實施控制移動。'}</p>
+          )}
+          <p className={line}>{'最後 '}{aBlock(cur.a6, s => set({ a6: s }))}{' 返回。'}</p>
+        </div>
 
         <div className="flex flex-wrap items-center gap-3 pt-3 border-t text-sm">
           <span className="text-slate-500">次數</span>

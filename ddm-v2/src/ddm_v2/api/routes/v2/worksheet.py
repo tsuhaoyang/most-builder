@@ -75,3 +75,14 @@ async def clone_worksheet(worksheet_id: uuid.UUID, session: AsyncSession = Depen
         return await svc.clone_worksheet(session, worksheet_id, actor=user.employee_no)
     except svc.WorksheetNotFound:
         raise HTTPException(status_code=404, detail=f"worksheet 不存在：{worksheet_id}")
+
+
+@router.post("/worksheets/{worksheet_id}/retire")
+async def retire_worksheet(worksheet_id: uuid.UUID, session: AsyncSession = Depends(get_db_session),
+                           user: CurrentUser = Depends(require_role("admin"))) -> dict:
+    try:
+        return await svc.retire_worksheet(session, worksheet_id, actor=user.employee_no)
+    except svc.WorksheetNotFound:
+        raise HTTPException(status_code=404, detail=f"worksheet 不存在：{worksheet_id}")
+    except svc.NotEditable as e:
+        raise HTTPException(status_code=409, detail=str(e))

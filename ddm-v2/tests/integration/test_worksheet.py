@@ -122,6 +122,48 @@ async def test_publish_analyst_returns_403(client):
     assert r.status_code == 403, r.text
 
 
+async def test_retire_happy_path(client):
+    """admin clone → publish → retire → status=retired。"""
+    if not await _seeded(client):
+        pytest.skip("demo worksheet 未種（先跑 dev_seed_v2.py）")
+    new = (await client.post(f"/api/v2/worksheets/{WS}/clone")).json()["new_worksheet_id"]
+    assert (await client.post(f"/api/v2/worksheets/{new}/publish")).status_code == 200
+    r = await client.post(f"/api/v2/worksheets/{new}/retire")
+    assert r.status_code == 200, r.text
+    j = r.json()
+    cur = next(v for v in j["versions"] if v["is_current"])
+    assert cur["status"] == "retired"
+
+
+async def test_retire_non_approved_returns_409(client):
+    """非 approved 狀態（draft）退役 → 409。"""
+    if not await _seeded(client):
+        pytest.skip("demo worksheet 未種（先跑 dev_seed_v2.py）")
+    new = (await client.post(f"/api/v2/worksheets/{WS}/clone")).json()["new_worksheet_id"]
+    # draft 直接 retire → 409
+    r = await client.post(f"/api/v2/worksheets/{new}/retire")
+    assert r.status_code == 409, r.text
+
+
+async def test_retire_approver_returns_403(client):
+    """approver（非 admin）不可 retire → 403。"""
+    if not await _seeded(client):
+        pytest.skip("demo worksheet 未種（先跑 dev_seed_v2.py）")
+    new = (await client.post(f"/api/v2/worksheets/{WS}/clone")).json()["new_worksheet_id"]
+    assert (await client.post(f"/api/v2/worksheets/{new}/publish")).status_code == 200
+    # 建立 approver 用戶
+    approver_user = f"GAP_APPROVER_RETIRE_{uuid.uuid4().hex[:6]}"
+    ur = await client.post("/api/v2/admin/users", json={
+        "employee_no": approver_user,
+        "display_name": "Gap Approver Retire Test",
+        "roles": ["approver"],
+        "site_ids": [],
+    })
+    assert ur.status_code == 200, ur.text
+    r = await client.post(f"/api/v2/worksheets/{new}/retire", headers={"X-Username": approver_user})
+    assert r.status_code == 403, r.text
+
+
 async def test_publish_creates_audit_log(client):
     """publish → workflow_audit_log 有一筆 entity_type=process_version, action=approve。
 
