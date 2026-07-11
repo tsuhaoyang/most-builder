@@ -12,6 +12,7 @@ import { AppLayout } from './features/layout/AppLayout'
 import { MostWorkbenchV3 } from './features/workbench-v3/MostWorkbenchV3'
 import { CasesPage } from './features/cases/CasesPage'
 import { DictionariesPage } from './features/dictionaries/DictionariesPage'
+import { WISetBuilderPage } from './features/wi-project/WISetBuilderPage'
 
 export default function App() {
   const [tab, setTab] = useState<string>('wi')
@@ -31,6 +32,7 @@ export default function App() {
   const renderContent = () => {
     switch (tab) {
       case 'workbench-v3': return <MostWorkbenchV3 />
+      case 'wi-project':   return <WISetBuilderPage />
       case 'wi':      return <WiWorkbench />
       case 'level':   return <LevelSystem />
       case 'ruleset': return <RuleSetViewer />
