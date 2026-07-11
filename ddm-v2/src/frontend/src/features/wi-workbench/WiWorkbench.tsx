@@ -273,16 +273,21 @@ export function WiWorkbench() {
           <div className="text-sm">合計 <b className="text-emerald-600 text-lg">{total}</b> TMU ≈ <b className="text-emerald-600">{(total * TMU_SEC).toFixed(2)}</b> 秒</div>
         </div>
         <table className="w-full text-sm">
-          <thead><tr className="bg-slate-100 text-left"><th className="p-1">#</th><th className="p-1">手</th><th className="p-1">敘述</th><th className="p-1">TMU</th><th className="p-1">次數</th><th className="p-1">SIMO</th><th className="p-1"></th></tr></thead>
+          <thead><tr className="bg-slate-100 text-left"><th className="p-1">#</th><th className="p-1">手</th><th className="p-1">敘述</th><th className="p-1">Base TMU</th><th className="p-1">頻率</th><th className="p-1">Eff TMU</th><th className="p-1">CT(秒)</th><th className="p-1">SIMO</th><th className="p-1"></th></tr></thead>
           <tbody>
-            {rows.map((r, i) => (
+            {rows.map((r, i) => {
+              const effTmu = r.tmu != null ? r.tmu * r.freq : null
+              const ctSec = effTmu != null ? (effTmu * TMU_SEC).toFixed(2) : '—'
+              return (
               <tr key={r.id} className="border-t">
                 <td className="p-1">{i + 1}</td><td className="p-1">{r.handCode}</td><td className="p-1">{r.narr}</td>
-                <td className="p-1"><b>{r.tmu}</b></td><td className="p-1">{r.freq}</td><td className="p-1">{r.simoGroup}</td>
+                <td className="p-1"><b>{r.tmu}</b></td><td className="p-1">{r.freq}</td>
+                <td className="p-1"><b>{effTmu ?? '—'}</b></td><td className="p-1">{ctSec}</td>
+                <td className="p-1">{r.simoGroup}</td>
                 <td className="p-1">{editable && <button className="text-red-600 underline" onClick={() => delRow(r.id)}>刪</button>}</td>
               </tr>
-            ))}
-            {rows.length === 0 && <tr><td colSpan={7} className="p-3 text-slate-400">尚無列。</td></tr>}
+            )})}
+            {rows.length === 0 && <tr><td colSpan={9} className="p-3 text-slate-400">尚無列。</td></tr>}
           </tbody>
         </table>
         <div className="flex gap-2 mt-3 items-center">

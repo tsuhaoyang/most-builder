@@ -1,14 +1,14 @@
-// MOST 工作台 v3 — 三層組裝 Shell (F-03)
-// Tab 1: 動作模組  Tab 2: WI 組成  Tab 3: 製程途程
+// WI 組裝 — 三層組裝 Shell (F-03)
+// Tab 1: 動作模組工作區  Tab 2: WI 組成工作區  Tab 3: 製程途程工作區
 import { useWorkbenchV3Store } from './store'
 import { ActionModuleWorkspace } from './ActionModuleWorkspace'
 import { WIPoolWorkspace } from './WIPoolWorkspace'
 import { ProcessWorkspace } from './ProcessWorkspace'
 
 const TABS = [
-  { id: 'tab1' as const, label: '動作模組' },
-  { id: 'tab2' as const, label: 'WI 組成' },
-  { id: 'tab3' as const, label: '製程途程' },
+  { id: 'tab1' as const, label: '動作模組工作區' },
+  { id: 'tab2' as const, label: 'WI 組成工作區' },
+  { id: 'tab3' as const, label: '製程途程工作區' },
 ]
 
 export function MostWorkbenchV3() {

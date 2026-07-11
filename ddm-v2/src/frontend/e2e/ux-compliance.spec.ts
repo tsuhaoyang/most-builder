@@ -210,9 +210,10 @@ test.describe('§A-01 Sidebar 結構 (UX spec §1.1–1.2)', () => {
 
   test('A-01-3: admin 展開時看到所有導覽項目 (checklist A-01)', async ({ page }) => {
     await gotoAndWait(page)
-    // spec §1.2: 儀表板 / MOST 工作台 / WI 專案建立 / Level System / 分析案件 / 字典管理 / 使用者管理
+    // spec §1.2: 儀表板 / WI 組裝 / MOST 工作台 / WI 專案建立 / Level System / 分析案件 / 字典管理 / 使用者管理
     await expect(page.getByRole('button', { name: /儀表板/ })).toBeVisible()
-    await expect(page.getByRole('button', { name: /MOST 工作台/ }).first()).toBeVisible()
+    await expect(page.getByRole('button', { name: /MOST 工作台/ })).toBeVisible()
+    await expect(page.getByRole('button', { name: /WI 組裝/ })).toBeVisible()
     await expect(page.getByRole('button', { name: /WI 專案建立/ })).toBeVisible()
     await expect(page.getByRole('button', { name: /Level System/ })).toBeVisible()
     await expect(page.getByRole('button', { name: /分析案件/ })).toBeVisible()
@@ -308,8 +309,8 @@ test.describe('§B-01 workbench-v3 佈局 (checklist B-01, B-02, B-03)', () => {
   test.beforeEach(async ({ page }) => {
     await setupRoutes(page, ADMIN_ME)
     await gotoAndWait(page)
-    // Navigate to MOST 工作台 (workbench-v3) and wait for ActionModuleWorkspace
-    await clickNavAndWait(page, /MOST 工作台/)
+    // Navigate to WI 組裝 (workbench-v3) and wait for ActionModuleWorkspace
+    await clickNavAndWait(page, /WI 組裝/)
   })
 
   test('B-01-1: NlDraftInput 文字輸入框存在 (checklist B-02)', async ({ page }) => {
@@ -344,8 +345,8 @@ test.describe('§C-01 動作清單 12 欄表格結構 (checklist C-01)', () => {
   test('C-01-1: [SPEC GAP] workbench-v3 缺少 12 欄 MiCompositionTable 規格表頭', async ({ page }) => {
     await setupRoutes(page, ADMIN_ME)
     await gotoAndWait(page)
-    // Navigate to workbench-v3
-    await clickNavAndWait(page, /MOST 工作台/)
+    // Navigate to workbench-v3 (WI 組裝)
+    await clickNavAndWait(page, /WI 組裝/)
     // Spec C-01 requires: 拖曳把手 | 勾選 | # | 手 | 動作描述 | Base TMU | 頻率 | Eff TMU | CT(秒) | SIMO | 納入 TMU | 操作
     // Current implementation has card pool, not 12-col table. These headers absent.
     await expect(page.getByText('Base TMU')).not.toBeVisible()
@@ -353,21 +354,19 @@ test.describe('§C-01 動作清單 12 欄表格結構 (checklist C-01)', () => {
     await expect(page.getByText('CT(秒)')).not.toBeVisible()
   })
 
-  test('C-01-2: 舊工作台 (wi tab) 有 #/手/SIMO 欄，但缺少 Base TMU/Eff TMU/CT(秒)', async ({ page }) => {
+  test('C-01-2: MOST 工作台 (wi tab) 有完整欄位含 Base TMU / Eff TMU / CT(秒) / 頻率 (C-01-2 已修)', async ({ page }) => {
     await setupRoutes(page, ADMIN_ME)
     await gotoAndWait(page)
-    // Navigate to old workbench ('工作台 (舊)')
-    await clickNavAndWait(page, /工作台.*舊/)
-    // Old workbench has partial columns: # / 手 / 敘述 / TMU / 次數 / SIMO
+    // Navigate to MOST 工作台 (wi tab, primary MOST sequence editor)
+    await clickNavAndWait(page, /MOST 工作台/)
     const tableHead = page.locator('thead')
-    // Existing headers
     await expect(tableHead.getByText('#')).toBeVisible()
     await expect(tableHead.getByText('手')).toBeVisible()
     await expect(tableHead.getByText('SIMO')).toBeVisible()
-    // MISSING from spec: 'Base TMU', 'Eff TMU', 'CT(秒)', '頻率' as separate columns
-    await expect(page.locator('thead').getByText('Base TMU')).not.toBeVisible()
-    await expect(page.locator('thead').getByText('Eff TMU')).not.toBeVisible()
-    await expect(page.locator('thead').getByText('CT(秒)')).not.toBeVisible()
+    await expect(tableHead.getByText('Base TMU')).toBeVisible()
+    await expect(tableHead.getByText('Eff TMU')).toBeVisible()
+    await expect(tableHead.getByText('CT(秒)')).toBeVisible()
+    await expect(tableHead.getByText('頻率')).toBeVisible()
   })
 })
 
@@ -377,33 +376,23 @@ test.describe('§E-04/05/06 WI Pool 三層 Tab (checklist E-04~E-06)', () => {
   test.beforeEach(async ({ page }) => {
     await setupRoutes(page, ADMIN_ME)
     await gotoAndWait(page)
-    await clickNavAndWait(page, /MOST 工作台/)
+    await clickNavAndWait(page, /WI 組裝/)
   })
 
-  test('E-04-1: 三個 Tab 按鈕存在 (實際名稱)', async ({ page }) => {
-    // MostWorkbenchV3 renders 3 tabs with these actual labels
-    await expect(page.getByRole('button', { name: '動作模組' })).toBeVisible()
-    await expect(page.getByRole('button', { name: 'WI 組成' })).toBeVisible()
-    await expect(page.getByRole('button', { name: '製程途程' })).toBeVisible()
-  })
-
-  test('E-04-2: [SPEC GAP] Tab 名稱缺少「工作區」後綴 (spec 要求「動作模組工作區」等)', async ({ page }) => {
-    // UX spec checklist E-04/05/06 requires tab labels ending in 工作區:
-    //   「動作模組工作區」「WI 組成工作區」「製程途程工作區」
-    // Actual implementation uses shorter names without the 工作區 suffix.
-    // The following assertions confirm the spec gap (buttons with 工作區 suffix do NOT exist).
-    await expect(page.getByRole('button', { name: '動作模組工作區' })).not.toBeVisible()
-    await expect(page.getByRole('button', { name: 'WI 組成工作區' })).not.toBeVisible()
-    await expect(page.getByRole('button', { name: '製程途程工作區' })).not.toBeVisible()
+  test('E-04-1: 三個 Tab 按鈕含「工作區」後綴 (E-04-2 已修)', async ({ page }) => {
+    // MostWorkbenchV3 renders 3 tabs with 工作區 suffix per spec
+    await expect(page.getByRole('button', { name: '動作模組工作區' })).toBeVisible()
+    await expect(page.getByRole('button', { name: 'WI 組成工作區' })).toBeVisible()
+    await expect(page.getByRole('button', { name: '製程途程工作區' })).toBeVisible()
   })
 
   test('E-04-3: 點擊 Tab 1 顯示動作模組編輯器', async ({ page }) => {
-    await page.getByRole('button', { name: '動作模組' }).click()
+    await page.getByRole('button', { name: '動作模組工作區' }).click()
     await expect(page.getByText('動作模組編輯器')).toBeVisible()
   })
 
   test('E-05-1: 點擊 Tab 2 顯示 WI 組成工作區', async ({ page }) => {
-    await page.getByRole('button', { name: 'WI 組成' }).click()
+    await page.getByRole('button', { name: 'WI 組成工作區' }).click()
     // WIPoolWorkspace renders headings 'WI 組成器' and 'WI Pool'
     // Use heading role to avoid matching the tab button itself (strict mode)
     await expect(page.getByRole('heading', { name: 'WI Pool' })).toBeVisible()
@@ -418,15 +407,15 @@ test.describe('§E-04/05/06 WI Pool 三層 Tab (checklist E-04~E-06)', () => {
 
   test('E-04-4: NL Draft 只出現在 Tab 1，Tab 2/3 不應有 NL Draft (spec E-04 拒絕條件)', async ({ page }) => {
     // Tab 1: NL Draft present
-    await page.getByRole('button', { name: '動作模組' }).click()
+    await page.getByRole('button', { name: '動作模組工作區' }).click()
     await expect(page.getByPlaceholder(/口語描述動作/)).toBeVisible()
 
     // Tab 2: NL Draft absent
-    await page.getByRole('button', { name: 'WI 組成' }).click()
+    await page.getByRole('button', { name: 'WI 組成工作區' }).click()
     await expect(page.getByPlaceholder(/口語描述動作/)).not.toBeVisible()
 
     // Tab 3: NL Draft absent
-    await page.getByRole('button', { name: '製程途程' }).click()
+    await page.getByRole('button', { name: '製程途程工作區' }).click()
     await expect(page.getByPlaceholder(/口語描述動作/)).not.toBeVisible()
   })
 })

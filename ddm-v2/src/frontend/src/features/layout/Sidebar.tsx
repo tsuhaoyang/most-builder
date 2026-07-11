@@ -7,8 +7,8 @@ import type { NavItem } from './sidebar.types'
 
 const PRIMARY_NAV: NavItem[] = [
   { id: 'dashboard',    label: '儀表板',            shortLabel: '表' },
-  { id: 'workbench-v3', label: 'MOST 工作台 (v3)',  shortLabel: 'V3' },
-  { id: 'wi',           label: '工作台 (舊)',        shortLabel: 'M' },
+  { id: 'workbench-v3', label: 'WI 組裝',            shortLabel: '裝' },
+  { id: 'wi',           label: 'MOST 工作台',        shortLabel: 'M' },
   { id: 'wi-project',   label: 'WI 專案建立',        shortLabel: 'W' },
   { id: 'level',        label: 'Level System',       shortLabel: 'L' },
   { id: 'case',         label: '分析案件',            shortLabel: '案' },
