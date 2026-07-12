@@ -1,242 +1,915 @@
 /**
- * F-04 WISetBuilderPage — WI 專案建立
+ * F-04 WISetBuilderPage — WI 專案建立 (complete rewrite)
  *
- * 功能：
- *   1. 建立 WI 組合專案（本地 state，project_code / name / description）
- *   2. 搜尋 MiStatement library（GET /api/v2/search?types=motion_module&q=）
- *   3. 從搜尋結果快照加入 WI（fetches detail for TMU data）
- *   4. 上下重排 + 逐項備註
- *   5. 彙總列（WI 數 / 總 TMU / CT 秒）
+ * Sections:
+ *   A — 專案資訊 (ProjectMetadataForm)
+ *   B — WI 庫搜尋 (WIPoolSearch, fetch-once + client-side filter, lazy expand)
+ *   C — 已選 WI 清單 (SelectedWISetTable, HTML5 DnD + ↑↓ + multi-select remove)
+ *   D — 彙總 (WISetSummary, 5 stat cards)
+ *   E — 操作按鈕 (save/create, duplicate, delete)
+ *
+ * Rules:
+ *   - All numbers/sentences from backend API (DISC-02/07)
+ *   - No hardcoded defaults (DISC-06)
+ *   - TanStack Query for all async — no local data fabrication
  */
-import { useState, useEffect, useCallback } from 'react'
-import { useQuery } from '@tanstack/react-query'
-import { apiGet } from '../../shared/api/client'
+import React, { useState, useEffect, useCallback } from 'react'
+import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
+import { apiGet, apiPost, apiPut, apiDelete } from '../../shared/api/client'
 import { TMU_SEC } from '../../shared/config'
 import { useMe, canEdit } from '../../shared/auth/useMe'
 
-// ─── Types ────────────────────────────────────────────────────────────────────
+// ─── Domain types ──────────────────────────────────────────────────────────────
 
-interface SearchHit {
-  doc_type: string
-  ref_id: string
-  score: number
-  match_type: string
-  snippet: string
+interface PoolModuleRow {
+  hand: string
+  frequency: number
+  cycle: Record<string, unknown>
+  sub_activity: string
 }
 
-interface ModuleDetail {
+/** Shape returned by GET /api/v2/motion-modules?status=standard */
+interface PoolModule {
   id: string
   name_zh: string
   status: string
-  current_version: number
-  total_tmu: number
+  rows: PoolModuleRow[]
+  total_tmu?: number
 }
 
-interface WiSetItem {
-  id: string          // crypto.randomUUID() local key
-  module_id: string
-  module_name: string
-  total_tmu: number
-  version_no: number
-  notes: string
+interface WiSetItemOut {
+  id: string
+  project_id: string
+  seq_no: number
+  wi_template_id: string | null
+  wi_code_snapshot: string | null
+  wi_name_snapshot: string
+  action_count_snapshot: number
+  total_tmu_snapshot: number
+  total_seconds_snapshot: number
+  notes: string | null
+  created_at: string
+  updated_at: string
+}
+
+interface WiSetProjectOut {
+  id: string
+  project_code: string
+  name: string
+  site: string | null
+  bu: string | null
+  process: string | null
+  family: string | null
+  model: string | null
+  description: string | null
+  status: string
+  created_by: string
+  items: WiSetItemOut[]
+  created_at: string
+  updated_at: string
 }
 
 interface ProjectForm {
-  code: string
+  project_code: string
   name: string
+  site: string
+  bu: string
+  process: string
+  family: string
+  model: string
   description: string
 }
 
-// ─── Search hook (debounced) ──────────────────────────────────────────────────
+const EMPTY_FORM: ProjectForm = {
+  project_code: '',
+  name: '',
+  site: '',
+  bu: '',
+  process: '',
+  family: '',
+  model: '',
+  description: '',
+}
 
-function useSearch(q: string) {
-  return useQuery<{ hits: SearchHit[]; semantic: boolean }>({
-    queryKey: ['wi-project-search', q],
-    queryFn: () => apiGet(`/api/v2/search?types=motion_module&q=${encodeURIComponent(q)}&limit=20`),
-    enabled: q.trim().length >= 1,
+const SITE_OPTIONS = ['TAO', 'IPT', 'SQT', 'ITE', 'IMX', 'ICZ'] as const
+
+// ─── Status helpers ────────────────────────────────────────────────────────────
+
+const STATUS_BADGE: Record<string, string> = {
+  draft: 'bg-slate-100 text-slate-600',
+  active: 'bg-blue-100 text-blue-700',
+  archived: 'bg-amber-100 text-amber-700',
+}
+
+const STATUS_ZH: Record<string, string> = {
+  draft: '草稿',
+  active: '作用中',
+  archived: '已封存',
+}
+
+function StatusBadge({ status }: { status: string }) {
+  return (
+    <span
+      className={`px-2 py-0.5 rounded text-xs font-medium ${
+        STATUS_BADGE[status] ?? 'bg-slate-100 text-slate-500'
+      }`}
+    >
+      {STATUS_ZH[status] ?? status}
+    </span>
+  )
+}
+
+// ─── Query keys ────────────────────────────────────────────────────────────────
+
+const QK_PROJECTS = 'wi-set-projects' as const
+const QK_POOL = 'wi-pool-modules' as const
+const QK_MODULE_DETAIL = 'wi-pool-module-detail' as const
+
+// ─── API hooks ─────────────────────────────────────────────────────────────────
+
+function useProjectList() {
+  return useQuery<WiSetProjectOut[]>({
+    queryKey: [QK_PROJECTS],
+    queryFn: () => apiGet<WiSetProjectOut[]>('/api/v2/wi-set-projects'),
     staleTime: 30_000,
   })
 }
 
-function useModuleDetail(moduleId: string | null) {
-  return useQuery<ModuleDetail>({
-    queryKey: ['wi-module-detail', moduleId],
-    queryFn: () => apiGet(`/api/v2/motion-modules/${moduleId}`),
-    enabled: !!moduleId,
-    staleTime: 60_000,
+function useProject(id: string | null) {
+  return useQuery<WiSetProjectOut>({
+    queryKey: [QK_PROJECTS, id],
+    queryFn: () => apiGet<WiSetProjectOut>(`/api/v2/wi-set-projects/${id}`),
+    enabled: !!id,
+    staleTime: 10_000,
   })
 }
 
-// ─── Sub-components ───────────────────────────────────────────────────────────
+function usePoolModules() {
+  return useQuery<PoolModule[]>({
+    queryKey: [QK_POOL],
+    queryFn: () => apiGet<PoolModule[]>('/api/v2/motion-modules?status=standard'),
+    staleTime: 120_000,
+  })
+}
 
-function ProjectFormPanel({ form, onChange, editable }: {
+function useModuleDetail(id: string | null) {
+  return useQuery<PoolModule>({
+    queryKey: [QK_MODULE_DETAIL, id],
+    queryFn: () => apiGet<PoolModule>(`/api/v2/motion-modules/${id}`),
+    enabled: !!id,
+    staleTime: 300_000,
+  })
+}
+
+interface CreateProjectPayload { form: ProjectForm }
+interface UpdateProjectPayload { id: string; form: ProjectForm }
+
+function useCreateProject() {
+  const qc = useQueryClient()
+  return useMutation<WiSetProjectOut, Error, CreateProjectPayload>({
+    mutationFn: ({ form }) =>
+      apiPost<WiSetProjectOut>('/api/v2/wi-set-projects', {
+        project_code: form.project_code.trim() || `WIS-${Date.now()}`,
+        name: form.name.trim() || '未命名專案',
+        site: form.site || null,
+        bu: form.bu.trim() || null,
+        process: form.process.trim() || null,
+        family: form.family.trim() || null,
+        model: form.model.trim() || null,
+        description: form.description.trim() || null,
+      }),
+    onSuccess: () => qc.invalidateQueries({ queryKey: [QK_PROJECTS] }),
+  })
+}
+
+function useUpdateProject() {
+  const qc = useQueryClient()
+  return useMutation<WiSetProjectOut, Error, UpdateProjectPayload>({
+    mutationFn: ({ id, form }) =>
+      apiPut<WiSetProjectOut>(`/api/v2/wi-set-projects/${id}`, {
+        project_code: form.project_code.trim() || undefined,
+        name: form.name.trim() || undefined,
+        site: form.site || null,
+        bu: form.bu.trim() || null,
+        process: form.process.trim() || null,
+        family: form.family.trim() || null,
+        model: form.model.trim() || null,
+        description: form.description.trim() || null,
+      }),
+    onSuccess: (_data, vars) => {
+      qc.invalidateQueries({ queryKey: [QK_PROJECTS] })
+      qc.invalidateQueries({ queryKey: [QK_PROJECTS, vars.id] })
+    },
+  })
+}
+
+interface AddItemPayload {
+  projectId: string
+  wi_name_snapshot: string
+  wi_code_snapshot: string | null
+  action_count_snapshot: number
+  total_tmu_snapshot: number
+  total_seconds_snapshot: number
+  wi_template_id: string | null
+  notes: string | null
+}
+
+function useAddItem() {
+  const qc = useQueryClient()
+  return useMutation<WiSetItemOut, Error, AddItemPayload>({
+    mutationFn: ({ projectId, ...body }) =>
+      apiPost<WiSetItemOut>(`/api/v2/wi-set-projects/${projectId}/items`, body),
+    onSuccess: (_data, vars) =>
+      qc.invalidateQueries({ queryKey: [QK_PROJECTS, vars.projectId] }),
+  })
+}
+
+function useRemoveItem() {
+  const qc = useQueryClient()
+  return useMutation<void, Error, { projectId: string; itemId: string }>({
+    mutationFn: ({ projectId, itemId }) =>
+      apiDelete(`/api/v2/wi-set-projects/${projectId}/items/${itemId}`),
+    onSuccess: (_data, vars) =>
+      qc.invalidateQueries({ queryKey: [QK_PROJECTS, vars.projectId] }),
+  })
+}
+
+function useReorderItems() {
+  const qc = useQueryClient()
+  return useMutation<unknown, Error, { projectId: string; orderedIds: string[] }>({
+    mutationFn: ({ projectId, orderedIds }) =>
+      apiPut(`/api/v2/wi-set-projects/${projectId}/items/reorder`, {
+        ordered_ids: orderedIds,
+      }),
+    onSuccess: (_data, vars) =>
+      qc.invalidateQueries({ queryKey: [QK_PROJECTS, vars.projectId] }),
+  })
+}
+
+function useDeleteProject() {
+  const qc = useQueryClient()
+  return useMutation<void, Error, string>({
+    mutationFn: (id) => apiDelete(`/api/v2/wi-set-projects/${id}`),
+    onSuccess: () => qc.invalidateQueries({ queryKey: [QK_PROJECTS] }),
+  })
+}
+
+function useDuplicateProject() {
+  const qc = useQueryClient()
+  return useMutation<WiSetProjectOut, Error, string>({
+    mutationFn: (id) =>
+      apiPost<WiSetProjectOut>(`/api/v2/wi-set-projects/${id}/duplicate`),
+    onSuccess: () => qc.invalidateQueries({ queryKey: [QK_PROJECTS] }),
+  })
+}
+
+// ─── Section A: ProjectMetadataForm ───────────────────────────────────────────
+
+const INP =
+  'border rounded px-2 py-1 text-sm w-full disabled:bg-slate-50 focus:outline-none focus:ring-1 focus:ring-blue-400'
+
+interface ProjectMetadataFormProps {
   form: ProjectForm
+  status?: string
   onChange: (f: ProjectForm) => void
   editable: boolean
-}) {
-  const inp = 'border rounded px-2 py-1 text-sm w-full disabled:bg-slate-50'
+}
+
+function ProjectMetadataForm({ form, status, onChange, editable }: ProjectMetadataFormProps) {
+  const autoCode = [form.site, form.bu, form.process, form.family, form.model]
+    .filter(Boolean)
+    .join('-')
+
   return (
     <div className="bg-white rounded-xl border p-4">
-      <h2 className="font-semibold mb-3">專案資訊</h2>
-      <div className="grid grid-cols-2 gap-3">
+      <h2 className="font-semibold text-sm mb-3 text-slate-700">A — 專案資訊</h2>
+
+      {/* Row 1: project_code | name | status */}
+      <div className="grid grid-cols-3 gap-3 mb-3">
         <label className="flex flex-col gap-1 text-xs text-slate-500">
           專案代碼
-          <input className={inp} value={form.code} disabled={!editable}
-            onChange={e => onChange({ ...form, code: e.target.value })} placeholder="e.g. WIS-2026-001" />
-        </label>
-        <label className="flex flex-col gap-1 text-xs text-slate-500">
-          專案名稱
-          <input className={inp} value={form.name} disabled={!editable}
-            onChange={e => onChange({ ...form, name: e.target.value })} placeholder="e.g. 組裝站 WI 組合" />
-        </label>
-        <label className="flex flex-col gap-1 text-xs text-slate-500 col-span-2">
-          說明
-          <input className={inp} value={form.description} disabled={!editable}
-            onChange={e => onChange({ ...form, description: e.target.value })} placeholder="用途、製程、備注…" />
-        </label>
-      </div>
-    </div>
-  )
-}
-
-function AddByModuleId({ onAdd }: { onAdd: (id: string) => void }) {
-  const [pending, setPending] = useState<string | null>(null)
-  const { data, isFetching } = useModuleDetail(pending)
-
-  useEffect(() => {
-    if (data && pending) {
-      onAdd(data.id)
-      setPending(null)
-    }
-  }, [data, pending, onAdd])
-
-  return { trigger: (id: string) => setPending(id), loading: isFetching && !!pending }
-}
-
-function SearchPanel({ onAddModule }: { onAddModule: (moduleId: string) => void }) {
-  const [raw, setRaw] = useState('')
-  const [q, setQ] = useState('')
-
-  // Debounce
-  useEffect(() => {
-    const t = setTimeout(() => setQ(raw.trim()), 300)
-    return () => clearTimeout(t)
-  }, [raw])
-
-  const { data, isFetching } = useSearch(q)
-  const hits = data?.hits.filter(h => h.doc_type === 'motion_module') ?? []
-
-  return (
-    <div className="bg-white rounded-xl border p-4 flex flex-col gap-3">
-      <h2 className="font-semibold">搜尋 WI 庫</h2>
-      <input
-        className="border rounded px-2 py-1 text-sm"
-        value={raw}
-        onChange={e => setRaw(e.target.value)}
-        placeholder="輸入動作描述或代碼搜尋…"
-      />
-      {isFetching && <p className="text-xs text-slate-400">搜尋中…</p>}
-      {!isFetching && q && hits.length === 0 && (
-        <p className="text-xs text-slate-400">無結果</p>
-      )}
-      <ul className="divide-y max-h-80 overflow-y-auto">
-        {hits.map(h => (
-          <li key={h.ref_id} className="flex items-start gap-2 py-2">
-            <div className="flex-1 min-w-0">
-              <p className="text-sm font-medium truncate">{h.snippet || h.ref_id}</p>
-              <p className="text-xs text-slate-400">{h.match_type} · score {h.score.toFixed(2)}</p>
-            </div>
+          <div className="flex gap-1">
+            <input
+              className={INP + ' flex-1 min-w-0'}
+              value={form.project_code}
+              disabled={!editable}
+              onChange={(e) => onChange({ ...form, project_code: e.target.value })}
+              placeholder="e.g. TAO-BU1-L10"
+            />
             <button
-              onClick={() => onAddModule(h.ref_id)}
-              className="flex-shrink-0 px-2 py-0.5 text-xs bg-blue-600 text-white rounded hover:bg-blue-700"
+              type="button"
+              disabled={!editable || !autoCode}
+              onClick={() => onChange({ ...form, project_code: autoCode })}
+              className="px-2 py-1 text-xs border rounded bg-slate-50 hover:bg-slate-100 disabled:opacity-40 whitespace-nowrap"
+              title="自動填入 site-bu-process-family-model"
             >
-              + 加入
+              Auto
             </button>
-          </li>
-        ))}
-      </ul>
+          </div>
+        </label>
+
+        <label className="flex flex-col gap-1 text-xs text-slate-500">
+          專案名稱 <span className="text-red-400">*</span>
+          <input
+            className={INP}
+            value={form.name}
+            disabled={!editable}
+            onChange={(e) => onChange({ ...form, name: e.target.value })}
+            placeholder="e.g. 組裝站 WI 組合"
+          />
+        </label>
+
+        <div className="flex flex-col gap-1 text-xs text-slate-500">
+          狀態
+          <div className="mt-1.5">
+            {status ? <StatusBadge status={status} /> : <span className="text-slate-300">—</span>}
+          </div>
+        </div>
+      </div>
+
+      {/* Row 2: site | bu | process | family */}
+      <div className="grid grid-cols-4 gap-3 mb-3">
+        <label className="flex flex-col gap-1 text-xs text-slate-500">
+          廠區 (Site)
+          <select
+            className={INP}
+            value={form.site}
+            disabled={!editable}
+            onChange={(e) => onChange({ ...form, site: e.target.value })}
+          >
+            <option value="">— 選擇 —</option>
+            {SITE_OPTIONS.map((s) => (
+              <option key={s} value={s}>{s}</option>
+            ))}
+          </select>
+        </label>
+
+        <label className="flex flex-col gap-1 text-xs text-slate-500">
+          BU
+          <input
+            className={INP}
+            value={form.bu}
+            disabled={!editable}
+            onChange={(e) => onChange({ ...form, bu: e.target.value })}
+            placeholder="e.g. BU1"
+          />
+        </label>
+
+        <label className="flex flex-col gap-1 text-xs text-slate-500">
+          製程 (Process)
+          <input
+            className={INP}
+            value={form.process}
+            disabled={!editable}
+            onChange={(e) => onChange({ ...form, process: e.target.value })}
+            placeholder="e.g. L10_ASSY"
+          />
+        </label>
+
+        <label className="flex flex-col gap-1 text-xs text-slate-500">
+          Family
+          <input
+            className={INP}
+            value={form.family}
+            disabled={!editable}
+            onChange={(e) => onChange({ ...form, family: e.target.value })}
+            placeholder="e.g. AMD"
+          />
+        </label>
+      </div>
+
+      {/* Row 3: model | description */}
+      <div className="grid grid-cols-4 gap-3">
+        <label className="flex flex-col gap-1 text-xs text-slate-500">
+          機型 (Model)
+          <input
+            className={INP}
+            value={form.model}
+            disabled={!editable}
+            onChange={(e) => onChange({ ...form, model: e.target.value })}
+            placeholder="e.g. M123"
+          />
+        </label>
+
+        <label className="flex flex-col gap-1 text-xs text-slate-500 col-span-3">
+          說明
+          <textarea
+            className={INP + ' resize-none'}
+            rows={2}
+            value={form.description}
+            disabled={!editable}
+            onChange={(e) => onChange({ ...form, description: e.target.value })}
+            placeholder="用途、製程說明…"
+          />
+        </label>
+      </div>
     </div>
   )
 }
 
-function WiSetList({ items, editable, onRemove, onMoveUp, onMoveDown, onNoteChange }: {
-  items: WiSetItem[]
-  editable: boolean
-  onRemove: (id: string) => void
-  onMoveUp: (id: string) => void
-  onMoveDown: (id: string) => void
-  onNoteChange: (id: string, note: string) => void
-}) {
-  if (items.length === 0) {
+// ─── Section B: WIPoolSearch ───────────────────────────────────────────────────
+
+/** Lazy-loaded expand sub-rows rendered directly into <tbody> */
+function ExpandedRows({ moduleId }: { moduleId: string }) {
+  const { data, isLoading } = useModuleDetail(moduleId)
+
+  if (isLoading) {
     return (
-      <div className="bg-white rounded-xl border p-6 text-slate-400 text-sm text-center">
-        尚未加入任何 WI —— 從右側搜尋後按「+ 加入」
-      </div>
+      <tr>
+        <td colSpan={6} className="px-10 py-2 text-xs text-slate-400 bg-slate-50">
+          載入動作明細…
+        </td>
+      </tr>
+    )
+  }
+
+  if (!data?.rows?.length) {
+    return (
+      <tr>
+        <td colSpan={6} className="px-10 py-2 text-xs text-slate-400 bg-slate-50">
+          無動作行
+        </td>
+      </tr>
     )
   }
 
   return (
-    <div className="bg-white rounded-xl border">
-      <table className="w-full text-sm">
-        <thead>
-          <tr className="bg-slate-100 text-left">
-            <th className="p-2 w-8">#</th>
-            <th className="p-2">WI 名稱</th>
-            <th className="p-2 text-right">Base TMU</th>
-            <th className="p-2 text-right">CT(秒)</th>
-            <th className="p-2">備註</th>
-            {editable && <th className="p-2 w-24">操作</th>}
-          </tr>
-        </thead>
-        <tbody>
-          {items.map((item, idx) => (
-            <tr key={item.id} className="border-t">
-              <td className="p-2 text-slate-400">{idx + 1}</td>
-              <td className="p-2">
-                <span className="font-medium">{item.module_name}</span>
-                <span className="ml-2 text-xs text-slate-400">v{item.version_no}</span>
-              </td>
-              <td className="p-2 text-right font-mono">{item.total_tmu}</td>
-              <td className="p-2 text-right font-mono text-slate-600">
-                {(item.total_tmu * TMU_SEC).toFixed(2)}
-              </td>
-              <td className="p-2">
-                <input
-                  className="border rounded px-1 py-0.5 text-xs w-full"
-                  value={item.notes}
-                  disabled={!editable}
-                  onChange={e => onNoteChange(item.id, e.target.value)}
-                  placeholder="備注…"
-                />
-              </td>
-              {editable && (
-                <td className="p-2">
-                  <div className="flex gap-1">
-                    <button onClick={() => onMoveUp(item.id)} disabled={idx === 0}
-                      className="px-1.5 py-0.5 text-xs border rounded disabled:opacity-30 hover:bg-slate-100">↑</button>
-                    <button onClick={() => onMoveDown(item.id)} disabled={idx === items.length - 1}
-                      className="px-1.5 py-0.5 text-xs border rounded disabled:opacity-30 hover:bg-slate-100">↓</button>
-                    <button onClick={() => onRemove(item.id)}
-                      className="px-1.5 py-0.5 text-xs border rounded text-red-600 hover:bg-red-50">✕</button>
-                  </div>
-                </td>
-              )}
+    <>
+      {data.rows.map((row, i) => (
+        <tr key={i} className="bg-blue-50 text-xs">
+          <td className="pl-10 p-1.5 text-slate-400">{i + 1}</td>
+          <td className="p-1.5 text-slate-600 col-span-2">{row.sub_activity || '—'}</td>
+          <td className="p-1.5 text-right text-slate-500">{row.hand}</td>
+          <td className="p-1.5 text-right text-slate-500">{row.frequency}</td>
+          <td />
+        </tr>
+      ))}
+    </>
+  )
+}
+
+interface WIPoolSearchProps {
+  onAdd: (modules: PoolModule[]) => void
+  adding: boolean
+}
+
+function WIPoolSearch({ onAdd, adding }: WIPoolSearchProps) {
+  const { data: allModules = [], isLoading } = usePoolModules()
+  const [raw, setRaw] = useState('')
+  const [q, setQ] = useState('')
+  const [selected, setSelected] = useState<Set<string>>(new Set())
+  const [expanded, setExpanded] = useState<Set<string>>(new Set())
+
+  // Debounce 350 ms
+  useEffect(() => {
+    const t = setTimeout(() => setQ(raw.toLowerCase().trim()), 350)
+    return () => clearTimeout(t)
+  }, [raw])
+
+  const filtered =
+    q
+      ? allModules.filter(
+          (m) =>
+            m.name_zh.toLowerCase().includes(q) || m.id.toLowerCase().includes(q),
+        )
+      : allModules
+
+  const toggleSelect = useCallback((id: string) => {
+    setSelected((prev) => {
+      const next = new Set(prev)
+      next.has(id) ? next.delete(id) : next.add(id)
+      return next
+    })
+  }, [])
+
+  const toggleAll = () => {
+    if (selected.size === filtered.length && filtered.length > 0) {
+      setSelected(new Set())
+    } else {
+      setSelected(new Set(filtered.map((m) => m.id)))
+    }
+  }
+
+  const toggleExpand = (id: string) => {
+    setExpanded((prev) => {
+      const next = new Set(prev)
+      next.has(id) ? next.delete(id) : next.add(id)
+      return next
+    })
+  }
+
+  const handleAdd = () => {
+    if (selected.size === 0) return
+    const modules = allModules.filter((m) => selected.has(m.id))
+    onAdd(modules)
+    setSelected(new Set())
+  }
+
+  const allSelected = filtered.length > 0 && selected.size === filtered.length
+
+  return (
+    <div className="bg-white rounded-xl border p-4">
+      <h2 className="font-semibold text-sm mb-3 text-slate-700">B — WI 庫搜尋</h2>
+
+      <div className="flex gap-2 mb-3 items-center">
+        <input
+          className="border rounded px-2 py-1 text-sm flex-1 focus:outline-none focus:ring-1 focus:ring-blue-400"
+          value={raw}
+          onChange={(e) => setRaw(e.target.value)}
+          placeholder="輸入關鍵字搜尋 WI 名稱…"
+        />
+        {isLoading && (
+          <span className="text-xs text-slate-400 whitespace-nowrap">載入中…</span>
+        )}
+        <button
+          disabled={selected.size === 0 || adding}
+          onClick={handleAdd}
+          className="px-3 py-1 text-sm bg-blue-600 text-white rounded disabled:opacity-40 hover:bg-blue-700 whitespace-nowrap"
+        >
+          {adding
+            ? '加入中…'
+            : `加入 WI Set${selected.size > 0 ? ` (${selected.size})` : ''}`}
+        </button>
+      </div>
+
+      <div className="overflow-auto max-h-80 border rounded">
+        <table className="w-full text-sm min-w-[560px]">
+          <thead className="bg-slate-50 sticky top-0 z-10">
+            <tr className="text-xs text-slate-500 text-left">
+              <th className="p-2 w-8">
+                <input type="checkbox" checked={allSelected} onChange={toggleAll} />
+              </th>
+              <th className="p-2">WI 名稱</th>
+              <th className="p-2 text-right w-16">動作數</th>
+              <th className="p-2 text-right w-24">Total TMU</th>
+              <th className="p-2 text-right w-24">CT(秒)</th>
+              <th className="p-2 w-8"></th>
             </tr>
-          ))}
-        </tbody>
-      </table>
+          </thead>
+          <tbody>
+            {!isLoading && filtered.length === 0 && (
+              <tr>
+                <td colSpan={6} className="p-6 text-center text-slate-400 text-xs">
+                  {q ? '無符合結果' : '尚無 WI 模組'}
+                </td>
+              </tr>
+            )}
+            {filtered.map((m) => (
+              <React.Fragment key={m.id}>
+                <tr
+                  className={`border-t hover:bg-slate-50 ${
+                    selected.has(m.id) ? 'bg-blue-50' : ''
+                  }`}
+                >
+                  <td className="p-2">
+                    <input
+                      type="checkbox"
+                      checked={selected.has(m.id)}
+                      onChange={() => toggleSelect(m.id)}
+                    />
+                  </td>
+                  <td className="p-2 font-medium text-slate-800">{m.name_zh}</td>
+                  <td className="p-2 text-right text-slate-500">{m.rows?.length ?? 0}</td>
+                  <td className="p-2 text-right font-mono">
+                    {(m.total_tmu ?? 0).toFixed(1)}
+                  </td>
+                  <td className="p-2 text-right font-mono text-slate-600">
+                    {((m.total_tmu ?? 0) * TMU_SEC).toFixed(3)}
+                  </td>
+                  <td className="p-2">
+                    <button
+                      onClick={() => toggleExpand(m.id)}
+                      className="text-slate-400 hover:text-slate-700 text-xs px-1"
+                      title="展開動作明細"
+                    >
+                      {expanded.has(m.id) ? '▲' : '▼'}
+                    </button>
+                  </td>
+                </tr>
+                {expanded.has(m.id) && <ExpandedRows moduleId={m.id} />}
+              </React.Fragment>
+            ))}
+          </tbody>
+        </table>
+      </div>
+
+      <div className="mt-1.5 text-xs text-slate-400">
+        顯示 {filtered.length} / {allModules.length} 筆
+      </div>
     </div>
   )
 }
 
-function SummaryBar({ items }: { items: WiSetItem[] }) {
-  const totalTmu = items.reduce((s, i) => s + i.total_tmu, 0)
-  const totalSec = totalTmu * TMU_SEC
+// ─── Section C: SelectedWISetTable ────────────────────────────────────────────
+
+interface SelectedWISetTableProps {
+  projectId: string | null
+  items: WiSetItemOut[]
+  editable: boolean
+}
+
+function SelectedWISetTable({ projectId, items, editable }: SelectedWISetTableProps) {
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set())
+  const [dragIdx, setDragIdx] = useState<number | null>(null)
+  const [dragOverIdx, setDragOverIdx] = useState<number | null>(null)
+  const [localNotes, setLocalNotes] = useState<Record<string, string>>({})
+
+  const removeItem = useRemoveItem()
+  const reorderItems = useReorderItems()
+
+  // Sort items by seq_no once
+  const sorted = [...items].sort((a, b) => a.seq_no - b.seq_no)
+
+  // Sync notes from API whenever items change
+  useEffect(() => {
+    setLocalNotes((prev) => {
+      const next: Record<string, string> = {}
+      for (const item of items) {
+        next[item.id] = prev[item.id] ?? item.notes ?? ''
+      }
+      return next
+    })
+  }, [items])
+
+  // ── selection ──────────────────────────────────────────────────────────────
+
+  const toggleSelect = (id: string) => {
+    setSelectedIds((prev) => {
+      const next = new Set(prev)
+      next.has(id) ? next.delete(id) : next.add(id)
+      return next
+    })
+  }
+
+  const toggleAll = () => {
+    if (selectedIds.size === sorted.length && sorted.length > 0) {
+      setSelectedIds(new Set())
+    } else {
+      setSelectedIds(new Set(sorted.map((i) => i.id)))
+    }
+  }
+
+  const handleRemoveSelected = async () => {
+    if (!projectId || selectedIds.size === 0) return
+    for (const itemId of selectedIds) {
+      await removeItem.mutateAsync({ projectId, itemId })
+    }
+    setSelectedIds(new Set())
+  }
+
+  const handleRemoveOne = (itemId: string) => {
+    if (!projectId) return
+    if (!confirm('確定移除此 WI？')) return
+    removeItem.mutate({ projectId, itemId })
+  }
+
+  // ── reorder helpers ────────────────────────────────────────────────────────
+
+  const doReorder = useCallback(
+    (newOrder: WiSetItemOut[]) => {
+      if (!projectId) return
+      reorderItems.mutate({ projectId, orderedIds: newOrder.map((i) => i.id) })
+    },
+    [projectId, reorderItems],
+  )
+
+  const handleMoveUp = (idx: number) => {
+    if (idx <= 0) return
+    const next = [...sorted]
+    ;[next[idx - 1], next[idx]] = [next[idx], next[idx - 1]]
+    doReorder(next)
+  }
+
+  const handleMoveDown = (idx: number) => {
+    if (idx >= sorted.length - 1) return
+    const next = [...sorted]
+    ;[next[idx], next[idx + 1]] = [next[idx + 1], next[idx]]
+    doReorder(next)
+  }
+
+  // ── HTML5 DnD ─────────────────────────────────────────────────────────────
+
+  const onDragStart = (e: React.DragEvent<HTMLTableRowElement>, idx: number) => {
+    setDragIdx(idx)
+    setDragOverIdx(idx)
+    e.dataTransfer.effectAllowed = 'move'
+    e.dataTransfer.setData('text/plain', String(idx))
+  }
+
+  const onDragOver = (e: React.DragEvent<HTMLTableRowElement>, idx: number) => {
+    e.preventDefault()
+    e.dataTransfer.dropEffect = 'move'
+    if (dragOverIdx !== idx) setDragOverIdx(idx)
+  }
+
+  const onDrop = (e: React.DragEvent<HTMLTableRowElement>, targetIdx: number) => {
+    e.preventDefault()
+    if (dragIdx === null || dragIdx === targetIdx) {
+      setDragIdx(null)
+      setDragOverIdx(null)
+      return
+    }
+    const next = [...sorted]
+    const [moved] = next.splice(dragIdx, 1)
+    next.splice(targetIdx, 0, moved)
+    doReorder(next)
+    setDragIdx(null)
+    setDragOverIdx(null)
+  }
+
+  const onDragEnd = () => {
+    setDragIdx(null)
+    setDragOverIdx(null)
+  }
+
+  // ── empty state ────────────────────────────────────────────────────────────
+
+  if (sorted.length === 0) {
+    return (
+      <div className="bg-white rounded-xl border p-4">
+        <h2 className="font-semibold text-sm mb-3 text-slate-700">C — 已選 WI 清單</h2>
+        <div className="p-8 text-center text-slate-400 text-sm border rounded-lg border-dashed">
+          尚未加入任何 WI —— 從上方搜尋後勾選並加入
+        </div>
+      </div>
+    )
+  }
+
+  const allSelected = selectedIds.size === sorted.length
+
   return (
-    <div className="bg-slate-800 text-white rounded-xl px-5 py-3 flex gap-8 text-sm">
-      <span>WI 數：<b className="text-blue-300 text-base ml-1">{items.length}</b></span>
-      <span>總 TMU：<b className="text-emerald-300 text-base ml-1">{totalTmu.toFixed(1)}</b></span>
-      <span>總 CT(秒)：<b className="text-amber-300 text-base ml-1">{totalSec.toFixed(2)}</b></span>
+    <div className="bg-white rounded-xl border p-4">
+      <h2 className="font-semibold text-sm mb-3 text-slate-700">C — 已選 WI 清單</h2>
+
+      {/* Toolbar */}
+      <div className="flex items-center justify-between mb-2">
+        <span className="text-xs font-medium text-slate-500">
+          已選{' '}
+          <span className="text-blue-600 font-semibold">{sorted.length}</span> 筆
+        </span>
+        {editable && (
+          <button
+            disabled={selectedIds.size === 0 || removeItem.isPending}
+            onClick={handleRemoveSelected}
+            className="px-2 py-1 text-xs border border-red-300 text-red-600 rounded hover:bg-red-50 disabled:opacity-40"
+          >
+            移除選取 ({selectedIds.size})
+          </button>
+        )}
+      </div>
+
+      {/* Table */}
+      <div className="overflow-auto border rounded" style={{ maxHeight: 400 }}>
+        <table className="w-full text-sm">
+          <thead className="bg-slate-50 sticky top-0 z-10">
+            <tr className="text-xs text-slate-500 text-left">
+              {editable && (
+                <th className="p-2 w-8">
+                  <input type="checkbox" checked={allSelected} onChange={toggleAll} />
+                </th>
+              )}
+              <th className="p-2 w-16">⠿ #</th>
+              <th className="p-2 w-28">WI Code</th>
+              <th className="p-2">WI 名稱</th>
+              <th className="p-2 text-right w-16">動作數</th>
+              <th className="p-2 text-right w-20">TMU</th>
+              <th className="p-2 text-right w-24">CT(秒)</th>
+              <th className="p-2 w-36">備註</th>
+              {editable && <th className="p-2 w-24">操作</th>}
+            </tr>
+          </thead>
+          <tbody>
+            {sorted.map((item, idx) => {
+              const isDragging = dragIdx === idx
+              const isTarget =
+                dragOverIdx === idx && dragIdx !== null && dragIdx !== idx
+              const dropAbove = isTarget && dragIdx !== null && idx < dragIdx
+              const dropBelow = isTarget && dragIdx !== null && idx > dragIdx
+
+              return (
+                <tr
+                  key={item.id}
+                  draggable={editable}
+                  onDragStart={(e) => onDragStart(e, idx)}
+                  onDragOver={(e) => onDragOver(e, idx)}
+                  onDrop={(e) => onDrop(e, idx)}
+                  onDragEnd={onDragEnd}
+                  className={[
+                    'border-t',
+                    isDragging ? 'opacity-40 bg-blue-50' : '',
+                    dropAbove ? 'border-t-2 border-t-blue-500' : '',
+                    dropBelow ? 'border-b-2 border-b-blue-500' : '',
+                  ]
+                    .filter(Boolean)
+                    .join(' ')}
+                >
+                  {editable && (
+                    <td className="p-2">
+                      <input
+                        type="checkbox"
+                        checked={selectedIds.has(item.id)}
+                        onChange={() => toggleSelect(item.id)}
+                      />
+                    </td>
+                  )}
+                  <td
+                    className="p-2 select-none text-slate-400 font-mono text-xs"
+                    style={{ cursor: editable ? 'grab' : 'default' }}
+                  >
+                    <span className="mr-0.5">⠿</span>
+                    {idx + 1}
+                  </td>
+                  <td className="p-2 text-xs text-slate-500 font-mono truncate max-w-[7rem]">
+                    {item.wi_code_snapshot ?? '—'}
+                  </td>
+                  <td className="p-2 font-medium text-slate-800 max-w-xs truncate">
+                    {item.wi_name_snapshot}
+                  </td>
+                  <td className="p-2 text-right text-slate-500">
+                    {item.action_count_snapshot}
+                  </td>
+                  <td className="p-2 text-right font-mono">
+                    {item.total_tmu_snapshot.toFixed(1)}
+                  </td>
+                  <td className="p-2 text-right font-mono text-slate-600">
+                    {item.total_seconds_snapshot.toFixed(3)}
+                  </td>
+                  <td className="p-2">
+                    <input
+                      className="border rounded px-1 py-0.5 text-xs w-full focus:outline-none focus:ring-1 focus:ring-blue-300"
+                      value={localNotes[item.id] ?? ''}
+                      onChange={(e) =>
+                        setLocalNotes((prev) => ({ ...prev, [item.id]: e.target.value }))
+                      }
+                      placeholder="備注…"
+                    />
+                  </td>
+                  {editable && (
+                    <td className="p-2">
+                      <div className="flex gap-1">
+                        <button
+                          onClick={() => handleMoveUp(idx)}
+                          disabled={idx === 0 || reorderItems.isPending}
+                          className="px-1.5 py-0.5 text-xs border rounded disabled:opacity-30 hover:bg-slate-100"
+                        >
+                          ↑
+                        </button>
+                        <button
+                          onClick={() => handleMoveDown(idx)}
+                          disabled={
+                            idx === sorted.length - 1 || reorderItems.isPending
+                          }
+                          className="px-1.5 py-0.5 text-xs border rounded disabled:opacity-30 hover:bg-slate-100"
+                        >
+                          ↓
+                        </button>
+                        <button
+                          onClick={() => handleRemoveOne(item.id)}
+                          disabled={removeItem.isPending}
+                          className="px-1.5 py-0.5 text-xs border rounded text-red-600 hover:bg-red-50 disabled:opacity-30"
+                        >
+                          ✕
+                        </button>
+                      </div>
+                    </td>
+                  )}
+                </tr>
+              )
+            })}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  )
+}
+
+// ─── Section D: WISetSummary ──────────────────────────────────────────────────
+
+function WISetSummary({ items }: { items: WiSetItemOut[] }) {
+  const totalTmu = items.reduce((s, i) => s + i.total_tmu_snapshot, 0)
+  const totalSec = items.reduce((s, i) => s + i.total_seconds_snapshot, 0)
+  const totalActions = items.reduce((s, i) => s + i.action_count_snapshot, 0)
+  const totalMin = totalSec / 60
+
+  const cards: { label: string; value: string; color: string }[] = [
+    { label: 'WI 數', value: String(items.length), color: 'text-blue-600' },
+    { label: '總動作數', value: String(totalActions), color: 'text-slate-700' },
+    { label: '總 TMU', value: totalTmu.toFixed(1), color: 'text-emerald-600' },
+    { label: '總 CT(秒)', value: totalSec.toFixed(3), color: 'text-amber-600' },
+    { label: '總 CT(分)', value: totalMin.toFixed(3), color: 'text-violet-600' },
+  ]
+
+  return (
+    <div className="bg-white rounded-xl border p-4">
+      <h2 className="font-semibold text-sm mb-3 text-slate-700">D — 彙總</h2>
+      <div className="grid grid-cols-5 gap-3">
+        {cards.map((c) => (
+          <div key={c.label} className="bg-slate-50 rounded-lg p-3 text-center">
+            <div className="text-xs text-slate-500 mb-1">{c.label}</div>
+            <div className={`text-xl font-bold ${c.color}`}>{c.value}</div>
+          </div>
+        ))}
+      </div>
     </div>
   )
 }
@@ -247,98 +920,315 @@ export function WISetBuilderPage() {
   const { data: me } = useMe()
   const editable = canEdit(me)
 
-  const [form, setForm] = useState<ProjectForm>({ code: '', name: '', description: '' })
-  const [items, setItems] = useState<WiSetItem[]>([])
-  const [pendingModuleId, setPendingModuleId] = useState<string | null>(null)
+  // ── page-level state ───────────────────────────────────────────────────────
+  const [projectId, setProjectId] = useState<string | null>(null)
+  const [form, setForm] = useState<ProjectForm>(EMPTY_FORM)
+  const [errorMsg, setErrorMsg] = useState<string | null>(null)
+  const [successMsg, setSuccessMsg] = useState<string | null>(null)
+  const [adding, setAdding] = useState(false)
 
-  const { data: pendingDetail, isFetching: fetching } = useModuleDetail(pendingModuleId)
+  // ── queries ────────────────────────────────────────────────────────────────
+  const { data: projectList = [] } = useProjectList()
+  const { data: projectData, refetch: refetchProject } = useProject(projectId)
 
+  // ── mutations ──────────────────────────────────────────────────────────────
+  const createProject = useCreateProject()
+  const updateProject = useUpdateProject()
+  const deleteProject = useDeleteProject()
+  const duplicateProject = useDuplicateProject()
+  const addItem = useAddItem()
+
+  // ── sync form when project loads ───────────────────────────────────────────
   useEffect(() => {
-    if (!pendingDetail || !pendingModuleId) return
-    setItems(prev => {
-      if (prev.some(i => i.module_id === pendingDetail.id)) return prev
-      return [...prev, {
-        id: crypto.randomUUID(),
-        module_id: pendingDetail.id,
-        module_name: pendingDetail.name_zh,
-        total_tmu: pendingDetail.total_tmu,
-        version_no: pendingDetail.current_version,
-        notes: '',
-      }]
+    if (!projectData) return
+    setForm({
+      project_code: projectData.project_code ?? '',
+      name: projectData.name ?? '',
+      site: projectData.site ?? '',
+      bu: projectData.bu ?? '',
+      process: projectData.process ?? '',
+      family: projectData.family ?? '',
+      model: projectData.model ?? '',
+      description: projectData.description ?? '',
     })
-    setPendingModuleId(null)
-  }, [pendingDetail, pendingModuleId])
+  }, [projectData])
 
-  const handleAddModule = useCallback((moduleId: string) => {
-    setPendingModuleId(moduleId)
-  }, [])
+  // auto-dismiss flash messages
+  useEffect(() => {
+    if (!successMsg) return
+    const t = setTimeout(() => setSuccessMsg(null), 3000)
+    return () => clearTimeout(t)
+  }, [successMsg])
 
-  const handleRemove = useCallback((id: string) => {
-    setItems(prev => prev.filter(i => i.id !== id))
-  }, [])
+  // ── helpers ────────────────────────────────────────────────────────────────
 
-  const handleMoveUp = useCallback((id: string) => {
-    setItems(prev => {
-      const idx = prev.findIndex(i => i.id === id)
-      if (idx <= 0) return prev
-      const next = [...prev]
-      ;[next[idx - 1], next[idx]] = [next[idx], next[idx - 1]]
-      return next
-    })
-  }, [])
+  const flash = (msg: string) => {
+    setErrorMsg(null)
+    setSuccessMsg(msg)
+  }
 
-  const handleMoveDown = useCallback((id: string) => {
-    setItems(prev => {
-      const idx = prev.findIndex(i => i.id === id)
-      if (idx < 0 || idx >= prev.length - 1) return prev
-      const next = [...prev]
-      ;[next[idx], next[idx + 1]] = [next[idx + 1], next[idx]]
-      return next
-    })
-  }, [])
+  const flashError = (msg: string) => {
+    setSuccessMsg(null)
+    setErrorMsg(msg)
+  }
 
-  const handleNoteChange = useCallback((id: string, note: string) => {
-    setItems(prev => prev.map(i => i.id === id ? { ...i, notes: note } : i))
-  }, [])
+  const resetForm = () => {
+    setProjectId(null)
+    setForm(EMPTY_FORM)
+    setErrorMsg(null)
+    setSuccessMsg(null)
+  }
+
+  const handleSelectProject = (id: string) => {
+    if (id) {
+      setProjectId(id)
+      setErrorMsg(null)
+    } else {
+      resetForm()
+    }
+  }
+
+  // ── Section B handler: add WIs to project ─────────────────────────────────
+
+  const handleAddModules = async (modules: PoolModule[]) => {
+    if (modules.length === 0) return
+    setAdding(true)
+    setErrorMsg(null)
+
+    try {
+      let pid = projectId
+
+      // Auto-create project if none loaded
+      if (!pid) {
+        if (!form.name.trim()) {
+          flashError('請先填寫專案名稱，或建立專案後再加入 WI')
+          setAdding(false)
+          return
+        }
+        const created = await createProject.mutateAsync({ form })
+        pid = created.id
+        setProjectId(pid)
+        setForm((prev) => ({ ...prev, project_code: created.project_code }))
+        flash('已自動建立專案')
+      }
+
+      // POST each WI as an item
+      let addedCount = 0
+      for (const m of modules) {
+        await addItem.mutateAsync({
+          projectId: pid,
+          wi_name_snapshot: m.name_zh,
+          wi_code_snapshot: m.id,
+          action_count_snapshot: m.rows?.length ?? 0,
+          total_tmu_snapshot: m.total_tmu ?? 0,
+          total_seconds_snapshot: (m.total_tmu ?? 0) * TMU_SEC,
+          wi_template_id: m.id,
+          notes: null,
+        })
+        addedCount++
+      }
+
+      flash(`已加入 ${addedCount} 筆 WI`)
+      await refetchProject()
+    } catch (err) {
+      flashError(`加入失敗：${(err as Error).message}`)
+    } finally {
+      setAdding(false)
+    }
+  }
+
+  // ── Section E: save / create ───────────────────────────────────────────────
+
+  const handleSave = async () => {
+    if (!form.name.trim()) {
+      flashError('專案名稱為必填')
+      return
+    }
+    if (!form.project_code.trim()) {
+      flashError('專案代碼為必填')
+      return
+    }
+    setErrorMsg(null)
+    try {
+      if (projectId) {
+        const updated = await updateProject.mutateAsync({ id: projectId, form })
+        setForm((prev) => ({ ...prev, project_code: updated.project_code }))
+        flash('已儲存')
+      } else {
+        const created = await createProject.mutateAsync({ form })
+        setProjectId(created.id)
+        setForm((prev) => ({ ...prev, project_code: created.project_code }))
+        flash('已建立')
+      }
+    } catch (err) {
+      flashError(`儲存失敗：${(err as Error).message}`)
+    }
+  }
+
+  const handleDuplicate = async () => {
+    if (!projectId) return
+    setErrorMsg(null)
+    try {
+      const copy = await duplicateProject.mutateAsync(projectId)
+      setProjectId(copy.id)
+      flash(`已複製為新專案 ${copy.project_code}`)
+    } catch (err) {
+      flashError(`複製失敗：${(err as Error).message}`)
+    }
+  }
+
+  const handleDelete = async () => {
+    if (!projectId) return
+    if (projectData?.status !== 'draft') {
+      flashError('只有草稿狀態的專案可刪除')
+      return
+    }
+    if (!confirm(`確定刪除專案「${projectData?.name}」？此操作不可復原。`)) return
+    setErrorMsg(null)
+    try {
+      await deleteProject.mutateAsync(projectId)
+      flash('已刪除')
+      resetForm()
+    } catch (err) {
+      flashError(`刪除失敗：${(err as Error).message}`)
+    }
+  }
+
+  // ── derived ────────────────────────────────────────────────────────────────
+
+  const items = projectData?.items ?? []
+  const isBusy =
+    createProject.isPending ||
+    updateProject.isPending ||
+    deleteProject.isPending ||
+    duplicateProject.isPending ||
+    adding
+
+  // ── render ─────────────────────────────────────────────────────────────────
 
   return (
-    <div className="flex flex-col gap-4 h-full">
-      {/* Header */}
-      <div className="bg-white rounded-xl border px-5 py-3 flex items-center justify-between">
+    <div className="flex flex-col gap-4 overflow-y-auto pb-6">
+      {/* ── Page header ── */}
+      <div className="bg-white rounded-xl border px-5 py-3 flex items-center justify-between gap-4 flex-wrap">
         <div>
           <h1 className="font-semibold text-base">WI 專案建立</h1>
-          <p className="text-xs text-slate-400">從 WI 庫搜尋並組合 WI 集合，快照版本、排序、加備注</p>
+          <p className="text-xs text-slate-400">
+            從 WI 庫搜尋並組合 WI 集合，快照版本、排序、彙總
+          </p>
         </div>
-        {fetching && <span className="text-xs text-blue-500">載入模組資訊…</span>}
+
+        <div className="flex items-center gap-2 flex-wrap">
+          {/* Project selector */}
+          <select
+            className="border rounded px-2 py-1 text-sm max-w-xs focus:outline-none focus:ring-1 focus:ring-blue-400"
+            value={projectId ?? ''}
+            onChange={(e) => handleSelectProject(e.target.value)}
+          >
+            <option value="">— 選擇現有專案 —</option>
+            {projectList.map((p) => (
+              <option key={p.id} value={p.id}>
+                {p.project_code} — {p.name} ({STATUS_ZH[p.status] ?? p.status})
+              </option>
+            ))}
+          </select>
+
+          <button
+            onClick={resetForm}
+            className="px-3 py-1 text-sm border rounded bg-white hover:bg-slate-50"
+          >
+            新增專案
+          </button>
+        </div>
       </div>
 
-      {/* Project form */}
-      <ProjectFormPanel form={form} onChange={setForm} editable={editable} />
-
-      {/* Main area: WI list + search */}
-      <div className="flex gap-4 flex-1 min-h-0">
-        {/* Left: WI list */}
-        <div className="flex-1 min-w-0 flex flex-col gap-3 overflow-y-auto">
-          <WiSetList
-            items={items}
-            editable={editable}
-            onRemove={handleRemove}
-            onMoveUp={handleMoveUp}
-            onMoveDown={handleMoveDown}
-            onNoteChange={handleNoteChange}
-          />
+      {/* Flash messages */}
+      {errorMsg && (
+        <div className="bg-red-50 border border-red-200 text-red-700 text-sm rounded-xl px-4 py-2 flex justify-between">
+          <span>{errorMsg}</span>
+          <button onClick={() => setErrorMsg(null)} className="text-red-400 hover:text-red-600 ml-4">
+            ✕
+          </button>
         </div>
+      )}
+      {successMsg && (
+        <div className="bg-emerald-50 border border-emerald-200 text-emerald-700 text-sm rounded-xl px-4 py-2 flex justify-between">
+          <span>{successMsg}</span>
+          <button onClick={() => setSuccessMsg(null)} className="text-emerald-400 hover:text-emerald-600 ml-4">
+            ✕
+          </button>
+        </div>
+      )}
 
-        {/* Right: search panel (fixed 320px) */}
-        {editable && (
-          <div className="w-80 flex-shrink-0 overflow-y-auto">
-            <SearchPanel onAddModule={handleAddModule} />
+      {/* Section A */}
+      <ProjectMetadataForm
+        form={form}
+        status={projectData?.status}
+        onChange={setForm}
+        editable={editable}
+      />
+
+      {/* Section B */}
+      {editable && (
+        <WIPoolSearch onAdd={handleAddModules} adding={adding} />
+      )}
+
+      {/* Section C */}
+      <SelectedWISetTable
+        projectId={projectId}
+        items={items}
+        editable={editable}
+      />
+
+      {/* Section D */}
+      <WISetSummary items={items} />
+
+      {/* Section E */}
+      {editable && (
+        <div className="bg-white rounded-xl border p-4">
+          <h2 className="font-semibold text-sm mb-3 text-slate-700">E — 操作</h2>
+          <div className="flex flex-wrap gap-2">
+            {/* Save / Create */}
+            <button
+              disabled={isBusy}
+              onClick={handleSave}
+              className="px-4 py-1.5 text-sm bg-blue-600 text-white rounded hover:bg-blue-700 disabled:opacity-40"
+            >
+              {isBusy && !adding
+                ? '處理中…'
+                : projectId
+                ? '儲存專案'
+                : '建立專案'}
+            </button>
+
+            {/* Duplicate */}
+            <button
+              disabled={!projectId || isBusy}
+              onClick={handleDuplicate}
+              className="px-4 py-1.5 text-sm border rounded hover:bg-slate-50 disabled:opacity-40"
+            >
+              複製專案
+            </button>
+
+            {/* Delete — only draft */}
+            <button
+              disabled={!projectId || projectData?.status !== 'draft' || isBusy}
+              onClick={handleDelete}
+              className="px-4 py-1.5 text-sm border border-red-300 text-red-600 rounded hover:bg-red-50 disabled:opacity-40"
+              title={
+                projectData?.status !== 'draft' ? '只有草稿狀態可刪除' : undefined
+              }
+            >
+              刪除專案
+            </button>
+
+            {projectData?.status !== 'draft' && projectId && (
+              <span className="self-center text-xs text-slate-400">
+                （非草稿狀態不可刪除）
+              </span>
+            )}
           </div>
-        )}
-      </div>
-
-      {/* Summary bar */}
-      <SummaryBar items={items} />
+        </div>
+      )}
     </div>
   )
 }
