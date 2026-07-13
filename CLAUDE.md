@@ -117,9 +117,9 @@ shared/
 features/<tab>/        Vertical slices: api.ts (TanStack Query) + store.ts (Zustand) + <Tab>.tsx
 ```
 
-Nine feature tabs: `wi-workbench`, `level-system`, `catalog`, `master-data`, `rule-set`, `sop`, `export`, `import`, `users`.
+Feature tabs follow the v3-parity IA (7 primary + admin extras) defined in **ADR-021** (`ddm-v2/docs/decisions/ADR-021-ia-restructure-v3-parity.md`).
 
-`docs/html_con/v2-workbench.html` — UI reference prototype; keep but do not modify.
+**UI/UX 母版 = ddm-v3 的畫面與 ADR-021**（v3 的 UX 是使用者驗證過的權威）。任何前端改動必須對照 v3 對應頁面；交付需附 Playwright 截圖對照。`docs/html_con/v2-workbench.html` 已廢止為 UI reference（僅存檔勿刪）。前端派工驗收：typecheck + build + 截圖對照 v3 + code-reviewer。
 
 ### Auth / RBAC
 
