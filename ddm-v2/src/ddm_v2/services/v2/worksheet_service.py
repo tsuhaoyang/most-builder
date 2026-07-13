@@ -72,7 +72,9 @@ async def save_worksheet(session: AsyncSession, worksheet_id: uuid.UUID, payload
     labels = {"g": _lmap(opts["g"]), "p_base": _lmap(opts["p_bases"]), "p_addon": _lmap(opts["p_addons"]),
               "m_verb": _lmap(opts["m_verbs"]), "x": _lmap(opts["x"]), "i": _lmap(opts["i"])}
 
-    # E5：SIMO 配對（simo_with_row_id）→ 群組（simo_group_id）正規化（union-find）
+    # E5（ADR-020）：SIMO 正規化 — simo_group_id＝SIMO 標記（該列貢獻 0，時間由主列吸收）。
+    # 配對輸入 simo_with_row_id：僅「宣告配對的從屬列」被標記，被指向的主列不標記；
+    # 同一配對鏈的從屬列共用一個 gid（附配對資訊）。顯式 simo_group_id 輸入＝已標記，原值保留。
     row_ids = {r.id for r in payload.rows}
     parent: dict[Any, Any] = {}
 
@@ -88,34 +90,32 @@ async def save_worksheet(session: AsyncSession, worksheet_id: uuid.UUID, payload
         if ra != rb:
             parent[rb] = ra
 
-    pair_used = False
+    dependents: list[Any] = []  # 宣告配對的從屬列（僅這些列被標記）
+    pair_targets: set[Any] = set()  # 被指為配對目標的主列
     for r in payload.rows:
         pid = getattr(r, "simo_with_row_id", None)
         if pid is None:
             continue
         if pid == r.id or pid not in row_ids:
             raise SimoPairInvalid(f"列 {r.id} 的 SIMO 配對無效：{pid}")
-        pair_used = True
+        dependents.append(r.id)
+        pair_targets.add(pid)
         _union(r.id, pid)
-    explicit_groups: dict[str, set] = {}
-    for r in payload.rows:
-        if r.simo_group_id:
-            explicit_groups.setdefault(r.simo_group_id, set()).add(r.id)
-    for members in explicit_groups.values():
-        first = next(iter(members))
-        for m in members:
-            _union(first, m)
+    # ADR-020 寫入守門：被指為配對目標（主列）的列不得自身宣告配對——
+    # 否則互指/鏈式配對會讓整組都被標記 → 全部貢獻 0（靜默歸零）。
+    mutual = pair_targets & set(dependents)
+    if mutual:
+        raise SimoPairInvalid(
+            f"SIMO 配對無效：列 {sorted(str(x) for x in mutual)} 被指為主列、卻又自身宣告配對（主列不得標記）")
     simo_group_of: dict[Any, str] = {}
-    if pair_used or explicit_groups:
+    if dependents:
         roots: dict[Any, list] = {}
-        for r in payload.rows:
-            if r.id in parent or r.simo_group_id:
-                roots.setdefault(_find(r.id), []).append(r.id)
+        for rid in dependents:
+            roots.setdefault(_find(rid), []).append(rid)
         for n, (_root, members) in enumerate(sorted(roots.items(), key=lambda kv: str(kv[0])), start=1):
-            if len(members) >= 2:
-                gid = f"SIMO-{n}"
-                for m in members:
-                    simo_group_of[m] = gid
+            gid = f"SIMO-{n}"
+            for m in members:
+                simo_group_of[m] = gid
     vids = {vid for r in payload.rows for vid in (r.object_vocab_id, r.from_vocab_id, r.to_vocab_id) if vid}
     vname: dict[uuid.UUID, str] = {}
     if vids:
@@ -170,14 +170,11 @@ async def read_worksheet(session: AsyncSession, worksheet_id: uuid.UUID) -> dict
     wrs = (await session.execute(select(WiRow).where(WiRow.worksheet_id == worksheet_id).order_by(WiRow.seq_no))).scalars().all()
     rows: list[dict[str, Any]] = []
     total = 0.0
-    simo_max: dict[str, float] = {}
     for wr in wrs:
         cyc = (await session.execute(select(MostCycle).where(MostCycle.wi_row_id == wr.id))).scalar_one_or_none()
         lv = (await session.execute(select(LevelEntry).where(LevelEntry.wi_row_id == wr.id))).scalar_one_or_none()
         eff = float(cyc.total_tmu or 0) * float(wr.frequency or 1) if cyc else 0.0
-        if wr.simo_group_id:
-            simo_max[wr.simo_group_id] = max(simo_max.get(wr.simo_group_id, 0.0), eff)  # CL-04：群組取 max
-        else:
+        if not wr.simo_group_id:  # ADR-020：SIMO 標記列貢獻 0（時間由未標記主列吸收）
             total += eff
         rows.append({
             "wi_row_id": str(wr.id), "seq_no": wr.seq_no, "hand": wr.hand,
@@ -200,7 +197,7 @@ async def read_worksheet(session: AsyncSession, worksheet_id: uuid.UUID) -> dict
                       "order": lv.order_in_group, "number": lv.number, "number_count": lv.number_count,
                       "machine_count": lv.machine_count, "manpower": lv.manpower} if lv else None,
         })
-    total = round(total + sum(simo_max.values()), 3)
+    total = round(total, 3)
     normal_seconds = round(total * TMU_TO_SEC, 4)
     allowance = float(ws.allowance_percent) if ws.allowance_percent is not None else None
     standard_seconds = round(normal_seconds * (1 + allowance / 100), 4) if allowance is not None else None

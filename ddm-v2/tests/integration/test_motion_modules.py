@@ -1122,6 +1122,196 @@ async def test_list_status_filter_and_summary_fields(client):
     assert detail.json()["current_version_detail"] is not None
 
 
+# ═══════════════════════════════════════════════════════════════════════
+# SIMO（ADR-020）publish / instantiate 測試
+# 對應 SIMO code-review Finding 1（互指靜默歸零）/ 2（零測試）/ 4（口徑一致）
+# 注意：cycle 沿用 test_worksheet_v2_engine 的 28 TMU 黃金列（避開 p_lay seed 問題）
+# ═══════════════════════════════════════════════════════════════════════
+
+
+def _gm_row_simo(*, frequency: float = 1, simo_pair_index: int | None = None,
+                 vocab_refs: dict | None = None) -> dict:
+    """GM 黃金列（V2 rule-set，28 TMU）：a0=20 + g_grasp + a3=25 + p_place_none。"""
+    row = {
+        "hand": "RH",
+        "frequency": frequency,
+        "vocab_refs": vocab_refs or {},
+        "cycle": {
+            "seq": "GM", "rule_set_code": "MINIMOST_FACTORY_V2",
+            "a0": {"reach_cm": 20}, "g2": {"g_code": "g_grasp"},
+            "a3": {"reach_cm": 25}, "p5": {"p_base_code": "p_place_none"},
+        },
+    }
+    if simo_pair_index is not None:
+        row["simo_pair_index"] = simo_pair_index
+    return row
+
+
+async def _make_simo_module(client, prefix: str) -> str:
+    sfx = uuid.uuid4().hex[:6]
+    r = await client.post("/api/v2/motion-modules", json={
+        "name_zh": f"{prefix}-{sfx}",
+        "scope": "global",
+    })
+    assert r.status_code == 201, r.text
+    return r.json()["id"]
+
+
+def _assert_simo_pair_invalid(resp) -> None:
+    assert resp.status_code == 422, resp.text
+    detail = resp.json()["detail"]
+    assert detail["code"] == "SIMO_PAIR_INVALID", detail
+
+
+async def test_publish_simo_self_reference_422(client):
+    """(a) simo_pair_index 自指 → 422 SIMO_PAIR_INVALID。"""
+    rs_id = await _get_rule_set_id(client)
+    if rs_id is None:
+        pytest.skip("DB 無 rule_set，略過")
+    mid = await _make_simo_module(client, "UT-SIMO-Self")
+    resp = await client.post(f"/api/v2/motion-modules/{mid}/publish", json={
+        "rule_set_id": rs_id,
+        "rows": [_gm_row_simo(simo_pair_index=0)],
+    })
+    _assert_simo_pair_invalid(resp)
+
+
+async def test_publish_simo_out_of_bounds_422(client):
+    """(a) simo_pair_index 越界（>= n 與負值）→ 422 SIMO_PAIR_INVALID。"""
+    rs_id = await _get_rule_set_id(client)
+    if rs_id is None:
+        pytest.skip("DB 無 rule_set，略過")
+    mid = await _make_simo_module(client, "UT-SIMO-OOB")
+
+    # 越界（2 列，index 2 不存在）
+    resp = await client.post(f"/api/v2/motion-modules/{mid}/publish", json={
+        "rule_set_id": rs_id,
+        "rows": [_gm_row_simo(), _gm_row_simo(simo_pair_index=2)],
+    })
+    _assert_simo_pair_invalid(resp)
+
+    # 負值
+    resp2 = await client.post(f"/api/v2/motion-modules/{mid}/publish", json={
+        "rule_set_id": rs_id,
+        "rows": [_gm_row_simo(), _gm_row_simo(simo_pair_index=-1)],
+    })
+    _assert_simo_pair_invalid(resp2)
+
+
+async def test_publish_simo_mutual_pair_422(client):
+    """(a) Finding 1：互指配對（A→B 且 B→A）→ 422，不得靜默整組歸零。
+    鏈式（A→B、B→C：主列 B 自身又宣告配對）同樣拒收。"""
+    rs_id = await _get_rule_set_id(client)
+    if rs_id is None:
+        pytest.skip("DB 無 rule_set，略過")
+    mid = await _make_simo_module(client, "UT-SIMO-Mutual")
+
+    # 互指
+    resp = await client.post(f"/api/v2/motion-modules/{mid}/publish", json={
+        "rule_set_id": rs_id,
+        "rows": [_gm_row_simo(simo_pair_index=1), _gm_row_simo(simo_pair_index=0)],
+    })
+    _assert_simo_pair_invalid(resp)
+
+    # 鏈式：row0→row1、row1→row2（row1 被指為主列卻又宣告配對）
+    resp2 = await client.post(f"/api/v2/motion-modules/{mid}/publish", json={
+        "rule_set_id": rs_id,
+        "rows": [_gm_row_simo(simo_pair_index=1),
+                 _gm_row_simo(simo_pair_index=2),
+                 _gm_row_simo()],
+    })
+    _assert_simo_pair_invalid(resp2)
+
+
+async def test_publish_simo_dependent_excluded_from_total(client):
+    """(b) 合法配對：從屬列（含 frequency=2）不入 total → total_tmu == 主列 28。"""
+    rs_id = await _get_rule_set_id(client)
+    if rs_id is None:
+        pytest.skip("DB 無 rule_set，略過")
+    mid = await _make_simo_module(client, "UT-SIMO-Total")
+    resp = await client.post(f"/api/v2/motion-modules/{mid}/publish", json={
+        "rule_set_id": rs_id,
+        "rows": [
+            _gm_row_simo(),                                # 主列：28 TMU
+            _gm_row_simo(frequency=2, simo_pair_index=0),  # 從屬列：貢獻 0（即使 freq=2）
+        ],
+    })
+    assert resp.status_code == 201, resp.text
+    body = resp.json()
+    assert float(body["total_tmu"]) == 28.0, body
+    # 版本快照保留 simo_pair_index（instantiate 依此還原標記）
+    assert body["rows"][0].get("simo_pair_index") is None
+    assert body["rows"][1].get("simo_pair_index") == 0
+
+
+async def test_instantiate_simo_marks_dependent_and_total(client):
+    """(c) instantiate 後：從屬列 simo_group_id 有值、主列 None、
+    read_worksheet 總計＝主列全額 28（從屬列貢獻 0）。"""
+    ws_id = await _clone_demo_ws(client)
+    rs_id = await _get_rule_set_id(client)
+    if rs_id is None:
+        pytest.skip("DB 無 rule_set，略過")
+
+    # 清空 clone 出的表 → 總計基準為 0，之後可斷言具體數值
+    clear = await client.put(f"/api/v2/worksheets/{ws_id}", json={"rows": []})
+    assert clear.status_code == 200, clear.text
+    assert clear.json()["total_tmu"] == 0
+
+    mid = await _make_simo_module(client, "UT-SIMO-Inst")
+    pub = await client.post(f"/api/v2/motion-modules/{mid}/publish", json={
+        "rule_set_id": rs_id,
+        "rows": [
+            _gm_row_simo(vocab_refs={"object_vocab_id": _OBJ_SEEDED}),                     # 主列
+            _gm_row_simo(simo_pair_index=0, vocab_refs={"object_vocab_id": _OBJ_SEEDED}),  # 從屬列
+        ],
+    })
+    assert pub.status_code == 201, pub.text
+
+    inst = await client.post(
+        f"/api/v2/worksheets/{ws_id}/rows/from-module",
+        json={"module_id": mid},
+    )
+    assert inst.status_code == 201, inst.text
+    new_rows = inst.json()["new_rows"]
+    assert len(new_rows) == 2, new_rows
+    main_row, dep_row = new_rows[0], new_rows[1]
+    assert main_row["simo_group_id"] is None, main_row          # 主列不標記
+    assert dep_row["simo_group_id"], dep_row                    # 從屬列標記
+    assert float(main_row["total_tmu"]) == 28.0
+    assert float(dep_row["total_tmu"]) == 28.0                  # 列自身 TMU 仍為 28（僅不入總計）
+
+    # read_worksheet：標記持久化 + 總計＝主列全額 28
+    rd = await client.get(f"/api/v2/worksheets/{ws_id}")
+    assert rd.status_code == 200, rd.text
+    body = rd.json()
+    by_seq = {row["seq_no"]: row for row in body["rows"]}
+    assert len(by_seq) == 2
+    seqs = sorted(by_seq)
+    assert by_seq[seqs[0]]["simo_group_id"] is None             # 主列
+    assert by_seq[seqs[1]]["simo_group_id"] == dep_row["simo_group_id"]  # 從屬列
+    assert body["total_tmu"] == 28.0
+
+
+async def test_worksheet_put_mutual_simo_pair_422(client):
+    """Finding 1（worksheet 路徑）：simo_with_row_id 互指 → 422 SIMO_PAIR_INVALID。"""
+    ws_id = await _clone_demo_ws(client)
+    r1_id, r2_id = str(uuid.uuid4()), str(uuid.uuid4())
+
+    def _ws_row(rid: str, seq_no: int, pair_id: str) -> dict:
+        return {"id": rid, "seq_no": seq_no, "hand": "RH", "object_vocab_id": _OBJ_SEEDED,
+                "frequency": 1, "simo_with_row_id": pair_id,
+                "cycle": {"seq": "GM", "rule_set_code": "MINIMOST_FACTORY_V2",
+                          "a0": {"reach_cm": 20}, "g2": {"g_code": "g_grasp"},
+                          "a3": {"reach_cm": 25}, "p5": {"p_base_code": "p_place_none"}},
+                "level": {"ascription": "main", "level": "1"}}
+
+    r = await client.put(f"/api/v2/worksheets/{ws_id}", json={
+        "rows": [_ws_row(r1_id, 1, r2_id), _ws_row(r2_id, 2, r1_id)],
+    })
+    assert r.status_code == 422, r.text
+    assert r.json()["detail"]["code"] == "SIMO_PAIR_INVALID"
+
+
 async def test_list_summary_none_for_unpublished(client):
     """尚無發布版本的模組：total_tmu / action_count 為 None。"""
     sfx = uuid.uuid4().hex[:6]

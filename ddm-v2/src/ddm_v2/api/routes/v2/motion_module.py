@@ -297,6 +297,12 @@ async def instantiate_to_worksheet(
         raise HTTPException(status_code=404, detail=str(e))
     except svc.RuleSetNotFound as e:
         raise HTTPException(status_code=409, detail=str(e))
+    except svc.PublishValidationError as e:
+        # 版本快照內 simo_pair_index 非法（舊資料/手改 DB）→ 明確報錯，不靜默當主列
+        raise HTTPException(
+            status_code=422,
+            detail={"code": e.code, "row_index": e.row_index, "message": e.message},
+        )
 
     return InstantiateResponse(
         new_rows=result["new_rows"],

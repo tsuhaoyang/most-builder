@@ -1,7 +1,8 @@
 """worksheet 儲存 × V2 引擎行為（impl-02 E4/E5/E7）：SIMO 配對正規化 + repeat/override 全程走通。
 
 與 test_worksheet.py（roundtrip/versions/clone/publish/RBAC）互補；本檔鎖：
-- E5：simo_with_row_id 配對 → service union-find 正規化為 simo_group_id、合計取群組 max；
+- E5（ADR-020）：simo_with_row_id 配對 → 僅從屬列標記 simo_group_id（主列不標記）、
+      標記列貢獻 0（合計＝Σ 未標記列 eff TMU，不再群組取 max）；
       配對指向不存在列/自指 → 422 SIMO_PAIR_INVALID（detail.code）。
 - E4/E7：repeat_count 與 manual_override 經 CycleIn 存→讀回 slot_inputs 保留欄位、
       computed.tech_line 標 *、narrative 顯示 ×N、TMU 覆寫/乘算正確。
@@ -37,23 +38,26 @@ async def _fresh_ws(client) -> str:
     return (await client.post(f"/api/v2/worksheets/{WS}/clone")).json()["new_worksheet_id"]
 
 
-# ── E5：SIMO 配對 → 群組正規化 ──
-async def test_simo_pair_normalized_to_group_and_total_takes_max(client):
+# ── E5：SIMO 配對 → 標記正規化（ADR-020）──
+async def test_simo_pair_marks_dependent_only_and_contributes_zero(client):
+    """ADR-020：配對輸入僅標記從屬列（主列不標記）；標記列貢獻 0 → 合計＝主列 28。"""
     new = await _fresh_ws(client)
-    r1 = _gm_row(1, frequency=1)                 # eff 28
-    r2 = _gm_row(2, frequency=2, simo_with_row_id=r1["id"])  # eff 56，與 r1 同步
+    r1 = _gm_row(1, frequency=1)                 # 主列，eff 28
+    r2 = _gm_row(2, frequency=2, simo_with_row_id=r1["id"])  # 從屬列，時間由 r1 吸收
     r = await client.put(f"/api/v2/worksheets/{new}", json={"rows": [r1, r2]})
     assert r.status_code == 200, r.text
     body = r.json()
-    # 正規化：兩列同一 simo_group_id（儲存形式），配對欄不落列
-    gids = {row["simo_group_id"] for row in body["rows"]}
-    assert len(gids) == 1 and gids != {None}, body["rows"]
-    # 合計＝群組取 max(28×1, 28×2)=56，不是相加 84
-    assert body["total_tmu"] == 56
+    by_seq = {row["seq_no"]: row for row in body["rows"]}
+    assert by_seq[1]["simo_group_id"] is None, by_seq[1]      # 主列不標記
+    assert by_seq[2]["simo_group_id"], by_seq[2]              # 從屬列標記（附配對資訊）
+    # 合計＝Σ(未標記列 eff)＝28；標記列貢獻 0（不再群組取 max=56）
+    assert body["total_tmu"] == 28
     # 讀回持久化一致
     rd = (await client.get(f"/api/v2/worksheets/{new}")).json()
-    assert {row["simo_group_id"] for row in rd["rows"]} == gids
-    assert rd["total_tmu"] == 56
+    rd_by_seq = {row["seq_no"]: row for row in rd["rows"]}
+    assert rd_by_seq[1]["simo_group_id"] is None
+    assert rd_by_seq[2]["simo_group_id"] == by_seq[2]["simo_group_id"]
+    assert rd["total_tmu"] == 28
 
 
 async def test_simo_pair_to_missing_row_422(client):

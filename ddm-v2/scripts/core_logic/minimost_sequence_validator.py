@@ -368,10 +368,10 @@ def _reject_keys(seq: str, slot_idx: int, data: dict[str, Any]) -> None:
 
 
 def compute_table(steps: list[dict[str, Any]], system_tmu_multiplier: float = 1.0) -> dict[str, Any]:
-    """多列 WI：合計 = Σ(非SIMO tmu×freq) + Σ(每個 SIMO 群組的 max(tmu×freq))。"""
+    """多列 WI（ADR-020，對齊 v3 認證語義）：帶 SIMO 標記（simo_group_id 非空）的列
+    貢獻 0——時間由未標記的主列吸收；合計 = Σ(未標記列 tmu×freq)。"""
     rows = []
-    non_simo = 0.0
-    simo_groups: dict[str, float] = {}
+    total_f = 0.0
     for idx, step in enumerate(steps):
         freq = step.get("frequency", 1)
         if freq is None or freq <= 0:
@@ -379,14 +379,11 @@ def compute_table(steps: list[dict[str, Any]], system_tmu_multiplier: float = 1.
         r = compute_cycle(step, system_tmu_multiplier)
         eff = r.total_tmu * freq
         gid = step.get("simo_group_id")
-        if gid:
-            simo_groups[gid] = max(simo_groups.get(gid, 0.0), eff)
-        else:
-            non_simo += eff
+        if not gid:
+            total_f += eff
         rows.append({"index": idx, "tech_line": r.tech_line, "tmu": r.total_tmu, "freq": freq, "eff_tmu": eff, "simo_group_id": gid})
-    total = round(non_simo + sum(simo_groups.values()), 3)
-    return {"rows": rows, "total_tmu": total, "total_seconds": round(total * TMU_TO_SEC, 4),
-            "simo_groups": simo_groups}
+    total = round(total_f, 3)
+    return {"rows": rows, "total_tmu": total, "total_seconds": round(total * TMU_TO_SEC, 4)}
 
 
 # ─────────────────────────── 測試（golden + edge cases） ───────────────────────────
@@ -551,13 +548,15 @@ def _run_tests() -> int:
     expect_error("覆寫 reason 空擋下", "OVERRIDE_INVALID",
                  lambda: compute_cycle(_gm(_a(), {"g_id": "g_grasp"}, _a(), {"p_base": "p_toss", "manual_override": {"tmu": 5, "reason": " "}}, _a())))
 
-    print("\n── J. 整表 SIMO / frequency ──")
+    print("\n── J. 整表 SIMO / frequency（ADR-020：SIMO 標記列貢獻 0）──")
     table = compute_table([
-        {**gm, "frequency": 2},                              # 28×2 = 56（非 SIMO）
-        {**cm, "frequency": 1, "simo_group_id": "S1"},       # 29（SIMO S1）
-        {**cm, "frequency": 1, "simo_group_id": "S1"},       # 29（SIMO S1）→群組取 max=29
+        {**gm, "frequency": 2},                              # 28×2 = 56（未標記主列）
+        {**cm, "frequency": 1, "simo_group_id": "S1"},       # SIMO 標記 → 貢獻 0
+        {**cm, "frequency": 1, "simo_group_id": "S1"},       # SIMO 標記 → 貢獻 0
     ])
-    check("整表 SIMO 合計 = 56 + max(29,29) = 85", table["total_tmu"] == 85, f'got {table["total_tmu"]}')
+    check("整表 SIMO 合計 = 56 + 0 + 0 = 56", table["total_tmu"] == 56, f'got {table["total_tmu"]}')
+    lone = compute_table([{**cm, "frequency": 1, "simo_group_id": "S9"}])
+    check("單獨 SIMO 標記列（無同組夥伴）= 0", lone["total_tmu"] == 0, f'got {lone["total_tmu"]}')
     expect_error("frequency<=0 擋下", "FREQ_INVALID",
                  lambda: compute_table([{**gm, "frequency": 0}]))
 

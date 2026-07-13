@@ -4,8 +4,8 @@
 - publish 即驗證：每列 cycle 過 compute_cycle；total_tmu/narrative 由引擎產，不接受呼叫端提供。
 - 版本不可變：發布後 MotionModuleVersion 禁 UPDATE；修改＝發新版。
 - 實體化＝複製：version.rows → WiRow + MostCycle；合計走引擎（compute_table），不走模組快取。
-- SIMO 配對：simo_pair_index 指向 rows 陣列；實體化時轉 simo_group_id（union-find）。
-  TODO: 目前採簡化版 union-find（pair 兩兩配對），跨三列 SIMO group 需 impl-02 E5 完整正規化。
+- SIMO 配對（ADR-020）：simo_pair_index 指向 rows 陣列＝該列為「從屬列」（貢獻 0，
+  時間由被指向的主列吸收）；實體化時僅從屬列標記 simo_group_id，主列不標記。
 """
 from __future__ import annotations
 
@@ -91,6 +91,33 @@ class ModuleIsStandard(Exception):
 
 
 # ── helpers ──────────────────────────────────────────────────────────
+
+def _validate_simo_pairs(pair_indices: list[int | None]) -> None:
+    """ADR-020 寫入守門：驗證 rows 的 simo_pair_index。
+
+    規則：
+    1. simo_pair_index 須指向 rows 內另一列（0..n-1，不可自指/越界）。
+    2. 被指為配對目標（主列）的列不得自身宣告配對——否則互指/鏈式配對
+       會讓整組都被標記 → 全部貢獻 0（靜默歸零，SIMO review Finding 1）。
+
+    違反 → PublishValidationError(code="SIMO_PAIR_INVALID")。
+    """
+    n = len(pair_indices)
+    declared: dict[int, int] = {}
+    for idx, pi in enumerate(pair_indices):
+        if pi is None:
+            continue
+        if not isinstance(pi, int) or pi < 0 or pi >= n or pi == idx:
+            raise PublishValidationError(
+                idx, "SIMO_PAIR_INVALID",
+                f"simo_pair_index={pi!r} 須指向 rows 內另一列（0..{n - 1}，不可自指）")
+        declared[idx] = pi
+    for idx, pi in declared.items():
+        if pi in declared:
+            raise PublishValidationError(
+                idx, "SIMO_PAIR_INVALID",
+                f"配對目標列 {pi}（主列）自身也宣告配對——ADR-020：主列不得標記")
+
 
 def _module_to_response(
     m: MotionModule,
@@ -496,7 +523,8 @@ async def publish_version(
 
     不變量：
     1. 每列 cycle 過 compute_cycle；算不過 → PublishValidationError（→ 422）。
-    2. total_tmu = Σ row.total_tmu × frequency（SIMO 走 simo_pair_index 配對）。
+    2. total_tmu = Σ(未帶 SIMO 配對列的 total_tmu × frequency)——ADR-020：宣告
+       simo_pair_index 的從屬列貢獻 0（時間由被指向的主列吸收）。
     3. narrative_zh 為可重生快取（目前留 None；需要時重跑）。
     """
     if not data.rows:
@@ -529,6 +557,9 @@ async def publish_version(
             raise RuleSetNotFound(str(data.rule_set_id))
     rsdata = await load_rule_set_from_db(session, rs_row.code)
 
+    # ADR-020 寫入守門：simo_pair_index 合法性（越界/自指/主列自身宣告配對 → 422）
+    _validate_simo_pairs([row.simo_pair_index for row in data.rows])
+
     # 驗證每列 cycle + 算 tmu
     validated_rows: list[dict[str, Any]] = []
     total_tmu = 0.0
@@ -540,8 +571,9 @@ async def publish_version(
         except SequenceError as e:
             raise PublishValidationError(idx, e.code, str(e)) from e
 
-        row_tmu = result.total_tmu * row.frequency
-        total_tmu += row_tmu
+        # ADR-020：宣告 simo_pair_index 的從屬列貢獻 0（時間由被指向的主列吸收）
+        if row.simo_pair_index is None:
+            total_tmu += result.total_tmu * row.frequency
 
         validated_rows.append({
             "sub_activity": row.sub_activity,
@@ -553,8 +585,6 @@ async def publish_version(
             "_computed_tmu": result.total_tmu,   # 快取（non-authoritative，重建可丟）
         })
 
-    # TODO: SIMO pair 配對應從 total_tmu 中以 max(group) 替代 sum 計算。
-    # 目前 simo_pair_index 資訊已存 rows JSONB，實體化時再正規化。
     total_tmu = round(total_tmu, 3)
     total_seconds = round(total_tmu * TMU_TO_SEC, 4)
 
@@ -651,6 +681,9 @@ async def create_version_from_rows(
         raise RuleSetNotFound(str(data.rule_set_id))
     rsdata = await load_rule_set_from_db(session, rs_row.code)
 
+    # ADR-020 寫入守門（與 publish_version 同款）：simo_pair_index 合法性
+    _validate_simo_pairs([row.simo_pair_index for row in data.rows])
+
     # 驗算每列 cycle + 算 tmu（與 publish_version 相同邏輯）
     validated_rows: list[dict[str, Any]] = []
     total_tmu = 0.0
@@ -662,8 +695,9 @@ async def create_version_from_rows(
         except SequenceError as e:
             raise PublishValidationError(idx, e.code, str(e)) from e
 
-        row_tmu = result.total_tmu * row.frequency
-        total_tmu += row_tmu
+        # ADR-020：從屬列貢獻 0（與 publish_version 同口徑）
+        if row.simo_pair_index is None:
+            total_tmu += result.total_tmu * row.frequency
 
         validated_rows.append({
             "sub_activity": row.sub_activity,
@@ -744,7 +778,7 @@ async def instantiate_to_worksheet(
     - 實體化後即普通列；合計走 compute_table（此函式不合計，讓既有路由讀取）。
     - 使用工序表當前 rule-set 重算 cycle（非模組發布時的 rule-set）。
     - 若重算結果與模組快取 _computed_tmu 不同 → tmu_drift 警示。
-    - SIMO simo_pair_index → simo_group_id（union-find，簡化版）。
+    - SIMO simo_pair_index → simo_group_id（ADR-020：僅從屬列標記，主列不標記）。
     """
     # 取工序表 + rule-set
     ws = await session.get(MostWorksheet, worksheet_id)
@@ -800,6 +834,8 @@ async def instantiate_to_worksheet(
     next_seq = (existing_rows or 0) + 1
 
     # SIMO union-find（simo_pair_index 是陣列內 0-based 索引）
+    # ADR-020：僅「宣告配對的從屬列」標記 simo_group_id（貢獻 0）；被指向的主列不標記。
+    # 同一配對鏈的從屬列共用一個 gid（附配對資訊）。
     n = len(ver.rows)
     parent: list[int] = list(range(n))
 
@@ -814,26 +850,26 @@ async def instantiate_to_worksheet(
         if ra != rb:
             parent[rb] = ra
 
+    # 信任前提：版本 rows 應已在 publish/from-rows 寫入時通過 SIMO 守門。
+    # 若仍出現非法值（舊版本資料、手改 DB），依 no-error-bypass 原則 raise
+    # SIMO_PAIR_INVALID，而非靜默把該列當主列（Finding 4：與 publish 同口徑）。
+    _validate_simo_pairs([row_data.get("simo_pair_index") for row_data in ver.rows])
+
+    dependent_idx: list[int] = []
     for idx, row_data in enumerate(ver.rows):
         pi = row_data.get("simo_pair_index")
-        if pi is not None and isinstance(pi, int) and 0 <= pi < n and pi != idx:
+        if pi is not None:
+            dependent_idx.append(idx)
             _union(idx, pi)
 
-    # 產生 simo_group_id（只有 root 會出現在 2+ 列的群組才算 SIMO）
-    roots: dict[int, list[int]] = {}
-    for idx in range(n):
-        r = _find(idx)
-        if r not in roots:
-            roots[r] = []
-        roots[r].append(idx)
     simo_group_map: dict[int, str] = {}
-    g_counter = 1
-    for members in roots.values():
-        if len(members) >= 2:
-            gid = f"SIMO-M{g_counter}"
-            g_counter += 1
-            for m_idx in members:
-                simo_group_map[m_idx] = gid
+    roots: dict[int, list[int]] = {}
+    for idx in dependent_idx:
+        roots.setdefault(_find(idx), []).append(idx)
+    for g_counter, (_root, members) in enumerate(sorted(roots.items()), start=1):
+        gid = f"SIMO-M{g_counter}"
+        for m_idx in members:
+            simo_group_map[m_idx] = gid
 
     # 展開列
     new_rows_out = []

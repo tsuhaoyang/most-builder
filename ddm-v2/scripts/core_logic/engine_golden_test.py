@@ -134,9 +134,15 @@ def _run() -> int:
     err("CM 的 slot5 帶 p_base_code", "SLOT_CROSS_MODEL", lambda: compute_cycle({"seq": "CM", "slots": {0: _a(), 1: {}, 2: {"g_code": "g_grasp"}, 3: {"m_components": []}, 4: {"x_code": "x_none"}, 5: {"p_base_code": "p_toss"}, 6: _a()}}, RS))
     err("未知 seq", "SEQ_KIND", lambda: compute_cycle({"seq": "XX", "slots": {}}, RS))
 
-    print("\n── K. 整表 SIMO/freq ──")
+    print("\n── K. 整表 SIMO/freq（ADR-020：SIMO 標記列貢獻 0）──")
     table = compute_table([{**_gm_gold(), "frequency": 2}, {**_cm_gold(), "frequency": 1, "simo_group_id": "S1"}, {**_cm_gold(), "frequency": 1, "simo_group_id": "S1"}], RS)
-    chk("56 + max(29,29) = 85", table["total_tmu"] == 85, f'{table["total_tmu"]}')
+    chk("SIMO 標記列貢獻 0：56 + 0 + 0 = 56", table["total_tmu"] == 56, f'{table["total_tmu"]}')
+    lone = compute_table([{**_cm_gold(), "frequency": 1, "simo_group_id": "S9"}], RS)
+    chk("單獨標記列（無同組夥伴）= 0", lone["total_tmu"] == 0, f'{lone["total_tmu"]}')
+    main_only = compute_table([{**_gm_gold(), "frequency": 3}], RS)
+    chk("主列未標記全額計入 28×3 = 84", main_only["total_tmu"] == 84, f'{main_only["total_tmu"]}')
+    mixed = compute_table([_gm_gold(), {**_gm_gold(), "frequency": 2, "simo_group_id": "S1"}, _cm_gold()], RS)
+    chk("混合：28 + 0 + 29 = 57", mixed["total_tmu"] == 57, f'{mixed["total_tmu"]}')
     err("freq<=0", "FREQ_INVALID", lambda: compute_table([{**_gm_gold(), "frequency": 0}], RS))
 
     print("\n── L. V1 回放（快照隔離：舊資料＋舊規則＝舊行為）──")

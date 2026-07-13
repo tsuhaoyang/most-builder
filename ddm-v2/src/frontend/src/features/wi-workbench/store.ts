@@ -18,7 +18,7 @@ interface WiState {
   addRow: (r: Row) => void
   delRow: (id: string) => void
   setRows: (rows: Row[]) => void
-  totalTmu: () => number   // SIMO：同群取 max
+  totalTmu: () => number   // ADR-020：SIMO 標記列（simoGroup 非空）貢獻 0，其餘 Σ(tmu × freq)
 }
 
 export const useWiStore = create<WiState>((set, get) => ({
@@ -27,11 +27,11 @@ export const useWiStore = create<WiState>((set, get) => ({
   delRow: (id) => set((s) => ({ rows: s.rows.filter((x) => x.id !== id) })),
   setRows: (rows) => set({ rows }),
   totalTmu: () => {
-    let total = 0; const groups: Record<string, number> = {}
+    let total = 0
     for (const r of get().rows) {
-      const eff = r.tmu * (r.freq || 1); const g = (r.simoGroup || '').trim()
-      if (g) groups[g] = Math.max(groups[g] || 0, eff); else total += eff
+      if ((r.simoGroup || '').trim()) continue  // ADR-020：SIMO 標記列貢獻 0（時間由主列吸收）
+      total += r.tmu * (r.freq || 1)
     }
-    return total + Object.values(groups).reduce((a, b) => a + b, 0)
+    return total
   },
 }))

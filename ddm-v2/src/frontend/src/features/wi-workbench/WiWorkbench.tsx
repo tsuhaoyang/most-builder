@@ -431,7 +431,8 @@ export function WiWorkbench() {
     setHighlightedRowIds(new Set())
   }
   function wiGroupTmu(group: WiGroup): number {
-    return rows.filter(r => group.rowIds.includes(r.id))
+    // ADR-020：SIMO 標記列（simoGroup 非空）貢獻 0，其餘 Σ(tmu × freq)
+    return rows.filter(r => group.rowIds.includes(r.id) && !(r.simoGroup || '').trim())
       .reduce((sum, r) => sum + (r.tmu * (r.freq || 1)), 0)
   }
 

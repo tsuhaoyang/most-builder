@@ -278,9 +278,9 @@ def compute_cycle(cycle: dict[str, Any], rs: RuleSetData) -> CycleResult:
 
 
 def compute_table(steps: list[dict[str, Any]], rs: RuleSetData) -> dict[str, Any]:
-    """多列 WI 合計：Σ(非SIMO tmu×freq) + Σ(每 SIMO 群組 max(tmu×freq))。"""
-    non_simo = 0.0
-    simo: dict[str, float] = {}
+    """多列 WI 合計（ADR-020，對齊 v3 認證語義）：帶 SIMO 標記（simo_group_id 非空）
+    的列貢獻 0——其時間由未標記的主列吸收；總計 = Σ(未標記列 tmu×freq)。"""
+    total_f = 0.0
     rows = []
     for idx, step in enumerate(steps):
         freq = step.get("frequency", 1)
@@ -288,11 +288,10 @@ def compute_table(steps: list[dict[str, Any]], rs: RuleSetData) -> dict[str, Any
             raise SequenceError("FREQ_INVALID", f"列 {idx}: frequency 須 >0")
         r = compute_cycle(step, rs)
         eff = r.total_tmu * freq
-        gid = step.get("simo_group_id")
-        if gid:
-            simo[gid] = max(simo.get(gid, 0.0), eff)
-        else:
-            non_simo += eff
-        rows.append({"index": idx, "tmu": r.total_tmu, "freq": freq, "eff_tmu": eff, "tech_line": r.tech_line})
-    total = round(non_simo + sum(simo.values()), 3)
+        is_simo = bool(step.get("simo_group_id"))
+        if not is_simo:
+            total_f += eff
+        rows.append({"index": idx, "tmu": r.total_tmu, "freq": freq, "eff_tmu": eff,
+                     "simo": is_simo, "tech_line": r.tech_line})
+    total = round(total_f, 3)
     return {"rows": rows, "total_tmu": total, "total_seconds": round(total * TMU_TO_SEC, 4)}

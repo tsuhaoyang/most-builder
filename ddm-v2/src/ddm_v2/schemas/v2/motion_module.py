@@ -20,7 +20,7 @@ class ModuleRowIn(BaseModel):
     sub_activity: str | None = None
     hand: str = Field(..., pattern="^(LH|RH|BH)$")
     frequency: int = Field(1, ge=1)
-    simo_pair_index: int | None = None   # 指向 rows 陣列內的另一列（0-based）
+    simo_pair_index: int | None = None   # 指向 rows 陣列內的主列（0-based）；宣告者＝從屬列，貢獻 0（ADR-020）
     vocab_refs: dict[str, Any] = Field(default_factory=dict)
     # 必含 object_vocab_id（UUID str）供實體化時填 WiRow；
     # 其餘 from_vocab_id / to_vocab_id / tool_vocab_id 選填。

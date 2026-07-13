@@ -257,12 +257,36 @@ def test_slot_cross_model_raises(rs):
     assert e.value.code == "SLOT_CROSS_MODEL"
 
 
-# ── 整表 SIMO / freq ──
+# ── 整表 SIMO / freq（ADR-020：SIMO 標記列貢獻 0，對齊 v3 認證語義）──
 def test_table_simo_and_freq(rs):
+    """ADR-020：帶 simo_group_id 標記的列貢獻 0（時間由未標記主列吸收），不再群組取 max。"""
     table = compute_table([{**GM_GOLD(), "frequency": 2},
                            {**CM_GOLD(), "frequency": 1, "simo_group_id": "S1"},
                            {**CM_GOLD(), "frequency": 1, "simo_group_id": "S1"}], rs)
-    assert table["total_tmu"] == 85  # 56 + max(29,29)
+    assert table["total_tmu"] == 56  # 只計未標記列 28×2；S1 兩列貢獻 0
+    assert [r["simo"] for r in table["rows"]] == [False, True, True]
+
+
+def test_table_lone_simo_marked_row_is_zero(rs):
+    """ADR-020 黃金：單獨標記列（無同組夥伴）也貢獻 0（舊群組 max 語義會全額計入）。"""
+    table = compute_table([{**CM_GOLD(), "frequency": 1, "simo_group_id": "S9"}], rs)
+    assert table["total_tmu"] == 0
+    assert table["rows"][0]["eff_tmu"] == 29  # 列自身 eff TMU 仍照算（顯示用），只是不入總計
+
+
+def test_table_main_row_unmarked_counts_full(rs):
+    """ADR-020 黃金：主列未標記全額計入（freq 乘算不受 SIMO 語義影響）。"""
+    table = compute_table([{**GM_GOLD(), "frequency": 3}], rs)
+    assert table["total_tmu"] == 84  # 28×3
+
+
+def test_table_mixed_simo_total(rs):
+    """ADR-020 黃金混合案例：主列 28 ＋ 標記列 0 ＋ 一般列 29 = 57。"""
+    table = compute_table([GM_GOLD(),
+                           {**GM_GOLD(), "frequency": 2, "simo_group_id": "S1"},
+                           CM_GOLD()], rs)
+    assert table["total_tmu"] == 57
+    assert table["total_seconds"] == round(57 * 0.036, 4)
 
 
 def test_table_freq_invalid_raises(rs):

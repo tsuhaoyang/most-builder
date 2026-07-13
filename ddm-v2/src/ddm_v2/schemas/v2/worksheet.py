@@ -33,8 +33,8 @@ class WiRowSaveIn(BaseModel):
     to_vocab_id: uuid.UUID | None = None
     tool_vocab_id: uuid.UUID | None = None
     frequency: float = 1
-    simo_group_id: str | None = None            # 儲存形式（群組）
-    simo_with_row_id: uuid.UUID | None = None   # 輸入形式（E5 配對，service 正規化為群組）
+    simo_group_id: str | None = None            # SIMO 標記＋配對資訊（ADR-020：非空＝該列貢獻 0；主列不標記）
+    simo_with_row_id: uuid.UUID | None = None   # 輸入形式（E5 配對，service 僅標記從屬列）
     narrative: str | None = None        # 敘述（前端合成；存 most_cycles.narrative_zh，供匯出 METHOD）
     cycle: CycleIn
     level: LevelFieldsIn = Field(default_factory=LevelFieldsIn)

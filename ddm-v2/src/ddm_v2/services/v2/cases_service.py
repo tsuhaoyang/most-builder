@@ -1,7 +1,8 @@
 """案件清單服務：JOIN ProcessVersion → MostWorksheet → SKU → Product → Site。
 
-total_tmu 由 SUM(MostCycle.total_tmu * WiRow.frequency) 批次聚合（MostWorksheet 無存儲欄）。
-SIMO 群組以頻率加權總和估算；精確值見案件詳情（read_worksheet）。
+total_tmu 由 SUM(MostCycle.total_tmu * WiRow.frequency) 批次聚合（MostWorksheet 無存儲欄），
+僅計未帶 SIMO 標記的列（simo_group_id IS NULL）——ADR-020：SIMO 標記列貢獻 0，
+與 most_engine.compute_table / read_worksheet 口徑一致。
 """
 from __future__ import annotations
 
@@ -24,13 +25,14 @@ async def list_cases(
 ) -> dict[str, Any]:
     """案件清單（含分頁）。"""
     # 批次聚合 total_tmu：SUM(mc.total_tmu * wr.frequency) per worksheet（單一 JOIN，非 N+1）。
-    # SIMO 群組應取群內 max，SQL 層過複雜；以頻率加權總和估算。精確值見案件詳情。
+    # ADR-020：SIMO 標記列（simo_group_id 非空）貢獻 0 → WHERE simo_group_id IS NULL。
     tmu_sub = (
         select(
             WiRow.worksheet_id.label("ws_id"),
             func.sum(MostCycle.total_tmu * WiRow.frequency).label("total_tmu"),
         )
         .join(MostCycle, MostCycle.wi_row_id == WiRow.id)
+        .where(WiRow.simo_group_id.is_(None))
         .group_by(WiRow.worksheet_id)
         .subquery("tmu_agg")
     )

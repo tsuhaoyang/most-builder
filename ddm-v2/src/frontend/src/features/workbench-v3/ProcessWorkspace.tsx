@@ -365,11 +365,10 @@ export function ProcessWorkspace() {
   }
 
   // Process stats
+  // 合計採後端 read_worksheet 的 total_tmu（ADR-020 口徑：SIMO 標記列貢獻 0，Σ 未標記列 total_tmu × frequency）
+  // localOrder 僅是 wsData.rows 的本地排序鏡像，內容不變 → 直接用後端權威值，前端不自算。
   const totalRows = localOrder.length
-  const totalTmu = useMemo(
-    () => localOrder.reduce((s, r) => s + (r.cycle?.total_tmu ?? 0), 0),
-    [localOrder],
-  )
+  const totalTmu = wsData?.total_tmu ?? 0
   const totalSec = (totalTmu * 0.036).toFixed(2)
 
   const isAdding = instantiate.isPending

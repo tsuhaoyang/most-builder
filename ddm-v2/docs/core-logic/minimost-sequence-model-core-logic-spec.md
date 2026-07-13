@@ -17,7 +17,7 @@
 > | — | 旋轉/手度 | >12.5 無上限、3 圈檔 | 直徑≤50 封頂、大直徑無 3 圈檔（→422 M_ROTATION_RANGE）；手度 ≤180 封頂（→422 M_HAND_RANGE） |
 > | E4 | slot repeat | 無 | G/P/X/I 整格 ×repeat（1..99）；**M 僅乘動詞分量再 max**；A/B 禁用 |
 > | E7 | 人工覆寫 | 無 | slot `manual_override{tmu,reason,by}`：值取代＋留痕＋tech_line 標 `*` |
-> | E5 | SIMO 輸入 | 顯式 simo_group_id | ＋`simo_with_row_id` 配對輸入（service union-find 正規化為群組；引擎仍群組取 max） |
+> | E5 | SIMO 輸入 | 顯式 simo_group_id | ＋`simo_with_row_id` 配對輸入（僅從屬列標記，主列不標記）；**ADR-020：標記列貢獻 0**（舊「群組取 max」廢止） |
 > | — | 寬放 | 無 | worksheet 級 `allowance_percent`（standard=normal×(1+%/100)；OQ-002） |
 >
 > 實作規格＝[docs/v3/impl/impl-01](../v3/impl/impl-01-rule-set-factory-v2.md)（值表）＋[impl-02](../v3/impl/impl-02-engine-changes.md)（引擎 E1–E9＋黃金過帳）。可執行規格＝`scripts/core_logic/minimost_sequence_validator.py`（已重錨 V2）。
@@ -101,7 +101,7 @@ cycle_total_tmu = ( slot0 + slot1 + slot2 + slot3 + slot4 + slot5 + slot6 ) × s
 cycle_total_seconds = cycle_total_tmu × 0.036
 ```
 - `system_tmu_multiplier`：來自 rule set，教學範例＝**1**（SEED：`minimost_rule_sets.system_tmu_multiplier = 1`）。
-- **多列 WI（1128）整表合計：** `Σ ( cycle_total_tmu × frequency )`，SIMO 群組另依 [§6](#6-simo-與-frequency) 調整。
+- **多列 WI（1128）整表合計：** `Σ ( cycle_total_tmu × frequency )`（僅計未帶 SIMO 標記的列；SIMO 標記列貢獻 0，見 [§6](#6-simo-與-frequency)／ADR-020）。
 
 > ⚠️ **與教科書差異：** `MOST-core-algorithm-spec.md` 的通式為 `(Σ index) × 10`。本專案 Excel／JS 的合計**不乘 10**，改乘 `system_tmu_multiplier`（教學＝1），且**各格的 index 值本身即為 TMU 貢獻**（例：A6＝6 TMU、G 抓握＝6 TMU）。此為本專案與教科書最根本的計算口徑差異，**必須由 User 確認何者為準**（見 [§10 Q1](#10-待確認問題-open-questions)）。
 
@@ -313,11 +313,12 @@ CM：  從 + "從哪裡" + (A+B) + G + 對象/目標物 + M + X + I + A + "到�
 ## 6. SIMO 與 Frequency
 
 - **Frequency（Freq.）：** 1128 WI 表每列有 `Freq.` 欄；該方法步 TMU 乘以次數。教學 1128 多為 1，亦見 11、3。
-- **SIMO（W 欄 Y/N）：** 標 `Y` 的列代表與他列同時進行；同一 SIMO 群組**只取群組內最大 TMU** 計入合計，其餘不計。
+- **SIMO（ADR-020，2026-07-13，對齊 v3 認證語義）：** 帶 SIMO 標記（`simo_group_id` 非空）的列**貢獻 0**——其時間由未標記的主列吸收；主列不得標記，僅從屬列標記（`simo_group_id` 的意義＝「SIMO 標記＋配對資訊」，非群組配對鍵）。
   ```
-  total = Σ(非 SIMO 列 tmu × freq) + Σ(每個 SIMO 群組的 max(tmu × freq))
+  total = Σ(未標記列 tmu × freq)    ← SIMO 標記列一律計 0
   ```
-- 詳細 SIMO 群組鍵（`simo_group_id`）規則沿用 `MOST-core-algorithm-spec.md` §8，**待確認本專案是否以 WI 列的 Y/N＋相鄰關係分組，或顯式群組鍵**（見 [§10 Q5](#10-待確認問題-open-questions)）。
+  舊語義「同一 SIMO 群組取群組內最大 TMU」已由 ADR-020 廢止（該語義對應 v3 舊層實作，非現行認證版）。
+- 配對輸入 `simo_with_row_id`（E5）由 service 正規化：僅宣告配對的從屬列標記 `simo_group_id`，被指向的主列不標記。
 
 ---
 
