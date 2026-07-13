@@ -7,6 +7,7 @@
 1. **凡 `src/` import 的第三方套件，必在 `pyproject.toml` `dependencies`**（不是只 dev）。CI 用宣告的依賴跑 → 漏宣告會紅。
 2. **每個 feature（每組端點）至少一個整合測試**涵蓋：正常路徑 + 一個邊界/RBAC。
 3. 改核心邏輯（引擎/rule-set/level）→ 必過 `core_logic/run_all.py` 黃金值。
+3b. **測試資料零殘留（P0-0.2）**：整合測試一律走 conftest 的 transaction-rollback 隔離（`db_ctx`/`client`/`db_session` fixtures）；**測試內禁止自建 engine 打 `DATABASE_URL`**（會繞過隔離、汙染真實 DB）。驗收：跑兩遍 `pytest tests/integration` 前後，`motion_modules` 的 `UT-%` 計數不得增加。歷史殘留用 `scripts/cleanup_test_data.py`（預設 dry-run）清理。
 4. **值權威（ADR-014）**：黃金錨＝`MINIMOST_FACTORY_V2`（v3 IE 認證字典）；`rule_set_seed_v2.py` 為 converter 產物**禁手改**（改值＝改字典 JSON 後重跑 `scripts/import_v3_dictionary.py`）；V1 回放測試必須維持綠（快照隔離）。
 5. 前端改動 → typecheck + build + Playwright smoke 綠。
 
@@ -35,7 +36,8 @@
 | **Motion Modules（impl-04）** | create→get；SM-1 IDOR；SM-2 max rows；SM-3 scope escalation；SM-4 owner immutable；SM-5 publish guard；SM-6 reorder RBAC；SM-7 apply-back version increment；DELETE happy+409；clone；instantiate；**ADR-019 Option A 迴歸（viewer 可讀任意 worksheet→200）**；**promote analyst→403（approver gate）**；**audit log 建立（action=promote）[promote 501 中；impl-06c 補 endpoint 後補整合測試]** | `tests/integration/test_motion_modules.py` |
 | **搜尋基礎設施（impl-03）** | normalize 標點/空白/lower；build_content_norm 多欄串接；NullProvider 降級 semantic=False；空查詢不碰 DB；RRF 融合：兩路共鍵排首且 match_type=fused；單路鍵 rank=1000 懲罰、仍在結果、match_type=fused | `tests/unit/test_search.py` |
 | **Migration v2_0016 角色改名（impl-06）** | IE→analyst / manager→approver CASE 轉換正確；admin/viewer 不動；混合角色；空陣列；downgrade 對稱 | `tests/unit/test_migration_role_rename.py` |
-| **workflow_audit_log（impl-06b）** | publish process_version → action=approve / entity_type=process_version / to_status=approved / actor 非空；DB 直查驗證（conftest 無 db_session；端點 impl-06c 補） | `tests/integration/test_worksheet.py` |
+| **workflow_audit_log（impl-06b）** | publish process_version → action=approve / entity_type=process_version / to_status=approved / actor 非空；DB 直查驗證（用 conftest `db_session`，與 client 同 transaction；端點 impl-06c 補） | `tests/integration/test_worksheet.py` |
+| **測試資料隔離（P0-0.2）** | 整合測試全走 transaction-rollback fixture（`db_ctx` 外層 BEGIN＋savepoint session，teardown ROLLBACK）；跑兩遍 `tests/integration` 後 `UT-%` motion_modules 計數不變；匿名請求（無 header、無 AUTH_DEV_USER）→401 | `tests/conftest.py`、`tests/integration/test_search.py`、`scripts/cleanup_test_data.py`（dry-run） |
 | **NLP 同義詞 + nl-draft（impl-05）** | synonyms list(200)/create IE(201)/duplicate(409+SYNONYM_CONFLICT)/viewer(403)/delete(204)；**option_code 不存在→422 OPTION_CODE_NOT_FOUND（Fix-T1）**；**全形空白 normalize 後空→422 VALIDATION_ERROR（Fix-T3）**；nl-draft GM 治具防護(F-05 §4.1)；v3 治具全套單元（壓合站/壓合位置/治具→GM；執行/進行/**機台（CM 觸發詞，Fix-T2）**→CM）；normalize OR 兜底消除（Fix-Low-T：測试机器→測試機器；機台機臺→機臺機臺） | `tests/unit/test_nlp.py`、`tests/integration/test_nlp_api.py` |
 | 前端（全分頁） | 載入/身分/分頁渲染/匯入精靈 | `src/frontend/e2e/smoke.spec.ts` |
 | **前端 UX 合規（v3 規格）** | §A-01/02/03 Sidebar 結構/背景色/折疊/角色可見性；§B-01/B-02/B-03 workbench-v3 NlDraft+Slot Strip；§C-01 MiCompositionTable gap 文件化；§E-04/05/06 WI Pool 三層 Tab；§G-01/G-02 分析案件+RBAC gating；§H-01 字典管理頁；§I-01 viewer RBAC；§L-03/04 退役確認（33 條，Type A mocked-API，無需 preview_server） | `src/frontend/e2e/ux-compliance.spec.ts` |

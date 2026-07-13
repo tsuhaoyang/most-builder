@@ -15,10 +15,16 @@ import pytest
 pytestmark = pytest.mark.integration
 
 
-async def test_search_unauthorized(client):
-    """無授權 header → 401（借 ASGITransport 送空 header）。"""
+async def test_search_unauthorized(client, monkeypatch):
+    """無授權 header → 401（借 ASGITransport 送空 header）。
+
+    conftest 會設 AUTH_DEV_USER（dev fallback 身分）——此處必須拿掉，
+    否則匿名請求被解析成 dev 使用者而回 200。
+    """
     import httpx
     from ddm_v2.main import create_app
+
+    monkeypatch.delenv("AUTH_DEV_USER", raising=False)
     app = create_app()
     transport = httpx.ASGITransport(app=app)
     async with httpx.AsyncClient(transport=transport, base_url="http://test") as anon:

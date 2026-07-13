@@ -31,7 +31,7 @@
 - **影響**：任何依賴模組庫的頁面（WI 組裝三個 tab、WI 專案建立的搜尋）在真實部署上顯示垃圾資料；`current_version: 0` 且無版本明細的模組也是 0.1 崩潰的直接資料來源。
 - **解決方案**：integration test 不得打正式 DB（應使用獨立 test database / transaction rollback fixture）；提供 `scripts/cleanup_test_data.py` 清除 `UT-` 開頭殘留；docker entrypoint 的 seed 與測試資料分離。
 - **派工**：ddm-testing（test fixture 隔離）＋ ddm-backend（清理腳本）。
-- **補充發現（2026-07-13）**：本機 dev DB（`.env` 指向 `ddm_v2_most`）的 rule-set 種子**過期**（`p_lay` 等值不匹配現行字典）→ `tests/integration/test_motion_modules.py` 有 **8 個測試在 HEAD 上就失敗**（publish/clone/instantiate/provenance 系列，最小 GM row 算出 total_tmu=0）。經 stash 比對確認與 P0 修復無關。修法：重跑 `scripts/import_v3_dictionary.py` 或重建 dev DB seed；並把「seed 版本 vs 字典版本」檢查加進 CI 前置。
+- **補充發現（2026-07-13，經 ddm-testing 深查更正診斷）**：`tests/integration/test_motion_modules.py` 的 8+1 個既有失敗，根因**不是種子過期**——`p_lay` 從未存在於任何值權威（v3 字典 JSON、converter `P_BASE_MAP`、V1/V2 seed 全歷史均無；dev DB 的 `rule_p_bases` 與現行 seed 完全一致）。真正原因：測試（d31af5d 引入）引用了只存在於「某個曾被手動加過 p_lay 的環境 DB」的代碼。**裁決（方案 1）**：測試改用認證代碼 `p_place_none`，不動值權威。附帶發現：`dev_seed_v2.py` 對 rule-set 是 skip-if-exists，永不更新既有 DB 值——未來字典改值需顯式 upsert/migration 路徑。
 
 ---
 

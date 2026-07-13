@@ -80,7 +80,7 @@ async def test_publish_version(client):
     assert r.status_code == 201, r.text
     mid = r.json()["id"]
 
-    # publish：GM A6 B0 G6 A10 B0 P6 A0 = 28 TMU
+    # publish：GM A10 B0 G6 A16 B0 P6 A0 = 38 TMU（全認證代碼；P=p_place_none 放無方向）
     payload = {
         "rule_set_id": rs_id,
         "rows": [{
@@ -93,7 +93,7 @@ async def test_publish_version(client):
                 "a0": {"reach_cm": 30},
                 "g2": {"g_code": "g_grasp"},
                 "a3": {"reach_cm": 40},
-                "p5": {"p_base_code": "p_lay"},
+                "p5": {"p_base_code": "p_place_none"},
                 "a6": {"reach_cm": 0},
             },
         }],
@@ -102,7 +102,7 @@ async def test_publish_version(client):
     assert pub.status_code == 201, pub.text
     body = pub.json()
     assert body["version_no"] == 1
-    assert body["total_tmu"] > 0
+    assert float(body["total_tmu"]) == 38.0, body
 
     # module current_version 已更新
     detail = await client.get(f"/api/v2/motion-modules/{mid}")
@@ -440,7 +440,7 @@ async def test_sm7_apply_back_creates_new_version(client):
     mid = r.json()["id"]
     assert r.json()["current_version"] == 0
 
-    # apply-back 建立 version 1
+    # apply-back 建立 version 1（GM A10 B0 G6 A16 B0 P6 A0 = 38 TMU）
     row = {
         "hand": "RH",
         "frequency": 1,
@@ -451,7 +451,7 @@ async def test_sm7_apply_back_creates_new_version(client):
             "a0": {"reach_cm": 30},
             "g2": {"g_code": "g_grasp"},
             "a3": {"reach_cm": 40},
-            "p5": {"p_base_code": "p_lay"},
+            "p5": {"p_base_code": "p_place_none"},
             "a6": {"reach_cm": 0},
         },
     }
@@ -462,7 +462,7 @@ async def test_sm7_apply_back_creates_new_version(client):
     assert resp.status_code == 201, resp.text
     body = resp.json()
     assert body["version_no"] == 1
-    assert body["total_tmu"] > 0
+    assert float(body["total_tmu"]) == 38.0, body
 
     # 確認 module current_version 已更新
     detail = await client.get(f"/api/v2/motion-modules/{mid}")
@@ -517,29 +517,27 @@ _WS_SEEDED = "55555555-5555-5555-5555-555555555555"  # dev_seed_v2 demo workshee
 _OBJ_SEEDED = "66666666-6666-6666-6666-666666666666"  # dev_seed_v2 vocab「DIMM 內存」
 
 
-async def _set_module_status(module_id: str, status: str) -> None:
-    """直接透過 SQLAlchemy 更新 module.status（測試用，繞過無 API 的 standard/retired 轉換）。"""
-    import os
-    import uuid as _uuid
+async def _set_module_status(db_session, module_id: str, status: str) -> None:
+    """直接透過 SQLAlchemy 更新 module.status（測試用，繞過無 API 的 standard/retired 轉換）。
 
-    from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
+    用 conftest 的 db_session（與 client 同 connection/transaction）——
+    不得自建 engine 打 DATABASE_URL，否則繞過隔離、汙染真實 DB。
+    """
+    import uuid as _uuid
 
     from ddm_v2.models.v2.motion_module import MotionModule
 
-    engine = create_async_engine(os.environ["DATABASE_URL"])
-    try:
-        _Session = async_sessionmaker(engine, expire_on_commit=False)
-        async with _Session() as s:
-            m = await s.get(MotionModule, _uuid.UUID(module_id))
-            if m is not None:
-                m.status = status
-                await s.commit()
-    finally:
-        await engine.dispose()
+    m = await db_session.get(MotionModule, _uuid.UUID(module_id))
+    assert m is not None, f"module {module_id} 應存在（同 transaction 內建立）"
+    m.status = status
+    await db_session.commit()
 
 
 def _gm_row_pub(*, vocab_refs: dict | None = None) -> dict:
-    """完整 publish-ready GM row（V2 rule-set；a0/g2/a3/p5/a6 全填）。"""
+    """完整 publish-ready GM row（V2 rule-set；a0/g2/a3/p5/a6 全填）。
+
+    引擎實算：A10 B0 G6 A16 B0 P6 A0 = 38 TMU（P=p_place_none 放無方向，認證代碼）。
+    """
     return {
         "hand": "RH",
         "frequency": 1,
@@ -550,7 +548,7 @@ def _gm_row_pub(*, vocab_refs: dict | None = None) -> dict:
             "a0": {"reach_cm": 30},
             "g2": {"g_code": "g_grasp"},
             "a3": {"reach_cm": 40},
-            "p5": {"p_base_code": "p_lay"},
+            "p5": {"p_base_code": "p_place_none"},
             "a6": {"reach_cm": 0},
         },
     }
@@ -572,7 +570,7 @@ async def _clone_demo_ws(client) -> str:
 
 # ── T-4：PUT 非 draft → 409 ────────────────────────────────────────────────
 
-async def test_update_non_draft_rejected(client):
+async def test_update_non_draft_rejected(client, db_session):
     """T-4：status=standard 的模組不可改 metadata → 409；detail 欄位存在。"""
     sfx = uuid.uuid4().hex[:6]
     r = await client.post("/api/v2/motion-modules", json={
@@ -583,7 +581,7 @@ async def test_update_non_draft_rejected(client):
     mid = r.json()["id"]
 
     # 模擬 promote（promote API 尚 501）：直接透過 DB 升為 standard
-    await _set_module_status(mid, "standard")
+    await _set_module_status(db_session, mid, "standard")
 
     up = await client.put(f"/api/v2/motion-modules/{mid}", json={"name_zh": "should-be-rejected"})
     assert up.status_code == 409, up.text
@@ -609,7 +607,7 @@ async def test_delete_draft_module_success(client):
     assert gone.status_code == 404
 
 
-async def test_delete_standard_module_rejected(client):
+async def test_delete_standard_module_rejected(client, db_session):
     """T-1b：DELETE status=standard 的模組 → 409；detail 欄位存在。"""
     sfx = uuid.uuid4().hex[:6]
     r = await client.post("/api/v2/motion-modules", json={
@@ -619,7 +617,7 @@ async def test_delete_standard_module_rejected(client):
     assert r.status_code == 201, r.text
     mid = r.json()["id"]
 
-    await _set_module_status(mid, "standard")
+    await _set_module_status(db_session, mid, "standard")
 
     d = await client.delete(f"/api/v2/motion-modules/{mid}")
     assert d.status_code == 409, d.text
@@ -748,7 +746,7 @@ async def test_instantiate_module_to_worksheet_success(client):
     assert "tmu_drift" in body
 
 
-async def test_instantiate_retired_module_rejected(client):
+async def test_instantiate_retired_module_rejected(client, db_session):
     """T-3b：retired 模組不可實體化 → 409；detail 欄位存在。"""
     ws_id = await _clone_demo_ws(client)
     rs_id = await _get_rule_set_id(client)
@@ -770,7 +768,7 @@ async def test_instantiate_retired_module_rejected(client):
     assert pub.status_code == 201, pub.text
 
     # 退役模組（simulate retire：promote API 尚 501）
-    await _set_module_status(mid, "retired")
+    await _set_module_status(db_session, mid, "retired")
 
     inst = await client.post(
         f"/api/v2/worksheets/{ws_id}/rows/from-module",
@@ -835,17 +833,13 @@ async def test_publish_exactly_100_rows_allowed(client):
     assert r.status_code == 201, r.text
     mid = r.json()["id"]
 
-    minimal_row = {
-        "hand": "RH", "frequency": 1, "vocab_refs": {},
-        "cycle": {"seq": "GM", "rule_set_code": "MINIMOST_FACTORY_V2"},
-    }
     resp = await client.post(f"/api/v2/motion-modules/{mid}/publish", json={
         "rule_set_id": rs_id,
-        "rows": [minimal_row] * 100,
+        "rows": [_gm_row_pub()] * 100,
     })
     assert resp.status_code == 201, resp.text
     assert resp.json()["version_no"] == 1
-    assert resp.json()["total_tmu"] > 0
+    assert float(resp.json()["total_tmu"]) == 3800.0, resp.json()  # 100 列 × 38 TMU
 
 
 async def test_from_rows_over_limit_rejected(client):
@@ -1125,7 +1119,7 @@ async def test_list_status_filter_and_summary_fields(client):
 # ═══════════════════════════════════════════════════════════════════════
 # SIMO（ADR-020）publish / instantiate 測試
 # 對應 SIMO code-review Finding 1（互指靜默歸零）/ 2（零測試）/ 4（口徑一致）
-# 注意：cycle 沿用 test_worksheet_v2_engine 的 28 TMU 黃金列（避開 p_lay seed 問題）
+# 注意：cycle 沿用 test_worksheet_v2_engine 的 28 TMU 黃金列（a0=20/a3=25 檔位，非 _gm_row_pub 的 38）
 # ═══════════════════════════════════════════════════════════════════════
 
 

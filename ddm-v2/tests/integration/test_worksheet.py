@@ -164,18 +164,15 @@ async def test_retire_approver_returns_403(client):
     assert r.status_code == 403, r.text
 
 
-async def test_publish_creates_audit_log(client):
+async def test_publish_creates_audit_log(client, db_session):
     """publish → workflow_audit_log 有一筆 entity_type=process_version, action=approve。
 
     F-06 / ADR-018 裁決 3 驗收：publish 操作必須寫入不可變稽核記錄。
-    conftest 無 db_session fixture；直接建立 SQLAlchemy session 查 DB
-    （同 test_motion_modules._set_module_status 模式）。
+    用 conftest 的 db_session（與 client 同 connection/transaction）直接查 DB——
+    不得自建 engine 打 DATABASE_URL（會繞過隔離、汙染真實 DB）。
     日後 GET /api/v2/audit-log 端點完成（impl-06c）後可改為 API 斷言。
     """
-    import os
-
     from sqlalchemy import select
-    from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 
     from ddm_v2.models.v2.audit import WorkflowAuditLog
 
@@ -190,18 +187,12 @@ async def test_publish_creates_audit_log(client):
     assert r.status_code == 200, r.text
 
     # 直接查 DB：確認稽核記錄已寫入（無 GET /api/v2/audit-log endpoint；impl-06c 補）
-    engine = create_async_engine(os.environ["DATABASE_URL"])
-    try:
-        _Session = async_sessionmaker(engine, expire_on_commit=False)
-        async with _Session() as session:
-            entries = (await session.execute(
-                select(WorkflowAuditLog).where(
-                    WorkflowAuditLog.action == "approve",
-                    WorkflowAuditLog.entity_type == "process_version",
-                )
-            )).scalars().all()
-    finally:
-        await engine.dispose()
+    entries = (await db_session.execute(
+        select(WorkflowAuditLog).where(
+            WorkflowAuditLog.action == "approve",
+            WorkflowAuditLog.entity_type == "process_version",
+        )
+    )).scalars().all()
 
     assert len(entries) >= 1, "publish 後 workflow_audit_log 應有至少一筆 action=approve 記錄"
     last = entries[-1]

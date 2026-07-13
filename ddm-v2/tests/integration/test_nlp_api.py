@@ -163,7 +163,7 @@ async def test_delete_synonym_analyst_role(client):
     sfx = uuid.uuid4().hex[:8]
     payload = {
         "parameter": "P",
-        "option_code": "p_lay",
+        "option_code": "p_place_none",
         "synonym_raw": f"放置刪除{sfx}",
         "priority": 0,
     }
