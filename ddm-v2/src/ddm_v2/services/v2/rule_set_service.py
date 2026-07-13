@@ -46,6 +46,7 @@ async def load_full(session: AsyncSession, code: str) -> dict[str, Any]:
     if rs is None:
         raise RuleSetNotFound(code)
     return {
+        "id": str(rs.id),
         "code": rs.code, "name_zh": rs.name_zh, "status": rs.status, "multiplier": float(rs.system_tmu_multiplier),
         "a_bands": [{"component": r.component, "max_value": float(r.max_value) if r.max_value is not None else None, "index": r.index_value, "sort": r.sort_order} for r in await _rows(session, rt.RuleABand, rs.id)],
         "b": [{"code": r.code, "label_zh": r.label_zh, "label_en": r.label_en, "index": r.index_value, "is_default": r.is_default, "sort": r.sort_order} for r in await _rows(session, rt.RuleBOption, rs.id)],

@@ -4,8 +4,10 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { useQueryClient } from '@tanstack/react-query'
 import { useRuleSetOptions } from '../wi-workbench/api'
+import { apiGet } from '../../shared/api/client'
 import {
   useMotionModules,
+  useMotionModuleDetail,
   usePublishModule,
   useCreateWiTemplate,
   useCloneWiTemplate,
@@ -43,9 +45,13 @@ interface WiCardProps {
 
 function WiCard({ mod, isSelected, onSelect, onClone, onDelete, cloneDisabled, deleteDisabled }: WiCardProps) {
   const [expanded, setExpanded] = useState(false)
-  const totalTmu = mod.total_tmu ?? 0
-  const totalSec = (totalTmu * 0.036).toFixed(2)
-  const moduleCount = mod.rows.length
+  // top-level total_tmu / action_count 為後端摘要欄；null（無已發布版本）→ 顯示 '—'
+  const totalTmu = mod.total_tmu ?? null
+  const totalSec = totalTmu != null ? (totalTmu * 0.036).toFixed(2) + 's' : '—'
+  const moduleCount = mod.action_count ?? null
+  // rows 巢狀於 current_version_detail（list 端點=null）→ 展開時 lazy fetch detail
+  const { data: detail, isLoading: detailLoading } = useMotionModuleDetail(mod.id, expanded)
+  const rows = detail?.current_version_detail?.rows ?? []
 
   return (
     <div className={`border rounded-lg transition-colors ${
@@ -71,11 +77,11 @@ function WiCard({ mod, isSelected, onSelect, onClone, onDelete, cloneDisabled, d
             {mod.name_zh}
           </p>
           <p className="text-xs text-slate-400">
-            {moduleCount} 模組
+            {moduleCount ?? '—'} 模組
             {' · '}
-            <b style={{ color: '#1a73e8' }}>{totalTmu}</b>T
+            <b style={{ color: '#1a73e8' }}>{totalTmu ?? '—'}</b>{totalTmu != null ? 'T' : ''}
             {' · '}
-            {totalSec}s
+            {totalSec}
           </p>
         </div>
         <div className="flex gap-1 flex-shrink-0">
@@ -96,10 +102,13 @@ function WiCard({ mod, isSelected, onSelect, onClone, onDelete, cloneDisabled, d
         </div>
       </div>
 
-      {/* Expanded: sub-module rows */}
-      {expanded && mod.rows.length > 0 && (
+      {/* Expanded: sub-module rows（lazy fetch detail — rows 巢狀於 current_version_detail） */}
+      {expanded && detailLoading && (
+        <p className="text-xs text-slate-400 pl-9 pb-2">載入明細…</p>
+      )}
+      {expanded && !detailLoading && rows.length > 0 && (
         <div className="border-t py-1.5 pl-9 pr-2.5 space-y-1">
-          {mod.rows.map((row: MotionModuleRow, i: number) => {
+          {rows.map((row: MotionModuleRow, i: number) => {
             const rowSeq = row.cycle['seq'] as string | undefined
             const rowTmu = row.cycle['total_tmu'] as number | undefined
             return (
@@ -114,8 +123,8 @@ function WiCard({ mod, isSelected, onSelect, onClone, onDelete, cloneDisabled, d
                     {rowSeq}
                   </span>
                 )}
-                <span className="flex-1 truncate" title={row.sub_activity}>
-                  {row.sub_activity}
+                <span className="flex-1 truncate" title={row.sub_activity ?? ''}>
+                  {row.sub_activity ?? '—'}
                 </span>
                 {rowTmu != null && (
                   <b className="flex-shrink-0" style={{ color: '#1a73e8' }}>{rowTmu}T</b>
@@ -125,7 +134,7 @@ function WiCard({ mod, isSelected, onSelect, onClone, onDelete, cloneDisabled, d
           })}
         </div>
       )}
-      {expanded && mod.rows.length === 0 && (
+      {expanded && !detailLoading && rows.length === 0 && (
         <p className="text-xs text-slate-400 pl-9 pb-2">（無子模組）</p>
       )}
     </div>
@@ -161,6 +170,7 @@ export function WIPoolWorkspace() {
   // Panel 3: WI Pool state
   const [poolSearch, setPoolSearch] = useState('')
   const [poolSelected, setPoolSelected] = useState<Set<string>>(new Set())
+  const [savingWi, setSavingWi] = useState(false)
 
   // Toast
   const [toast, setToast] = useState<ToastState | null>(null)
@@ -197,11 +207,12 @@ export function WIPoolWorkspace() {
     return wiTemplates.filter(m => m.name_zh.toLowerCase().includes(q))
   }, [wiTemplates, poolSearch])
 
-  // Running total TMU for the composer
-  const totalComposerTmu = useMemo(
-    () => composerModules.reduce((s, m) => s + (m.total_tmu ?? 0), 0),
-    [composerModules],
-  )
+  // Running total TMU for the composer — 任一模組缺 total_tmu（無已發布版本）
+  // 時回 null，UI 顯示 '—'，不得把缺值假裝成 0
+  const totalComposerTmu = useMemo(() => {
+    if (composerModules.some(m => m.total_tmu == null)) return null
+    return composerModules.reduce((s, m) => s + (m.total_tmu ?? 0), 0)
+  }, [composerModules])
 
   // ── Panel 1 handlers ───────────────────────────────────────────────────────
 
@@ -264,26 +275,31 @@ export function WIPoolWorkspace() {
     if (composerModules.length === 0) { showToast('請至少加入一個模組', 'err'); return }
     if (!opts) { showToast('rule-set 尚未載入', 'err'); return }
 
-    // Snapshot semantics: copy each module's rows at save time (F-03 §2.2)
-    const rows: MotionModuleRow[] = composerModules.map(mod => ({
-      sub_activity: mod.name_zh,
-      hand: mod.rows[0]?.hand ?? 'RH',
-      frequency: mod.rows[0]?.frequency ?? 1,
-      cycle: mod.rows[0]?.cycle ?? {},
-    }))
-
+    setSavingWi(true)
     try {
+      // Snapshot semantics: copy each module's rows at save time (F-03 §2.2)。
+      // list 物件不含 rows（rows 巢狀於 current_version_detail）→ 逐一 fetch detail，
+      // 保留 vocab_refs / simo_pair_index，不得用假預設值充數。
+      const rows: MotionModuleRow[] = await Promise.all(
+        composerModules.map(async mod => {
+          const detail = await apiGet<MotionModuleSummary>(`/api/v2/motion-modules/${mod.id}`)
+          const srcRow = detail.current_version_detail?.rows?.[0]
+          if (!srcRow) throw new Error(`模組「${mod.name_zh}」尚無已發布版本`)
+          return { ...srcRow, sub_activity: mod.name_zh }
+        }),
+      )
+
+      // 後端 MotionModuleCreate 無 rows 欄位；rows 由 publish 建立版本
       const created = await createWiTemplate.mutateAsync({
         name_zh: wiName.trim(),
         category: 'wi-template',
         keywords: [],
         scope: 'personal',
-        rows,
       })
 
       await publishModule.mutateAsync({
         id: created.id,
-        body: { rows, rule_set_id: opts.code },
+        body: { rows, rule_set_code: opts.code },
       })
 
       // Ensure WI pool refreshes after publish
@@ -293,6 +309,8 @@ export function WIPoolWorkspace() {
       showToast('WI 已儲存：' + wiName.trim(), 'ok')
     } catch (err) {
       showToast('儲存失敗：' + (err as Error).message, 'err')
+    } finally {
+      setSavingWi(false)
     }
   }
 
@@ -333,7 +351,7 @@ export function WIPoolWorkspace() {
     setPoolSelected(new Set())
   }
 
-  const isSaving = createWiTemplate.isPending || publishModule.isPending
+  const isSaving = savingWi || createWiTemplate.isPending || publishModule.isPending
 
   return (
     <>
@@ -364,8 +382,12 @@ export function WIPoolWorkspace() {
             )}
             {filteredL1.map(mod => {
               const isChecked = pickerSelected.has(mod.id)
-              const modTmu = mod.total_tmu ?? 0
-              const modSeq = mod.rows[0]?.cycle['seq'] as string | undefined
+              // total_tmu = 後端摘要欄；null → '—'。seq 優先讀 top-level seq_kind 摘要欄，
+              // fallback current_version_detail 第一列；都沒有就不顯示 badge
+              const modTmu = mod.total_tmu ?? null
+              const modSeq =
+                mod.seq_kind ??
+                (mod.current_version_detail?.rows?.[0]?.cycle['seq'] as string | undefined)
               return (
                 <label
                   key={mod.id}
@@ -391,7 +413,9 @@ export function WIPoolWorkspace() {
                     </span>
                   )}
                   <span className="flex-1 truncate" title={mod.name_zh}>{mod.name_zh}</span>
-                  <b className="flex-shrink-0 text-[11px]" style={{ color: '#1a73e8' }}>{modTmu}T</b>
+                  <b className="flex-shrink-0 text-[11px]" style={{ color: '#1a73e8' }}>
+                    {modTmu != null ? `${modTmu}T` : '—'}
+                  </b>
                 </label>
               )
             })}
@@ -417,9 +441,10 @@ export function WIPoolWorkspace() {
             {composerModules.length > 0 && (
               <span className="text-xs text-slate-500">
                 共{' '}
-                <b style={{ color: '#1a73e8' }}>{totalComposerTmu}</b>T
+                <b style={{ color: '#1a73e8' }}>{totalComposerTmu ?? '—'}</b>
+                {totalComposerTmu != null ? 'T' : ''}
                 {' · '}
-                {(totalComposerTmu * 0.036).toFixed(2)}s
+                {totalComposerTmu != null ? (totalComposerTmu * 0.036).toFixed(2) + 's' : '—'}
               </span>
             )}
           </div>
@@ -432,7 +457,7 @@ export function WIPoolWorkspace() {
               </div>
             )}
             {composerModules.map((mod, i) => {
-              const modTmu = mod.total_tmu ?? 0
+              const modTmu = mod.total_tmu ?? null
               const isUnpublished = mod.status !== 'standard'
               return (
                 <div
@@ -452,7 +477,9 @@ export function WIPoolWorkspace() {
                       未發布
                     </span>
                   )}
-                  <b className="text-sm flex-shrink-0" style={{ color: '#1a73e8' }}>{modTmu}T</b>
+                  <b className="text-sm flex-shrink-0" style={{ color: '#1a73e8' }}>
+                    {modTmu != null ? `${modTmu}T` : '—'}
+                  </b>
                   <div className="flex gap-0.5 flex-shrink-0 items-center">
                     <button
                       onClick={() => moveUp(i)}

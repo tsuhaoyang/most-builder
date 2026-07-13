@@ -415,7 +415,8 @@ export function ProcessWorkspace() {
             )}
             {wiTemplates.map((mod: MotionModuleSummary) => {
               const isChecked = selected.has(mod.id)
-              const tmu = mod.total_tmu ?? 0
+              // top-level total_tmu / action_count 為後端摘要欄；null → '—'，不得假裝是 0
+              const tmu = mod.total_tmu ?? null
               return (
                 <label
                   key={mod.id}
@@ -436,9 +437,9 @@ export function ProcessWorkspace() {
                       {mod.name_zh}
                     </p>
                     <p className="text-slate-400">
-                      {mod.rows.length} 模組
+                      {mod.action_count ?? '—'} 模組
                       {' · '}
-                      <b style={{ color: '#1a73e8' }}>{tmu}</b>T
+                      <b style={{ color: '#1a73e8' }}>{tmu ?? '—'}</b>{tmu != null ? 'T' : ''}
                     </p>
                   </div>
                 </label>

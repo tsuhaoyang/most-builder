@@ -61,6 +61,7 @@ OQ-001~006、ADR-010~018：見 [decisions/README.md](decisions/README.md)。（A
 | [v3/verification-code-audit.md](v3/verification-code-audit.md) | **程式碼查證報告**：docs/v3 宣稱 vs ddm-v3 實碼逐條對照、更正 C-1~C-12、三層系統補充 | ✅ 2026-07-05 |
 | [v3/analysis/](v3/analysis/README.md) | **可執行規格庫**：v3 全功能萃取——core-logic CL-01~04＋features F-01~08（AI 可直接實作）＋DISC-01~15 討論清單＋reference 證據底稿 | ✅ 2026-07-05 |
 | [v3/reference/](v3/reference/) | v3 權威來源複本（**字典 JSON＝值權威**、wi-parser-upgrade） | 📌 參考 |
+| [v3/v3-to-v2-migration-audit-202607.md](v3/v3-to-v2-migration-audit-202607.md) | **移植審查報告**：P0 白屏崩潰＋前端 34 項對等性缺口（Playwright 實測＋agent 審查）、修復優先序與派工計畫 | 🔄 2026-07-12（核心邏輯/後端 API 章節待補） |
 
 > ⚠️ 值權威變更（ADR-014 proposed）：`v3/reference/minimost_ai_dictionary_v1.json` 為 MiniMOST 值的唯一權威；`sample_excel/` 降為歷史參考。
 

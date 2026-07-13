@@ -8,7 +8,7 @@ import uuid
 from datetime import datetime
 from typing import Any, Literal
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, model_validator
 
 from ddm_v2.schemas.v2.most import CycleIn
 
@@ -29,11 +29,23 @@ class ModuleRowIn(BaseModel):
 
 # ── 發布請求 ─────────────────────────────────────────────────────────
 class PublishRequest(BaseModel):
-    """POST /motion-modules/{id}/publish body。"""
+    """POST /motion-modules/{id}/publish body。
+
+    rule_set_id / rule_set_code 恰好擇一（F-01 契約）：
+    - rule_set_id：直接指定規則版本 UUID。
+    - rule_set_code：由 service 解析成 id（找不到 → 404）。
+    """
 
     # SM-2：max_length=100 防止惡意發布數千列導致引擎 OOM。
     rows: list[ModuleRowIn] = Field(..., min_length=1, max_length=100)
-    rule_set_id: uuid.UUID           # 發布當下使用的規則版本 ID
+    rule_set_id: uuid.UUID | None = None      # 發布當下使用的規則版本 ID
+    rule_set_code: str | None = None          # 或以 code 指定（service 解析）
+
+    @model_validator(mode="after")
+    def _exactly_one_rule_set_ref(self) -> "PublishRequest":
+        if (self.rule_set_id is None) == (self.rule_set_code is None):
+            raise ValueError("rule_set_id 與 rule_set_code 必須恰好提供一個")
+        return self
 
 
 # ── apply-back 請求（工序表同步回模組庫） ────────────────────────────
@@ -113,6 +125,13 @@ class MotionModuleResponse(BaseModel):
     created_at: datetime
     updated_at: datetime
     current_version_detail: MotionModuleVersionResponse | None = None
+    # F-02b 輕量摘要欄（自 current version 回填；尚無發布版本時 None）
+    total_tmu: float | None = None
+    action_count: int | None = None
+    # 摘要欄：取 current version rows[0] 的 cycle seq（"GM"/"CM"）與 hand（"LH"/"RH"/"BH"）；
+    # 無版本/無 rows → None。
+    seq_kind: str | None = None
+    hand: str | None = None
 
     model_config = {"from_attributes": True}
 

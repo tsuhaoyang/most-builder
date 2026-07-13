@@ -95,21 +95,40 @@ class ModuleIsStandard(Exception):
 def _module_to_response(
     m: MotionModule,
     version: MotionModuleVersion | None = None,
+    *,
+    include_detail: bool = True,
 ) -> MotionModuleResponse:
+    """組 MotionModuleResponse。
+
+    F-02b：version 有值時一律回填輕量摘要欄 total_tmu / action_count；
+    include_detail=False 時省略完整 current_version_detail（list 端點用，避免 payload 過大）。
+    """
     ver_detail = None
+    total_tmu: float | None = None
+    action_count: int | None = None
+    seq_kind: str | None = None
+    hand: str | None = None
     if version is not None:
-        ver_detail = MotionModuleVersionResponse(
-            id=version.id,
-            module_id=version.module_id,
-            version_no=version.version_no,
-            rule_set_id=version.rule_set_id,
-            rows=list(version.rows),
-            narrative_zh=version.narrative_zh,
-            total_tmu=float(version.total_tmu),
-            total_seconds=float(version.total_seconds),
-            published_by=version.published_by,
-            published_at=version.published_at,
-        )
+        total_tmu = float(version.total_tmu)
+        action_count = len(version.rows)
+        # 摘要欄：取 rows[0] 的 cycle seq 與 hand（同一趟資料回填，不加新查詢）
+        if version.rows:
+            first_row = version.rows[0]
+            seq_kind = (first_row.get("cycle") or {}).get("seq")
+            hand = first_row.get("hand")
+        if include_detail:
+            ver_detail = MotionModuleVersionResponse(
+                id=version.id,
+                module_id=version.module_id,
+                version_no=version.version_no,
+                rule_set_id=version.rule_set_id,
+                rows=list(version.rows),
+                narrative_zh=version.narrative_zh,
+                total_tmu=float(version.total_tmu),
+                total_seconds=float(version.total_seconds),
+                published_by=version.published_by,
+                published_at=version.published_at,
+            )
     return MotionModuleResponse(
         id=m.id,
         site_id=m.site_id,
@@ -123,7 +142,32 @@ def _module_to_response(
         created_at=m.created_at,
         updated_at=m.updated_at,
         current_version_detail=ver_detail,
+        total_tmu=total_tmu,
+        action_count=action_count,
+        seq_kind=seq_kind,
+        hand=hand,
     )
+
+
+async def _current_versions_map(
+    session: AsyncSession,
+    modules: list[MotionModule],
+) -> dict[uuid.UUID, MotionModuleVersion]:
+    """一次撈齊各 module 的 current version（單一 tuple-IN 查詢，避免 N+1）。"""
+    pairs = [(m.id, m.current_version) for m in modules if m.current_version > 0]
+    if not pairs:
+        return {}
+    from sqlalchemy import tuple_
+
+    res = await session.execute(
+        select(MotionModuleVersion).where(
+            tuple_(
+                MotionModuleVersion.module_id,
+                MotionModuleVersion.version_no,
+            ).in_(pairs)
+        )
+    )
+    return {v.module_id: v for v in res.scalars().all()}
 
 
 def _version_to_response(v: MotionModuleVersion) -> MotionModuleVersionResponse:
@@ -215,8 +259,13 @@ async def list_modules(
     q: str | None = None,
     scope: str | None = None,
     category: str | None = None,
+    status: str | None = None,
 ) -> list[MotionModuleResponse]:
-    """列出可見模組（global/site 全可見；personal 只顯示自己的）。"""
+    """列出可見模組（global/site 全可見；personal 只顯示自己的）。
+
+    F-02b：支援 status 過濾；每筆回填輕量摘要欄 total_tmu / action_count
+    （自 current version，單一 tuple-IN 查詢撈齊，避免 N+1）。
+    """
     from sqlalchemy import and_, or_
 
     stmt = select(MotionModule)
@@ -238,9 +287,13 @@ async def list_modules(
     if category:
         stmt = stmt.where(MotionModule.category == category)
 
+    if status:
+        stmt = stmt.where(MotionModule.status == status)
+
+    modules: list[MotionModule] | None = None
     if q:
         # Fix-1：直接在 motion_modules 表用 pg_trgm similarity 排序，
-        # scope/category WHERE 已在上方加入 stmt，不會被截斷。
+        # scope/category/status WHERE 已在上方加入 stmt，不會被截斷。
         # Fix-2：trgm 不可用時降級到 ILIKE。
         from sqlalchemy import func as sa_func
         stmt_q = stmt.where(
@@ -251,7 +304,6 @@ async def list_modules(
         try:
             result = await session.execute(stmt_q)
             modules = list(result.scalars().all())
-            return [_module_to_response(m) for m in modules]
         except Exception:
             # trgm 不可用時降級到 ILIKE
             stmt = stmt.where(MotionModule.name_zh.ilike(f"%{q}%"))
@@ -259,9 +311,15 @@ async def list_modules(
     else:
         stmt = stmt.order_by(MotionModule.updated_at.desc())
 
-    result = await session.execute(stmt)
-    modules = list(result.scalars().all())
-    return [_module_to_response(m) for m in modules]
+    if modules is None:
+        result = await session.execute(stmt)
+        modules = list(result.scalars().all())
+
+    vmap = await _current_versions_map(session, modules)
+    return [
+        _module_to_response(m, vmap.get(m.id), include_detail=False)
+        for m in modules
+    ]
 
 
 async def update_module(
@@ -456,12 +514,19 @@ async def publish_version(
     if m.status == "retired":
         raise ModuleNotEditable("module status=retired 不可發布新版本")
 
-    # 載入 rule set
-    rs_row = (await session.execute(
-        select(RuleSet).where(RuleSet.id == data.rule_set_id)
-    )).scalar_one_or_none()
-    if rs_row is None:
-        raise RuleSetNotFound(str(data.rule_set_id))
+    # 載入 rule set（F-01：id / code 擇一，schema 已保證恰好一個有值）
+    if data.rule_set_code is not None:
+        rs_row = (await session.execute(
+            select(RuleSet).where(RuleSet.code == data.rule_set_code)
+        )).scalar_one_or_none()
+        if rs_row is None:
+            raise RuleSetNotFound(data.rule_set_code)
+    else:
+        rs_row = (await session.execute(
+            select(RuleSet).where(RuleSet.id == data.rule_set_id)
+        )).scalar_one_or_none()
+        if rs_row is None:
+            raise RuleSetNotFound(str(data.rule_set_id))
     rsdata = await load_rule_set_from_db(session, rs_row.code)
 
     # 驗證每列 cycle + 算 tmu
@@ -500,7 +565,7 @@ async def publish_version(
         id=uuid.uuid4(),
         module_id=module_id,
         version_no=new_version_no,
-        rule_set_id=data.rule_set_id,
+        rule_set_id=rs_row.id,
         rows=validated_rows,
         narrative_zh=None,    # 可重生快取；publish 時暫略（需 vocab 名才能產）
         total_tmu=total_tmu,
@@ -537,7 +602,7 @@ async def publish_version(
         async with session.begin_nested():
             await session.execute(upsert_sql, {
                 "ref_id": str(module_id),
-                "rule_set_id": str(data.rule_set_id),
+                "rule_set_id": str(rs_row.id),
                 "content": content,
                 "scope": m.scope,
                 "owner": m.owner,

@@ -18,7 +18,7 @@ from __future__ import annotations
 
 import uuid
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from ddm_v2.auth.deps import CurrentUser, current_user, require_role
@@ -47,10 +47,13 @@ async def list_modules(
     q: str | None = None,
     scope: str | None = None,
     category: str | None = None,
+    status: str | None = Query(None),
     session: AsyncSession = Depends(get_db_session),
     user: CurrentUser = Depends(current_user),
 ) -> list[MotionModuleResponse]:
-    return await svc.list_modules(session, user.employee_no, q=q, scope=scope, category=category)
+    return await svc.list_modules(
+        session, user.employee_no, q=q, scope=scope, category=category, status=status
+    )
 
 
 # ── 建立 ─────────────────────────────────────────────────────────────

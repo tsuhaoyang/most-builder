@@ -103,6 +103,7 @@ async def load_options_from_db(session: Any, code: str) -> dict[str, Any]:
 
     a = await rows(rt.RuleABand)
     return {
+        "id": str(rs.id),
         "code": rs.code,
         "multiplier": float(rs.system_tmu_multiplier),
         "a_bands": {

@@ -22,6 +22,7 @@ from sqlalchemy.orm import selectinload
 
 from ddm_v2.auth.deps import CurrentUser, current_user, require_role
 from ddm_v2.database import get_db_session
+from ddm_v2.models.v2.motion_module import MotionModule, MotionModuleVersion
 from ddm_v2.models.v2.wi_set import WiSetItem, WiSetProject
 from ddm_v2.schemas.v2.wi_set import (
     ReorderRequest,
@@ -35,6 +36,41 @@ from ddm_v2.schemas.v2.wi_set import (
 router = APIRouter(prefix="/api/v2", tags=["v2-wi-set"])
 
 # ── 內部工具 ──────────────────────────────────────────────────────────
+
+
+async def _resolve_template_snapshots(
+    session: AsyncSession, wi_template_id: uuid.UUID
+) -> dict:
+    """由 motion module（＋current version）解析快照欄（F-02a 伺服器端快照）。
+
+    module 不存在 → 404。尚無發布版本（current_version=0）→ 計數/TMU 皆 0。
+    """
+    module = await session.get(MotionModule, wi_template_id)
+    if module is None:
+        raise HTTPException(
+            status_code=404, detail=f"組件模組不存在：{wi_template_id}"
+        )
+    version: MotionModuleVersion | None = None
+    if module.current_version > 0:
+        version = (
+            await session.execute(
+                select(MotionModuleVersion).where(
+                    MotionModuleVersion.module_id == module.id,
+                    MotionModuleVersion.version_no == module.current_version,
+                )
+            )
+        ).scalar_one_or_none()
+    # 值權威：total_seconds 直接讀引擎 publish 時算好的 version.total_seconds
+    # （Numeric(12,4)），不在 route 內重算 TMU→秒。
+    return {
+        "wi_name_snapshot": module.name_zh,
+        "wi_code_snapshot": None,  # motion_modules 尚無 code 欄
+        "action_count_snapshot": len(version.rows) if version is not None else 0,
+        "total_tmu_snapshot": float(version.total_tmu) if version is not None else 0.0,
+        "total_seconds_snapshot": (
+            float(version.total_seconds) if version is not None else 0.0
+        ),
+    }
 
 
 async def _get_project_or_404(
@@ -188,12 +224,31 @@ async def add_item(
     session: AsyncSession = Depends(get_db_session),
     _: CurrentUser = Depends(require_role("analyst")),
 ) -> WiSetItemOut:
+    """新增條目。
+
+    快照規則（F-02a，值權威原則）：
+    - wi_template_id 有值 → 快照一律由伺服器從 motion module 解析回填，
+      忽略 client 送來的快照值（避免 client 端算值繞過 most_engine 權威）。
+    - wi_template_id 無值（手動條目）→ 使用 client 快照值（未給的數值欄預設 0）。
+    """
     # 確認專案存在
     result = await session.execute(
         select(WiSetProject).where(WiSetProject.id == project_id)
     )
     if result.scalar_one_or_none() is None:
         raise HTTPException(status_code=404, detail=f"專案不存在：{project_id}")
+
+    # 快照解析
+    if payload.wi_template_id is not None:
+        snaps = await _resolve_template_snapshots(session, payload.wi_template_id)
+    else:
+        snaps = {
+            "wi_name_snapshot": payload.wi_name_snapshot,  # schema 已驗證必填
+            "wi_code_snapshot": payload.wi_code_snapshot,
+            "action_count_snapshot": payload.action_count_snapshot or 0,
+            "total_tmu_snapshot": payload.total_tmu_snapshot or 0.0,
+            "total_seconds_snapshot": payload.total_seconds_snapshot or 0.0,
+        }
 
     # max(seq_no) + 1
     max_seq = (
@@ -209,12 +264,8 @@ async def add_item(
         project_id=project_id,
         seq_no=next_seq,
         wi_template_id=payload.wi_template_id,
-        wi_code_snapshot=payload.wi_code_snapshot,
-        wi_name_snapshot=payload.wi_name_snapshot,
-        action_count_snapshot=payload.action_count_snapshot,
-        total_tmu_snapshot=payload.total_tmu_snapshot,
-        total_seconds_snapshot=payload.total_seconds_snapshot,
         notes=payload.notes,
+        **snaps,
     )
     session.add(item)
     await session.flush()

@@ -7,7 +7,7 @@ from __future__ import annotations
 import uuid
 from datetime import datetime
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, model_validator
 
 
 # ── 專案建立 / 更新 ──────────────────────────────────────────────────
@@ -42,15 +42,27 @@ class WiSetProjectUpdate(BaseModel):
 # ── 條目建立 ────────────────────────────────────────────────────────
 
 class WiSetItemCreate(BaseModel):
-    """POST /wi-set-projects/{id}/items body。"""
+    """POST /wi-set-projects/{id}/items body。
+
+    F-02a 契約（值權威原則）：
+    - 有 wi_template_id → 快照由伺服器從 motion module（含 current version）解析回填，
+      client 送來的快照值一律忽略。
+    - 無 wi_template_id（手動條目）→ wi_name_snapshot 必填，其餘快照欄選填（預設 0）。
+    """
 
     wi_template_id: uuid.UUID | None = None
     wi_code_snapshot: str | None = None
-    wi_name_snapshot: str = Field(..., min_length=1, max_length=300)
-    action_count_snapshot: int = Field(0, ge=0)
-    total_tmu_snapshot: float = Field(0.0, ge=0)
-    total_seconds_snapshot: float = Field(0.0, ge=0)
+    wi_name_snapshot: str | None = Field(None, min_length=1, max_length=300)
+    action_count_snapshot: int | None = Field(None, ge=0)
+    total_tmu_snapshot: float | None = Field(None, ge=0)
+    total_seconds_snapshot: float | None = Field(None, ge=0)
     notes: str | None = None
+
+    @model_validator(mode="after")
+    def _manual_item_requires_name(self) -> "WiSetItemCreate":
+        if self.wi_template_id is None and self.wi_name_snapshot is None:
+            raise ValueError("無 wi_template_id 時 wi_name_snapshot 必填")
+        return self
 
 
 # ── 輸出 ─────────────────────────────────────────────────────────────

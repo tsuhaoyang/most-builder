@@ -13,6 +13,7 @@ import { MostWorkbenchV3 } from './features/workbench-v3/MostWorkbenchV3'
 import { CasesPage } from './features/cases/CasesPage'
 import { DictionariesPage } from './features/dictionaries/DictionariesPage'
 import { WISetBuilderPage } from './features/wi-project/WISetBuilderPage'
+import { ErrorBoundary } from './shared/ui/ErrorBoundary'
 
 export default function App() {
   const [tab, setTab] = useState<string>('wi')
@@ -58,10 +59,21 @@ export default function App() {
       canEdit={canEdit(me)}
       onImportClick={() => setImportOpen(true)}
     >
-      {/* WorksheetBar sits above the active feature panel, inside the scrollable main area */}
-      <WorksheetBar />
       {importOpen && <ImportModal onClose={() => setImportOpen(false)} />}
-      {renderContent()}
+      {/* key={tab} remounts the boundary on tab switch → error state auto-clears.
+          WorksheetBar 也包進 boundary（review #3）：它的 render 錯誤同樣不得白屏。
+          reset 目標與當前 tab 相同時 setTab 是 no-op → 改 full reload（review #4）。 */}
+      <ErrorBoundary
+        key={tab}
+        onReset={() => {
+          if (tab === 'wi') window.location.reload()
+          else setTab('wi')
+        }}
+      >
+        {/* WorksheetBar sits above the active feature panel, inside the scrollable main area */}
+        <WorksheetBar />
+        {renderContent()}
+      </ErrorBoundary>
     </AppLayout>
   )
 }

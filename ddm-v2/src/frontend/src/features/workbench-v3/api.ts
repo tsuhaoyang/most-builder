@@ -27,36 +27,69 @@ export interface MotionModuleRow {
   hand: string
   frequency: number
   cycle: Record<string, unknown>
-  sub_activity: string
+  sub_activity: string | null
+  simo_pair_index?: number | null
+  vocab_refs?: Record<string, unknown>
 }
 
+/** MotionModuleVersionResponse — GET /motion-modules/{id} 的 current_version_detail */
+export interface MotionModuleVersionDetail {
+  id: string
+  module_id: string
+  version_no: number
+  rule_set_id: string
+  rows: MotionModuleRow[]
+  narrative_zh: string | null
+  total_tmu: number
+  total_seconds: number
+  published_by: string
+  published_at: string
+}
+
+/**
+ * MotionModuleResponse 合約（audit §0.1 更正版）：
+ * rows 巢狀於 current_version_detail —— list 端點該欄=null，detail (GET /{id})
+ * 才有；top-level total_tmu / action_count 為後端摘要欄（list + detail 皆有，
+ * 模組尚無已發布版本時為 null）。後端從不回傳 top-level rows。
+ */
 export interface MotionModuleSummary {
   id: string
   name_zh: string
-  category?: string
+  category?: string | null
   keywords: string[]
   scope: string
-  owner?: string
+  owner?: string | null
   status: string
+  /** 後端 response 無此欄；僅作前端防禦保留（badge 不渲染即可） */
   source?: string
-  rows: MotionModuleRow[]
-  total_tmu?: number
+  current_version?: number
+  /** 後端摘要欄：無已發布版本時為 null → UI 顯示 '—'，不得假裝是 0 */
+  total_tmu?: number | null
+  action_count?: number | null
+  /** 後端摘要欄（取 current version 第一列）：'GM' | 'CM'；無版本時 null */
+  seq_kind?: string | null
+  /** 後端摘要欄（取 current version 第一列）：hand code；無版本時 null */
+  hand?: string | null
+  current_version_detail?: MotionModuleVersionDetail | null
+  /** @deprecated 後端從不回傳 top-level rows；顯示邏輯請走 total_tmu / action_count / current_version_detail */
+  rows?: MotionModuleRow[]
 }
 
 export interface CreateModuleBody {
+  // 對齊後端 MotionModuleCreate：無 rows/status/source 欄位（rows 走 publish）
   name_zh: string
   category?: string
   keywords: string[]
   scope: string
   owner?: string
-  rows: MotionModuleRow[]
-  status?: string
-  source?: string
+  site_id?: string | null
 }
 
 export interface PublishModuleBody {
   rows: MotionModuleRow[]
+  /** rule_set_id（UUID）與 rule_set_code 二擇一 */
   rule_set_id?: string
+  rule_set_code?: string
 }
 
 export interface ModuleFilters {
@@ -83,6 +116,15 @@ export const useMotionModules = (filters?: ModuleFilters) => {
       apiGet<MotionModuleSummary[]>(`/api/v2/motion-modules${qs ? '?' + qs : ''}`),
   })
 }
+
+/** 單一模組 detail（含 current_version_detail.rows）；list 不含 rows 時用此撈明細 */
+export const useMotionModuleDetail = (id: string | null, enabled = true) =>
+  useQuery({
+    queryKey: [QK, 'detail', id],
+    queryFn: () => apiGet<MotionModuleSummary>(`/api/v2/motion-modules/${id}`),
+    enabled: !!id && enabled,
+    staleTime: 300_000,
+  })
 
 // ── Mutations ─────────────────────────────────────────────────────────────────
 
@@ -188,19 +230,8 @@ export const useInstantiateToWorksheet = () => {
 
 // ── Apply-back（F-03b §3）：從工序表列發布模組新版本 ─────────────────────
 
-/** POST /motion-modules/{id}/versions/from-rows 的回應 */
-export interface VersionFromRowsResult {
-  id: string
-  module_id: string
-  version_no: number
-  rule_set_id: string
-  rows: unknown[]
-  narrative_zh: string | null
-  total_tmu: number
-  total_seconds: number
-  published_by: string
-  published_at: string
-}
+/** POST /motion-modules/{id}/versions/from-rows 的回應（同版本 detail 形狀） */
+export type VersionFromRowsResult = MotionModuleVersionDetail
 
 /** 送給 from-rows 的單列資料（slot_inputs 即 CycleIn JSON，直接回傳後端） */
 export interface ApplyBackRowIn {

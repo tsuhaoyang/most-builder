@@ -10,7 +10,7 @@ import {
 } from '../wi-workbench/cycle'
 import { ComboBox } from '../../shared/ui/ComboBox'
 import { Hint } from '../../shared/ui/Hint'
-import { apiPost } from '../../shared/api/client'
+import { apiGet, apiPost } from '../../shared/api/client'
 import {
   useMotionModules,
   useCreateModule,
@@ -91,6 +91,7 @@ export function ActionModuleWorkspace() {
   const [searchQ, setSearchQ] = useState('')
   const [debouncedQ, setDebouncedQ] = useState('')
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set())
+  const [loadingModuleId, setLoadingModuleId] = useState<string | null>(null)
 
   // Debounce searchQ → debouncedQ (300ms), then let API do the filtering
   useEffect(() => {
@@ -328,23 +329,27 @@ export function ActionModuleWorkspace() {
 
     try {
       if (editingModuleId) {
+        // 後端 MotionModuleUpdate 無 rows/source 欄位；列內容變更走 publish（發新版本）
         await updateModule.mutateAsync({
           id: editingModuleId,
-          body: { name_zh: moduleNameZh.trim(), rows: [row], source },
+          body: { name_zh: moduleNameZh.trim() },
+        })
+        await publishModule.mutateAsync({
+          id: editingModuleId,
+          body: { rows: [row], rule_set_code: opts.code },
         })
         showToast('已更新模組：' + moduleNameZh.trim(), 'ok')
       } else {
+        // 後端 MotionModuleCreate 無 rows/status/source 欄位；rows 由 publish 建立版本
         const created = await createModule.mutateAsync({
           name_zh: moduleNameZh.trim(),
           scope: 'personal',
           keywords: [],
-          rows: [row],
-          source,
         })
         // Publish after creation
         await publishModule.mutateAsync({
           id: created.id,
-          body: { rows: [row], rule_set_id: opts.code },
+          body: { rows: [row], rule_set_code: opts.code },
         })
         showToast('已新增至 Pool：' + moduleNameZh.trim(), 'ok')
       }
@@ -355,14 +360,26 @@ export function ActionModuleWorkspace() {
   }
 
   // ── Load module into builder ──────────────────────────────────────────────────
-  function loadModule(mod: MotionModuleSummary) {
-    const row = mod.rows[0]
-    if (!row) return
-    const next = payloadToState(row.cycle)
-    setCur({ ...next, handCode: row.hand, freq: row.frequency })
-    setModuleNameZh(mod.name_zh)
-    setEditingModuleId(mod.id)
-    setSource((mod.source as 'manual' | 'ai' | 'copied') ?? 'manual')
+  // list 端點不含 rows（rows 巢狀於 detail 的 current_version_detail）→ 先 fetch detail
+  async function loadModule(mod: MotionModuleSummary) {
+    setLoadingModuleId(mod.id)
+    try {
+      const detail = await apiGet<MotionModuleSummary>(`/api/v2/motion-modules/${mod.id}`)
+      const row = detail.current_version_detail?.rows?.[0]
+      if (!row) {
+        showToast('此模組尚無已發布版本', 'err')
+        return
+      }
+      const next = payloadToState(row.cycle)
+      setCur({ ...next, handCode: row.hand, freq: row.frequency })
+      setModuleNameZh(mod.name_zh)
+      setEditingModuleId(mod.id)
+      setSource((detail.source as 'manual' | 'ai' | 'copied') ?? 'manual')
+    } catch (err) {
+      showToast('載入模組失敗：' + (err as Error).message, 'err')
+    } finally {
+      setLoadingModuleId(null)
+    }
   }
 
   // ── Delete module ─────────────────────────────────────────────────────────────
@@ -404,15 +421,23 @@ export function ActionModuleWorkspace() {
   }
 
   // ── Module card helpers ───────────────────────────────────────────────────────
+  // seq/hand 優先讀後端 top-level 摘要欄（list 端點也有），fallback
+  // current_version_detail 第一列；都拿不到顯示 '—'，不得假裝是 0（audit §0.1）
   function getModuleSeq(mod: MotionModuleSummary): string {
-    const seq = mod.rows[0]?.cycle?.seq
+    if (typeof mod.seq_kind === 'string' && mod.seq_kind) return mod.seq_kind
+    const seq = mod.current_version_detail?.rows?.[0]?.cycle?.seq
     return typeof seq === 'string' ? seq : '—'
   }
 
-  function getModuleTmu(mod: MotionModuleSummary): number {
-    if (mod.total_tmu != null) return mod.total_tmu
-    const tmuVal = mod.rows[0]?.cycle?.total_tmu
-    return typeof tmuVal === 'number' ? tmuVal : 0
+  /** TMU 摘要走 top-level total_tmu；null（無已發布版本）→ 回 null 讓 UI 顯示 '—' */
+  function getModuleTmu(mod: MotionModuleSummary): number | null {
+    return mod.total_tmu ?? null
+  }
+
+  function getModuleHand(mod: MotionModuleSummary): string {
+    const hand = mod.hand ?? mod.current_version_detail?.rows?.[0]?.hand
+    if (!hand) return '—'
+    return HAND_NAME[hand] ?? hand
   }
 
   // ── Sentence line style ───────────────────────────────────────────────────────
@@ -603,7 +628,7 @@ export function ActionModuleWorkspace() {
                             {modSeq}
                           </span>
                           <span className="text-xs px-1.5 py-0.5 rounded bg-slate-100 text-slate-600">
-                            {HAND_NAME[mod.rows[0]?.hand] ?? mod.rows[0]?.hand ?? '—'}
+                            {getModuleHand(mod)}
                           </span>
                           {mod.source === 'ai' && (
                             <span className="text-xs px-1.5 py-0.5 rounded bg-violet-100 text-violet-700">
@@ -622,7 +647,7 @@ export function ActionModuleWorkspace() {
                             {mod.name_zh}
                           </span>
                           <b className="text-sm flex-shrink-0" style={{ color: '#1a73e8' }}>
-                            {modTmu}T
+                            {modTmu != null ? `${modTmu}T` : '—'}
                           </b>
                         </div>
                       </div>
@@ -631,9 +656,10 @@ export function ActionModuleWorkspace() {
                     <div className="flex gap-1 mt-2">
                       <button
                         onClick={() => loadModule(mod)}
-                        className="text-xs px-2 py-0.5 border rounded hover:bg-slate-50"
+                        disabled={loadingModuleId !== null}
+                        className="text-xs px-2 py-0.5 border rounded hover:bg-slate-50 disabled:opacity-40"
                       >
-                        編輯
+                        {loadingModuleId === mod.id ? '載入中…' : '編輯'}
                       </button>
                       <button
                         onClick={() => handleClone(mod.id, mod.name_zh)}

@@ -992,3 +992,146 @@ async def test_promote_analyst_returns_403(client):
     h = {"X-Username": analyst_user}
     r = await client.post(f"/api/v2/motion-modules/{mid}/promote", headers=h)
     assert r.status_code == 403, r.text
+
+
+# ── F-01：publish 接受 rule_set_code ─────────────────────────────────
+
+async def test_publish_with_rule_set_code(client):
+    """publish 以 rule_set_code 指定規則版本 → service 解析成 id。"""
+    rs = await client.get("/api/v2/rule-sets")
+    if rs.status_code != 200 or not rs.json():
+        pytest.skip("DB 無 rule_set，略過")
+    rs_code = rs.json()[0]["code"]
+    rs_id = rs.json()[0]["id"]
+
+    r = await client.post("/api/v2/motion-modules", json={
+        "name_zh": "UT-Pub-ByCode",
+        "scope": "global",
+    })
+    mid = r.json()["id"]
+    pub = await client.post(f"/api/v2/motion-modules/{mid}/publish", json={
+        "rule_set_code": rs_code,
+        "rows": [{
+            "hand": "RH",
+            "frequency": 1,
+            "vocab_refs": {},
+            "cycle": {"seq": "GM", "rule_set_code": "MINIMOST_FACTORY_V2"},
+        }],
+    })
+    assert pub.status_code == 201, pub.text
+    assert pub.json()["rule_set_id"] == rs_id  # code 已解析為 id
+
+
+async def test_publish_with_unknown_rule_set_code_404(client):
+    """publish 以不存在的 rule_set_code → 404。"""
+    r = await client.post("/api/v2/motion-modules", json={
+        "name_zh": "UT-Pub-BadCode",
+        "scope": "global",
+    })
+    mid = r.json()["id"]
+    pub = await client.post(f"/api/v2/motion-modules/{mid}/publish", json={
+        "rule_set_code": "NO_SUCH_RULE_SET",
+        "rows": [{
+            "hand": "RH",
+            "frequency": 1,
+            "vocab_refs": {},
+            "cycle": {"seq": "GM", "rule_set_code": "MINIMOST_FACTORY_V2"},
+        }],
+    })
+    assert pub.status_code == 404, pub.text
+
+
+async def test_publish_with_both_id_and_code_422(client):
+    """rule_set_id 與 rule_set_code 同時給 → 422（恰好擇一）。"""
+    rs_id = await _get_rule_set_id(client)
+    if rs_id is None:
+        pytest.skip("DB 無 rule_set，略過")
+    r = await client.post("/api/v2/motion-modules", json={
+        "name_zh": "UT-Pub-Both",
+        "scope": "global",
+    })
+    mid = r.json()["id"]
+    pub = await client.post(f"/api/v2/motion-modules/{mid}/publish", json={
+        "rule_set_id": rs_id,
+        "rule_set_code": "MINIMOST_FACTORY_V2",
+        "rows": [{
+            "hand": "RH",
+            "frequency": 1,
+            "vocab_refs": {},
+            "cycle": {"seq": "GM", "rule_set_code": "MINIMOST_FACTORY_V2"},
+        }],
+    })
+    assert pub.status_code == 422, pub.text
+
+
+# ── F-02b：list status 過濾 + 輕量摘要欄 ─────────────────────────────
+
+async def test_list_status_filter_and_summary_fields(client):
+    """list 支援 ?status= 過濾；有版本的模組回填 total_tmu / action_count。"""
+    rs_id = await _get_rule_set_id(client)
+    if rs_id is None:
+        pytest.skip("DB 無 rule_set，略過")
+
+    sfx = uuid.uuid4().hex[:6]
+    r = await client.post("/api/v2/motion-modules", json={
+        "name_zh": f"UT-Summary-{sfx}",
+        "scope": "global",
+    })
+    mid = r.json()["id"]
+    pub = await client.post(f"/api/v2/motion-modules/{mid}/publish", json={
+        "rule_set_id": rs_id,
+        "rows": [{
+            "hand": "RH",
+            "frequency": 1,
+            "vocab_refs": {},
+            "cycle": {
+                "seq": "GM",
+                "rule_set_code": "MINIMOST_FACTORY_V2",
+                "a0": {"reach_cm": 30},
+                "g2": {"g_code": "g_grasp"},
+                "a3": {"reach_cm": 40},
+                "p5": {"p_base_code": "p_place_single"},
+                "a6": {"reach_cm": 0},
+            },
+        }],
+    })
+    assert pub.status_code == 201, pub.text
+    expected_tmu = float(pub.json()["total_tmu"])
+
+    # status 過濾：draft 應包含此模組
+    lst = await client.get("/api/v2/motion-modules?status=draft")
+    assert lst.status_code == 200, lst.text
+    assert all(x["status"] == "draft" for x in lst.json())
+    target = next((x for x in lst.json() if x["id"] == mid), None)
+    assert target is not None
+    # 輕量摘要欄回填
+    assert target["total_tmu"] == pytest.approx(expected_tmu)
+    assert target["action_count"] == 1
+    # list 不帶完整版本內容（輕量）
+    assert target["current_version_detail"] is None
+
+    # status 過濾：retired 不應包含此模組
+    lst2 = await client.get("/api/v2/motion-modules?status=retired")
+    assert mid not in [x["id"] for x in lst2.json()]
+
+    # detail 端點也回填摘要欄
+    detail = await client.get(f"/api/v2/motion-modules/{mid}")
+    assert detail.status_code == 200
+    assert detail.json()["total_tmu"] == pytest.approx(expected_tmu)
+    assert detail.json()["action_count"] == 1
+    assert detail.json()["current_version_detail"] is not None
+
+
+async def test_list_summary_none_for_unpublished(client):
+    """尚無發布版本的模組：total_tmu / action_count 為 None。"""
+    sfx = uuid.uuid4().hex[:6]
+    r = await client.post("/api/v2/motion-modules", json={
+        "name_zh": f"UT-NoVer-{sfx}",
+        "scope": "global",
+    })
+    mid = r.json()["id"]
+    lst = await client.get("/api/v2/motion-modules?status=draft")
+    target = next((x for x in lst.json() if x["id"] == mid), None)
+    assert target is not None
+    assert target["total_tmu"] is None
+    assert target["action_count"] is None

@@ -25,16 +25,29 @@ interface PoolModuleRow {
   hand: string
   frequency: number
   cycle: Record<string, unknown>
-  sub_activity: string
+  sub_activity: string | null
 }
 
-/** Shape returned by GET /api/v2/motion-modules?status=standard */
+/**
+ * Shape returned by GET /api/v2/motion-modules?status=standard
+ *
+ * 合約（audit §0.1 更正版）：rows 巢狀於 current_version_detail —— list 端點
+ * 該欄=null，detail (GET /{id}) 才有；top-level total_tmu / action_count 為
+ * 後端摘要欄（無已發布版本時為 null → UI 顯示 '—'，不得假裝是 0）。
+ */
 interface PoolModule {
   id: string
   name_zh: string
   status: string
-  rows: PoolModuleRow[]
-  total_tmu?: number
+  total_tmu?: number | null
+  action_count?: number | null
+  current_version_detail?: {
+    version_no: number
+    rows: PoolModuleRow[]
+    total_tmu: number
+    total_seconds?: number
+    narrative_zh?: string | null
+  } | null
 }
 
 interface WiSetItemOut {
@@ -203,14 +216,14 @@ function useUpdateProject() {
   })
 }
 
+/**
+ * POST /wi-set-projects/{pid}/items 只送 {wi_template_id, notes?}——
+ * 快照欄（wi_code/name/action_count/total_tmu/total_seconds）由伺服器
+ * 依模組當前版本回填（審查 8.2：前端不得自算快照）。
+ */
 interface AddItemPayload {
   projectId: string
-  wi_name_snapshot: string
-  wi_code_snapshot: string | null
-  action_count_snapshot: number
-  total_tmu_snapshot: number
-  total_seconds_snapshot: number
-  wi_template_id: string | null
+  wi_template_id: string
   notes: string | null
 }
 
@@ -409,9 +422,10 @@ function ProjectMetadataForm({ form, status, onChange, editable }: ProjectMetada
 
 // ─── Section B: WIPoolSearch ───────────────────────────────────────────────────
 
-/** Lazy-loaded expand sub-rows rendered directly into <tbody> */
+/** Lazy-loaded expand sub-rows rendered directly into <tbody>；rows 巢狀於 detail 的 current_version_detail */
 function ExpandedRows({ moduleId }: { moduleId: string }) {
   const { data, isLoading } = useModuleDetail(moduleId)
+  const rows = data?.current_version_detail?.rows
 
   if (isLoading) {
     return (
@@ -423,7 +437,7 @@ function ExpandedRows({ moduleId }: { moduleId: string }) {
     )
   }
 
-  if (!data?.rows?.length) {
+  if (!rows?.length) {
     return (
       <tr>
         <td colSpan={6} className="px-10 py-2 text-xs text-slate-400 bg-slate-50">
@@ -435,7 +449,7 @@ function ExpandedRows({ moduleId }: { moduleId: string }) {
 
   return (
     <>
-      {data.rows.map((row, i) => (
+      {rows.map((row, i) => (
         <tr key={i} className="bg-blue-50 text-xs">
           <td className="pl-10 p-1.5 text-slate-400">{i + 1}</td>
           <td className="p-1.5 text-slate-600 col-span-2">{row.sub_activity || '—'}</td>
@@ -569,12 +583,13 @@ function WIPoolSearch({ onAdd, adding }: WIPoolSearchProps) {
                     />
                   </td>
                   <td className="p-2 font-medium text-slate-800">{m.name_zh}</td>
-                  <td className="p-2 text-right text-slate-500">{m.rows?.length ?? 0}</td>
+                  {/* 後端摘要欄 total_tmu / action_count；null（無已發布版本）→ '—'，不得假裝是 0 */}
+                  <td className="p-2 text-right text-slate-500">{m.action_count ?? '—'}</td>
                   <td className="p-2 text-right font-mono">
-                    {(m.total_tmu ?? 0).toFixed(1)}
+                    {m.total_tmu != null ? m.total_tmu.toFixed(1) : '—'}
                   </td>
                   <td className="p-2 text-right font-mono text-slate-600">
-                    {((m.total_tmu ?? 0) * TMU_SEC).toFixed(3)}
+                    {m.total_tmu != null ? (m.total_tmu * TMU_SEC).toFixed(3) : '—'}
                   </td>
                   <td className="p-2">
                     <button
@@ -1012,16 +1027,11 @@ export function WISetBuilderPage() {
         flash('已自動建立專案')
       }
 
-      // POST each WI as an item
+      // POST each WI as an item — 只送 wi_template_id，快照由伺服器回填（審查 8.2）
       let addedCount = 0
       for (const m of modules) {
         await addItem.mutateAsync({
           projectId: pid,
-          wi_name_snapshot: m.name_zh,
-          wi_code_snapshot: m.id,
-          action_count_snapshot: m.rows?.length ?? 0,
-          total_tmu_snapshot: m.total_tmu ?? 0,
-          total_seconds_snapshot: (m.total_tmu ?? 0) * TMU_SEC,
           wi_template_id: m.id,
           notes: null,
         })
