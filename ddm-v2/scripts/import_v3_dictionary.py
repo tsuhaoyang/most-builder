@@ -44,7 +44,8 @@ M_VERB_MAP = {  # sentence_text_zh -> v2 code（ladder 類以動詞字歸組）
     "理": "m_li", "穿": "m_through", "推": "m_push", "拉": "m_pull", "貼附": "m_attach",
     "去除": "m_remove", "撕除": "m_teartape", "折": "m_fold", "擦拭": "m_wipe", "撕開": "m_tearopen",
 }
-M_FIXED_MAP = {"M_PRESS_BUTTON": "m_btn", "M_SLIDE_OUT_SCREW": "m_screw"}
+M_FIXED_MAP = {"M_PRESS_BUTTON": "m_btn", "M_SLIDE_OUT_SCREW": "m_screw",
+               "M_PRESS": "m_press"}  # M_PRESS：v3 現場字典同步 2026-07-14（按壓 / fixed 3 TMU）
 M_ROTATE_MAP = {  # option_code -> (max_dia, revolutions)
     "M_ROTATE_D12_1": (12.5, 1), "M_ROTATE_D12_2": (12.5, 2), "M_ROTATE_D12_3": (12.5, 3),
     "M_ROTATE_D50_1": (50.0, 1), "M_ROTATE_D50_2": (50.0, 2),
@@ -54,6 +55,7 @@ X_MAP = {
     "X_HOT_MELT_MACHINE": "x_heat", "X_DISPENSE_GLUE": "x_glue", "X_SCREW_FIX": "x_screw_fix",
     "X_LASER_MARK": "x_laser", "X_SCAN_PPID": "x_scan_ppid",
     "X_SCAN_WORK_ORDER_QR": "x_scan_wo", "X_SCAN_BARCODE": "x_scan_bar",
+    "X_BLOW_CLEAN": "x_blow_clean",  # v3 現場字典同步 2026-07-14（user-input-seconds 模式）
 }
 I_MAP = {
     "I_CHECK_NORMAL": "i_check", "I_CONFIRM_NORMAL": "i_confirm",
@@ -169,8 +171,10 @@ def convert() -> dict:
     mf_sorted = sorted(mf, key=lambda r: (r[0] is None, r[0] or 0))
     out["M_FOOT"] = [(mx, tmu, so) for so, (mx, tmu) in enumerate(mf_sorted)]
     # foot 動詞掛尾（走 M_FOOT 表）；hand 動詞
-    m_verb_rows.append(("m_hand", "手度", "hand", None, so, "")); so += 1
-    m_verb_rows.append(("m_foot", "腳步", "foot", None, so, "")); so += 1
+    m_verb_rows.append(("m_hand", "手度", "hand", None, so, ""))
+    so += 1
+    m_verb_rows.append(("m_foot", "腳步", "foot", None, so, ""))
+    so += 1
     out["M_VERBS"] = m_verb_rows
 
     # X：注入 x_none ＋ 九檔（code, label, mode, fixed_seconds, sort, sentence）
@@ -215,8 +219,8 @@ FOOTER = r'''
 # ───────────────────────── DB 插入 ─────────────────────────
 def seed_rule_set_factory_v2(session: Any) -> Any:
     """插入 V2 rule-set 與所有子表（published）。idempotent 由呼叫端以 code 查重。回傳 RuleSet。"""
-    from ddm_v2.models.v2.rule_set import RuleSet
     from ddm_v2.models.v2 import rule_set_tables as rt
+    from ddm_v2.models.v2.rule_set import RuleSet
 
     rs = RuleSet(id=uuid.uuid4(), code=RULE_SET["code"], name_zh=RULE_SET["name_zh"],
                  status="published", system_tmu_multiplier=RULE_SET["system_tmu_multiplier"])

@@ -1066,6 +1066,15 @@
               "helper_text_zh": "直徑<=50cm / 2圈",
               "input_type": "rotation",
               "tmu_value": 42
+            },
+            {
+              "option_code": "M_PRESS",
+              "display_text_zh": "按壓",
+              "sentence_text_zh": "按壓",
+              "helper_text_zh": "",
+              "input_type": "fixed_tmu",
+              "tmu_value": 3,
+              "source_note": "v3 現場字典同步 2026-07-14（v3 DB draft 版 v1_draft_202606290707 讀出：按壓 / fixed 3 TMU；IE 裁決補齊）"
             }
           ]
         },
@@ -1253,6 +1262,16 @@
           "fixed_seconds": 0.216,
           "tmu_value": 6,
           "calculation": "fixed_seconds / 0.036"
+        },
+        {
+          "option_code": "X_BLOW_CLEAN",
+          "display_text_zh": "並吹風清潔",
+          "sentence_text_zh": "並吹風清潔",
+          "seconds_source": "user_input_seconds",
+          "fixed_seconds": null,
+          "tmu_value": null,
+          "calculation": "user_input_seconds / 0.036",
+          "source_note": "v3 現場字典同步 2026-07-14（ddm-v3/apps/api/app/data/minimost_ai_dictionary_v1.json 逐字複製；IE 裁決補齊）"
         }
       ],
       "rules": [

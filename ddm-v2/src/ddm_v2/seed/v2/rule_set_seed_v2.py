@@ -111,8 +111,9 @@ M_VERBS = [
     ('m_wipe', '擦拭', 'ladder', None, 10, '擦拭'),
     ('m_tearopen', '撕開', 'ladder', None, 11, '撕開'),
     ('m_rotate', '旋轉', 'rotate', None, 12, '旋轉'),
-    ('m_hand', '手度', 'hand', None, 13, ''),
-    ('m_foot', '腳步', 'foot', None, 14, ''),
+    ('m_press', '按壓', 'fixed', 3, 13, '按壓'),
+    ('m_hand', '手度', 'hand', None, 14, ''),
+    ('m_foot', '腳步', 'foot', None, 15, ''),
 ]
 
 # max_diameter_cm, revolutions, tmu, sort ——無 D50 3圈/大直徑 overflow（殘項#2）
@@ -142,6 +143,7 @@ X_OPTIONS = [
     ('x_scan_ppid', '刷PPID', 'fixed', 0.216, 7, '刷PPID'),
     ('x_scan_wo', '刷工單二維碼', 'fixed', 0.216, 8, '刷工單二維碼'),
     ('x_scan_bar', '刷條形碼', 'fixed', 0.216, 9, '刷條形碼'),
+    ('x_blow_clean', '並吹風清潔', 'seconds', None, 10, '並吹風清潔'),
 ]
 
 # code, label_zh, index, sort, vision_scope, sentence_zh（i_none 為轉換器注入）
