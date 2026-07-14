@@ -95,8 +95,10 @@ export function ActionModuleWorkspace() {
   }, [searchQ])
 
   // API hooks
+  // 不帶 scope → 後端回「所有可見」（global/site＋自己的 personal）；
+  // 模組池應含共享標準模組（v3-import 認證庫），非僅個人草稿
   const { data: modules = [], isLoading: modulesLoading } = useMotionModules(
-    debouncedQ ? { scope: 'personal', q: debouncedQ } : { scope: 'personal' }
+    debouncedQ ? { q: debouncedQ } : {}
   )
   const createModule = useCreateModule()
   const updateModule = useUpdateModule()

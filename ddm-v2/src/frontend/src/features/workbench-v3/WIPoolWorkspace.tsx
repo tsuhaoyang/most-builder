@@ -151,7 +151,9 @@ export function WIPoolWorkspace() {
     useWorkbenchV3Store()
 
   // API hooks
-  const { data: l1Modules = [], isLoading: l1Loading } = useMotionModules({ scope: 'personal' })
+  // 不帶 scope → 後端回「所有可見」（global/site 全可見＋自己的 personal），
+  // 模組池應含共享標準模組（如 v3-import 的認證庫），非僅個人草稿
+  const { data: l1Modules = [], isLoading: l1Loading } = useMotionModules({})
   const { data: wiTemplates = [], isLoading: wiLoading } = useWiTemplates()
   const createWiTemplate = useCreateWiTemplate()
   const publishModule = usePublishModule()
