@@ -12,6 +12,7 @@ import {
 } from './api'
 import { useWorkbenchV3Store } from './store'
 import { useWorkspace } from '../../shared/workspace'
+import { GoToCasesButton } from '../../shared/ui/WorksheetRequiredNotice'
 import { useWorksheet } from '../wi-workbench/api'
 import type { WsReadRow } from '../wi-workbench/api'
 
@@ -242,7 +243,7 @@ export function ProcessWorkspace() {
 
   async function handleAddToProcess() {
     if (!activeWs) {
-      showToast('請先在工作台選取工序表', 'err')
+      showToast('請先從分析案件開啟工時表', 'err')
       return
     }
     if (selected.size === 0) return
@@ -484,10 +485,12 @@ export function ProcessWorkspace() {
           </div>
 
           <div className="flex-1 overflow-y-auto p-3 space-y-1.5 min-h-0">
+            {/* ADR-021 Phase 3：worksheet 情境只能從分析案件進入（WorksheetBar 已去全域化） */}
             {!activeWs && (
               <div className="flex flex-col items-center justify-center h-40 gap-2 text-slate-400">
                 <span className="text-2xl">📋</span>
-                <p className="text-sm">請先選取工序表</p>
+                <p className="text-sm">請先從分析案件開啟工時表</p>
+                <GoToCasesButton />
               </div>
             )}
             {activeWs && localOrder.length === 0 && (

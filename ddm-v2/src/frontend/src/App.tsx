@@ -5,19 +5,22 @@ import { WiWorkbench } from './features/wi-workbench/WiWorkbench'
 import { LevelSystem } from './features/level-system/LevelSystem'
 import { RuleSetViewer } from './features/rule-set/RuleSetViewer'
 import { UsersPanel } from './features/users/UsersPanel'
-import { WorksheetBar } from './features/catalog/WorksheetBar'
 import { AppLayout } from './features/layout/AppLayout'
 import { DashboardPage } from './features/dashboard/DashboardPage'
 import { MostWorkbenchV3 } from './features/workbench-v3/MostWorkbenchV3'
 import { CasesPage } from './features/cases/CasesPage'
 import { DictionariesPage } from './features/dictionaries/DictionariesPage'
 import { WISetBuilderPage } from './features/wi-project/WISetBuilderPage'
+import { CaseContextBar } from './features/cases/CaseContextBar'
 import { ErrorBoundary } from './shared/ui/ErrorBoundary'
+import { WorksheetRequiredNotice } from './shared/ui/WorksheetRequiredNotice'
+import { useWorkspace } from './shared/workspace'
 
 export default function App() {
   const [tab, setTab] = useState<string>('dashboard')
   const [importOpen, setImportOpen] = useState(false)
   const { data: me } = useMe()
+  const activeWs = useWorkspace(s => s.activeWs)
 
   // Allow CasesPage (and future features) to request a tab switch via custom event
   useEffect(() => {
@@ -34,9 +37,17 @@ export default function App() {
       case 'dashboard':    return <DashboardPage />
       case 'workbench-v3': return <MostWorkbenchV3 />
       case 'wi-project':   return <WISetBuilderPage />
-      // 'wi'（WiWorkbench 工時表編輯器）僅由分析案件的「編輯工時表」入口到達
-      //（ADR-021；Phase 3 將補完整的案件編輯情境頁）
-      case 'wi':      return <WiWorkbench />
+      // 'wi'（WiWorkbench 工時表編輯器）僅由分析案件的「編輯工時表／新建案件」入口到達
+      //（ADR-021 Phase 3：案件情境頁＝CaseContextBar＋編輯器；無 activeWs 時導回分析案件）
+      case 'wi':
+        return activeWs ? (
+          <>
+            <CaseContextBar />
+            <WiWorkbench />
+          </>
+        ) : (
+          <WorksheetRequiredNotice />
+        )
       case 'level':   return <LevelSystem />
       case 'ruleset': return <RuleSetViewer />
       case 'case':    return <CasesPage />
@@ -61,8 +72,8 @@ export default function App() {
     >
       {importOpen && <ImportModal onClose={() => setImportOpen(false)} />}
       {/* key={tab} remounts the boundary on tab switch → error state auto-clears.
-          WorksheetBar 也包進 boundary（review #3）：它的 render 錯誤同樣不得白屏。
-          reset 目標與當前 tab 相同時 setTab 是 no-op → 改 full reload（review #4）。 */}
+          reset 目標與當前 tab 相同時 setTab 是 no-op → 改 full reload（review #4）。
+          WorksheetBar 已去全域化（ADR-021 Phase 3）：工序表情境只存在於分析案件的編輯情境。 */}
       <ErrorBoundary
         key={tab}
         onReset={() => {
@@ -70,8 +81,6 @@ export default function App() {
           else setTab('dashboard')
         }}
       >
-        {/* WorksheetBar sits above the active feature panel, inside the scrollable main area */}
-        <WorksheetBar />
         {renderContent()}
       </ErrorBoundary>
     </AppLayout>

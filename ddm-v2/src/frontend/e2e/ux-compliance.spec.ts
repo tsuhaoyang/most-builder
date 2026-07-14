@@ -180,6 +180,26 @@ async function setupRoutes(
         body: JSON.stringify(MOCK_TEMPLATES) })
     }
 
+    // 產品/SKU 階層＋建立工序表（NewCaseModal, ADR-021 Phase 3 新建案件流程）
+    if (url.match(/\/api\/v2\/products(\?|$)/)) {
+      return route.fulfill({ status: 200, contentType: 'application/json',
+        body: JSON.stringify([{ id: 'p1', site_id: 's1', external_code: null,
+          name_zh: 'Product X', name_en: null, description: null, is_active: true }]) })
+    }
+    if (url.match(/\/api\/v2\/skus\?/)) {
+      return route.fulfill({ status: 200, contentType: 'application/json',
+        body: JSON.stringify([{ id: 'sk1', product_id: 'p1', sku_code: 'SKU001',
+          name_zh: '機種一', name_en: null, is_active: true }]) })
+    }
+    if (url.includes('/api/v2/skus/') && url.includes('/worksheets')) {
+      if (route.request().method() === 'POST') {
+        return route.fulfill({ status: 200, contentType: 'application/json',
+          body: JSON.stringify({ worksheet_id: 'ws-new-001', version_no: '1', status: 'draft' }) })
+      }
+      return route.fulfill({ status: 200, contentType: 'application/json',
+        body: JSON.stringify([]) })
+    }
+
     // Everything else (products, skus, skus/<id>/worksheets, etc.) — empty list
     return route.fulfill({ status: 200, contentType: 'application/json',
       body: JSON.stringify([]) })
@@ -630,6 +650,102 @@ test.describe('§I-01 RBAC viewer 無字典管理入口 (checklist I-01, A-02)',
     await gotoAndWait(page)
     // level=0 → canEdit=false → minRole:'analyst' item hidden
     await expect(page.getByRole('button', { name: /字典管理/ })).not.toBeVisible()
+  })
+})
+
+// ─── § G-03: 案件編輯情境頁 (ADR-021 Phase 3) ────────────────────────────────
+
+test.describe('§G-03 案件編輯情境頁 (ADR-021 Phase 3)', () => {
+  test('G-03-1: 編輯工時表 → 案件情境列（返回鈕/案件名/產品鏈/狀態 badge）→ 返回分析案件', async ({ page }) => {
+    await setupRoutes(page, ADMIN_ME, MOCK_CASES_DRAFT)
+    await gotoAndWait(page)
+    await clickNavAndWait(page, /分析案件/)
+    await page.getByText('組裝站作業').click()
+    await page.getByRole('button', { name: '編輯工時表' }).click()
+    await page.waitForLoadState('networkidle')
+
+    // 案件情境列（CaseContextBar）：返回鈕 + 案件名 + 產品/SKU/版本 + 狀態 badge
+    const bar = page.getByTestId('case-context-bar')
+    await expect(bar).toBeVisible()
+    await expect(bar.getByRole('button', { name: '← 返回分析案件' })).toBeVisible()
+    await expect(bar.getByText('組裝站作業')).toBeVisible()
+    await expect(bar.getByText('Product X / SKU 001 · 版本 1')).toBeVisible()
+    await expect(bar.getByText('草稿')).toBeVisible()
+
+    // 情境列下方即 WiWorkbench 編輯器（工時表表頭存在）
+    await expect(page.locator('thead').getByText('Base TMU')).toBeVisible()
+
+    // 返回動線：情境列返回鈕 → 分析案件清單
+    await bar.getByRole('button', { name: '← 返回分析案件' }).click()
+    await page.waitForLoadState('networkidle')
+    await expect(page.getByRole('button', { name: '全部', exact: true })).toBeVisible()
+  })
+
+  test('G-03-2: 新建案件 modal（選產品→SKU→line 名稱）→ 建立後直接進入編輯情境', async ({ page }) => {
+    await setupRoutes(page, ADMIN_ME, MOCK_CASES_DRAFT)
+    await gotoAndWait(page)
+    await clickNavAndWait(page, /分析案件/)
+
+    // 清單上方「＋ 新建案件」按鈕（analyst+）
+    await page.getByRole('button', { name: '＋ 新建案件' }).click()
+    const dialog = page.getByRole('dialog')
+    await expect(dialog.getByText('新建案件')).toBeVisible()
+
+    // 產品/SKU 下拉自動帶入第一筆（重用 catalog/api hooks）
+    await expect(dialog.locator('select').first()).toHaveValue('p1')
+    await expect(dialog.locator('select').nth(1)).toHaveValue('sk1')
+
+    // 輸入 line 名稱 → 建立（v1：此 SKU 尚無工序表）
+    await dialog.getByPlaceholder('可空').first().fill('L1 線')
+    await dialog.getByRole('button', { name: /建立（v1）/ }).click()
+    await page.waitForLoadState('networkidle')
+
+    // 建立成功 → 直接進入案件編輯情境（情境列顯示新案件名與草稿 badge）
+    const bar = page.getByTestId('case-context-bar')
+    await expect(bar).toBeVisible()
+    await expect(bar.getByText('L1 線')).toBeVisible()
+    await expect(bar.getByText(/Product X \/ SKU001（機種一） · 版本 1/)).toBeVisible()
+    await expect(bar.getByText('草稿')).toBeVisible()
+  })
+
+  test('G-03-3: viewer 不顯示「新建案件」按鈕（RBAC gating）', async ({ page }) => {
+    await setupRoutes(page, VIEWER_ME, MOCK_CASES_DRAFT)
+    await gotoAndWait(page)
+    await clickNavAndWait(page, /分析案件/)
+    await expect(page.getByRole('button', { name: '＋ 新建案件' })).not.toBeVisible()
+  })
+
+  test('G-03-4: MOST 工作台不再出現全域 WorksheetBar（ADR-021 去全域化）', async ({ page }) => {
+    await setupRoutes(page, ADMIN_ME)
+    await gotoAndWait(page)
+    await clickNavAndWait(page, /MOST 工作台/)
+    // 工作台本體正常渲染（正向）
+    await expect(page.getByTestId('summary-bar')).toBeVisible()
+    // WorksheetBar 專有元素不得出現（＋新建工序表鈕、工序表選擇器空狀態）
+    await expect(page.getByRole('button', { name: '＋新建工序表' })).not.toBeVisible()
+    await expect(page.getByText('（此 SKU 尚無工序表）')).not.toBeVisible()
+  })
+
+  test('G-03-5: Tab3 無 activeWs → 空狀態「請先從分析案件開啟工時表」＋跳轉鈕', async ({ page }) => {
+    await setupRoutes(page, ADMIN_ME, MOCK_CASES_DRAFT)
+    await gotoAndWait(page)
+    await clickNavAndWait(page, /MOST 工作台/)
+    await page.getByRole('button', { name: '製程途程工作區' }).click()
+    await expect(page.getByText('請先從分析案件開啟工時表')).toBeVisible()
+    // 跳轉鈕 → 分析案件
+    await page.getByRole('button', { name: '前往分析案件' }).click()
+    await page.waitForLoadState('networkidle')
+    await expect(page.getByRole('button', { name: '全部', exact: true })).toBeVisible()
+  })
+
+  test('G-03-6: Level System 無 activeWs → 空狀態提示＋跳轉鈕', async ({ page }) => {
+    await setupRoutes(page, ADMIN_ME, MOCK_CASES_DRAFT)
+    await gotoAndWait(page)
+    await clickNavAndWait(page, /Level System/)
+    await expect(page.getByText('請先從分析案件開啟工時表')).toBeVisible()
+    await page.getByRole('button', { name: '前往分析案件' }).click()
+    await page.waitForLoadState('networkidle')
+    await expect(page.getByRole('button', { name: '全部', exact: true })).toBeVisible()
   })
 })
 

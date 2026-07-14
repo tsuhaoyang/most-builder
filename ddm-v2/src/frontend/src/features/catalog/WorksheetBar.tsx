@@ -3,7 +3,10 @@ import { useProducts, useSkus, useWorksheetsBySku, useCreateWorksheet } from './
 import { useWorkspace } from '../../shared/workspace'
 import { useMe, canEdit } from '../../shared/auth/useMe'
 
-// 頂部「產品 / SKU / 工序表(版本)」選擇器：決定作用中的 worksheet（取代寫死 ACTIVE_WS）。
+// ⚠️ 已退役（ADR-021 Phase 3：WorksheetBar 去全域化）。
+// App.tsx 不再引用本元件；工序表情境（產品/SKU 選擇＋新建）已收進
+// 「分析案件」的 NewCaseModal（features/cases/NewCaseModal.tsx）與案件編輯情境。
+// 檔案暫留作參考，勿再接回全域 layout。
 export function WorksheetBar() {
   const { data: me } = useMe()
   const activeWs = useWorkspace(s => s.activeWs)
@@ -36,7 +39,7 @@ export function WorksheetBar() {
       <div className="max-w-6xl mx-auto px-4 py-2 flex flex-wrap items-center gap-2 text-sm">
         <span className="text-slate-500">產品</span>
         <select className={selCls} value={pid} onChange={e => setPid(e.target.value)}>
-          {products.length === 0 && <option value="">（無產品，請到「⑧ 目錄」建立）</option>}
+          {products.length === 0 && <option value="">（尚無產品）</option>}
           {products.map(p => <option key={p.id} value={p.id}>{p.name_zh}{p.is_active ? '' : '（停用）'}</option>)}
         </select>
         <span className="text-slate-500">SKU</span>

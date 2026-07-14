@@ -1,11 +1,13 @@
 // Cases page — G-01 案件清單 + G-02 詳情面板 (L-04 SOP tab 取代)
 // ADR-021：匯出動作（wi-preview / excel / lb-csv / report.xlsx）併入案件詳情操作區
 import { useState } from 'react'
-import { useMe, canPublish, isAdmin } from '../../shared/auth/useMe'
-import { useWorkspace } from '../../shared/workspace'
+import { useMe, canPublish, canEdit, isAdmin } from '../../shared/auth/useMe'
+import { useWorkspace, type ActiveCaseMeta } from '../../shared/workspace'
 import { apiGet } from '../../shared/api/client'
 import { TMU_SEC } from '../../shared/config'
 import { downloadExcel, downloadCsv, useLbApi, type WiPreview } from '../export/api'
+import { StatusBadge } from './status'
+import { NewCaseModal } from './NewCaseModal'
 import {
   useCases,
   useCaseAuditLog,
@@ -24,12 +26,6 @@ const STATUS_TABS: { value: CaseStatus; label: string }[] = [
   { value: 'retired', label: '已退役' },
 ]
 
-const STATUS_BADGE: Record<string, string> = {
-  draft: 'bg-amber-100 text-amber-800',
-  approved: 'bg-emerald-100 text-emerald-800',
-  retired: 'bg-slate-200 text-slate-600',
-}
-
 const STATUS_ZH: Record<string, string> = {
   draft: '草稿',
   approved: '已核准',
@@ -46,14 +42,7 @@ const ACTION_ZH: Record<string, string> = {
 }
 
 // ─── Sub-components ───────────────────────────────────────────────────────────
-
-function StatusBadge({ status }: { status: string }) {
-  return (
-    <span className={`px-2 py-0.5 rounded text-xs font-medium ${STATUS_BADGE[status] ?? 'bg-slate-100 text-slate-600'}`}>
-      {STATUS_ZH[status] ?? status}
-    </span>
-  )
-}
+// StatusBadge 抽至 ./status（CaseContextBar 共用，ADR-021 Phase 3）
 
 interface CaseItemProps {
   item: CaseOut
@@ -176,7 +165,7 @@ function ExportActions({ worksheetId }: ExportActionsProps) {
 
 interface DetailPanelProps {
   item: CaseOut
-  onOpenWorkbench: (worksheetId: string) => void
+  onOpenWorkbench: (item: CaseOut) => void
 }
 
 function DetailPanel({ item, onOpenWorkbench }: DetailPanelProps) {
@@ -243,7 +232,7 @@ function DetailPanel({ item, onOpenWorkbench }: DetailPanelProps) {
           </button>
         )}
         <button
-          onClick={() => onOpenWorkbench(item.worksheet_id)}
+          onClick={() => onOpenWorkbench(item)}
           className="px-3 py-1.5 bg-violet-600 text-white rounded text-sm hover:bg-violet-700 transition-colors"
         >
           編輯工時表
@@ -304,28 +293,55 @@ function DetailPanel({ item, onOpenWorkbench }: DetailPanelProps) {
 // ─── Main page ────────────────────────────────────────────────────────────────
 
 export function CasesPage() {
+  const { data: me } = useMe()
   const [statusFilter, setStatusFilter] = useState<CaseStatus>('')
   const [selectedId, setSelectedId] = useState<string | null>(null)
-  const setActiveWs = useWorkspace((s) => s.setActiveWs)
+  const [showNewCase, setShowNewCase] = useState(false)
+  const setActiveCase = useWorkspace((s) => s.setActiveCase)
 
   const { data, isLoading, error } = useCases({ status: statusFilter })
 
   const selectedItem = data?.items.find((i) => i.worksheet_id === selectedId) ?? null
 
-  // 「編輯工時表」（ADR-021）：先設定該案件的 worksheet 為 activeWs，
+  // 「編輯工時表」（ADR-021 Phase 3）：寫入 activeWs＋案件情境 meta（CaseContextBar 用），
   // 再切到 wi tab（WiWorkbench 工時表編輯器）。custom event 讓 App.tsx 切 tab，免 prop drilling。
-  const handleOpenWorkbench = (worksheetId: string) => {
-    setActiveWs(worksheetId)
+  const handleOpenWorkbench = (item: CaseOut) => {
+    setActiveCase(item.worksheet_id, {
+      processName: item.process_name,
+      productName: item.product_name,
+      skuName: item.sku_name,
+      versionNo: item.version_no,
+      status: item.status,
+    })
+    window.dispatchEvent(new CustomEvent('ddm:switch-tab', { detail: 'wi' }))
+  }
+
+  // 「新建案件」（ADR-021 Phase 3，原 WorksheetBar ＋新建工序表流程）：建立成功直接進入編輯情境
+  const handleCreated = (worksheetId: string, meta: ActiveCaseMeta) => {
+    setShowNewCase(false)
+    setActiveCase(worksheetId, meta)
     window.dispatchEvent(new CustomEvent('ddm:switch-tab', { detail: 'wi' }))
   }
 
   return (
     <div className="bg-white rounded-xl border flex h-full overflow-hidden" style={{ minHeight: 0 }}>
+      {showNewCase && <NewCaseModal onClose={() => setShowNewCase(false)} onCreated={handleCreated} />}
       {/* ── Left list panel ── */}
       <div
         className="flex flex-col flex-shrink-0 border-r"
         style={{ flexBasis: '360px', minWidth: 0 }}
       >
+        {/* 新建案件（analyst+）：選產品/SKU → 建工序表 → 進入編輯情境 */}
+        {canEdit(me) && (
+          <div className="border-b px-3 py-2 bg-slate-50">
+            <button
+              onClick={() => setShowNewCase(true)}
+              className="w-full px-3 py-1.5 bg-blue-600 text-white rounded text-sm hover:bg-blue-700 transition-colors"
+            >
+              ＋ 新建案件
+            </button>
+          </div>
+        )}
         {/* Status filter tabs */}
         <div className="flex border-b bg-slate-50">
           {STATUS_TABS.map((t) => (

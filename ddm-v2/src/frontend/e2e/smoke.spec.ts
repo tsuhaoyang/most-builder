@@ -189,13 +189,18 @@ test('workbench-v3 tab3: ProcessWorkspace 結構與 apply-back dialog（mocked A
 
   await page.goto('/')
 
-  // 先經分析案件設定 activeWs（編輯工時表 → setActiveWs(WS_ID) + 切到 wi tab）
+  // 先經分析案件設定 activeWs（編輯工時表 → setActiveCase(WS_ID, meta) + 切到 wi tab）
   await page.getByRole('button', { name: /分析案件/ }).first().click()
   await page.getByText('搬取零件站').first().click()
   await page.getByRole('button', { name: '編輯工時表' }).click()
 
-  // 切換到 MOST 工作台 (v3)
+  // ADR-021 Phase 3：進入案件編輯情境 → 案件情境列（CaseContextBar）出現
+  await expect(page.getByTestId('case-context-bar')).toBeVisible()
+  await expect(page.getByRole('button', { name: '← 返回分析案件' })).toBeVisible()
+
+  // 切換到 MOST 工作台 (v3)；全域 WorksheetBar 已移除（ADR-021 Phase 3），不應出現「＋新建工序表」
   await page.getByRole('button', { name: /MOST 工作台/ }).click()
+  await expect(page.getByRole('button', { name: '＋新建工序表' })).not.toBeVisible()
 
   // 切換至 Tab 3：製程途程
   await page.getByRole('button', { name: '製程途程' }).click()

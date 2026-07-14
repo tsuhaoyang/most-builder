@@ -65,7 +65,7 @@ export function ImportModal({ onClose }: { onClose: () => void }) {
   function doSubmit() {
     if (!up || !preview) return
     const wsId = activeWs
-    if (!wsId) { setMsg('⚠️ 請先在 WI 工作台選擇一個工序表，再回來提交'); return }
+    if (!wsId) { setMsg('⚠️ 請先從分析案件開啟工時表，再回來提交'); return }
     setMsg('')
     submit.mutate(
       { importId: up.import_id, body: { worksheet_id: wsId } },
@@ -188,7 +188,7 @@ export function ImportModal({ onClose }: { onClose: () => void }) {
                 <div className="text-sm text-slate-600">
                   共 <span className="font-medium">{preview.n}</span> 列可提交至目前工序表
                   {!activeWs && (
-                    <span className="ml-2 text-amber-600">（請先在 WI 工作台選擇工序表）</span>
+                    <span className="ml-2 text-amber-600">（請先從分析案件開啟工時表）</span>
                   )}
                 </div>
                 <button
@@ -219,7 +219,7 @@ export function ImportModal({ onClose }: { onClose: () => void }) {
                   </ul>
                 </div>
               )}
-              <p className="text-slate-500">已提交的列在 WI 工作台的工序表中可見；MOST 草稿欄位需 IE 填入。</p>
+              <p className="text-slate-500">已提交的列在分析案件的工時表中可見；MOST 草稿欄位需 IE 填入。</p>
               <button onClick={onClose} className="px-4 py-2 bg-slate-100 rounded-lg hover:bg-slate-200">
                 關閉
               </button>

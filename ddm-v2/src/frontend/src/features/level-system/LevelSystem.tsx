@@ -1,12 +1,15 @@
 import { useEffect, useState } from 'react'
 import { useWiStore } from '../wi-workbench/store'
 import { useMe, canEdit } from '../../shared/auth/useMe'
+import { useWorkspace } from '../../shared/workspace'
+import { WorksheetRequiredNotice } from '../../shared/ui/WorksheetRequiredNotice'
 import { useLevelStore } from './store'
 import { useValidateLevel, type LevelIssue } from './api'
 import { cs, rowsIn, subGroupsOf, firstIdx, nbList, derive } from './logic'
 
 export function LevelSystem() {
   const { data: me } = useMe()
+  const activeWs = useWorkspace(s => s.activeWs)
   const rows = useWiStore(s => s.rows)
   const st = useLevelStore()
   const validate = useValidateLevel()
@@ -26,8 +29,11 @@ export function LevelSystem() {
     })
   }, [rows, st.levelMap, st.groupMeta]) // eslint-disable-line react-hooks/exhaustive-deps
 
+  // ADR-021 Phase 3：worksheet 情境只能從分析案件進入（WorksheetBar 已去全域化）
+  if (!activeWs) return <WorksheetRequiredNotice />
+
   if (!rows.length)
-    return <div className="bg-white rounded-xl border p-6 text-slate-500">工時表還沒有列。請先到 ① WI 工時表加入幾列。</div>
+    return <div className="bg-white rounded-xl border p-6 text-slate-500">工時表還沒有列。請先從「分析案件 → 編輯工時表」加入動作列。</div>
 
   const rowIssue = (i: number) => issues.find(x => x.row_index === i)
 
