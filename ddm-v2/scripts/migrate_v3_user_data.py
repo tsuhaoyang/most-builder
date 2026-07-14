@@ -746,12 +746,11 @@ async def execute_migration(
                 user=user, vocab_cache=vocab_cache, stats=stats,
             )
             stmt_module_id[s.id] = mid
-        # (b) 獨立動作模組（去重後）→ category 一般（None）
-        for m in modules:
-            await upsert_module(
-                session, name=m.name, category=None, rows=m.rows,
-                user=user, vocab_cache=vocab_cache, stats=stats,
-            )
+        # (b) 獨立動作模組：不再搬遷（2026-07-14 協調者裁決）。
+        # v3 action_module_templates 來自隱藏實驗頁（/most-workbench-v3），內容與
+        # most_sequence_items 重複——(b2) 已完整涵蓋。既有 DB 中由本步驟建立的
+        # 2 筆重複已刪除（keywords 含 v3-import 但無 v3-sequence 者）。
+        _ = modules  # 保留盤點供對帳表，不落庫
         # (b2) ADR-022 A-4：29 條 most_sequence_items → 單列 category='action' 模組
         for a in actions:
             await upsert_module(

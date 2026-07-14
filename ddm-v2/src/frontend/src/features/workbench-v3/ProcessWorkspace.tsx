@@ -1,3 +1,7 @@
+// ⚠️ 斷路（ADR-022 批次 B）：本工作區已不掛載——「MOST 工作台」回歸 v3 單頁。
+// 「WI 實體化進工時表」與 apply-back 能力將於批次 E 搬入案件編輯情境（WiWorkbench
+// 工具列「從 WI 庫插入」）後，本檔移除。保留供批次 E 搬遷參照。
+//
 // Tab 3: 製程途程工作區 (ProcessWorkspace) — F-03 三層組裝 L3 + E-06/E-07
 // F-03b §3: apply-back（從工序表行發布模組新版本，真實對接後端）
 // Two-panel layout:

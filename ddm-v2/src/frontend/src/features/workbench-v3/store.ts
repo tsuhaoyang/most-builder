@@ -3,6 +3,9 @@ import type { MotionModuleSummary } from './api'
 
 // ── Cross-tab workbench state ─────────────────────────────────────────────────
 //
+// ⚠️ 閒置（ADR-022 批次 B）：三 tab shell 已移除（工作台回歸 v3 單頁），跨 tab
+// pending 機制無掛載方；僅斷路的 WIPool/ProcessWorkspace 仍引用。批次 E 一併清理。
+//
 // Tab 1 (動作模組) → Tab 2 (WI 組成): pendingModules
 // Tab 2 (WI 組成) → Tab 3 (製程途程): pendingWiIds
 

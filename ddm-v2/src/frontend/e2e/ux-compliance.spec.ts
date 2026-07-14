@@ -442,10 +442,12 @@ test.describe('§C-01 動作清單 12 欄表格結構 (checklist C-01)', () => {
     await expect(page.getByPlaceholder('搜尋動作…')).toBeVisible()
     await expect(page.getByText(/共 \d+ 筆/)).toBeVisible()
     await expect(page.getByText(/合計：/)).toBeVisible()
-    // 表格表頭（模組摘要欄；缺值顯示 —，不得假裝 0）
+    // 表格表頭（ADR-022 B-2：個別動作各自 TMU；缺值顯示 —，不得假裝 0）
     const head = page.locator('thead')
     await expect(head.getByText('WI / 動作描述')).toBeVisible()
-    await expect(head.getByText('TMU', { exact: true })).toBeVisible()
+    await expect(head.getByText('Base TMU')).toBeVisible()
+    await expect(head.getByText('頻率')).toBeVisible()
+    await expect(head.getByText('Eff TMU')).toBeVisible()
     await expect(head.getByText('CT(秒)')).toBeVisible()
     await expect(head.getByText('操作')).toBeVisible()
   })
@@ -469,55 +471,37 @@ test.describe('§C-01 動作清單 12 欄表格結構 (checklist C-01)', () => {
   })
 })
 
-// ─── § E-04/05/06: WI Pool 三層組裝 Tab 結構 ─────────────────────────────────
+// ─── § E-04: MOST 工作台單頁（ADR-022 批次 B：三 tab 移除，回歸 v3 單頁）───────
 
-test.describe('§E-04/05/06 WI Pool 三層 Tab (checklist E-04~E-06)', () => {
+test.describe('§E-04 MOST 工作台單頁 (ADR-022 批次 B)', () => {
   test.beforeEach(async ({ page }) => {
     await setupRoutes(page, ADMIN_ME)
     await gotoAndWait(page)
     await clickNavAndWait(page, /MOST 工作台/)
   })
 
-  test('E-04-1: 三個 Tab 按鈕含「工作區」後綴 (E-04-2 已修)', async ({ page }) => {
-    // MostWorkbenchV3 renders 3 tabs with 工作區 suffix per spec
-    await expect(page.getByRole('button', { name: '動作模組工作區' })).toBeVisible()
-    await expect(page.getByRole('button', { name: 'WI 組成工作區' })).toBeVisible()
-    await expect(page.getByRole('button', { name: '製程途程工作區' })).toBeVisible()
-  })
-
-  test('E-04-3: 點擊 Tab 1 顯示 v3 單頁流建立器（摘要列＋新增動作）', async ({ page }) => {
-    await page.getByRole('button', { name: '動作模組工作區' }).click()
+  test('E-04-1: 單頁直渲染 — 無三 tab，建立器（摘要列＋新增動作）直接可見', async ({ page }) => {
+    // ADR-022：三層 tab 是 v3 實驗性隱藏頁殘留，非驗證 UX → 移除
+    await expect(page.getByRole('button', { name: '動作模組工作區' })).toHaveCount(0)
+    await expect(page.getByRole('button', { name: 'WI 組成工作區' })).toHaveCount(0)
+    await expect(page.getByRole('button', { name: '製程途程工作區' })).toHaveCount(0)
+    // 單頁建立器不需點 tab 即可見
     await expect(page.getByTestId('summary-bar')).toBeVisible()
     await expect(page.getByRole('button', { name: '新增動作' })).toBeVisible()
     await expect(page.getByRole('button', { name: '清空' })).toBeVisible()
   })
 
-  test('E-05-1: 點擊 Tab 2 顯示 WI 組成工作區', async ({ page }) => {
-    await page.getByRole('button', { name: 'WI 組成工作區' }).click()
-    // WIPoolWorkspace renders headings 'WI 組成器' and 'WI Pool'
-    // Use heading role to avoid matching the tab button itself (strict mode)
-    await expect(page.getByRole('heading', { name: 'WI Pool' })).toBeVisible()
+  test('E-04-2: WI 大綱區存在於動作清單下方（ADR-022 B-3）', async ({ page }) => {
+    const outline = page.getByTestId('wi-outline')
+    await expect(outline).toBeVisible()
+    await expect(outline.getByText('WI 大綱')).toBeVisible()
+    // mock 無 WI → 空狀態導引文案
+    await expect(outline.getByText(/尚無 WI/)).toBeVisible()
   })
 
-  test('E-06-1: 點擊 Tab 3 顯示製程大綱', async ({ page }) => {
-    await page.getByRole('button', { name: '製程途程' }).click()
-    // ProcessWorkspace renders 'WI 選取器' and '製程大綱' panels
-    await expect(page.getByText('WI 選取器')).toBeVisible()
-    await expect(page.getByText('製程大綱')).toBeVisible()
-  })
-
-  test('E-04-4: NL Draft 只出現在 Tab 1，Tab 2/3 不應有 NL Draft (spec E-04 拒絕條件)', async ({ page }) => {
-    // Tab 1: NL Draft present（AI 快速建模列）
-    await page.getByRole('button', { name: '動作模組工作區' }).click()
+  test('E-04-3: NL Draft（AI 快速建模）在單頁存在', async ({ page }) => {
+    await expect(page.getByText('AI 快速建模')).toBeVisible()
     await expect(page.getByPlaceholder(/輸入動作描述/)).toBeVisible()
-
-    // Tab 2: NL Draft absent
-    await page.getByRole('button', { name: 'WI 組成工作區' }).click()
-    await expect(page.getByPlaceholder(/輸入動作描述/)).not.toBeVisible()
-
-    // Tab 3: NL Draft absent
-    await page.getByRole('button', { name: '製程途程工作區' }).click()
-    await expect(page.getByPlaceholder(/輸入動作描述/)).not.toBeVisible()
   })
 })
 
@@ -726,16 +710,14 @@ test.describe('§G-03 案件編輯情境頁 (ADR-021 Phase 3)', () => {
     await expect(page.getByText('（此 SKU 尚無工序表）')).not.toBeVisible()
   })
 
-  test('G-03-5: Tab3 無 activeWs → 空狀態「請先從分析案件開啟工時表」＋跳轉鈕', async ({ page }) => {
+  test('G-03-5: MOST 工作台無製程途程入口（ADR-022 批次 B：tab 斷路，能力批次 E 搬入案件編輯）', async ({ page }) => {
     await setupRoutes(page, ADMIN_ME, MOCK_CASES_DRAFT)
     await gotoAndWait(page)
     await clickNavAndWait(page, /MOST 工作台/)
-    await page.getByRole('button', { name: '製程途程工作區' }).click()
-    await expect(page.getByText('請先從分析案件開啟工時表')).toBeVisible()
-    // 跳轉鈕 → 分析案件
-    await page.getByRole('button', { name: '前往分析案件' }).click()
-    await page.waitForLoadState('networkidle')
-    await expect(page.getByRole('button', { name: '全部', exact: true })).toBeVisible()
+    // 單頁本體正常渲染（正向），且不再有製程途程 tab / 面板
+    await expect(page.getByTestId('summary-bar')).toBeVisible()
+    await expect(page.getByRole('button', { name: '製程途程工作區' })).toHaveCount(0)
+    await expect(page.getByText('製程大綱')).toHaveCount(0)
   })
 
   test('G-03-6: Level System 無 activeWs → 空狀態提示＋跳轉鈕', async ({ page }) => {

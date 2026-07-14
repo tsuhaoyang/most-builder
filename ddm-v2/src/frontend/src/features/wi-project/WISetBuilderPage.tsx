@@ -26,14 +26,26 @@ interface PoolModuleRow {
   frequency: number
   cycle: Record<string, unknown>
   sub_activity: string | null
+  /** 後端組句（DISC-02/07：前端不組句）；舊版本資料可能缺 → fallback sub_activity */
+  narrative_zh?: string | null
+  /** ADR-020：非 null = SIMO 從屬列（宣告者），貢獻 0 */
+  simo_pair_index?: number | null
+  /** ADR-022 批次 A：publish 時引擎算好持久化；舊資料缺 → UI 顯示 '—'，不假造 */
+  computed?: {
+    total_tmu: number
+    total_seconds: number
+    eff_tmu: number
+    contribution_tmu: number
+  } | null
 }
 
 /**
- * Shape returned by GET /api/v2/motion-modules?status=standard
+ * Shape returned by GET /api/v2/motion-modules?category=wi-template
  *
  * 合約（audit §0.1 更正版）：rows 巢狀於 current_version_detail —— list 端點
  * 該欄=null，detail (GET /{id}) 才有；top-level total_tmu / action_count 為
  * 後端摘要欄（無已發布版本時為 null → UI 顯示 '—'，不得假裝是 0）。
+ * ADR-022 §WI 專案建立：庫只列 category='wi-template'（純 WI 級，對齊 v3）。
  */
 interface PoolModule {
   id: string
@@ -41,6 +53,7 @@ interface PoolModule {
   status: string
   total_tmu?: number | null
   action_count?: number | null
+  created_at: string
   current_version_detail?: {
     version_no: number
     rows: PoolModuleRow[]
@@ -160,7 +173,10 @@ function useProject(id: string | null) {
 function usePoolModules() {
   return useQuery<PoolModule[]>({
     queryKey: [QK_POOL],
-    queryFn: () => apiGet<PoolModule[]>('/api/v2/motion-modules?status=standard'),
+    // ADR-022 §WI 專案建立：庫過濾為純 WI 級（category='wi-template'），
+    // 單動作素材（category='action'）與 null-category 範本不再混入。
+    queryFn: () =>
+      apiGet<PoolModule[]>('/api/v2/motion-modules?category=wi-template'),
     staleTime: 120_000,
   })
 }
@@ -422,7 +438,15 @@ function ProjectMetadataForm({ form, status, onChange, editable }: ProjectMetada
 
 // ─── Section B: WIPoolSearch ───────────────────────────────────────────────────
 
-/** Lazy-loaded expand sub-rows rendered directly into <tbody>；rows 巢狀於 detail 的 current_version_detail */
+/** 主表欄數（checkbox + WI Code + 名稱 + 動作數 + Total TMU + CT + 建立日 + 展開） */
+const POOL_COL_SPAN = 8
+
+/**
+ * Lazy-loaded expand sub-table（ADR-022 §WI 專案建立，對照 v3 展開子列）：
+ * #｜動作句（narrative_zh ?? sub_activity）｜手｜Base TMU｜頻率｜Eff TMU｜SIMO。
+ * 數值全吃後端持久化的 rows.computed（批次 A）——缺 computed 的舊資料顯示 '—'，不假造。
+ * SIMO 從屬列（simo_pair_index != null）：Y 標記＋Eff TMU 劃線（貢獻 0，ADR-020）。
+ */
 function ExpandedRows({ moduleId }: { moduleId: string }) {
   const { data, isLoading } = useModuleDetail(moduleId)
   const rows = data?.current_version_detail?.rows
@@ -430,7 +454,7 @@ function ExpandedRows({ moduleId }: { moduleId: string }) {
   if (isLoading) {
     return (
       <tr>
-        <td colSpan={6} className="px-10 py-2 text-xs text-slate-400 bg-slate-50">
+        <td colSpan={POOL_COL_SPAN} className="px-10 py-2 text-xs text-slate-400 bg-slate-50">
           載入動作明細…
         </td>
       </tr>
@@ -440,7 +464,7 @@ function ExpandedRows({ moduleId }: { moduleId: string }) {
   if (!rows?.length) {
     return (
       <tr>
-        <td colSpan={6} className="px-10 py-2 text-xs text-slate-400 bg-slate-50">
+        <td colSpan={POOL_COL_SPAN} className="px-10 py-2 text-xs text-slate-400 bg-slate-50">
           無動作行
         </td>
       </tr>
@@ -448,17 +472,60 @@ function ExpandedRows({ moduleId }: { moduleId: string }) {
   }
 
   return (
-    <>
-      {rows.map((row, i) => (
-        <tr key={i} className="bg-blue-50 text-xs">
-          <td className="pl-10 p-1.5 text-slate-400">{i + 1}</td>
-          <td className="p-1.5 text-slate-600 col-span-2">{row.sub_activity || '—'}</td>
-          <td className="p-1.5 text-right text-slate-500">{row.hand}</td>
-          <td className="p-1.5 text-right text-slate-500">{row.frequency}</td>
-          <td />
-        </tr>
-      ))}
-    </>
+    <tr className="bg-blue-50/60">
+      <td colSpan={POOL_COL_SPAN} className="p-0">
+        <div className="pl-8 pr-3 py-1.5">
+          <table className="w-full text-xs">
+            <thead>
+              <tr className="text-[10px] text-slate-400 text-left">
+                <th className="p-1 w-8 font-medium">#</th>
+                <th className="p-1 font-medium">動作句</th>
+                <th className="p-1 w-12 font-medium">手</th>
+                <th className="p-1 text-right w-20 font-medium">Base TMU</th>
+                <th className="p-1 text-right w-14 font-medium">頻率</th>
+                <th className="p-1 text-right w-20 font-medium">Eff TMU</th>
+                <th className="p-1 text-center w-14 font-medium">SIMO</th>
+              </tr>
+            </thead>
+            <tbody>
+              {rows.map((row, i) => {
+                const isSimoFollower = row.simo_pair_index != null
+                return (
+                  <tr key={i} className="border-t border-blue-100">
+                    <td className="p-1 text-slate-400">{i + 1}</td>
+                    <td className="p-1 text-slate-600">
+                      {row.narrative_zh ?? row.sub_activity ?? '—'}
+                    </td>
+                    <td className="p-1 text-slate-500">{row.hand}</td>
+                    <td className="p-1 text-right font-mono text-slate-700">
+                      {row.computed != null ? row.computed.total_tmu.toFixed(1) : '—'}
+                    </td>
+                    <td className="p-1 text-right text-slate-500">{row.frequency}</td>
+                    <td
+                      className={`p-1 text-right font-mono ${
+                        isSimoFollower ? 'line-through text-slate-400' : 'text-slate-700'
+                      }`}
+                      title={isSimoFollower ? 'SIMO 從屬列，貢獻 0' : undefined}
+                    >
+                      {row.computed != null ? row.computed.eff_tmu.toFixed(1) : '—'}
+                    </td>
+                    <td className="p-1 text-center">
+                      {isSimoFollower ? (
+                        <span className="px-1.5 py-0.5 rounded bg-amber-100 text-amber-700 text-[10px] font-medium">
+                          Y
+                        </span>
+                      ) : (
+                        <span className="text-slate-300">—</span>
+                      )}
+                    </td>
+                  </tr>
+                )
+              })}
+            </tbody>
+          </table>
+        </div>
+      </td>
+    </tr>
   )
 }
 
@@ -547,23 +614,29 @@ function WIPoolSearch({ onAdd, adding }: WIPoolSearchProps) {
       </div>
 
       <div className="overflow-auto max-h-80 border rounded">
-        <table className="w-full text-sm min-w-[560px]">
+        {/* 欄序對齊 v3 WI Set 庫：WI Code｜WI 名稱｜動作數｜Total TMU｜CT(秒)｜建立日｜展開 */}
+        <table className="w-full text-sm min-w-[680px]">
           <thead className="bg-slate-50 sticky top-0 z-10">
             <tr className="text-xs text-slate-500 text-left">
               <th className="p-2 w-8">
                 <input type="checkbox" checked={allSelected} onChange={toggleAll} />
               </th>
+              <th className="p-2 w-24">WI Code</th>
               <th className="p-2">WI 名稱</th>
               <th className="p-2 text-right w-16">動作數</th>
               <th className="p-2 text-right w-24">Total TMU</th>
               <th className="p-2 text-right w-24">CT(秒)</th>
+              <th className="p-2 w-24">建立日</th>
               <th className="p-2 w-8"></th>
             </tr>
           </thead>
           <tbody>
             {!isLoading && filtered.length === 0 && (
               <tr>
-                <td colSpan={6} className="p-6 text-center text-slate-400 text-xs">
+                <td
+                  colSpan={POOL_COL_SPAN}
+                  className="p-6 text-center text-slate-400 text-xs"
+                >
                   {q ? '無符合結果' : '尚無 WI 模組'}
                 </td>
               </tr>
@@ -582,6 +655,8 @@ function WIPoolSearch({ onAdd, adding }: WIPoolSearchProps) {
                       onChange={() => toggleSelect(m.id)}
                     />
                   </td>
+                  {/* WI Code：motion_modules 尚無 code 欄（後端 wi_set.py 註記），不得假造 → '—' */}
+                  <td className="p-2 text-xs text-slate-400 font-mono">—</td>
                   <td className="p-2 font-medium text-slate-800">{m.name_zh}</td>
                   {/* 後端摘要欄 total_tmu / action_count；null（無已發布版本）→ '—'，不得假裝是 0 */}
                   <td className="p-2 text-right text-slate-500">{m.action_count ?? '—'}</td>
@@ -590,6 +665,9 @@ function WIPoolSearch({ onAdd, adding }: WIPoolSearchProps) {
                   </td>
                   <td className="p-2 text-right font-mono text-slate-600">
                     {m.total_tmu != null ? (m.total_tmu * TMU_SEC).toFixed(3) : '—'}
+                  </td>
+                  <td className="p-2 text-xs text-slate-500 font-mono">
+                    {m.created_at ? m.created_at.slice(0, 10) : '—'}
                   </td>
                   <td className="p-2">
                     <button

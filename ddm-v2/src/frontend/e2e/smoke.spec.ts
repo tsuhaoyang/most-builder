@@ -50,26 +50,54 @@ test('import wizard opens from header button', async ({ page }) => {
   await expect(page.getByText(/選擇 .xlsx 檔/)).toBeVisible()
 })
 
-// ── workbench-v3 Tab 3 apply-back UI (F-03b §3) ─────────────────────────────
-// 方案 B：用 page.route 攔截所有 /api/** 呼叫，模擬一個帶 source_module_id 的
-// worksheet response，觸發「回」badge → ApplyBackDialog 的顯示流程。
-//
-// 此測試「不依賴 preview_server」：只需靜態資源伺服器（npm run dev 或
-// preview_server 的 dist 托管）可訪問；所有 API 均由 page.route 攔截，
-// 不對真實後端發出請求。若靜態資源伺服器也未啟動，goto('/') 會 timeout，
-// 與現有 smoke test 行為一致（屬預期失敗）。
-test('workbench-v3 tab3: ProcessWorkspace 結構與 apply-back dialog（mocked API）', async ({ page }) => {
-  // ACTIVE_WS 初始為空字串（6452dd6）→ 需經「分析案件 → 編輯工時表」設定 activeWs，
-  // 這也是 ADR-021 後的真實使用者動線。
-  const WS_ID = '55555555-5555-5555-5555-555555555555'
-  const MODULE_ID = 'aaaabbbb-cccc-dddd-eeee-ffffgggghhhh'
+// ── MOST 工作台單頁（ADR-022 批次 B）──────────────────────────────────────────
+// 三 tab shell 已移除：工作台＝單頁（建立器 → 動作清單 → WI 大綱 → WiItemInspector）。
+// 用 page.route 攔截所有 /api/**（不依賴 preview_server 的資料狀態）。
+test('MOST 工作台單頁：無 tab、WI 大綱展開、WiItemInspector 開合（mocked API）', async ({ page }) => {
+  const ACTION_ID = 'aaaaaaaa-1111-2222-3333-444444444444'
+  const WI_ID = 'bbbbbbbb-1111-2222-3333-444444444444'
 
-  // 單一 catch-all 攔截所有 /api/** 請求
+  const CYCLE = {
+    seq: 'GM',
+    a0: { reach_cm: 20, twist_deg: 0, foot_cm: 0 },
+    b1: { b_code: null },
+    g2: { g_code: 'g_simple', modifiers: {} },
+    a3: { reach_cm: 35, twist_deg: 0, foot_cm: 0 },
+    b4: { b_code: null },
+    p5: { p_base_code: 'p_put', p_addon_codes: [], precision: false },
+    a6: { reach_cm: 0, twist_deg: 0, foot_cm: 0 },
+  }
+  // ADR-022 A-1：rows 帶後端持久化 computed ＋ narrative_zh
+  const ROW = {
+    hand: 'BH', frequency: 1, simo_pair_index: null,
+    sub_activity: '搬取零件', narrative_zh: '雙手搬取零件至工作台',
+    vocab_refs: {},
+    computed: { total_tmu: 28, total_seconds: 1.008, eff_tmu: 28, contribution_tmu: 28 },
+    cycle: CYCLE,
+  }
+  const versionDetail = (moduleId: string, versionNo: number) => ({
+    id: 'ver-' + versionNo, module_id: moduleId, version_no: versionNo,
+    rule_set_id: 'rs-1', rows: [ROW], narrative_zh: '雙手搬取零件至工作台',
+    total_tmu: 28, total_seconds: 1.008,
+    published_by: 'IEC141289', published_at: '2026-07-14T00:00:00Z',
+  })
+  const ACTION_SUMMARY = {
+    id: ACTION_ID, site_id: null, name_zh: '搬取零件動作', category: 'action',
+    keywords: [], scope: 'global', owner: null, status: 'standard', current_version: 1,
+    created_at: '2026-07-14T00:00:00Z', updated_at: '2026-07-14T00:00:00Z',
+    current_version_detail: null, total_tmu: 28, action_count: 1, seq_kind: 'GM', hand: 'BH',
+  }
+  // current_version=2 → WI 大綱顯示「已微調」badge
+  const WI_SUMMARY = {
+    id: WI_ID, site_id: null, name_zh: '搬取零件 WI', category: 'wi-template',
+    keywords: [], scope: 'personal', owner: 'IEC141289', status: 'draft', current_version: 2,
+    created_at: '2026-07-14T00:00:00Z', updated_at: '2026-07-14T00:00:00Z',
+    current_version_detail: null, total_tmu: 28, action_count: 1, seq_kind: 'GM', hand: 'BH',
+  }
+
   await page.route('/api/**', route => {
     const url = route.request().url()
 
-    // /api/v2/rule-sets/*/options — ActionModuleWorkspace 需要有效 options
-    //（回 [] 會使 opts.a_bands.reach 崩潰 → ErrorBoundary 吃掉整頁，tabs 不會渲染）
     if (url.includes('/api/v2/rule-sets/') && url.includes('/options')) {
       return route.fulfill({
         status: 200,
@@ -93,7 +121,6 @@ test('workbench-v3 tab3: ProcessWorkspace 結構與 apply-back dialog（mocked A
       })
     }
 
-    // /api/v2/me — 身分（AppLayout + RBAC gating）
     if (url.includes('/api/v2/me')) {
       return route.fulfill({
         status: 200,
@@ -102,84 +129,50 @@ test('workbench-v3 tab3: ProcessWorkspace 結構與 apply-back dialog（mocked A
       })
     }
 
-    // /api/v2/worksheets/{WS_ID} — 含 source_module_id 的列，觸發「回」badge
-    if (url.includes(`/api/v2/worksheets/${WS_ID}`)) {
+    // 試算（builder / Inspector debounce）→ 固定回 28
+    if (url.includes('/api/v2/minimost/calculate')) {
       return route.fulfill({
         status: 200,
         contentType: 'application/json',
-        body: JSON.stringify({
-          worksheet_id: WS_ID,
-          status: 'active',
-          total_tmu: 28,
-          rows: [{
-            wi_row_id: 'test-row-001',
-            seq_no: 1,
-            hand: 'BH',
-            sub_activity: null,
-            object_vocab_id: null,
-            from_vocab_id: null,
-            to_vocab_id: null,
-            tool_vocab_id: null,
-            frequency: 1,
-            simo_group_id: null,
-            source_module_id: MODULE_ID,
-            source_module_version: 1,
-            cycle: {
-              seq_kind: 'GM',
-              total_tmu: 28,
-              total_seconds: 1.008,
-              narrative: '搬取零件',
-              slot_inputs: {},
-              rule_set_id: 'ruleset-v2',
-            },
-            level: null,
-          }],
-        }),
+        body: JSON.stringify({ seq: 'GM', total_tmu: 28, total_seconds: 1.008, tech_line: 'A6 B0 G6 A10 B0 P6 A0' }),
       })
     }
 
-    // /api/v2/cases — 分析案件清單（提供「編輯工時表」入口以設定 activeWs = WS_ID）
-    if (/\/api\/v2\/cases(\?|$)/.test(url)) {
+    // 動作清單（category=action）
+    if (url.includes('/api/v2/motion-modules') && url.includes('category=action')) {
       return route.fulfill({
         status: 200,
         contentType: 'application/json',
-        body: JSON.stringify({
-          total: 1,
-          items: [{
-            process_version_id: 'pv-mock-1',
-            worksheet_id: WS_ID,
-            version_no: '1',
-            status: 'draft',
-            site_name: 'Site A',
-            product_name: 'Product X',
-            sku_name: 'SKU 001',
-            process_name: '搬取零件站',
-            total_tmu: 28,
-            created_at: '2026-01-01T00:00:00Z',
-            approved_at: null,
-          }],
-        }),
+        body: JSON.stringify([ACTION_SUMMARY]),
       })
     }
 
-    // /api/v2/motion-modules?category=wi-template — Panel 1 WI 選取器清單
-    if (url.includes('/api/v2/motion-modules') && url.includes('wi-template')) {
+    // WI 大綱（category=wi-template）
+    if (url.includes('/api/v2/motion-modules') && url.includes('category=wi-template')) {
       return route.fulfill({
         status: 200,
         contentType: 'application/json',
-        body: JSON.stringify([{
-          id: MODULE_ID,
-          name_zh: '搬取零件 WI',
-          keywords: [],
-          scope: 'shared',
-          status: 'active',
-          rows: [],
-          total_tmu: 28,
-        }]),
+        body: JSON.stringify([WI_SUMMARY]),
       })
     }
 
-    // 其餘（products、skus、motion-modules 無 filter、rule-sets、vocab 等）→ 空陣列
+    // detail（動作清單每列 computed／WI 展開子列）
+    if (url.includes(`/api/v2/motion-modules/${ACTION_ID}`)) {
+      return route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify({ ...ACTION_SUMMARY, current_version_detail: versionDetail(ACTION_ID, 1) }),
+      })
+    }
+    if (url.includes(`/api/v2/motion-modules/${WI_ID}`)) {
+      return route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify({ ...WI_SUMMARY, current_version_detail: versionDetail(WI_ID, 2) }),
+      })
+    }
+
+    // 其餘（vocab、cases、rule-sets 等）→ 空陣列
     return route.fulfill({
       status: 200,
       contentType: 'application/json',
@@ -188,38 +181,36 @@ test('workbench-v3 tab3: ProcessWorkspace 結構與 apply-back dialog（mocked A
   })
 
   await page.goto('/')
-
-  // 先經分析案件設定 activeWs（編輯工時表 → setActiveCase(WS_ID, meta) + 切到 wi tab）
-  await page.getByRole('button', { name: /分析案件/ }).first().click()
-  await page.getByText('搬取零件站').first().click()
-  await page.getByRole('button', { name: '編輯工時表' }).click()
-
-  // ADR-021 Phase 3：進入案件編輯情境 → 案件情境列（CaseContextBar）出現
-  await expect(page.getByTestId('case-context-bar')).toBeVisible()
-  await expect(page.getByRole('button', { name: '← 返回分析案件' })).toBeVisible()
-
-  // 切換到 MOST 工作台 (v3)；全域 WorksheetBar 已移除（ADR-021 Phase 3），不應出現「＋新建工序表」
   await page.getByRole('button', { name: /MOST 工作台/ }).click()
-  await expect(page.getByRole('button', { name: '＋新建工序表' })).not.toBeVisible()
+  await page.waitForLoadState('networkidle')
 
-  // 切換至 Tab 3：製程途程
-  await page.getByRole('button', { name: '製程途程' }).click()
+  // 單頁：三 tab 按鈕不存在（ADR-022 B-1）
+  await expect(page.getByRole('button', { name: '動作模組工作區' })).toHaveCount(0)
+  await expect(page.getByRole('button', { name: 'WI 組成工作區' })).toHaveCount(0)
+  await expect(page.getByRole('button', { name: '製程途程工作區' })).toHaveCount(0)
 
-  // Panel 1 「WI 選取器」與 Panel 2 「製程大綱」標題必須存在
-  await expect(page.getByText('WI 選取器')).toBeVisible()
-  await expect(page.getByText('製程大綱')).toBeVisible()
+  // 建立器直接可見（摘要列）＋動作清單列出個別動作（每列 Base/頻率/Eff 來自 computed）
+  await expect(page.getByTestId('summary-bar')).toBeVisible()
+  await expect(page.getByText('搬取零件動作')).toBeVisible()
 
-  // 「回」badge 出現（mocked row 具有 source_module_id + source_module_version）
-  const applyBackBtn = page.getByRole('button', { name: '回' })
-  await expect(applyBackBtn).toBeVisible()
+  // WI 大綱區存在（ADR-022 B-3）：WI 列＋已微調 badge（version 2 > 1）
+  const outline = page.getByTestId('wi-outline')
+  await expect(outline).toBeVisible()
+  await expect(outline.getByText('搬取零件 WI')).toBeVisible()
+  await expect(outline.getByText('已微調')).toBeVisible()
 
-  // 點擊「回」→ ApplyBackDialog 顯示（F-03b §3.3）
-  await applyBackBtn.click()
-  await expect(page.getByRole('heading', { name: '確認發布新版本' })).toBeVisible()
-  // Dialog 顯示 mocked 模組名稱（.first()：WI 選取器清單也含同名項目）
-  await expect(page.getByText('搬取零件 WI').first()).toBeVisible()
+  // 展開 WI → 子列（每列 narrative ＋ computed TMU）
+  await outline.getByText('搬取零件 WI').click()
+  await expect(outline.getByText('雙手搬取零件至工作台')).toBeVisible()
 
-  // 點擊「取消」→ dialog 關閉
-  await page.getByRole('button', { name: '取消' }).click()
-  await expect(page.getByRole('heading', { name: '確認發布新版本' })).not.toBeVisible()
+  // 點子列 → WiItemInspector 右抽屜開啟（ADR-022 B-4）
+  await outline.getByText('雙手搬取零件至工作台').click()
+  const inspector = page.getByTestId('wi-item-inspector')
+  await expect(inspector).toBeVisible()
+  await expect(inspector.getByRole('heading', { name: '動作模組詳情' })).toBeVisible()
+  await expect(inspector.getByRole('button', { name: '重算並儲存' })).toBeVisible()
+
+  // 取消 → 抽屜關閉
+  await inspector.getByRole('button', { name: '取消' }).click()
+  await expect(page.getByTestId('wi-item-inspector')).toHaveCount(0)
 })

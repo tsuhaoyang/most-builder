@@ -49,3 +49,10 @@ export async function apiDelete(path: string): Promise<void> {
   const r = await fetch(path, { method: 'DELETE', headers: buildHeaders(false) })
   if (!r.ok) throw await toError(r)
 }
+
+// DELETE 且需要回應 body（如 motion-modules row 級刪除回新版本 detail）
+export async function apiDeleteJson<T>(path: string): Promise<T> {
+  const r = await fetch(path, { method: 'DELETE', headers: buildHeaders(false) })
+  if (!r.ok) throw await toError(r)
+  return r.json() as Promise<T>
+}

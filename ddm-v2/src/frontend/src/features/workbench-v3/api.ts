@@ -1,5 +1,5 @@
-import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
-import { apiGet, apiPost, apiPut, apiDelete } from '../../shared/api/client'
+import { useQuery, useQueries, useMutation, useQueryClient, type QueryClient } from '@tanstack/react-query'
+import { apiGet, apiPost, apiPut, apiDelete, apiDeleteJson } from '../../shared/api/client'
 
 // ── Instantiate response (from-module endpoint) ────────────────────────────
 
@@ -23,6 +23,14 @@ export interface InstantiateResponse {
 
 // ── Domain types ───────────────────────────────────────────────────────────────
 
+/** ADR-022 A-1：publish 時引擎算好、持久化在 rows JSON 的每列計算結果（前端永不自算） */
+export interface ModuleRowComputed {
+  total_tmu: number
+  total_seconds: number
+  eff_tmu: number
+  contribution_tmu: number
+}
+
 export interface MotionModuleRow {
   hand: string
   frequency: number
@@ -30,6 +38,9 @@ export interface MotionModuleRow {
   sub_activity: string | null
   simo_pair_index?: number | null
   vocab_refs?: Record<string, unknown>
+  /** ADR-022 A-1 批次 A 後端寫入；批次 A 之前發布的版本可能缺 → UI 顯示 '—' */
+  computed?: ModuleRowComputed | null
+  narrative_zh?: string | null
 }
 
 /** MotionModuleVersionResponse — GET /motion-modules/{id} 的 current_version_detail */
@@ -101,6 +112,7 @@ export interface ModuleFilters {
 // ── Query key ─────────────────────────────────────────────────────────────────
 
 const QK = 'motion-modules' as const
+const WI_QK = 'wi-templates' as const
 
 // ── Queries ───────────────────────────────────────────────────────────────────
 
@@ -124,6 +136,19 @@ export const useMotionModuleDetail = (id: string | null, enabled = true) =>
     queryFn: () => apiGet<MotionModuleSummary>(`/api/v2/motion-modules/${id}`),
     enabled: !!id && enabled,
     staleTime: 300_000,
+  })
+
+/**
+ * 批次撈多個模組 detail（動作清單每列需 rows[0] 的 frequency / computed）。
+ * queryKey 與 useMotionModuleDetail 相同 → 快取共用；invalidate [QK] 前綴一併重整。
+ */
+export const useModuleDetails = (ids: string[]) =>
+  useQueries({
+    queries: ids.map(id => ({
+      queryKey: [QK, 'detail', id],
+      queryFn: () => apiGet<MotionModuleSummary>(`/api/v2/motion-modules/${id}`),
+      staleTime: 300_000,
+    })),
   })
 
 // ── Mutations ─────────────────────────────────────────────────────────────────
@@ -172,9 +197,66 @@ export const usePublishModule = () => {
   })
 }
 
-// ── WI Template hooks (L2: category='wi-template') ────────────────────────────
+// ── Row 級操作（ADR-022 A-2：WiItemInspector / WI 大綱子列）─────────────────────
+// 每個操作都由後端引擎重算並發新版本，回應＝新版本 detail（rows 含 computed）。
+// 錯誤（422）：EMPTY_ROWS（刪到 0 列）、SIMO_PAIR_INVALID（刪被 SIMO 指向的主列等）。
+//
+// 快取策略：回應即權威新版本 → 直接寫入 detail / WI 列表快取（setQueriesData），
+// 不走 invalidate 重抓——後端目前有「回應先於 commit 可見」的 race（已回報），
+// 立即 refetch 會撈到舊版並被 staleTime 快取住。
 
-const WI_QK = 'wi-templates' as const
+function applyVersionToCaches(qc: QueryClient, id: string, ver: MotionModuleVersionDetail) {
+  // detail 快取（[QK,'detail',id]）：換上新版本內容與摘要欄
+  qc.setQueryData<MotionModuleSummary | undefined>([QK, 'detail', id], old =>
+    old
+      ? {
+          ...old,
+          current_version: ver.version_no,
+          current_version_detail: ver,
+          total_tmu: ver.total_tmu,
+          action_count: ver.rows.length,
+        }
+      : old)
+  // WI 列表快取（[WI_QK]）：更新該筆摘要（total_tmu / action_count / current_version）
+  qc.setQueriesData<MotionModuleSummary[] | undefined>({ queryKey: [WI_QK] }, old =>
+    Array.isArray(old)
+      ? old.map(m =>
+          m.id === id
+            ? { ...m, current_version: ver.version_no, total_tmu: ver.total_tmu, action_count: ver.rows.length }
+            : m)
+      : old)
+}
+
+export const useUpdateModuleRow = () => {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: ({ id, rowIndex, row }: { id: string; rowIndex: number; row: MotionModuleRow }) =>
+      apiPut<MotionModuleVersionDetail>(`/api/v2/motion-modules/${id}/rows/${rowIndex}`, row),
+    onSuccess: (ver, { id }) => applyVersionToCaches(qc, id, ver),
+  })
+}
+
+export const useReorderModuleRows = () => {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: ({ id, orderedIndexes }: { id: string; orderedIndexes: number[] }) =>
+      apiPost<MotionModuleVersionDetail>(`/api/v2/motion-modules/${id}/rows/reorder`, {
+        ordered_indexes: orderedIndexes,
+      }),
+    onSuccess: (ver, { id }) => applyVersionToCaches(qc, id, ver),
+  })
+}
+
+export const useDeleteModuleRow = () => {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: ({ id, rowIndex }: { id: string; rowIndex: number }) =>
+      apiDeleteJson<MotionModuleVersionDetail>(`/api/v2/motion-modules/${id}/rows/${rowIndex}`),
+    onSuccess: (ver, { id }) => applyVersionToCaches(qc, id, ver),
+  })
+}
+
+// ── WI Template hooks (L2: category='wi-template') ────────────────────────────
 
 export const useWiTemplates = () =>
   useQuery({

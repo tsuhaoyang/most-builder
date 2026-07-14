@@ -1,3 +1,6 @@
+// ⚠️ 斷路（ADR-022 批次 B）：本工作區已不掛載——「MOST 工作台」回歸 v3 單頁，
+// WI 組成能力由 WiOutline（WI 大綱）取代。檔案保留供參照，批次 E 收尾時清理。
+//
 // Tab 2: WI 組成工作區 (WIPoolWorkspace) — F-03 三層組裝 L2
 // Three-panel layout:
 //   [Compact Module Picker] | [WI Composer] | [WI Pool]

@@ -1,11 +1,14 @@
-// Tab 1: 動作模組工作區 — v3 MostWorkbenchPage 單頁流（ADR-021 Phase 2）
-// 由上而下：AI 快速建模列 → 摘要列（九欄） → 交錯句型列 → WI 語句 → 動作清單（Pool）
+// MOST 工作台單頁 — v3 MostWorkbenchPage 對等（ADR-022 批次 B；修正 ADR-021 誤讀）
+// 由上而下：AI 快速建模列 → 摘要列（九欄） → 交錯句型列 → WI 語句
+//          → 動作清單（category='action'，個別動作各自 TMU）
+//          → WI 大綱（category='wi-template'；勾動作建 WI；子列開 WiItemInspector）
 import { useEffect, useMemo, useRef, useState } from 'react'
+import { useQueryClient } from '@tanstack/react-query'
 import { useRuleSetOptions, useVocab, useCalculate } from '../wi-workbench/api'
 import { useCreateVocab } from '../master-data/api'
 import type { VocabIn } from '../master-data/api'
 import { defaultCycle, buildPayload, payloadToState, shortNarr, type CycleState } from '../wi-workbench/cycle'
-import { TMU_SEC } from '../../shared/config'
+import { TMU_SEC, ACTIVE_RULE_SET } from '../../shared/config'
 import { apiGet, apiPost } from '../../shared/api/client'
 import { SlotBuilder, aIsFilled } from './SlotBuilder'
 import {
@@ -14,14 +17,18 @@ import {
 } from './nlDraft'
 import {
   useMotionModules,
+  useModuleDetails,
   useCreateModule,
   useUpdateModule,
   useDeleteModule,
   useCloneModule,
   usePublishModule,
+  useCreateWiTemplate,
   type MotionModuleSummary,
+  type MotionModuleRow,
 } from './api'
-import { useWorkbenchV3Store } from './store'
+import { WiOutlineSection } from './WiOutline'
+import { WiItemInspector } from './WiItemInspector'
 
 const HAND_NAME: Record<string, string> = { RH: '右手', LH: '左手', BH: '雙手' }
 
@@ -35,6 +42,23 @@ function hasSlotContent(c: CycleState): boolean {
 // ── 編輯器是否有內容（NL 覆蓋/填空判斷，audit §1.13） ─────────────────────────
 function hasEditorContent(c: CycleState): boolean {
   return hasSlotContent(c) || Object.values(c.nv).some(v => !!v)
+}
+
+// ── 建立/發布後可見性等待（backend 已知 race：回應先於 commit 可見 ~0.5s）────────
+// 根因在後端（session commit 於回應後才對其他請求可見），已回報協調者轉 ddm-backend；
+// 此處僅做有界輪詢（≤10×300ms），逾時即拋錯，不吞任何非 404 錯誤。
+// minVersion>0 時同時等待 current_version 達標（publish commit 可見）。
+async function waitModuleVisible(id: string, minVersion = 0): Promise<void> {
+  for (let i = 0; i < 10; i++) {
+    try {
+      const m = await apiGet<MotionModuleSummary>(`/api/v2/motion-modules/${id}`)
+      if ((m.current_version ?? 0) >= minVersion) return
+    } catch (e) {
+      if (!(e as Error).message.startsWith('404')) throw e
+    }
+    await new Promise(r => setTimeout(r, 300))
+  }
+  throw new Error(`模組建立/發布後仍不可見（後端 commit 延遲）：${id}`)
 }
 
 // ── Simple Toast ──────────────────────────────────────────────────────────────
@@ -53,7 +77,9 @@ function Toast({ toast }: { toast: ToastState | null }) {
 
 // ── ActionModuleWorkspace ─────────────────────────────────────────────────────
 export function ActionModuleWorkspace() {
-  const { data: opts } = useRuleSetOptions()
+  // ADR-014 值權威：工作台建模/發布一律用 V2（29 個搬遷動作即以 V2 字典發布，
+  // 複本 rows 含 V2 選項碼；用 V1 發布會 422 X_UNKNOWN 等）
+  const { data: opts } = useRuleSetOptions(ACTIVE_RULE_SET)
   const { data: vocab = [] } = useVocab()
   const calc = useCalculate()
   const createVocab = useCreateVocab()
@@ -95,19 +121,33 @@ export function ActionModuleWorkspace() {
   }, [searchQ])
 
   // API hooks
-  // 不帶 scope → 後端回「所有可見」（global/site＋自己的 personal）；
-  // 模組池應含共享標準模組（v3-import 認證庫），非僅個人草稿
+  // 動作清單只列「個別動作」（category='action'，ADR-022）；不帶 scope → 後端回
+  // 「所有可見」（global/site＋自己的 personal），含共享標準動作（v3-import 認證庫）
   const { data: modules = [], isLoading: modulesLoading } = useMotionModules(
-    debouncedQ ? { q: debouncedQ } : {}
+    debouncedQ ? { category: 'action', q: debouncedQ } : { category: 'action' }
   )
   const createModule = useCreateModule()
   const updateModule = useUpdateModule()
   const deleteModule = useDeleteModule()
   const cloneModule = useCloneModule()
   const publishModule = usePublishModule()
+  const createWiTemplate = useCreateWiTemplate()
+  const qc = useQueryClient()
 
-  // Cross-tab store
-  const { setPendingModules, setActiveTab } = useWorkbenchV3Store()
+  // 每列 frequency / Base / Eff 需 detail 的 rows[0].computed（後端持久化，前端不算）
+  const detailQueries = useModuleDetails(modules.map(m => m.id))
+  const detailRowById = new Map<string, MotionModuleRow>()
+  modules.forEach((m, i) => {
+    const r = detailQueries[i]?.data?.current_version_detail?.rows?.[0]
+    if (r) detailRowById.set(m.id, r)
+  })
+
+  // WI 建立列（浮動）＋ WiItemInspector 狀態
+  const [wiName, setWiName] = useState('')
+  const [creatingWi, setCreatingWi] = useState(false)
+  const [inspector, setInspector] = useState<{
+    wi: MotionModuleSummary; rowIndex: number; row: MotionModuleRow
+  } | null>(null)
 
   // ── Debounced backend calculate (400ms)：前端不算 TMU（DISC-02） ─────────────
   const payload = useMemo(
@@ -251,9 +291,11 @@ export function ActionModuleWorkspace() {
       } else {
         const created = await createModule.mutateAsync({
           name_zh: name,
+          category: 'action',      // ADR-022：新動作明送 category='action'
           scope: 'personal',
           keywords: [],
         })
+        await waitModuleVisible(created.id)   // 後端 commit 可見性 race（見 helper 註解）
         await publishModule.mutateAsync({
           id: created.id,
           body: { rows: [row], rule_set_code: opts.code },
@@ -326,10 +368,63 @@ export function ActionModuleWorkspace() {
     })
   }
 
-  function handleSendToWi() {
+  // ── 建立 WI（ADR-022 B-3）：勾選動作 → rows 快照複本（深拷貝含 vocab_refs）──────
+  function autoWiName(selected: MotionModuleSummary[]): string {
+    if (selected.length === 1) return selected[0].name_zh
+    return `${selected[0].name_zh} 等${selected.length}動作`
+  }
+
+  async function handleCreateWi() {
+    if (!opts) return
     const selected = modules.filter(m => selectedIds.has(m.id))
-    setPendingModules(selected)
-    setActiveTab('tab2')
+    if (selected.length === 0) return
+    setCreatingWi(true)
+    try {
+      // 每個動作的 rows[0] 快照複本（copy-on-write：WI 微調不影響來源動作）
+      const rows: MotionModuleRow[] = await Promise.all(
+        selected.map(async mod => {
+          let src = detailRowById.get(mod.id)
+          if (!src) {
+            const detail = await apiGet<MotionModuleSummary>(`/api/v2/motion-modules/${mod.id}`)
+            src = detail.current_version_detail?.rows?.[0]
+          }
+          if (!src) throw new Error(`動作「${mod.name_zh}」尚無已發布版本`)
+          const clone = JSON.parse(JSON.stringify(src)) as MotionModuleRow  // 深拷貝（含 vocab_refs）
+          return {
+            sub_activity: clone.sub_activity ?? mod.name_zh,
+            hand: clone.hand,
+            frequency: clone.frequency,
+            simo_pair_index: clone.simo_pair_index ?? null,
+            vocab_refs: clone.vocab_refs ?? {},
+            cycle: clone.cycle,
+          }
+        }),
+      )
+      const name = (wiName.trim() || autoWiName(selected)).slice(0, 200)
+      const created = await createWiTemplate.mutateAsync({
+        name_zh: name,
+        category: 'wi-template',   // ADR-022：WI 大綱項明送 category
+        keywords: [],
+        scope: 'personal',
+      })
+      await waitModuleVisible(created.id)   // 後端 commit 可見性 race（見 helper 註解）
+      await publishModule.mutateAsync({
+        id: created.id,
+        body: { rows, rule_set_code: opts.code },
+      })
+      // publish commit 同樣有可見性延遲 → 等 current_version ≥ 1 再刷新（否則展開
+      // 子列會撈到 version 0 並被 staleTime 快取成「尚無已發布版本」）
+      await waitModuleVisible(created.id, 1)
+      qc.invalidateQueries({ queryKey: ['motion-modules'] })
+      qc.invalidateQueries({ queryKey: ['wi-templates'] })
+      setSelectedIds(new Set())
+      setWiName('')
+      showToast(`已建立 WI：${name}（${rows.length} 動作）`, 'ok')
+    } catch (err) {
+      showToast('建立 WI 失敗：' + (err as Error).message, 'err')
+    } finally {
+      setCreatingWi(false)
+    }
   }
 
   // ── Pool 摘要：合計走後端摘要欄加總；缺值顯示 —（audit §0.1） ─────────────────
@@ -581,25 +676,30 @@ export function ActionModuleWorkspace() {
                   <th className="p-1.5 w-14">手</th>
                   <th className="p-1.5">WI / 動作描述</th>
                   <th className="p-1.5 w-14">類型</th>
-                  <th className="p-1.5 w-20 text-right">TMU</th>
+                  <th className="p-1.5 w-20 text-right">Base TMU</th>
+                  <th className="p-1.5 w-14 text-right">頻率</th>
+                  <th className="p-1.5 w-20 text-right">Eff TMU</th>
                   <th className="p-1.5 w-20 text-right">CT(秒)</th>
-                  <th className="p-1.5 w-16 text-right">動作數</th>
                   <th className="p-1.5 w-36 text-center">操作</th>
                 </tr>
               </thead>
               <tbody>
                 {modulesLoading && (
-                  <tr><td colSpan={9} className="p-3 text-slate-400 text-center">載入中…</td></tr>
+                  <tr><td colSpan={10} className="p-3 text-slate-400 text-center">載入中…</td></tr>
                 )}
                 {!modulesLoading && modules.length === 0 && (
-                  <tr><td colSpan={9} className="p-3 text-slate-400 text-center">
+                  <tr><td colSpan={10} className="p-3 text-slate-400 text-center">
                     {searchQ ? '無相符動作' : '尚無動作，請在上方建立器新增。'}
                   </td></tr>
                 )}
                 {modules.map((mod, i) => {
                   const isSelected = selectedIds.has(mod.id)
                   const modSeq = getModuleSeq(mod)
-                  const modTmu = mod.total_tmu ?? null
+                  // 後端持久化的每列計算結果（detail rows[0].computed）；未載入時退回摘要欄
+                  const row = detailRowById.get(mod.id)
+                  const baseTmu = row?.computed?.total_tmu ?? null
+                  const rowFreq = row?.frequency ?? null
+                  const effTmuRow = row?.computed?.eff_tmu ?? mod.total_tmu ?? null
                   const rowCls = [
                     'border-t',
                     editingModuleId === mod.id ? 'bg-amber-50' : isSelected ? 'bg-blue-50' : '',
@@ -625,12 +725,15 @@ export function ActionModuleWorkspace() {
                         }`}>{modSeq}</span>
                       </td>
                       <td className="p-1.5 text-right">
-                        {modTmu != null ? <b style={{ color: '#1a73e8' }}>{modTmu}</b> : '—'}
+                        {baseTmu != null ? <span>{baseTmu}</span> : '—'}
+                      </td>
+                      <td className="p-1.5 text-right">{rowFreq ?? '—'}</td>
+                      <td className="p-1.5 text-right">
+                        {effTmuRow != null ? <b style={{ color: '#1a73e8' }}>{effTmuRow}</b> : '—'}
                       </td>
                       <td className="p-1.5 text-right">
-                        {modTmu != null ? (modTmu * TMU_SEC).toFixed(3) : '—'}
+                        {effTmuRow != null ? (effTmuRow * TMU_SEC).toFixed(3) : '—'}
                       </td>
-                      <td className="p-1.5 text-right">{mod.action_count ?? '—'}</td>
                       <td className="p-1.5 text-center whitespace-nowrap">
                         <button
                           onClick={() => loadModule(mod)}
@@ -662,28 +765,56 @@ export function ActionModuleWorkspace() {
             </table>
           </div>
 
-          {/* Multi-select bottom bar（F-03 跨層傳送） */}
-          {selectedIds.size > 0 && (
-            <div className="border-t pt-3 flex items-center justify-between gap-2">
-              <span className="text-sm text-slate-600">已選 {selectedIds.size} 個</span>
-              <div className="flex gap-2">
-                <button
-                  onClick={() => setSelectedIds(new Set())}
-                  className="text-xs px-2 py-1 border rounded text-slate-500 hover:bg-slate-50"
-                >
-                  清除
-                </button>
-                <button
-                  onClick={handleSendToWi}
-                  className="text-xs px-3 py-1 bg-blue-600 text-white rounded font-medium hover:bg-blue-700"
-                >
-                  傳送至 WI 工作區
-                </button>
-              </div>
-            </div>
-          )}
         </div>
+
+        {/* ═══ WI 大綱（ADR-022 B-3：勾動作建 WI；子列開 Inspector） ═══ */}
+        <WiOutlineSection
+          onInspect={(wi, rowIndex, row) => setInspector({ wi, rowIndex, row })}
+          showToast={showToast}
+          activeTarget={inspector ? { moduleId: inspector.wi.id, rowIndex: inspector.rowIndex } : null}
+        />
       </div>
+
+      {/* 浮動建立 WI 列（勾選動作時出現） */}
+      {selectedIds.size > 0 && (
+        <div
+          className="fixed bottom-6 left-1/2 -translate-x-1/2 z-40 flex items-center gap-3 bg-white border shadow-xl rounded-full px-5 py-2.5"
+          data-testid="create-wi-bar"
+        >
+          <span className="text-sm text-slate-600 whitespace-nowrap">已選 {selectedIds.size} 個動作</span>
+          <input
+            className="border rounded px-2 py-1 text-sm w-64"
+            placeholder="WI 名稱（空白＝自動命名）"
+            value={wiName}
+            onChange={e => setWiName(e.target.value)}
+          />
+          <button
+            onClick={handleCreateWi}
+            disabled={creatingWi}
+            className="px-4 py-1.5 bg-blue-600 text-white rounded-full text-sm font-medium disabled:opacity-40 hover:bg-blue-700"
+          >
+            {creatingWi ? '建立中…' : '建立 WI'}
+          </button>
+          <button
+            onClick={() => { setSelectedIds(new Set()); setWiName('') }}
+            className="text-xs text-slate-400 hover:text-slate-600"
+          >
+            清除
+          </button>
+        </div>
+      )}
+
+      {/* WiItemInspector 右抽屜（ADR-022 B-4） */}
+      {inspector && (
+        <WiItemInspector
+          moduleId={inspector.wi.id}
+          moduleName={inspector.wi.name_zh}
+          rowIndex={inspector.rowIndex}
+          row={inspector.row}
+          onClose={() => setInspector(null)}
+          onSaved={() => showToast('已重算並儲存（WI 發布新版本）', 'ok')}
+        />
+      )}
 
       {/* ═══ NL 覆蓋/填空對話框（audit §1.13） ═══ */}
       {nlAskOpen && nlResult && (
