@@ -4,11 +4,10 @@ import { ImportModal } from './features/import/ImportModal'
 import { WiWorkbench } from './features/wi-workbench/WiWorkbench'
 import { LevelSystem } from './features/level-system/LevelSystem'
 import { RuleSetViewer } from './features/rule-set/RuleSetViewer'
-import { ExportPanel } from './features/export/Export'
 import { UsersPanel } from './features/users/UsersPanel'
 import { WorksheetBar } from './features/catalog/WorksheetBar'
-import { CatalogPanel } from './features/catalog/CatalogPanel'
 import { AppLayout } from './features/layout/AppLayout'
+import { DashboardPage } from './features/dashboard/DashboardPage'
 import { MostWorkbenchV3 } from './features/workbench-v3/MostWorkbenchV3'
 import { CasesPage } from './features/cases/CasesPage'
 import { DictionariesPage } from './features/dictionaries/DictionariesPage'
@@ -16,7 +15,7 @@ import { WISetBuilderPage } from './features/wi-project/WISetBuilderPage'
 import { ErrorBoundary } from './shared/ui/ErrorBoundary'
 
 export default function App() {
-  const [tab, setTab] = useState<string>('wi')
+  const [tab, setTab] = useState<string>('dashboard')
   const [importOpen, setImportOpen] = useState(false)
   const { data: me } = useMe()
 
@@ -32,15 +31,16 @@ export default function App() {
 
   const renderContent = () => {
     switch (tab) {
+      case 'dashboard':    return <DashboardPage />
       case 'workbench-v3': return <MostWorkbenchV3 />
       case 'wi-project':   return <WISetBuilderPage />
+      // 'wi'（WiWorkbench 工時表編輯器）僅由分析案件的「編輯工時表」入口到達
+      //（ADR-021；Phase 3 將補完整的案件編輯情境頁）
       case 'wi':      return <WiWorkbench />
       case 'level':   return <LevelSystem />
       case 'ruleset': return <RuleSetViewer />
       case 'case':    return <CasesPage />
-      case 'export':  return <ExportPanel />
       case 'users':        return <UsersPanel />
-      case 'catalog':      return <CatalogPanel />
       case 'dictionaries': return <DictionariesPage />
       default:
         return (
@@ -66,8 +66,8 @@ export default function App() {
       <ErrorBoundary
         key={tab}
         onReset={() => {
-          if (tab === 'wi') window.location.reload()
-          else setTab('wi')
+          if (tab === 'dashboard') window.location.reload()
+          else setTab('dashboard')
         }}
       >
         {/* WorksheetBar sits above the active feature panel, inside the scrollable main area */}

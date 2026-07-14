@@ -1,7 +1,11 @@
 // Cases page — G-01 案件清單 + G-02 詳情面板 (L-04 SOP tab 取代)
+// ADR-021：匯出動作（wi-preview / excel / lb-csv / report.xlsx）併入案件詳情操作區
 import { useState } from 'react'
 import { useMe, canPublish, isAdmin } from '../../shared/auth/useMe'
 import { useWorkspace } from '../../shared/workspace'
+import { apiGet } from '../../shared/api/client'
+import { TMU_SEC } from '../../shared/config'
+import { downloadExcel, downloadCsv, useLbApi, type WiPreview } from '../export/api'
 import {
   useCases,
   useCaseAuditLog,
@@ -84,6 +88,92 @@ function CaseItem({ item, selected, onSelect }: CaseItemProps) {
   )
 }
 
+// ─── 匯出操作區（ADR-021：原頂層「匯出」tab 收進案件詳情）────────────────────
+// 依 Export.tsx 既有模式：檔案下載走 window.open（vite proxy / gateway 注入身分），
+// wi-preview 走 apiGet 顯示摘要。worksheet id 直接用案件的 worksheet_id，不依賴全域 activeWs。
+
+interface ExportActionsProps {
+  worksheetId: string
+}
+
+function ExportActions({ worksheetId }: ExportActionsProps) {
+  const [preview, setPreview] = useState<WiPreview | null>(null)
+  const [previewState, setPreviewState] = useState<'idle' | 'loading' | 'error'>('idle')
+  const [previewError, setPreviewError] = useState('')
+  const lbApi = useLbApi(worksheetId)
+  const [lbResult, setLbResult] = useState('')
+
+  const handlePreview = async () => {
+    setPreviewState('loading')
+    try {
+      const data = await apiGet<WiPreview>(`/api/v2/worksheets/${worksheetId}/export/wi-preview`)
+      setPreview(data)
+      setPreviewState('idle')
+    } catch (e) {
+      setPreviewError((e as Error).message)
+      setPreviewState('error')
+    }
+  }
+
+  return (
+    <div>
+      <h3 className="font-semibold text-sm text-slate-700 mb-2">匯出</h3>
+      <div className="flex flex-wrap gap-2">
+        <button
+          disabled={previewState === 'loading'}
+          onClick={handlePreview}
+          className="px-3 py-1.5 bg-slate-600 text-white rounded text-sm disabled:opacity-40 hover:bg-slate-700 transition-colors"
+        >
+          {previewState === 'loading' ? '載入中…' : 'WI 預覽'}
+        </button>
+        <button
+          onClick={() => downloadExcel(worksheetId)}
+          className="px-3 py-1.5 bg-emerald-600 text-white rounded text-sm hover:bg-emerald-700 transition-colors"
+        >
+          下載 Excel
+        </button>
+        <button
+          onClick={() => downloadCsv(worksheetId)}
+          className="px-3 py-1.5 bg-blue-600 text-white rounded text-sm hover:bg-blue-700 transition-colors"
+        >
+          下載 LB CSV
+        </button>
+        <button
+          onClick={() => window.open(`/api/v2/worksheets/${worksheetId}/export/report.xlsx`, '_blank')}
+          className="px-3 py-1.5 bg-blue-600 text-white rounded text-sm hover:bg-blue-700 transition-colors"
+        >
+          下載報表
+        </button>
+        <button
+          disabled={lbApi.isPending}
+          onClick={() =>
+            lbApi.mutate(undefined, {
+              onSuccess: (r) => setLbResult(JSON.stringify(r, null, 2)),
+              onError: (e) => setLbResult('失敗：' + (e as Error).message),
+            })
+          }
+          className="px-3 py-1.5 bg-violet-600 text-white rounded text-sm disabled:opacity-40 hover:bg-violet-700 transition-colors"
+        >
+          送 LB API (dry-run)
+        </button>
+      </div>
+      {previewState === 'error' && (
+        <p className="mt-2 text-sm text-red-600">WI 預覽失敗：{previewError}</p>
+      )}
+      {preview && previewState !== 'error' && (
+        <p className="mt-2 text-sm text-slate-600">
+          共 {preview.rows.length} 列 · 合計{' '}
+          <b className="text-emerald-600">{preview.total_tmu}</b> TMU
+          （≈ {(preview.total_tmu * TMU_SEC).toFixed(2)} 秒）· 狀態 {preview.status}
+        </p>
+      )}
+      {lbResult && (
+        <pre className="mt-2 font-mono text-xs bg-slate-50 p-2 rounded max-h-72 overflow-auto">{lbResult}</pre>
+      )}
+    </div>
+  )
+}
+
 interface DetailPanelProps {
   item: CaseOut
   onOpenWorkbench: (worksheetId: string) => void
@@ -101,10 +191,6 @@ function DetailPanel({ item, onOpenWorkbench }: DetailPanelProps) {
 
   const canApprove = item.status === 'draft' && userCanPublish
   const canRetire = item.status === 'approved' && isAdmin(me)
-
-  const handleDownloadReport = () => {
-    window.open(`/api/v2/worksheets/${item.worksheet_id}/export/report.xlsx`, '_blank')
-  }
 
   return (
     <div className="flex flex-col h-full overflow-y-auto p-4 space-y-4">
@@ -157,16 +243,10 @@ function DetailPanel({ item, onOpenWorkbench }: DetailPanelProps) {
           </button>
         )}
         <button
-          onClick={handleDownloadReport}
-          className="px-3 py-1.5 bg-blue-600 text-white rounded text-sm hover:bg-blue-700 transition-colors"
-        >
-          下載報表
-        </button>
-        <button
           onClick={() => onOpenWorkbench(item.worksheet_id)}
           className="px-3 py-1.5 bg-violet-600 text-white rounded text-sm hover:bg-violet-700 transition-colors"
         >
-          開啟工作台
+          編輯工時表
         </button>
       </div>
 
@@ -177,6 +257,9 @@ function DetailPanel({ item, onOpenWorkbench }: DetailPanelProps) {
       {retire.isError && (
         <p className="text-sm text-red-600">退役失敗：{(retire.error as Error).message}</p>
       )}
+
+      {/* Export actions (ADR-021: absorbed from top-level 匯出 tab) */}
+      <ExportActions worksheetId={item.worksheet_id} />
 
       {/* Audit log timeline */}
       <div>
@@ -229,11 +312,11 @@ export function CasesPage() {
 
   const selectedItem = data?.items.find((i) => i.worksheet_id === selectedId) ?? null
 
-  // When user clicks "開啟工作台": set activeWs and signal parent to switch tab
-  // We use a custom event so App.tsx can intercept without prop drilling
+  // 「編輯工時表」（ADR-021）：先設定該案件的 worksheet 為 activeWs，
+  // 再切到 wi tab（WiWorkbench 工時表編輯器）。custom event 讓 App.tsx 切 tab，免 prop drilling。
   const handleOpenWorkbench = (worksheetId: string) => {
     setActiveWs(worksheetId)
-    window.dispatchEvent(new CustomEvent('ddm:switch-tab', { detail: 'workbench-v3' }))
+    window.dispatchEvent(new CustomEvent('ddm:switch-tab', { detail: 'wi' }))
   }
 
   return (

@@ -22,13 +22,20 @@ from fastapi.responses import FileResponse, HTMLResponse
 from fastapi.staticfiles import StaticFiles
 
 from ddm_v2.api.routes.v2.admin_users import router as v2_admin_router
+from ddm_v2.api.routes.v2.audit_log import router as v2_audit_log_router
 from ddm_v2.api.routes.v2.calculate import router as v2_router  # 含 /api/v2/me
+from ddm_v2.api.routes.v2.cases import router as v2_cases_router
 from ddm_v2.api.routes.v2.catalog import router as v2_catalog_router
 from ddm_v2.api.routes.v2.export import router as v2_export_router
 from ddm_v2.api.routes.v2.import_excel import router as v2_import_router
+from ddm_v2.api.routes.v2.motion_module import router as v2_motion_module_router
 from ddm_v2.api.routes.v2.motion_template import router as v2_motion_template_router
+from ddm_v2.api.routes.v2.nl_draft import router as v2_nl_draft_router
 from ddm_v2.api.routes.v2.rule_set import router as v2_ruleset_router
+from ddm_v2.api.routes.v2.search import router as v2_search_router
+from ddm_v2.api.routes.v2.synonyms import router as v2_synonyms_router
 from ddm_v2.api.routes.v2.vocab import router as v2_vocab_router
+from ddm_v2.api.routes.v2.wi_set import router as v2_wi_set_router
 from ddm_v2.api.routes.v2.worksheet import router as v2_worksheet_router
 
 DIST = Path(__file__).resolve().parent.parent / "src" / "frontend" / "dist"
@@ -40,11 +47,18 @@ app.include_router(v2_router)
 app.include_router(v2_worksheet_router)
 app.include_router(v2_vocab_router)
 app.include_router(v2_motion_template_router)
+app.include_router(v2_motion_module_router)
 app.include_router(v2_export_router)
 app.include_router(v2_import_router)
 app.include_router(v2_ruleset_router)
 app.include_router(v2_admin_router)
 app.include_router(v2_catalog_router)
+app.include_router(v2_search_router)
+app.include_router(v2_synonyms_router)
+app.include_router(v2_nl_draft_router)
+app.include_router(v2_audit_log_router)
+app.include_router(v2_cases_router)
+app.include_router(v2_wi_set_router)
 
 # 已建置的前端靜態資源（Vite 產物在 dist/assets）
 if (DIST / "assets").is_dir():

@@ -1,18 +1,20 @@
-/** All navigable tab IDs in the sidebar (includes placeholders not yet implemented). */
+/**
+ * All navigable tab IDs in the sidebar (ADR-021 target IA: 7 + 2 admin items).
+ *
+ * 'wi' (WiWorkbench worksheet editor) is no longer a top-level nav item —
+ * per ADR-021 it moves into the 分析案件 editing context (Phase 3). The tab id
+ * remains valid in App.tsx so it can be reached programmatically until then.
+ */
 export type TabId =
   | 'dashboard'
-  | 'wi'
   | 'workbench-v3'
   | 'wi-project'
   | 'level'
   | 'case'
-  | 'catalog'
-  | 'export'
-  | 'ruleset'
-  | 'users'
-  | 'master'
-  | 'sop'
   | 'dictionaries'
+  | 'users'
+  | 'ruleset'
+  | 'wi'
 
 /** A single item in the sidebar navigation. */
 export interface NavItem {

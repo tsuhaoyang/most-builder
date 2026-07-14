@@ -3,20 +3,17 @@ import type { Me } from '../../shared/auth/useMe'
 import { canEdit, isAdmin } from '../../shared/auth/useMe'
 import type { NavItem } from './sidebar.types'
 
-// ─── Nav item definitions (UX spec §1.2, fixed order) ────────────────────────
+// ─── Nav item definitions (ADR-021 target IA §側欄, fixed order: 7 + 2 admin) ─
 
 const PRIMARY_NAV: NavItem[] = [
   { id: 'dashboard',    label: '儀表板',            shortLabel: '表' },
-  { id: 'workbench-v3', label: 'WI 組裝',            shortLabel: '裝' },
-  { id: 'wi',           label: 'MOST 工作台',        shortLabel: 'M' },
+  { id: 'workbench-v3', label: 'MOST 工作台',        shortLabel: 'M' },
   { id: 'wi-project',   label: 'WI 專案建立',        shortLabel: 'W' },
   { id: 'level',        label: 'Level System',       shortLabel: 'L' },
   { id: 'case',         label: '分析案件',            shortLabel: '案' },
-  { id: 'catalog',      label: '目錄',               shortLabel: '目' },
-  { id: 'export',       label: '匯出',               shortLabel: '出' },
-  { id: 'ruleset',      label: 'Rule-set',            shortLabel: 'R', minRole: 'admin' },
+  { id: 'dictionaries', label: '字典管理',            shortLabel: '典', minRole: 'analyst' },
   { id: 'users',        label: '使用者管理',          shortLabel: '人', minRole: 'admin' },
-  { id: 'dictionaries', label: '字典管理',             shortLabel: '典', minRole: 'analyst' },
+  { id: 'ruleset',      label: 'Rule-set',            shortLabel: 'R', minRole: 'admin' },
 ]
 
 /** Legacy v2 tabs (L-04: SOP retired; kept as empty array for future use). */

@@ -1,15 +1,17 @@
 import { test, expect } from '@playwright/test'
 
 // 對單一伺服器預覽（preview_server :8099，含真實 DB）跑端對端冒煙。
-test('workbench loads, identity + WI rows from worksheet', async ({ page }) => {
+test('app loads, identity + dashboard cards (ADR-021 default tab)', async ({ page }) => {
   await page.goto('/')
   // App title rendered as <h1> inside the AppLayout header
   await expect(page.getByRole('heading', { name: 'MOST Workbench' })).toBeVisible()
   await expect(page.getByText(/IEC141289/)).toBeVisible()               // 身分（/api/v2/me）
-  // Sidebar nav button for the default MOST 工作台 tab (UX spec §1.2)
+  // Sidebar nav button for MOST 工作台 (workbench-v3, ADR-021)
   await expect(page.getByRole('button', { name: /MOST 工作台/ })).toBeVisible()
-  // WI 由作用中 worksheet 載入（種子 30 列）
-  await expect(page.getByText(/合計/)).toBeVisible()
+  // 預設 tab = 儀表板：三張卡（資料來自真實 DB 種子）
+  await expect(page.getByText('Rule-set 總覽')).toBeVisible()
+  await expect(page.getByText('案件狀態統計')).toBeVisible()
+  await expect(page.getByText('近期案件')).toBeVisible()
 })
 
 test('sidebar navigation renders each migrated feature', async ({ page }) => {
@@ -27,9 +29,7 @@ test('sidebar navigation renders each migrated feature', async ({ page }) => {
   await expect(page.getByText(/使用者與角色/)).toBeVisible()
   await expect(page.getByText('IEC141289', { exact: false }).first()).toBeVisible()
 
-  // 匯出 tab
-  await page.getByRole('button', { name: /匯出/ }).click()
-  await expect(page.getByRole('heading', { name: '匯出' })).toBeVisible()
+  // NOTE: 匯出 tab 已收進分析案件詳情（ADR-021）；目錄 tab 已退場。
 
   // 字典管理 tab (admin-gated; seed user IEC141289 is admin) — smoke check (H-01)
   await page.getByRole('button', { name: /字典管理/ }).click()
@@ -37,9 +37,9 @@ test('sidebar navigation renders each migrated feature', async ({ page }) => {
 
   // 分析案件 tab — smoke check (G-01)
   await page.getByRole('button', { name: /分析案件/ }).click()
-  // Case list renders filter tabs
-  await expect(page.getByRole('button', { name: '全部' })).toBeVisible()
-  await expect(page.getByRole('button', { name: '草稿' })).toBeVisible()
+  // Case list renders filter tabs（exact:true 避免匹配到案件列 button 內含「草稿」badge）
+  await expect(page.getByRole('button', { name: '全部', exact: true })).toBeVisible()
+  await expect(page.getByRole('button', { name: '草稿', exact: true })).toBeVisible()
 })
 
 test('import wizard opens from header button', async ({ page }) => {
@@ -59,12 +59,39 @@ test('import wizard opens from header button', async ({ page }) => {
 // 不對真實後端發出請求。若靜態資源伺服器也未啟動，goto('/') 會 timeout，
 // 與現有 smoke test 行為一致（屬預期失敗）。
 test('workbench-v3 tab3: ProcessWorkspace 結構與 apply-back dialog（mocked API）', async ({ page }) => {
-  const WS_ID = '55555555-5555-5555-5555-555555555555'   // 與 shared/config.ts ACTIVE_WS 一致
+  // ACTIVE_WS 初始為空字串（6452dd6）→ 需經「分析案件 → 編輯工時表」設定 activeWs，
+  // 這也是 ADR-021 後的真實使用者動線。
+  const WS_ID = '55555555-5555-5555-5555-555555555555'
   const MODULE_ID = 'aaaabbbb-cccc-dddd-eeee-ffffgggghhhh'
 
   // 單一 catch-all 攔截所有 /api/** 請求
   await page.route('/api/**', route => {
     const url = route.request().url()
+
+    // /api/v2/rule-sets/*/options — ActionModuleWorkspace 需要有效 options
+    //（回 [] 會使 opts.a_bands.reach 崩潰 → ErrorBoundary 吃掉整頁，tabs 不會渲染）
+    if (url.includes('/api/v2/rule-sets/') && url.includes('/options')) {
+      return route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify({
+          code: 'MINIMOST_FACTORY_V2',
+          multiplier: 1,
+          a_bands: {
+            reach: [{ max_value: 5, index: 2 }],
+            twist: [{ max_value: null, index: 0 }],
+            foot:  [{ max_value: null, index: 0 }],
+          },
+          b: [],
+          g: [{ code: 'g_simple', label: '簡單抓握', modifier_key: null, requires_modifier: false }],
+          p_bases:  [{ code: 'p_put', label: '放置', label_en: 'Put' }],
+          p_addons: [],
+          m_verbs:  [{ code: 'm_push', label: '推', pricing_kind: 'distance_ladder' }],
+          x: [{ code: 'x_none', label: '無機器時間', mode: 'none' }],
+          i: [{ code: 'i_none', label: '無', label_en: 'None' }],
+        }),
+      })
+    }
 
     // /api/v2/me — 身分（AppLayout + RBAC gating）
     if (url.includes('/api/v2/me')) {
@@ -111,6 +138,30 @@ test('workbench-v3 tab3: ProcessWorkspace 結構與 apply-back dialog（mocked A
       })
     }
 
+    // /api/v2/cases — 分析案件清單（提供「編輯工時表」入口以設定 activeWs = WS_ID）
+    if (/\/api\/v2\/cases(\?|$)/.test(url)) {
+      return route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify({
+          total: 1,
+          items: [{
+            process_version_id: 'pv-mock-1',
+            worksheet_id: WS_ID,
+            version_no: '1',
+            status: 'draft',
+            site_name: 'Site A',
+            product_name: 'Product X',
+            sku_name: 'SKU 001',
+            process_name: '搬取零件站',
+            total_tmu: 28,
+            created_at: '2026-01-01T00:00:00Z',
+            approved_at: null,
+          }],
+        }),
+      })
+    }
+
     // /api/v2/motion-modules?category=wi-template — Panel 1 WI 選取器清單
     if (url.includes('/api/v2/motion-modules') && url.includes('wi-template')) {
       return route.fulfill({
@@ -138,6 +189,11 @@ test('workbench-v3 tab3: ProcessWorkspace 結構與 apply-back dialog（mocked A
 
   await page.goto('/')
 
+  // 先經分析案件設定 activeWs（編輯工時表 → setActiveWs(WS_ID) + 切到 wi tab）
+  await page.getByRole('button', { name: /分析案件/ }).first().click()
+  await page.getByText('搬取零件站').first().click()
+  await page.getByRole('button', { name: '編輯工時表' }).click()
+
   // 切換到 MOST 工作台 (v3)
   await page.getByRole('button', { name: /MOST 工作台/ }).click()
 
@@ -155,8 +211,8 @@ test('workbench-v3 tab3: ProcessWorkspace 結構與 apply-back dialog（mocked A
   // 點擊「回」→ ApplyBackDialog 顯示（F-03b §3.3）
   await applyBackBtn.click()
   await expect(page.getByRole('heading', { name: '確認發布新版本' })).toBeVisible()
-  // Dialog 顯示 mocked 模組名稱
-  await expect(page.getByText('搬取零件 WI')).toBeVisible()
+  // Dialog 顯示 mocked 模組名稱（.first()：WI 選取器清單也含同名項目）
+  await expect(page.getByText('搬取零件 WI').first()).toBeVisible()
 
   // 點擊「取消」→ dialog 關閉
   await page.getByRole('button', { name: '取消' }).click()

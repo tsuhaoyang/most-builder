@@ -132,6 +132,19 @@ async function setupRoutes(
         body: JSON.stringify(MOCK_OPTS) })
     }
 
+    // Rule-set list (DashboardPage 卡 1)
+    if (url.match(/\/api\/v2\/rule-sets(\?|$)/)) {
+      return route.fulfill({ status: 200, contentType: 'application/json',
+        body: JSON.stringify([{ id: 'rs-1', code: 'MINIMOST_FACTORY_V2',
+          name_zh: 'MiniMOST 工廠規則 v2', status: 'published', multiplier: 1 }]) })
+    }
+
+    // WI preview export (案件詳情匯出區, ADR-021)
+    if (url.includes('/export/wi-preview')) {
+      return route.fulfill({ status: 200, contentType: 'application/json',
+        body: JSON.stringify({ worksheet_id: 'ws-001', status: 'active', total_tmu: 28, rows: [{}] }) })
+    }
+
     // Worksheet by ID — useWorksheet(wsId) 無 enabled guard，wsId='' 也會發請求
     // 必須回傳帶 rows[] 的物件，否則 wsData.rows.map() 崩潰
     // 匹配 /api/v2/worksheets/<id> 但不匹配 /export /rows /publish /retire /versions /clone
@@ -208,18 +221,33 @@ test.describe('§A-01 Sidebar 結構 (UX spec §1.1–1.2)', () => {
     await expect(sidebar).toHaveCSS('background-color', 'rgb(48, 65, 86)')
   })
 
-  test('A-01-3: admin 展開時看到所有導覽項目 (checklist A-01)', async ({ page }) => {
+  test('A-01-3: admin 展開時看到 ADR-021 的 7+2 導覽項目（順序固定）', async ({ page }) => {
     await gotoAndWait(page)
-    // spec §1.2: 儀表板 / WI 組裝 / MOST 工作台 / WI 專案建立 / Level System / 分析案件 / 字典管理 / 使用者管理
-    await expect(page.getByRole('button', { name: /儀表板/ })).toBeVisible()
-    await expect(page.getByRole('button', { name: /MOST 工作台/ })).toBeVisible()
-    await expect(page.getByRole('button', { name: /WI 組裝/ })).toBeVisible()
-    await expect(page.getByRole('button', { name: /WI 專案建立/ })).toBeVisible()
-    await expect(page.getByRole('button', { name: /Level System/ })).toBeVisible()
-    await expect(page.getByRole('button', { name: /分析案件/ })).toBeVisible()
-    await expect(page.getByRole('button', { name: /字典管理/ })).toBeVisible()
-    await expect(page.getByRole('button', { name: /使用者管理/ })).toBeVisible()
-    await expect(page.getByRole('button', { name: /匯出/ })).toBeVisible()
+    // ADR-021 目標 IA：儀表板 / MOST 工作台 / WI 專案建立 / Level System / 分析案件
+    //                / 字典管理(analyst+) / 使用者管理(admin) / Rule-set(admin)
+    const nav = page.locator('nav').first()
+    const labels = ['儀表板', 'MOST 工作台', 'WI 專案建立', 'Level System',
+      '分析案件', '字典管理', '使用者管理', 'Rule-set']
+    for (const label of labels) {
+      await expect(nav.getByRole('button', { name: new RegExp(label) })).toBeVisible()
+    }
+    // 側欄剛好 8 項（admin：7 一般 + 2 admin，其中儀表板~Rule-set 共 8 顆按鈕）
+    await expect(nav.getByRole('button')).toHaveCount(labels.length)
+    // 順序固定（ADR-021）
+    const texts = await nav.getByRole('button').allInnerTexts()
+    expect(texts.map(t => t.replace(/\s+/g, ' ').trim())).toEqual([
+      '表 儀表板', 'M MOST 工作台', 'W WI 專案建立', 'L Level System',
+      '案 分析案件', '典 字典管理', '人 使用者管理', 'R Rule-set',
+    ])
+  })
+
+  test('A-01-6: 頂層不含「目錄」「匯出」「WI 組裝」(ADR-021 收斂)', async ({ page }) => {
+    await gotoAndWait(page)
+    const nav = page.locator('nav').first()
+    // 目錄 → 收進分析案件新建流程（Phase 3）；匯出 → 併入案件詳情；WI 組裝 → 改名 MOST 工作台
+    await expect(nav.getByRole('button', { name: /目錄/ })).not.toBeVisible()
+    await expect(nav.getByRole('button', { name: /匯出/ })).not.toBeVisible()
+    await expect(nav.getByRole('button', { name: /WI 組裝/ })).not.toBeVisible()
   })
 
   test('A-01-4: SOP 版本已退役，sidebar 不含「SOP」(checklist L-04)', async ({ page }) => {
@@ -303,14 +331,43 @@ test.describe('§A-03 視覺 Token 主內容區 (checklist A-03)', () => {
   })
 })
 
+// ─── § A-04: 儀表板 (ADR-021 Phase 1 最小儀表板) ─────────────────────────────
+
+test.describe('§A-04 儀表板 (ADR-021)', () => {
+  test('A-04-1: 預設 tab 為儀表板，三張卡齊備', async ({ page }) => {
+    await setupRoutes(page, ADMIN_ME, MOCK_CASES_2)
+    await gotoAndWait(page)
+    await expect(page.getByRole('heading', { name: '儀表板' })).toBeVisible()
+    // 卡 1：Rule-set 總覽（mock: MINIMOST_FACTORY_V2 published，帶新工序表預設標籤）
+    await expect(page.getByText('Rule-set 總覽')).toBeVisible()
+    await expect(page.getByText('MINIMOST_FACTORY_V2')).toBeVisible()
+    await expect(page.getByText('新工序表預設')).toBeVisible()
+    // 卡 2：案件狀態統計
+    await expect(page.getByText('案件狀態統計')).toBeVisible()
+    // 卡 3：近期案件（mock 兩筆）
+    await expect(page.getByText('近期案件')).toBeVisible()
+    await expect(page.getByText('組裝站作業')).toBeVisible()
+    await expect(page.getByText('壓合站作業')).toBeVisible()
+  })
+
+  test('A-04-2: 點近期案件 → 切到分析案件 tab', async ({ page }) => {
+    await setupRoutes(page, ADMIN_ME, MOCK_CASES_2)
+    await gotoAndWait(page)
+    await page.getByRole('button', { name: /組裝站作業/ }).click()
+    await page.waitForLoadState('networkidle')
+    // CasesPage 的狀態篩選 tab 出現，代表已切到分析案件
+    await expect(page.getByRole('button', { name: '全部', exact: true })).toBeVisible()
+  })
+})
+
 // ─── § B-01: workbench-v3 佈局 (UX spec §2.1) ────────────────────────────────
 
 test.describe('§B-01 workbench-v3 佈局 (checklist B-01, B-02, B-03)', () => {
   test.beforeEach(async ({ page }) => {
     await setupRoutes(page, ADMIN_ME)
     await gotoAndWait(page)
-    // Navigate to WI 組裝 (workbench-v3) and wait for ActionModuleWorkspace
-    await clickNavAndWait(page, /WI 組裝/)
+    // Navigate to MOST 工作台 (workbench-v3, ADR-021 改名自「WI 組裝」)
+    await clickNavAndWait(page, /MOST 工作台/)
   })
 
   test('B-01-1: NlDraftInput 文字輸入框存在 (checklist B-02)', async ({ page }) => {
@@ -345,8 +402,8 @@ test.describe('§C-01 動作清單 12 欄表格結構 (checklist C-01)', () => {
   test('C-01-1: [SPEC GAP] workbench-v3 缺少 12 欄 MiCompositionTable 規格表頭', async ({ page }) => {
     await setupRoutes(page, ADMIN_ME)
     await gotoAndWait(page)
-    // Navigate to workbench-v3 (WI 組裝)
-    await clickNavAndWait(page, /WI 組裝/)
+    // Navigate to workbench-v3 (MOST 工作台, ADR-021 改名自「WI 組裝」)
+    await clickNavAndWait(page, /MOST 工作台/)
     // Spec C-01 requires: 拖曳把手 | 勾選 | # | 手 | 動作描述 | Base TMU | 頻率 | Eff TMU | CT(秒) | SIMO | 納入 TMU | 操作
     // Current implementation has card pool, not 12-col table. These headers absent.
     await expect(page.getByText('Base TMU')).not.toBeVisible()
@@ -354,11 +411,14 @@ test.describe('§C-01 動作清單 12 欄表格結構 (checklist C-01)', () => {
     await expect(page.getByText('CT(秒)')).not.toBeVisible()
   })
 
-  test('C-01-2: MOST 工作台 (wi tab) 有完整欄位含 Base TMU / Eff TMU / CT(秒) / 頻率 (C-01-2 已修)', async ({ page }) => {
-    await setupRoutes(page, ADMIN_ME)
+  test('C-01-2: WiWorkbench (wi tab) 有完整欄位含 Base TMU / Eff TMU / CT(秒) / 頻率 (C-01-2 已修)', async ({ page }) => {
+    await setupRoutes(page, ADMIN_ME, MOCK_CASES_DRAFT)
     await gotoAndWait(page)
-    // Navigate to MOST 工作台 (wi tab, primary MOST sequence editor)
-    await clickNavAndWait(page, /MOST 工作台/)
+    // ADR-021：wi tab 已無側欄入口，經「分析案件 → 編輯工時表」到達 — 驗證功能未回歸
+    await clickNavAndWait(page, /分析案件/)
+    await page.getByText('組裝站作業').click()
+    await page.getByRole('button', { name: '編輯工時表' }).click()
+    await page.waitForLoadState('networkidle')
     const tableHead = page.locator('thead')
     await expect(tableHead.getByText('#')).toBeVisible()
     await expect(tableHead.getByText('手')).toBeVisible()
@@ -376,7 +436,7 @@ test.describe('§E-04/05/06 WI Pool 三層 Tab (checklist E-04~E-06)', () => {
   test.beforeEach(async ({ page }) => {
     await setupRoutes(page, ADMIN_ME)
     await gotoAndWait(page)
-    await clickNavAndWait(page, /WI 組裝/)
+    await clickNavAndWait(page, /MOST 工作台/)
   })
 
   test('E-04-1: 三個 Tab 按鈕含「工作區」後綴 (E-04-2 已修)', async ({ page }) => {
@@ -452,7 +512,20 @@ test.describe('§G-01 分析案件清單 (checklist G-01)', () => {
     // Detail panel shows case name as heading and action buttons
     await expect(page.getByRole('heading', { name: '組裝站作業' })).toBeVisible()
     await expect(page.getByRole('button', { name: '下載報表' })).toBeVisible()
-    await expect(page.getByRole('button', { name: '開啟工作台' })).toBeVisible()
+    await expect(page.getByRole('button', { name: '編輯工時表' })).toBeVisible()
+  })
+
+  test('G-01-4: 案件詳情含匯出操作區（ADR-021：原頂層匯出 tab 的五種操作）', async ({ page }) => {
+    await page.getByText('組裝站作業').click()
+    // 五種匯出操作：wi-preview / excel / lb-csv / report.xlsx / lb-api dry-run
+    await expect(page.getByRole('button', { name: 'WI 預覽' })).toBeVisible()
+    await expect(page.getByRole('button', { name: '下載 Excel' })).toBeVisible()
+    await expect(page.getByRole('button', { name: '下載 LB CSV' })).toBeVisible()
+    await expect(page.getByRole('button', { name: '下載報表' })).toBeVisible()
+    await expect(page.getByRole('button', { name: '送 LB API (dry-run)' })).toBeVisible()
+    // WI 預覽走 apiGet，摘要 inline 顯示（mock: 1 列 / 28 TMU）
+    await page.getByRole('button', { name: 'WI 預覽' }).click()
+    await expect(page.getByText(/共 1 列 · 合計/)).toBeVisible()
   })
 })
 
