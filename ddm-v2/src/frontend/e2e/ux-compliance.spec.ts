@@ -370,45 +370,64 @@ test.describe('§B-01 workbench-v3 佈局 (checklist B-01, B-02, B-03)', () => {
     await clickNavAndWait(page, /MOST 工作台/)
   })
 
-  test('B-01-1: NlDraftInput 文字輸入框存在 (checklist B-02)', async ({ page }) => {
-    // ActionModuleWorkspace renders a textarea for NL draft (B-02 §1)
-    await expect(page.getByPlaceholder(/口語描述動作/)).toBeVisible()
+  test('B-01-1: AI 快速建模列存在（NL 輸入＋AI 預填鈕，ADR-021 §Tab1 形態 1）', async ({ page }) => {
+    // v3 母版：頂部 AI 快速建模列（tag + input + AI 預填）
+    await expect(page.getByText('AI 快速建模')).toBeVisible()
+    await expect(page.getByPlaceholder(/輸入動作描述/)).toBeVisible()
+    await expect(page.getByRole('button', { name: 'AI 預填' })).toBeVisible()
   })
 
-  test('B-01-2: Slot Strip（句子型格位列）存在 (checklist B-03)', async ({ page }) => {
-    // ActionModuleWorkspace renders the slot inputs inline as "sentence-line" elements.
-    // Check for the GM/CM model selector (always present when rule-set loads)
-    await expect(page.getByText('一般移動 (GM)')).toBeVisible()
-    await expect(page.getByText('控制移動 (CM)')).toBeVisible()
+  test('B-01-2: 交錯句型列存在（含情境欄 元件/從哪裡/目標物/到哪裡，ADR-021 §Tab1 形態 3）', async ({ page }) => {
+    const flow = page.getByTestId('slot-builder-flow')
+    await expect(flow).toBeVisible()
+    // 情境欄嵌在格位之間（米黃）＋使用手（紫）
+    await expect(flow.getByText('使用手')).toBeVisible()
+    await expect(flow.getByText('從哪裡')).toBeVisible()
+    await expect(flow.getByText('目標物')).toBeVisible()
+    await expect(flow.getByText('元件')).toBeVisible()
+    await expect(flow.getByText('到哪裡')).toBeVisible()
+    await expect(flow.getByText('顯示於MI')).toBeVisible()
+    // GM 格位順序中的參數色塊
+    for (const key of ['A1', 'B1', 'G', 'A2', 'B2', 'P', 'A3']) {
+      await expect(flow.getByText(key, { exact: true })).toBeVisible()
+    }
   })
 
-  test('B-01-3: [SPEC GAP] MiCompositionTable 12欄動作清單未出現在 workbench-v3 (checklist C-01)', async ({ page }) => {
-    // UX spec §2.4 requires Section 2 with 12-column MiCompositionTable.
-    // Current workbench-v3 Tab 1 (ActionModuleWorkspace) has a card-based pool instead.
-    // This test documents the gap: the table headers should NOT be found.
-    await expect(page.getByText('Base TMU')).not.toBeVisible()
-    await expect(page.getByText('Eff TMU')).not.toBeVisible()
+  test('B-01-3: 摘要列九欄常駐（ADR-021 §Tab1 形態 2）', async ({ page }) => {
+    const bar = page.getByTestId('summary-bar')
+    await expect(bar).toBeVisible()
+    for (const label of ['動作類型', '使用手', '基礎 TMU', '頻率', '有效 TMU',
+      'CT (秒)', 'SIMO', '納入總時間', 'MI 語句']) {
+      await expect(bar.getByText(label, { exact: true })).toBeVisible()
+    }
   })
 
-  test('B-01-4: TMU 標籤存在 (checklist A-03, C-01)', async ({ page }) => {
-    // ActionModuleWorkspace shows TMU label with blue color styling
-    await expect(page.getByText('TMU')).toBeVisible()
+  test('B-01-4: 摘要列基礎 TMU 欄存在且未算前顯示 —（前端不自算）', async ({ page }) => {
+    const bar = page.getByTestId('summary-bar')
+    await expect(bar.getByText('基礎 TMU', { exact: true })).toBeVisible()
+    // mock calculate 未攔截具體回應 → 空 cycle 顯示 '—'（不得假裝 0）
+    await expect(bar.getByText('動作類型', { exact: true })).toBeVisible()
   })
 })
 
 // ─── § C-01: 動作清單 12 欄 (UX spec §2.4) ───────────────────────────────────
 
 test.describe('§C-01 動作清單 12 欄表格結構 (checklist C-01)', () => {
-  test('C-01-1: [SPEC GAP] workbench-v3 缺少 12 欄 MiCompositionTable 規格表頭', async ({ page }) => {
+  test('C-01-1: workbench-v3 Tab1 動作清單表格＋工具列（搜尋/筆數/合計，ADR-021 §Tab1 形態 5）', async ({ page }) => {
     await setupRoutes(page, ADMIN_ME)
     await gotoAndWait(page)
     // Navigate to workbench-v3 (MOST 工作台, ADR-021 改名自「WI 組裝」)
     await clickNavAndWait(page, /MOST 工作台/)
-    // Spec C-01 requires: 拖曳把手 | 勾選 | # | 手 | 動作描述 | Base TMU | 頻率 | Eff TMU | CT(秒) | SIMO | 納入 TMU | 操作
-    // Current implementation has card pool, not 12-col table. These headers absent.
-    await expect(page.getByText('Base TMU')).not.toBeVisible()
-    await expect(page.getByText('Eff TMU')).not.toBeVisible()
-    await expect(page.getByText('CT(秒)')).not.toBeVisible()
+    // 工具列：搜尋框＋筆數＋合計 TMU（mock 無模組 → 共 0 筆、合計 —）
+    await expect(page.getByPlaceholder('搜尋動作…')).toBeVisible()
+    await expect(page.getByText(/共 \d+ 筆/)).toBeVisible()
+    await expect(page.getByText(/合計：/)).toBeVisible()
+    // 表格表頭（模組摘要欄；缺值顯示 —，不得假裝 0）
+    const head = page.locator('thead')
+    await expect(head.getByText('WI / 動作描述')).toBeVisible()
+    await expect(head.getByText('TMU', { exact: true })).toBeVisible()
+    await expect(head.getByText('CT(秒)')).toBeVisible()
+    await expect(head.getByText('操作')).toBeVisible()
   })
 
   test('C-01-2: WiWorkbench (wi tab) 有完整欄位含 Base TMU / Eff TMU / CT(秒) / 頻率 (C-01-2 已修)', async ({ page }) => {
@@ -446,9 +465,11 @@ test.describe('§E-04/05/06 WI Pool 三層 Tab (checklist E-04~E-06)', () => {
     await expect(page.getByRole('button', { name: '製程途程工作區' })).toBeVisible()
   })
 
-  test('E-04-3: 點擊 Tab 1 顯示動作模組編輯器', async ({ page }) => {
+  test('E-04-3: 點擊 Tab 1 顯示 v3 單頁流建立器（摘要列＋新增動作）', async ({ page }) => {
     await page.getByRole('button', { name: '動作模組工作區' }).click()
-    await expect(page.getByText('動作模組編輯器')).toBeVisible()
+    await expect(page.getByTestId('summary-bar')).toBeVisible()
+    await expect(page.getByRole('button', { name: '新增動作' })).toBeVisible()
+    await expect(page.getByRole('button', { name: '清空' })).toBeVisible()
   })
 
   test('E-05-1: 點擊 Tab 2 顯示 WI 組成工作區', async ({ page }) => {
@@ -466,17 +487,17 @@ test.describe('§E-04/05/06 WI Pool 三層 Tab (checklist E-04~E-06)', () => {
   })
 
   test('E-04-4: NL Draft 只出現在 Tab 1，Tab 2/3 不應有 NL Draft (spec E-04 拒絕條件)', async ({ page }) => {
-    // Tab 1: NL Draft present
+    // Tab 1: NL Draft present（AI 快速建模列）
     await page.getByRole('button', { name: '動作模組工作區' }).click()
-    await expect(page.getByPlaceholder(/口語描述動作/)).toBeVisible()
+    await expect(page.getByPlaceholder(/輸入動作描述/)).toBeVisible()
 
     // Tab 2: NL Draft absent
     await page.getByRole('button', { name: 'WI 組成工作區' }).click()
-    await expect(page.getByPlaceholder(/口語描述動作/)).not.toBeVisible()
+    await expect(page.getByPlaceholder(/輸入動作描述/)).not.toBeVisible()
 
     // Tab 3: NL Draft absent
     await page.getByRole('button', { name: '製程途程工作區' }).click()
-    await expect(page.getByPlaceholder(/口語描述動作/)).not.toBeVisible()
+    await expect(page.getByPlaceholder(/輸入動作描述/)).not.toBeVisible()
   })
 })
 
