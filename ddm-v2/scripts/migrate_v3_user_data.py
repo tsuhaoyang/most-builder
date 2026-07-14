@@ -1,5 +1,12 @@
 """v3 → v2 使用者資料搬遷腳本（WI 庫：MI statements / 動作模組 / WI 模板 / WI Set 專案）。
 
+ADR-022 批次 A-4 擴充（2026-07-14）：
+- (b2) v3 most_sequence_items（29 條）→ 各建一個單列模組 category='action'
+  （status='standard'、keywords=['v3-import','v3-sequence']、名稱=句子截 60 字）；冪等查重。
+- (f) 既有 v3-import 模組（17 筆）重發佈一版，讓版本 rows 帶上每列 computed
+  （ADR-022 A-1）；冪等：current version rows 已有 computed 即跳過；
+  重發佈後 total 與舊版對帳（TOL 內），漂移即中止。
+
 背景（ADR-014 / ADR-020）：
 - 兩邊值權威同源（v2 rule-set = v3 字典經 scripts/import_v3_dictionary.py 轉出），
   故搬遷 = 「v3 slot 碼 → v2 code 轉換 → v2 引擎（most_engine）重算 → 數值對帳」。
@@ -403,7 +410,9 @@ class V3Project:
     items: list[dict]  # {order_index, source_wi_id, name_snapshot, tmu_snapshot, ...}
 
 
-def load_v3(v3_path: Path) -> tuple[list[V3Statement], list[V3Module], list[V3WiTemplate], V3Project | None]:
+def load_v3(
+    v3_path: Path,
+) -> tuple[list[V3Statement], list[V3Module], list[V3WiTemplate], V3Project | None, list[V3Module]]:
     db = sqlite3.connect(f"file:{v3_path}?mode=ro", uri=True)  # 唯讀
     db.row_factory = sqlite3.Row
 
@@ -461,6 +470,20 @@ def load_v3(v3_path: Path) -> tuple[list[V3Statement], list[V3Module], list[V3Wi
             ))
         wi_templates.append(V3WiTemplate(w["id"], w["wi_name"], rows, w["total_tmu"]))
 
+    # (b2) ADR-022 A-4：most_sequence_items（29 條）→ 單列 category='action' 模組素材
+    actions: list[V3Module] = []
+    for t in db.execute("SELECT * FROM most_sequence_items ORDER BY created_at"):
+        sent = t["user_edited_sentence_zh"] or t["system_generated_sentence_zh"] or ""
+        row = convert_row(
+            source=f"動作:{sent[:30]}", order_index=0,
+            action_type=t["action_type"], hand_type=t["hand_type"],
+            slots_raw=t["selected_slots_json"], context_raw=None,
+            sentence=sent or None, frequency=t["frequency"],
+            is_simo=bool(t["is_simo"]), base_tmu=t["tmu"],
+            contrib_tmu=t["total_contribution_tmu"],
+        )
+        actions.append(V3Module(t["id"], sent[:60], [row], t["tmu"]))
+
     # (d) WI Set 專案
     project: V3Project | None = None
     p = db.execute("SELECT * FROM wi_set_projects LIMIT 1").fetchone()
@@ -475,7 +498,7 @@ def load_v3(v3_path: Path) -> tuple[list[V3Statement], list[V3Module], list[V3Wi
             total_tmu=p["total_tmu"], items=items,
         )
     db.close()
-    return statements, modules, wi_templates, project
+    return statements, modules, wi_templates, project, actions
 
 
 # ═════════════════════ 引擎重算 ═════════════════════
@@ -504,9 +527,11 @@ def _fmt(v: float | None) -> str:
 
 
 def print_report(statements: list[V3Statement], modules: list[V3Module],
-                 wi_templates: list[V3WiTemplate], project: V3Project | None) -> bool:
+                 wi_templates: list[V3WiTemplate], project: V3Project | None,
+                 actions: list[V3Module]) -> bool:
     all_rows = [r for s in statements for r in s.rows] \
-        + [r for m in modules for r in m.rows] + [r for w in wi_templates for r in w.rows]
+        + [r for m in modules for r in m.rows] + [r for w in wi_templates for r in w.rows] \
+        + [r for a in actions for r in a.rows]
     print("=" * 110)
     print("【對帳表 1】MI statement items（主要資產）：v3 存值 vs v2 引擎重算")
     print("=" * 110)
@@ -566,6 +591,13 @@ def print_report(statements: list[V3Statement], modules: list[V3Module],
         print(f"\n【對帳表 5】WI Set 專案：{project.name}")
         print(f"  items={len(project.items)} | v3 total {project.total_tmu:g} | v2 total {v2_proj:g}"
               + (f"（{missing} 項因列 FAIL 缺值）" if missing else "") + f" | {status}")
+
+    print("\n【對帳表 6】ADR-022 A-4：most_sequence_items → category='action' 單列模組（29 條）")
+    print(f"{'#':>2} | {'名稱（句子截 60 字）':<52} | {'seq':<3} | {'手':<2} | {'v3 tmu':>8} | {'v2 tmu':>8} | 狀態")
+    print("-" * 100)
+    for n, a in enumerate(actions, start=1):
+        r = a.rows[0]
+        print(f"{n:>2} | {a.name[:50]:<52} | {r.seq:<3} | {r.hand:<2} | {a.v3_total:>8g} | {_fmt(r.engine_tmu):>8} | {r.status}")
 
     # 未對映清單（no-error-bypass：不得靜默略過）
     unmapped: dict[str, list[str]] = {}
@@ -634,8 +666,13 @@ async def build_vocab_refs(session: Any, cache: dict, row: ConvertedRow, user: s
 async def upsert_module(
     session: Any, *, name: str, category: str | None, rows: list[ConvertedRow],
     user: str, vocab_cache: dict, stats: dict,
+    keywords: list[str] | None = None, assign_pairs: bool = True,
 ) -> uuid.UUID:
-    """建 motion_module + publish rows + status='standard'（冪等：name+category 查重跳過）。"""
+    """建 motion_module + publish rows + status='standard'（冪等：name+category 查重跳過）。
+
+    assign_pairs=False（ADR-022 category='action' 單列素材）：SIMO 配對屬 WI 情境語義，
+    單動作素材不落 simo_pair_index（v3 is_simo 僅作對帳參考）。
+    """
     from sqlalchemy import select
 
     from ddm_v2.auth.deps import ROLE_ORDER
@@ -655,10 +692,10 @@ async def upsert_module(
     created = await svc.create_module(
         session,
         MotionModuleCreate(name_zh=name, category=category, scope="global",
-                           keywords=["v3-import"]),
+                           keywords=list(keywords) if keywords else ["v3-import"]),
         current_user_no=user, current_user_level=ROLE_ORDER["admin"],
     )
-    pair_idx = assign_simo_pairs(rows)
+    pair_idx: list[int | None] = assign_simo_pairs(rows) if assign_pairs else [None] * len(rows)
     module_rows = []
     for i, r in enumerate(rows):
         refs = await build_vocab_refs(session, vocab_cache, r, user)
@@ -684,6 +721,7 @@ async def upsert_module(
 async def execute_migration(
     statements: list[V3Statement], modules: list[V3Module],
     wi_templates: list[V3WiTemplate], project: V3Project | None, user: str,
+    actions: list[V3Module],
 ) -> dict:
     from sqlalchemy import select
 
@@ -694,6 +732,7 @@ async def execute_migration(
     stats: dict[str, Any] = {
         "created_modules": 0, "skipped_modules": 0,
         "created_projects": 0, "skipped_projects": 0,
+        "republished": 0, "skipped_republish": 0,
         "published_tmu": {},
     }
     vocab_cache: dict = {}
@@ -713,12 +752,51 @@ async def execute_migration(
                 session, name=m.name, category=None, rows=m.rows,
                 user=user, vocab_cache=vocab_cache, stats=stats,
             )
+        # (b2) ADR-022 A-4：29 條 most_sequence_items → 單列 category='action' 模組
+        for a in actions:
+            await upsert_module(
+                session, name=a.name, category="action", rows=a.rows,
+                user=user, vocab_cache=vocab_cache, stats=stats,
+                keywords=["v3-import", "v3-sequence"], assign_pairs=False,
+            )
         # (c) wi_templates → 同 (a) 模式（items 已為展開快照）
         for w in wi_templates:
             await upsert_module(
                 session, name=w.name, category="wi-template", rows=w.rows,
                 user=user, vocab_cache=vocab_cache, stats=stats,
             )
+        # (f) ADR-022 A-4：既有 v3-import 模組重發佈一版 → rows 帶上每列 computed。
+        #     冪等：current version rows[0] 已有 computed 即跳過；名稱/專案快照不動。
+        #     重發佈後 total 對帳（引擎同語義重算，TOL 內），漂移即中止（no-error-bypass）。
+        from ddm_v2.schemas.v2.motion_module import ModuleRowIn as _RowIn
+        from ddm_v2.schemas.v2.motion_module import PublishRequest as _PubReq
+        from ddm_v2.services.v2 import motion_module_service as _svc
+
+        v3_mods = (await session.execute(
+            select(MotionModule).where(MotionModule.keywords.contains(["v3-import"]))
+        )).scalars().all()
+        for mod in v3_mods:
+            if mod.current_version == 0:
+                continue
+            ver = (await session.execute(
+                select(MotionModuleVersion).where(
+                    MotionModuleVersion.module_id == mod.id,
+                    MotionModuleVersion.version_no == mod.current_version)
+            )).scalar_one()
+            if ver.rows and isinstance(ver.rows[0], dict) and "computed" in ver.rows[0]:
+                stats["skipped_republish"] += 1
+                continue
+            rows_in = [_RowIn.model_validate(r) for r in ver.rows]
+            new_ver = await _svc.publish_version(
+                session, mod.id,
+                _PubReq(rows=rows_in, rule_set_code=RULE_SET_CODE),
+                current_user_no=user,
+            )
+            if abs(float(new_ver.total_tmu) - float(ver.total_tmu)) > TOL:
+                raise RuntimeError(
+                    f"重發佈 total 漂移：{mod.name_zh} v{ver.version_no}={ver.total_tmu} "
+                    f"→ v{new_ver.version_no}={new_ver.total_tmu}（中止，no-error-bypass）")
+            stats["republished"] += 1
         # (d) wi_set_project + items（wi_template_id → (a) 模組；快照由伺服器端解析同款邏輯回填）
         if project is not None:
             # v3 project_code 為空字串；v2 要求非空唯一 → 以 project_name 作 code（偏差已記錄於報告）
@@ -784,11 +862,12 @@ async def amain() -> int:
         print(f"[中止] 找不到 v3 SQLite：{args.v3_db}", file=sys.stderr)
         return 1
 
-    statements, modules, wi_templates, project = load_v3(args.v3_db)
+    statements, modules, wi_templates, project, actions = load_v3(args.v3_db)
     n_items = sum(len(s.rows) for s in statements)
     print(f"v3 盤點：MI statements {len(statements)}（items {n_items}）、"
           f"獨立動作模組 {len(modules)}（去重後）、WI 模板 {len(wi_templates)}、"
-          f"WI Set 專案 {1 if project else 0}")
+          f"WI Set 專案 {1 if project else 0}、"
+          f"sequence items（→ category='action'）{len(actions)}")
 
     # rule-set：從 v2 DB 載（正式 runtime 路徑；值 = v3 字典經 import_v3_dictionary 轉出）
     import os
@@ -803,11 +882,12 @@ async def amain() -> int:
         rsdata = await load_rule_set_from_db(session, RULE_SET_CODE)
         # dry-run 不落庫：此 session 僅讀 rule-set，不 commit
 
-    all_row_groups = [s.rows for s in statements] + [m.rows for m in modules] + [w.rows for w in wi_templates]
+    all_row_groups = [s.rows for s in statements] + [m.rows for m in modules] \
+        + [w.rows for w in wi_templates] + [a.rows for a in actions]
     for rows in all_row_groups:
         compute_rows(rows, rsdata)
 
-    all_green = print_report(statements, modules, wi_templates, project)
+    all_green = print_report(statements, modules, wi_templates, project, actions)
 
     if not args.execute:
         print("\n[dry-run] 未落庫。核對帳表後以 --execute 執行。")
@@ -817,10 +897,11 @@ async def amain() -> int:
         print("\n[中止] 對帳有 FAIL/DIFF，--execute 不執行（no-error-bypass）。", file=sys.stderr)
         return 1
 
-    stats = await execute_migration(statements, modules, wi_templates, project, args.user)
+    stats = await execute_migration(statements, modules, wi_templates, project, args.user, actions)
     print("\n【執行結果】")
     print(f"  建立模組 {stats['created_modules']}、跳過（已存在）{stats['skipped_modules']}")
     print(f"  建立專案 {stats['created_projects']}、跳過 {stats['skipped_projects']}")
+    print(f"  重發佈（rows 補 computed）{stats['republished']}、跳過（已有 computed）{stats['skipped_republish']}")
     for name, tmu in stats["published_tmu"].items():
         print(f"    - {name}: total_tmu={tmu:g}")
     return 0

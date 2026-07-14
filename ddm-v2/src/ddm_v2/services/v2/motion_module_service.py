@@ -20,12 +20,17 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from ddm_v2.auth.deps import ROLE_ORDER
 from ddm_v2.models.v2.motion_module import MotionModule, MotionModuleVersion
 from ddm_v2.models.v2.rule_set import RuleSet
+from ddm_v2.models.v2.vocab import WorkVocabItem
 from ddm_v2.models.v2.worksheet import LevelEntry, MostCycle, MostWorksheet, ProcessVersion, WiRow
 from ddm_v2.most_engine import SequenceError, compute_cycle, load_rule_set_from_db
-from ddm_v2.most_engine.rule_set_data import TMU_TO_SEC
+from ddm_v2.most_engine.calculate import compute_table
+from ddm_v2.most_engine.narrative import HAND_NAMES, build_narrative
+from ddm_v2.most_engine.providers import load_options_from_db
+from ddm_v2.most_engine.rule_set_data import TMU_TO_SEC, RuleSetData
 from ddm_v2.schemas.v2.most import CycleIn, cycle_in_to_engine
 from ddm_v2.schemas.v2.motion_module import (
     FromModuleRequest,
+    ModuleRowIn,
     MotionModuleCreate,
     MotionModuleResponse,
     MotionModuleUpdate,
@@ -90,6 +95,11 @@ class ModuleIsStandard(Exception):
     pass
 
 
+class ModuleRowNotFound(Exception):
+    """row_index 越界（ADR-022 A-2 row 級操作）。"""
+    pass
+
+
 # ── helpers ──────────────────────────────────────────────────────────
 
 def _validate_simo_pairs(pair_indices: list[int | None]) -> None:
@@ -117,6 +127,104 @@ def _validate_simo_pairs(pair_indices: list[int | None]) -> None:
             raise PublishValidationError(
                 idx, "SIMO_PAIR_INVALID",
                 f"配對目標列 {pi}（主列）自身也宣告配對——ADR-020：主列不得標記")
+
+
+async def _validate_and_compute_rows(
+    session: AsyncSession,
+    rows: list[ModuleRowIn],
+    rsdata: RuleSetData,
+    rule_set_code: str,
+) -> tuple[list[dict[str, Any]], float, float]:
+    """ADR-022 A-1：驗證 rows ＋ 引擎計算 ＋ 每列 computed/narrative 持久化素材。
+
+    單一引擎鐵則：每列與合計數值全部取自 most_engine（compute_table 的回傳），
+    service 不重新實作任何公式。回傳 (validated_rows, total_tmu, total_seconds)。
+
+    每列 rows JSON 形狀（版本快照）：
+      sub_activity / hand / frequency / simo_pair_index / vocab_refs / cycle（原始輸入）
+      computed: {total_tmu, total_seconds, eff_tmu, contribution_tmu}
+        - contribution_tmu：SIMO 標記列（宣告 simo_pair_index 的從屬列）= 0（ADR-020），
+          否則 = eff_tmu（total_tmu × frequency）。
+      narrative_zh: 引擎產生的 METHOD 句（sub_activity 使用者句另存，不覆蓋）。
+      _computed_tmu: 向後相容快取（instantiate drift 檢查沿用）。
+    """
+    # ADR-020 寫入守門：simo_pair_index 合法性（越界/自指/主列自身宣告配對 → 422）
+    _validate_simo_pairs([row.simo_pair_index for row in rows])
+
+    # 逐列先過 compute_cycle 取得帶 row_index 的錯誤（compute_table 不回列號），
+    # 數值仍以下方 compute_table 回傳為準（同一引擎、同一演算法）。
+    engine_steps: list[dict[str, Any]] = []
+    for idx, row in enumerate(rows):
+        try:
+            engine_cycle = cycle_in_to_engine(row.cycle)
+            compute_cycle(engine_cycle, rsdata)
+        except SequenceError as e:
+            raise PublishValidationError(idx, e.code, str(e)) from e
+        engine_steps.append({
+            **engine_cycle,
+            "frequency": row.frequency,
+            # compute_table 的 SIMO 語義吃 simo_group_id 標記；模組層以
+            # simo_pair_index 表達從屬列 → 轉為標記（ADR-020：從屬列貢獻 0）。
+            "simo_group_id": "SIMO-DEP" if row.simo_pair_index is not None else None,
+        })
+
+    table = compute_table(engine_steps, rsdata)
+
+    # 敘事素材：rule-set 標籤/句字 + vocab 名（單一權威 = most_engine.narrative）
+    opts = await load_options_from_db(session, rule_set_code)
+
+    def _lmap(rows_: list[dict[str, Any]]) -> dict[str, dict[str, Any]]:
+        return {o["code"]: {"label": o.get("label"), "sentence": o.get("sentence"),
+                            "display_rule": o.get("display_rule")} for o in rows_}
+
+    labels = {"g": _lmap(opts["g"]), "p_base": _lmap(opts["p_bases"]),
+              "p_addon": _lmap(opts["p_addons"]), "m_verb": _lmap(opts["m_verbs"]),
+              "x": _lmap(opts["x"]), "i": _lmap(opts["i"])}
+
+    vids: set[uuid.UUID] = set()
+    for row in rows:
+        for key in ("object_vocab_id", "from_vocab_id", "to_vocab_id"):
+            raw = (row.vocab_refs or {}).get(key)
+            if raw:
+                try:
+                    vids.add(uuid.UUID(str(raw)))
+                except ValueError:
+                    pass  # 非 UUID 的 ref 不阻斷發布；實體化時另有守門
+    vname: dict[str, str] = {}
+    if vids:
+        res = await session.execute(select(WorkVocabItem).where(WorkVocabItem.id.in_(vids)))
+        vname = {str(v.id): v.name_zh for v in res.scalars().all()}
+
+    validated_rows: list[dict[str, Any]] = []
+    for row, trow in zip(rows, table["rows"]):
+        refs = row.vocab_refs or {}
+        voc = {"object": vname.get(str(refs.get("object_vocab_id")), ""),
+               "from": vname.get(str(refs.get("from_vocab_id")), ""),
+               "to": vname.get(str(refs.get("to_vocab_id")), ""),
+               "hand": HAND_NAMES.get(row.hand or "", "")}
+        narrative = build_narrative(row.cycle.model_dump(mode="json"), labels, voc)
+
+        row_tmu = trow["tmu"]                       # 該列單次 TMU（引擎）
+        eff_tmu = round(trow["eff_tmu"], 3)         # ×frequency（引擎）
+        contribution = 0.0 if trow["simo"] else eff_tmu  # ADR-020：SIMO 標記列貢獻 0
+        validated_rows.append({
+            "sub_activity": row.sub_activity,
+            "hand": row.hand,
+            "frequency": row.frequency,
+            "simo_pair_index": row.simo_pair_index,
+            "vocab_refs": row.vocab_refs,
+            "cycle": row.cycle.model_dump(mode="json"),
+            "computed": {
+                "total_tmu": row_tmu,
+                "total_seconds": round(row_tmu * TMU_TO_SEC, 4),
+                "eff_tmu": eff_tmu,
+                "contribution_tmu": contribution,
+            },
+            "narrative_zh": narrative,
+            "_computed_tmu": row_tmu,   # 向後相容快取（instantiate drift 檢查）
+        })
+
+    return validated_rows, float(table["total_tmu"]), float(table["total_seconds"])
 
 
 def _module_to_response(
@@ -524,8 +632,10 @@ async def publish_version(
     不變量：
     1. 每列 cycle 過 compute_cycle；算不過 → PublishValidationError（→ 422）。
     2. total_tmu = Σ(未帶 SIMO 配對列的 total_tmu × frequency)——ADR-020：宣告
-       simo_pair_index 的從屬列貢獻 0（時間由被指向的主列吸收）。
-    3. narrative_zh 為可重生快取（目前留 None；需要時重跑）。
+       simo_pair_index 的從屬列貢獻 0（時間由被指向的主列吸收）。合計取自
+       most_engine.compute_table（單一引擎，service 不重算）。
+    3. ADR-022 A-1：每列寫入 computed（total_tmu/total_seconds/eff_tmu/contribution_tmu）
+       與 narrative_zh（引擎敘事；sub_activity 使用者句保留不覆蓋）。
     """
     if not data.rows:
         raise PublishValidationError(0, "EMPTY_ROWS", "rows 不可為空")
@@ -557,36 +667,10 @@ async def publish_version(
             raise RuleSetNotFound(str(data.rule_set_id))
     rsdata = await load_rule_set_from_db(session, rs_row.code)
 
-    # ADR-020 寫入守門：simo_pair_index 合法性（越界/自指/主列自身宣告配對 → 422）
-    _validate_simo_pairs([row.simo_pair_index for row in data.rows])
-
-    # 驗證每列 cycle + 算 tmu
-    validated_rows: list[dict[str, Any]] = []
-    total_tmu = 0.0
-
-    for idx, row in enumerate(data.rows):
-        try:
-            engine_cycle = cycle_in_to_engine(row.cycle)
-            result = compute_cycle(engine_cycle, rsdata)
-        except SequenceError as e:
-            raise PublishValidationError(idx, e.code, str(e)) from e
-
-        # ADR-020：宣告 simo_pair_index 的從屬列貢獻 0（時間由被指向的主列吸收）
-        if row.simo_pair_index is None:
-            total_tmu += result.total_tmu * row.frequency
-
-        validated_rows.append({
-            "sub_activity": row.sub_activity,
-            "hand": row.hand,
-            "frequency": row.frequency,
-            "simo_pair_index": row.simo_pair_index,
-            "vocab_refs": row.vocab_refs,
-            "cycle": row.cycle.model_dump(mode="json"),
-            "_computed_tmu": result.total_tmu,   # 快取（non-authoritative，重建可丟）
-        })
-
-    total_tmu = round(total_tmu, 3)
-    total_seconds = round(total_tmu * TMU_TO_SEC, 4)
+    # ADR-022 A-1：驗證 + 引擎計算 + 每列 computed/narrative（單一路徑）
+    validated_rows, total_tmu, total_seconds = await _validate_and_compute_rows(
+        session, data.rows, rsdata, rs_row.code
+    )
 
     new_version_no = m.current_version + 1
     now = datetime.now(timezone.utc)
@@ -597,7 +681,7 @@ async def publish_version(
         version_no=new_version_no,
         rule_set_id=rs_row.id,
         rows=validated_rows,
-        narrative_zh=None,    # 可重生快取；publish 時暫略（需 vocab 名才能產）
+        narrative_zh=None,    # 版本級敘事留 None；每列敘事已入 rows[i].narrative_zh
         total_tmu=total_tmu,
         total_seconds=total_seconds,
         published_by=current_user_no,
@@ -681,36 +765,10 @@ async def create_version_from_rows(
         raise RuleSetNotFound(str(data.rule_set_id))
     rsdata = await load_rule_set_from_db(session, rs_row.code)
 
-    # ADR-020 寫入守門（與 publish_version 同款）：simo_pair_index 合法性
-    _validate_simo_pairs([row.simo_pair_index for row in data.rows])
-
-    # 驗算每列 cycle + 算 tmu（與 publish_version 相同邏輯）
-    validated_rows: list[dict[str, Any]] = []
-    total_tmu = 0.0
-
-    for idx, row in enumerate(data.rows):
-        try:
-            engine_cycle = cycle_in_to_engine(row.cycle)
-            result = compute_cycle(engine_cycle, rsdata)
-        except SequenceError as e:
-            raise PublishValidationError(idx, e.code, str(e)) from e
-
-        # ADR-020：從屬列貢獻 0（與 publish_version 同口徑）
-        if row.simo_pair_index is None:
-            total_tmu += result.total_tmu * row.frequency
-
-        validated_rows.append({
-            "sub_activity": row.sub_activity,
-            "hand": row.hand,
-            "frequency": row.frequency,
-            "simo_pair_index": row.simo_pair_index,
-            "vocab_refs": row.vocab_refs,
-            "cycle": row.cycle.model_dump(mode="json"),
-            "_computed_tmu": result.total_tmu,
-        })
-
-    total_tmu = round(total_tmu, 3)
-    total_seconds = round(total_tmu * TMU_TO_SEC, 4)
+    # ADR-022 A-1：與 publish_version 同一路徑（驗證 + compute_table + computed/narrative）
+    validated_rows, total_tmu, total_seconds = await _validate_and_compute_rows(
+        session, data.rows, rsdata, rs_row.code
+    )
 
     new_version_no = m.current_version + 1
     now = datetime.now(timezone.utc)
@@ -762,6 +820,172 @@ async def get_versions(
     )
     versions = list(result.scalars().all())
     return [_version_to_response(v) for v in versions]
+
+
+# ── row 級操作（ADR-022 A-2：WI 微調 = Inspector 後端）───────────────
+
+async def _load_module_and_current_version(
+    session: AsyncSession,
+    module_id: uuid.UUID,
+    current_user_no: str,
+) -> tuple[MotionModule, MotionModuleVersion]:
+    """取模組（FOR UPDATE）＋ current version；套 publish 同款守門。"""
+    module_row = await session.execute(
+        select(MotionModule).where(MotionModule.id == module_id).with_for_update()
+    )
+    m = module_row.scalar_one_or_none()
+    if m is None:
+        raise ModuleNotFound(str(module_id))
+    if m.scope == "personal" and m.owner != current_user_no:
+        # SM-1/SM-5 同款：他人的 personal 模組不可見（404 不洩漏存在性）
+        raise ModuleNotFound(str(module_id))
+    if m.status == "retired":
+        raise ModuleNotEditable("module status=retired 不可修改 rows")
+    if m.current_version == 0:
+        raise ModuleVersionNotFound("模組尚無任何發布版本（current_version=0）")
+    ver = (await session.execute(
+        select(MotionModuleVersion).where(
+            MotionModuleVersion.module_id == module_id,
+            MotionModuleVersion.version_no == m.current_version,
+        )
+    )).scalar_one_or_none()
+    if ver is None:
+        raise ModuleVersionNotFound(
+            f"模組 {module_id} 版本 {m.current_version} 不存在"
+        )
+    return m, ver
+
+
+def _stored_rows_to_inputs(stored_rows: list[dict[str, Any]]) -> list[ModuleRowIn]:
+    """版本 rows JSON → ModuleRowIn（快取鍵 computed/_computed_tmu/narrative_zh 自然被忽略）。"""
+    return [ModuleRowIn.model_validate(r) for r in stored_rows]
+
+
+async def _republish_rows(
+    session: AsyncSession,
+    m: MotionModule,
+    rule_set_id: uuid.UUID,
+    rows_in: list[ModuleRowIn],
+    current_user_no: str,
+) -> MotionModuleVersionResponse:
+    """以 rows_in 發新版本（版本不可變：修改＝新版本；引擎重算全表）。"""
+    rs_row = await session.get(RuleSet, rule_set_id)
+    if rs_row is None:
+        raise RuleSetNotFound(str(rule_set_id))
+    rsdata = await load_rule_set_from_db(session, rs_row.code)
+
+    validated_rows, total_tmu, total_seconds = await _validate_and_compute_rows(
+        session, rows_in, rsdata, rs_row.code
+    )
+
+    new_version_no = m.current_version + 1
+    now = datetime.now(timezone.utc)
+    ver = MotionModuleVersion(
+        id=uuid.uuid4(),
+        module_id=m.id,
+        version_no=new_version_no,
+        rule_set_id=rs_row.id,
+        rows=validated_rows,
+        narrative_zh=None,
+        total_tmu=total_tmu,
+        total_seconds=total_seconds,
+        published_by=current_user_no,
+        published_at=now,
+    )
+    session.add(ver)
+    m.current_version = new_version_no
+    m.updated_at = now
+    await session.flush()
+    return _version_to_response(ver)
+
+
+async def update_row(
+    session: AsyncSession,
+    module_id: uuid.UUID,
+    row_index: int,
+    row: ModuleRowIn,
+    current_user_no: str,
+) -> MotionModuleVersionResponse:
+    """替換 current version 的第 row_index 列 → 引擎重算全表 → 發新版本。
+
+    越界 → ModuleRowNotFound（404）；SIMO 驗證沿 _validate_simo_pairs（422）。
+    """
+    m, ver = await _load_module_and_current_version(session, module_id, current_user_no)
+    if not (0 <= row_index < len(ver.rows)):
+        raise ModuleRowNotFound(
+            f"row_index={row_index} 越界（rows 共 {len(ver.rows)} 列）"
+        )
+    rows_in = _stored_rows_to_inputs(ver.rows)
+    rows_in[row_index] = row
+    return await _republish_rows(session, m, ver.rule_set_id, rows_in, current_user_no)
+
+
+async def reorder_rows(
+    session: AsyncSession,
+    module_id: uuid.UUID,
+    ordered_indexes: list[int],
+    current_user_no: str,
+) -> MotionModuleVersionResponse:
+    """依 ordered_indexes 重排 rows → 發新版本。
+
+    ordered_indexes 必須是 0..n-1 的完整排列，否則 PublishValidationError（422）。
+    simo_pair_index 指向陣列位置 → 重排時同步換算為新位置。
+    """
+    m, ver = await _load_module_and_current_version(session, module_id, current_user_no)
+    n = len(ver.rows)
+    if sorted(ordered_indexes) != list(range(n)):
+        raise PublishValidationError(
+            0, "REORDER_INVALID",
+            f"ordered_indexes 必須是 0..{n - 1} 的完整排列，收到 {ordered_indexes}",
+        )
+    rows_in = _stored_rows_to_inputs(ver.rows)
+    # 舊索引 → 新位置（simo_pair_index 換算用）
+    new_pos = {old: new for new, old in enumerate(ordered_indexes)}
+    reordered: list[ModuleRowIn] = []
+    for old_idx in ordered_indexes:
+        r = rows_in[old_idx]
+        if r.simo_pair_index is not None:
+            r = r.model_copy(update={"simo_pair_index": new_pos[r.simo_pair_index]})
+        reordered.append(r)
+    return await _republish_rows(session, m, ver.rule_set_id, reordered, current_user_no)
+
+
+async def delete_row(
+    session: AsyncSession,
+    module_id: uuid.UUID,
+    row_index: int,
+    current_user_no: str,
+) -> MotionModuleVersionResponse:
+    """移除第 row_index 列 → 引擎重算 → 發新版本。
+
+    - 刪到 0 列 → PublishValidationError EMPTY_ROWS（422）：WI 至少 1 動作。
+    - 若其他列的 simo_pair_index 指向被刪列 → 422（需先解除配對；不得靜默改變貢獻語義）。
+    - 刪除後其餘列的 simo_pair_index 依位移換算。
+    """
+    m, ver = await _load_module_and_current_version(session, module_id, current_user_no)
+    n = len(ver.rows)
+    if not (0 <= row_index < n):
+        raise ModuleRowNotFound(f"row_index={row_index} 越界（rows 共 {n} 列）")
+    if n == 1:
+        raise PublishValidationError(
+            0, "EMPTY_ROWS", "WI 至少需保留 1 個動作，不可刪除最後一列"
+        )
+    rows_in = _stored_rows_to_inputs(ver.rows)
+    # 其他列指向被刪列 → 明確拒絕（否則從屬列會靜默變回全額貢獻，ADR-020 語義劇變）
+    for idx, r in enumerate(rows_in):
+        if idx != row_index and r.simo_pair_index == row_index:
+            raise PublishValidationError(
+                idx, "SIMO_PAIR_INVALID",
+                f"列 {idx} 的 SIMO 配對指向被刪除的列 {row_index}，請先解除配對",
+            )
+    remaining: list[ModuleRowIn] = []
+    for idx, r in enumerate(rows_in):
+        if idx == row_index:
+            continue
+        if r.simo_pair_index is not None and r.simo_pair_index > row_index:
+            r = r.model_copy(update={"simo_pair_index": r.simo_pair_index - 1})
+        remaining.append(r)
+    return await _republish_rows(session, m, ver.rule_set_id, remaining, current_user_no)
 
 
 # ── 實體化（工序表 from-module）──────────────────────────────────────

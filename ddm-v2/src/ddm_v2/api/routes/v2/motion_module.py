@@ -9,6 +9,9 @@
   POST   /api/v2/motion-modules/{id}/clone               複製模組
   POST   /api/v2/motion-modules/{id}/publish             發布新版本
   POST   /api/v2/motion-modules/{id}/versions/from-rows  apply-back（工序表同步回模組庫）
+  PUT    /api/v2/motion-modules/{id}/rows/{row_index}    row 級編輯 → 重算 → 發新版本（ADR-022 A-2）
+  POST   /api/v2/motion-modules/{id}/rows/reorder        row 重排 → 發新版本（ADR-022 A-2）
+  DELETE /api/v2/motion-modules/{id}/rows/{row_index}    row 刪除 → 重算 → 發新版本（ADR-022 A-2）
   POST   /api/v2/motion-modules/{id}/promote             升格（personal→site/global）[501 placeholder]
   GET    /api/v2/motion-modules/{id}/versions            版本歷史
   PUT    /api/v2/motion-modules/reorder                  排序（analyst 以上）
@@ -27,12 +30,14 @@ from ddm_v2.most_engine import SequenceError
 from ddm_v2.schemas.v2.motion_module import (
     FromModuleRequest,
     InstantiateResponse,
+    ModuleRowIn,
     MotionModuleCreate,
     MotionModuleResponse,
     MotionModuleUpdate,
     MotionModuleVersionResponse,
     PublishRequest,
     ReorderRequest,
+    RowsReorderRequest,
     VersionFromRowsRequest,
 )
 from ddm_v2.services.v2 import motion_module_service as svc
@@ -233,6 +238,82 @@ async def create_version_from_rows(
             status_code=422,
             detail={"code": e.code, "message": str(e)},
         )
+
+
+# ── row 級操作（ADR-022 A-2：WI 微調 = Inspector 後端）───────────────
+
+async def _run_row_op(coro) -> MotionModuleVersionResponse:
+    """row 級操作共用錯誤對映（404/409/403/422）。"""
+    try:
+        return await coro
+    except svc.ModuleNotFound as e:
+        raise HTTPException(status_code=404, detail=f"模組不存在：{e}")
+    except svc.ModuleVersionNotFound as e:
+        raise HTTPException(status_code=404, detail=str(e))
+    except svc.ModuleRowNotFound as e:
+        raise HTTPException(status_code=404, detail=str(e))
+    except svc.ModuleNotEditable as e:
+        raise HTTPException(status_code=409, detail=str(e))
+    except svc.ScopePermissionError as e:
+        raise HTTPException(status_code=403, detail=str(e))
+    except svc.RuleSetNotFound as e:
+        raise HTTPException(status_code=404, detail=f"rule-set 不存在：{e}")
+    except svc.PublishValidationError as e:
+        raise HTTPException(
+            status_code=422,
+            detail={"code": e.code, "row_index": e.row_index, "message": e.message},
+        )
+    except SequenceError as e:
+        raise HTTPException(status_code=422, detail={"code": e.code, "message": str(e)})
+
+
+@router.put(
+    "/motion-modules/{module_id}/rows/{row_index}",
+    response_model=MotionModuleVersionResponse,
+)
+async def update_module_row(
+    module_id: uuid.UUID,
+    row_index: int,
+    payload: ModuleRowIn,
+    session: AsyncSession = Depends(get_db_session),
+    user: CurrentUser = Depends(require_role("analyst")),
+) -> MotionModuleVersionResponse:
+    """替換單列 → 引擎重算全表 → 發新版本（回新版本 detail）。"""
+    return await _run_row_op(
+        svc.update_row(session, module_id, row_index, payload, user.employee_no)
+    )
+
+
+@router.post(
+    "/motion-modules/{module_id}/rows/reorder",
+    response_model=MotionModuleVersionResponse,
+)
+async def reorder_module_rows(
+    module_id: uuid.UUID,
+    payload: RowsReorderRequest,
+    session: AsyncSession = Depends(get_db_session),
+    user: CurrentUser = Depends(require_role("analyst")),
+) -> MotionModuleVersionResponse:
+    """重排 rows → 發新版本。ordered_indexes 須為 0..n-1 完整排列（否則 422）。"""
+    return await _run_row_op(
+        svc.reorder_rows(session, module_id, payload.ordered_indexes, user.employee_no)
+    )
+
+
+@router.delete(
+    "/motion-modules/{module_id}/rows/{row_index}",
+    response_model=MotionModuleVersionResponse,
+)
+async def delete_module_row(
+    module_id: uuid.UUID,
+    row_index: int,
+    session: AsyncSession = Depends(get_db_session),
+    user: CurrentUser = Depends(require_role("analyst")),
+) -> MotionModuleVersionResponse:
+    """刪除單列 → 重算 → 發新版本；刪到 0 列 → 422（WI 至少 1 動作）。"""
+    return await _run_row_op(
+        svc.delete_row(session, module_id, row_index, user.employee_no)
+    )
 
 
 # ── 升格（promote）——501 placeholder，P5 後接 ADR-018 審核流 ─────────

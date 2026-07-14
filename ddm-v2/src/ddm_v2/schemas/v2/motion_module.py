@@ -71,7 +71,13 @@ class FromModuleRequest(BaseModel):
 
 # ── 模組建立 / 更新 ──────────────────────────────────────────────────
 class MotionModuleCreate(BaseModel):
-    """POST /motion-modules body。"""
+    """POST /motion-modules body。
+
+    category 規範（ADR-022 資料模型表；DB 無 CHECK，屬約定值）：
+    - 'action'：單動作素材（恰 1 row；對應 v3 most_sequence_items）
+    - 'wi-template'：WI 大綱項（rows = 動作快照複本；對應 v3 MI statements）
+    - None / 其他文字：既有範本沿用（16 筆 null category 範本不動）
+    """
 
     name_zh: str = Field(..., min_length=1, max_length=200)
     category: str | None = None
@@ -156,6 +162,17 @@ class InstantiateResponse(BaseModel):
     # 每個 drift 項目：{"row_index": int, "module_tmu": float, "actual_tmu": float, "delta": float}
     skipped_vocab_missing: int = 0
     # 因 vocab_refs.object_vocab_id 缺失而跳過的列數（WiRow.object_vocab_id NOT NULL 不可省）
+
+
+# ── row 級操作（ADR-022 A-2：WI 微調 = Inspector 後端）────────────────
+class RowsReorderRequest(BaseModel):
+    """POST /motion-modules/{id}/rows/reorder body。
+
+    ordered_indexes 必須是 current version rows 的 0..n-1 完整排列
+    （service 驗證；否則 422 REORDER_INVALID）。
+    """
+
+    ordered_indexes: list[int] = Field(..., min_length=1)
 
 
 # ── 排序請求（stub） ──────────────────────────────────────────────────
