@@ -31,7 +31,7 @@ class CurrentUser:
         return self.level >= ROLE_ORDER.get(role, 99)
 
 
-async def current_user(request: Request, session: AsyncSession = Depends(get_db_session)) -> CurrentUser:
+async def current_user(request: Request, session: AsyncSession = Depends(get_db_session, scope="function")) -> CurrentUser:
     ident = await resolve_identity(request)
     if ident is None:
         mode = os.getenv("DDM_AUTH_MODE", "gateway").lower()

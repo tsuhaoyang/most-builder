@@ -93,7 +93,7 @@ async def _get_project_or_404(
 @router.get("/wi-set-projects", response_model=list[WiSetProjectOut])
 async def list_projects(
     status: str | None = None,
-    session: AsyncSession = Depends(get_db_session),
+    session: AsyncSession = Depends(get_db_session, scope="function"),
     _: CurrentUser = Depends(current_user),
 ) -> list[WiSetProjectOut]:
     stmt = select(WiSetProject).options(selectinload(WiSetProject.items))
@@ -110,7 +110,7 @@ async def list_projects(
 @router.post("/wi-set-projects", response_model=WiSetProjectOut, status_code=201)
 async def create_project(
     payload: WiSetProjectCreate,
-    session: AsyncSession = Depends(get_db_session),
+    session: AsyncSession = Depends(get_db_session, scope="function"),
     user: CurrentUser = Depends(require_role("analyst")),
 ) -> WiSetProjectOut:
     # 衝碼檢查
@@ -149,7 +149,7 @@ async def create_project(
 @router.get("/wi-set-projects/{project_id}", response_model=WiSetProjectOut)
 async def get_project(
     project_id: uuid.UUID,
-    session: AsyncSession = Depends(get_db_session),
+    session: AsyncSession = Depends(get_db_session, scope="function"),
     _: CurrentUser = Depends(current_user),
 ) -> WiSetProjectOut:
     project = await _get_project_or_404(session, project_id)
@@ -163,7 +163,7 @@ async def get_project(
 async def update_project(
     project_id: uuid.UUID,
     payload: WiSetProjectUpdate,
-    session: AsyncSession = Depends(get_db_session),
+    session: AsyncSession = Depends(get_db_session, scope="function"),
     _: CurrentUser = Depends(require_role("analyst")),
 ) -> WiSetProjectOut:
     project = await _get_project_or_404(session, project_id)
@@ -197,7 +197,7 @@ async def update_project(
 @router.delete("/wi-set-projects/{project_id}", status_code=204)
 async def delete_project(
     project_id: uuid.UUID,
-    session: AsyncSession = Depends(get_db_session),
+    session: AsyncSession = Depends(get_db_session, scope="function"),
     _: CurrentUser = Depends(require_role("analyst")),
 ) -> None:
     project = await _get_project_or_404(session, project_id)
@@ -221,7 +221,7 @@ async def delete_project(
 async def add_item(
     project_id: uuid.UUID,
     payload: WiSetItemCreate,
-    session: AsyncSession = Depends(get_db_session),
+    session: AsyncSession = Depends(get_db_session, scope="function"),
     _: CurrentUser = Depends(require_role("analyst")),
 ) -> WiSetItemOut:
     """新增條目。
@@ -282,7 +282,7 @@ async def add_item(
 async def remove_item(
     project_id: uuid.UUID,
     item_id: uuid.UUID,
-    session: AsyncSession = Depends(get_db_session),
+    session: AsyncSession = Depends(get_db_session, scope="function"),
     _: CurrentUser = Depends(require_role("analyst")),
 ) -> None:
     result = await session.execute(
@@ -309,7 +309,7 @@ async def remove_item(
 async def reorder_items(
     project_id: uuid.UUID,
     payload: ReorderRequest,
-    session: AsyncSession = Depends(get_db_session),
+    session: AsyncSession = Depends(get_db_session, scope="function"),
     _: CurrentUser = Depends(require_role("analyst")),
 ) -> dict:
     # 確認專案存在
@@ -353,7 +353,7 @@ async def reorder_items(
 )
 async def duplicate_project(
     project_id: uuid.UUID,
-    session: AsyncSession = Depends(get_db_session),
+    session: AsyncSession = Depends(get_db_session, scope="function"),
     user: CurrentUser = Depends(require_role("analyst")),
 ) -> WiSetProjectOut:
     original = await _get_project_or_404(session, project_id)

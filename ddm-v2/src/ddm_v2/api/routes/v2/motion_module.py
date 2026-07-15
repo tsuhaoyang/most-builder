@@ -53,7 +53,7 @@ async def list_modules(
     scope: str | None = None,
     category: str | None = None,
     status: str | None = Query(None),
-    session: AsyncSession = Depends(get_db_session),
+    session: AsyncSession = Depends(get_db_session, scope="function"),
     user: CurrentUser = Depends(current_user),
 ) -> list[MotionModuleResponse]:
     return await svc.list_modules(
@@ -66,7 +66,7 @@ async def list_modules(
 @router.post("/motion-modules", response_model=MotionModuleResponse, status_code=201)
 async def create_module(
     payload: MotionModuleCreate,
-    session: AsyncSession = Depends(get_db_session),
+    session: AsyncSession = Depends(get_db_session, scope="function"),
     user: CurrentUser = Depends(require_role("analyst")),
 ) -> MotionModuleResponse:
     try:
@@ -80,7 +80,7 @@ async def create_module(
 @router.get("/motion-modules/{module_id}", response_model=MotionModuleResponse)
 async def get_module(
     module_id: uuid.UUID,
-    session: AsyncSession = Depends(get_db_session),
+    session: AsyncSession = Depends(get_db_session, scope="function"),
     user: CurrentUser = Depends(current_user),
 ) -> MotionModuleResponse:
     try:
@@ -110,7 +110,7 @@ async def reorder_modules(
 async def update_module(
     module_id: uuid.UUID,
     payload: MotionModuleUpdate,
-    session: AsyncSession = Depends(get_db_session),
+    session: AsyncSession = Depends(get_db_session, scope="function"),
     user: CurrentUser = Depends(require_role("analyst")),
 ) -> MotionModuleResponse:
     try:
@@ -129,7 +129,7 @@ async def update_module(
 @router.delete("/motion-modules/{module_id}", status_code=204)
 async def delete_module(
     module_id: uuid.UUID,
-    session: AsyncSession = Depends(get_db_session),
+    session: AsyncSession = Depends(get_db_session, scope="function"),
     user: CurrentUser = Depends(require_role("analyst")),
 ) -> None:
     try:
@@ -151,7 +151,7 @@ async def delete_module(
 )
 async def clone_module(
     module_id: uuid.UUID,
-    session: AsyncSession = Depends(get_db_session),
+    session: AsyncSession = Depends(get_db_session, scope="function"),
     user: CurrentUser = Depends(require_role("analyst")),
 ) -> MotionModuleResponse:
     try:
@@ -170,7 +170,7 @@ async def clone_module(
 async def publish_version(
     module_id: uuid.UUID,
     payload: PublishRequest,
-    session: AsyncSession = Depends(get_db_session),
+    session: AsyncSession = Depends(get_db_session, scope="function"),
     user: CurrentUser = Depends(require_role("analyst")),
 ) -> MotionModuleVersionResponse:
     try:
@@ -210,7 +210,7 @@ async def publish_version(
 async def create_version_from_rows(
     module_id: uuid.UUID,
     payload: VersionFromRowsRequest,
-    session: AsyncSession = Depends(get_db_session),
+    session: AsyncSession = Depends(get_db_session, scope="function"),
     user: CurrentUser = Depends(require_role("analyst")),
 ) -> MotionModuleVersionResponse:
     """apply-back：把已修改的 rows 同步回模組，建立新版本（F-03b §3）。"""
@@ -275,7 +275,7 @@ async def update_module_row(
     module_id: uuid.UUID,
     row_index: int,
     payload: ModuleRowIn,
-    session: AsyncSession = Depends(get_db_session),
+    session: AsyncSession = Depends(get_db_session, scope="function"),
     user: CurrentUser = Depends(require_role("analyst")),
 ) -> MotionModuleVersionResponse:
     """替換單列 → 引擎重算全表 → 發新版本（回新版本 detail）。"""
@@ -291,7 +291,7 @@ async def update_module_row(
 async def reorder_module_rows(
     module_id: uuid.UUID,
     payload: RowsReorderRequest,
-    session: AsyncSession = Depends(get_db_session),
+    session: AsyncSession = Depends(get_db_session, scope="function"),
     user: CurrentUser = Depends(require_role("analyst")),
 ) -> MotionModuleVersionResponse:
     """重排 rows → 發新版本。ordered_indexes 須為 0..n-1 完整排列（否則 422）。"""
@@ -307,7 +307,7 @@ async def reorder_module_rows(
 async def delete_module_row(
     module_id: uuid.UUID,
     row_index: int,
-    session: AsyncSession = Depends(get_db_session),
+    session: AsyncSession = Depends(get_db_session, scope="function"),
     user: CurrentUser = Depends(require_role("analyst")),
 ) -> MotionModuleVersionResponse:
     """刪除單列 → 重算 → 發新版本；刪到 0 列 → 422（WI 至少 1 動作）。"""
@@ -337,7 +337,7 @@ async def promote_module(
 )
 async def get_versions(
     module_id: uuid.UUID,
-    session: AsyncSession = Depends(get_db_session),
+    session: AsyncSession = Depends(get_db_session, scope="function"),
     user: CurrentUser = Depends(current_user),
 ) -> list[MotionModuleVersionResponse]:
     try:
@@ -357,7 +357,7 @@ async def get_versions(
 async def instantiate_to_worksheet(
     worksheet_id: uuid.UUID,
     payload: FromModuleRequest,
-    session: AsyncSession = Depends(get_db_session),
+    session: AsyncSession = Depends(get_db_session, scope="function"),
     user: CurrentUser = Depends(require_role("analyst")),
 ) -> InstantiateResponse:
     try:

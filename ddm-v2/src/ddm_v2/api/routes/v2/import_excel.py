@@ -36,7 +36,7 @@ def _profile_out(p: ImportProfile) -> ProfileOut:
 
 @router.post("/upload", response_model=UploadOut)
 async def upload(file: UploadFile = File(...), worksheet_id: uuid.UUID | None = None,
-                 session: AsyncSession = Depends(get_db_session),
+                 session: AsyncSession = Depends(get_db_session, scope="function"),
                  actor: CurrentUser = Depends(require_role("analyst"))) -> UploadOut:
     content = await file.read()
     try:
@@ -62,7 +62,7 @@ async def upload(file: UploadFile = File(...), worksheet_id: uuid.UUID | None = 
 
 
 @router.post("/{import_id}/map", response_model=PreviewOut)
-async def map_columns(import_id: uuid.UUID, payload: MapIn, session: AsyncSession = Depends(get_db_session),
+async def map_columns(import_id: uuid.UUID, payload: MapIn, session: AsyncSession = Depends(get_db_session, scope="function"),
                       _: CurrentUser = Depends(require_role("analyst"))) -> PreviewOut:
     rec = await session.get(ExcelImport, import_id)
     if rec is None:
@@ -78,7 +78,7 @@ async def map_columns(import_id: uuid.UUID, payload: MapIn, session: AsyncSessio
 
 
 @router.get("/{import_id}", response_model=PreviewOut)
-async def get_import(import_id: uuid.UUID, session: AsyncSession = Depends(get_db_session),
+async def get_import(import_id: uuid.UUID, session: AsyncSession = Depends(get_db_session, scope="function"),
                      _: CurrentUser = Depends(current_user)) -> PreviewOut:
     rec = await session.get(ExcelImport, import_id)
     if rec is None:
@@ -89,13 +89,13 @@ async def get_import(import_id: uuid.UUID, session: AsyncSession = Depends(get_d
 
 
 @router.get("/profiles/list", response_model=list[ProfileOut])
-async def list_profiles(session: AsyncSession = Depends(get_db_session), _: CurrentUser = Depends(current_user)) -> list[ProfileOut]:
+async def list_profiles(session: AsyncSession = Depends(get_db_session, scope="function"), _: CurrentUser = Depends(current_user)) -> list[ProfileOut]:
     rows = (await session.execute(select(ImportProfile).order_by(ImportProfile.name))).scalars().all()
     return [_profile_out(p) for p in rows]
 
 
 @router.post("/profiles", response_model=ProfileOut, status_code=201)
-async def create_profile(payload: ProfileIn, session: AsyncSession = Depends(get_db_session),
+async def create_profile(payload: ProfileIn, session: AsyncSession = Depends(get_db_session, scope="function"),
                          actor: CurrentUser = Depends(require_role("analyst"))) -> ProfileOut:
     p = ImportProfile(id=uuid.uuid4(), name=payload.name, sheet_hint=payload.sheet_hint,
                       header_row=payload.header_row, column_map=payload.column_map,
@@ -106,7 +106,7 @@ async def create_profile(payload: ProfileIn, session: AsyncSession = Depends(get
 
 
 @router.delete("/profiles/{profile_id}", status_code=204)
-async def delete_profile(profile_id: uuid.UUID, session: AsyncSession = Depends(get_db_session),
+async def delete_profile(profile_id: uuid.UUID, session: AsyncSession = Depends(get_db_session, scope="function"),
                          _: CurrentUser = Depends(require_role("analyst"))) -> None:
     p = await session.get(ImportProfile, profile_id)
     if p is not None:
@@ -133,7 +133,7 @@ class SubmitOut(BaseModel):
 async def submit_import(
     import_id: uuid.UUID,
     payload: SubmitIn,
-    session: AsyncSession = Depends(get_db_session),
+    session: AsyncSession = Depends(get_db_session, scope="function"),
     actor: CurrentUser = Depends(require_role("analyst")),
 ) -> SubmitOut:
     """Phase 2b：staged rows → worksheet WiRow（stub MOST cycle，analyst 後補分析）。"""

@@ -1,4 +1,4 @@
-import { useQuery, useQueries, useMutation, useQueryClient, type QueryClient } from '@tanstack/react-query'
+import { useQuery, useMutation, useQueryClient, type QueryClient } from '@tanstack/react-query'
 import { apiGet, apiPost, apiPut, apiDelete, apiDeleteJson } from '../../shared/api/client'
 
 // ── Instantiate response (from-module endpoint) ────────────────────────────
@@ -81,6 +81,10 @@ export interface MotionModuleSummary {
   seq_kind?: string | null
   /** 後端摘要欄（取 current version 第一列）：hand code；無版本時 null */
   hand?: string | null
+  /** ADR-022 E-2 摘要欄：rows[0].computed.total_tmu（單列基準 TMU）；無版本/rows 未豐富化時 null */
+  base_tmu?: number | null
+  /** ADR-022 E-2 摘要欄：rows[0].frequency；無版本時 null */
+  frequency?: number | null
   current_version_detail?: MotionModuleVersionDetail | null
   /** @deprecated 後端從不回傳 top-level rows；顯示邏輯請走 total_tmu / action_count / current_version_detail */
   rows?: MotionModuleRow[]
@@ -138,27 +142,27 @@ export const useMotionModuleDetail = (id: string | null, enabled = true) =>
     staleTime: 300_000,
   })
 
-/**
- * 批次撈多個模組 detail（動作清單每列需 rows[0] 的 frequency / computed）。
- * queryKey 與 useMotionModuleDetail 相同 → 快取共用；invalidate [QK] 前綴一併重整。
- */
-export const useModuleDetails = (ids: string[]) =>
-  useQueries({
-    queries: ids.map(id => ({
-      queryKey: [QK, 'detail', id],
-      queryFn: () => apiGet<MotionModuleSummary>(`/api/v2/motion-modules/${id}`),
-      staleTime: 300_000,
-    })),
-  })
-
 // ── Mutations ─────────────────────────────────────────────────────────────────
+
+/**
+ * ADR-022 E-3：mutation 後只重整「list」查詢（[QK] 前綴但排除 [QK,'detail',*]）。
+ * 動作清單的 Base/頻率已改讀後端摘要欄（base_tmu / frequency），不再逐筆撈 detail；
+ * 全前綴 invalidate 會觸發已快取 detail 的 refetch 風暴（N+1 重引入），故排除。
+ * 需要精準更新單一 detail 的操作（row 級編輯）走 applyVersionToCaches setQueryData。
+ */
+function invalidateModuleLists(qc: QueryClient) {
+  return qc.invalidateQueries({
+    queryKey: [QK],
+    predicate: q => q.queryKey[1] !== 'detail',
+  })
+}
 
 export const useCreateModule = () => {
   const qc = useQueryClient()
   return useMutation({
     mutationFn: (body: CreateModuleBody) =>
       apiPost<MotionModuleSummary>('/api/v2/motion-modules', body),
-    onSuccess: () => qc.invalidateQueries({ queryKey: [QK] }),
+    onSuccess: () => invalidateModuleLists(qc),
   })
 }
 
@@ -167,7 +171,11 @@ export const useUpdateModule = () => {
   return useMutation({
     mutationFn: ({ id, body }: { id: string; body: Partial<CreateModuleBody> }) =>
       apiPut<MotionModuleSummary>(`/api/v2/motion-modules/${id}`, body),
-    onSuccess: () => qc.invalidateQueries({ queryKey: [QK] }),
+    onSuccess: (_data, { id }) => {
+      invalidateModuleLists(qc)
+      // 被改的那一筆若有 detail 快取 → 針對性重整（單 key，非 N+1）
+      qc.invalidateQueries({ queryKey: [QK, 'detail', id] })
+    },
   })
 }
 
@@ -175,7 +183,10 @@ export const useDeleteModule = () => {
   const qc = useQueryClient()
   return useMutation({
     mutationFn: (id: string) => apiDelete(`/api/v2/motion-modules/${id}`),
-    onSuccess: () => qc.invalidateQueries({ queryKey: [QK] }),
+    onSuccess: (_data, id) => {
+      invalidateModuleLists(qc)
+      qc.removeQueries({ queryKey: [QK, 'detail', id] })   // 已刪除 → 移除快取，避免 refetch 404
+    },
   })
 }
 
@@ -184,7 +195,7 @@ export const useCloneModule = () => {
   return useMutation({
     mutationFn: (id: string) =>
       apiPost<MotionModuleSummary>(`/api/v2/motion-modules/${id}/clone`),
-    onSuccess: () => qc.invalidateQueries({ queryKey: [QK] }),
+    onSuccess: () => invalidateModuleLists(qc),
   })
 }
 
@@ -193,7 +204,11 @@ export const usePublishModule = () => {
   return useMutation({
     mutationFn: ({ id, body }: { id: string; body: PublishModuleBody }) =>
       apiPost<MotionModuleSummary>(`/api/v2/motion-modules/${id}/publish`, body),
-    onSuccess: () => qc.invalidateQueries({ queryKey: [QK] }),
+    onSuccess: (_data, { id }) => {
+      invalidateModuleLists(qc)
+      // 發新版本 → 該筆 detail 快取已過期，針對性重整（單 key，非 N+1）
+      qc.invalidateQueries({ queryKey: [QK, 'detail', id] })
+    },
   })
 }
 
@@ -202,8 +217,9 @@ export const usePublishModule = () => {
 // 錯誤（422）：EMPTY_ROWS（刪到 0 列）、SIMO_PAIR_INVALID（刪被 SIMO 指向的主列等）。
 //
 // 快取策略：回應即權威新版本 → 直接寫入 detail / WI 列表快取（setQueriesData），
-// 不走 invalidate 重抓——後端目前有「回應先於 commit 可見」的 race（已回報），
-// 立即 refetch 會撈到舊版並被 staleTime 快取住。
+// 不走 invalidate 重抓——回應本身就是引擎重算後的最新版本，refetch 是多餘往返。
+//（歷史註：舊「回應先於 commit 可見」race 已於批次 E-1 在後端根治，
+//  get_db_session 改 scope="function"，commit 在 response 送出前完成。）
 
 function applyVersionToCaches(qc: QueryClient, id: string, ver: MotionModuleVersionDetail) {
   // detail 快取（[QK,'detail',id]）：換上新版本內容與摘要欄
@@ -271,7 +287,7 @@ export const useCreateWiTemplate = () => {
     mutationFn: (body: CreateModuleBody) =>
       apiPost<MotionModuleSummary>('/api/v2/motion-modules', body),
     onSuccess: () => {
-      qc.invalidateQueries({ queryKey: [QK] })
+      invalidateModuleLists(qc)
       qc.invalidateQueries({ queryKey: [WI_QK] })
     },
   })
@@ -341,9 +357,11 @@ export const useVersionFromRows = () => {
         `/api/v2/motion-modules/${moduleId}/versions/from-rows`,
         { rows, rule_set_id: ruleSetId },
       ),
-    onSuccess: () => {
-      // 重整模組列表（新版本已發布）
-      qc.invalidateQueries({ queryKey: [QK] })
+    onSuccess: (_data, vars) => {
+      // 重整模組列表（新版本已發布）＋單 key 針對性 detail invalidate（E-3 合約，
+      // 與 usePublishModule 一致——不得全前綴掃到其他 detail 快取）
+      invalidateModuleLists(qc)
+      qc.invalidateQueries({ queryKey: [QK, 'detail', vars.moduleId] })
       qc.invalidateQueries({ queryKey: [WI_QK] })
     },
   })

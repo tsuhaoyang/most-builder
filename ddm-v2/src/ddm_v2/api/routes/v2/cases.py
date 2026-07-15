@@ -23,7 +23,7 @@ async def list_cases(
     site_id: uuid.UUID | None = None,
     limit: int = Query(default=100, le=200),
     offset: int = 0,
-    session: AsyncSession = Depends(get_db_session),
+    session: AsyncSession = Depends(get_db_session, scope="function"),
     _: CurrentUser = Depends(current_user),
 ) -> CaseListOut:
     result = await svc.list_cases(session, status=status, site_id=site_id, limit=limit, offset=offset)

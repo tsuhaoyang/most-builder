@@ -48,7 +48,7 @@ async def _load_rule_set(session: AsyncSession, code: str) -> RuleSetData:
 
 
 @router.get("/rule-sets/{code}/options")
-async def rule_set_options(code: str, session: AsyncSession = Depends(get_db_session), _: CurrentUser = Depends(current_user)) -> dict:
+async def rule_set_options(code: str, session: AsyncSession = Depends(get_db_session, scope="function"), _: CurrentUser = Depends(current_user)) -> dict:
     """下拉用：含 label（中/英）的選項清單，從 DB 載（FE-1 正式版，與 calculate 同源）。"""
     opts = await load_options_from_db(session, code)
     if opts is None:
@@ -57,7 +57,7 @@ async def rule_set_options(code: str, session: AsyncSession = Depends(get_db_ses
 
 
 @router.post("/minimost/calculate", response_model=CalculateResponse)
-async def calculate(cycle: CycleIn, session: AsyncSession = Depends(get_db_session), _: CurrentUser = Depends(current_user)) -> CalculateResponse:
+async def calculate(cycle: CycleIn, session: AsyncSession = Depends(get_db_session, scope="function"), _: CurrentUser = Depends(current_user)) -> CalculateResponse:
     try:
         rs = await _load_rule_set(session, cycle.rule_set_code)
     except RuleSetIncomplete as e:

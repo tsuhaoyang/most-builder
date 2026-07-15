@@ -1101,6 +1101,9 @@ async def test_list_status_filter_and_summary_fields(client):
     # 輕量摘要欄回填
     assert target["total_tmu"] == pytest.approx(expected_tmu)
     assert target["action_count"] == 1
+    # ADR-022 E-2：base_tmu / frequency 摘要欄（rows[0].computed.total_tmu / rows[0].frequency）
+    assert target["base_tmu"] == pytest.approx(expected_tmu)
+    assert target["frequency"] == pytest.approx(1.0)
     # list 不帶完整版本內容（輕量）
     assert target["current_version_detail"] is None
 
@@ -1319,3 +1322,5 @@ async def test_list_summary_none_for_unpublished(client):
     assert target is not None
     assert target["total_tmu"] is None
     assert target["action_count"] is None
+    assert target["base_tmu"] is None
+    assert target["frequency"] is None

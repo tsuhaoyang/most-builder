@@ -29,7 +29,7 @@ class SynonymIn(BaseModel):
 @router.get("/rule-sets/{code}/synonyms")
 async def list_synonyms(
     code: str,
-    session: AsyncSession = Depends(get_db_session),
+    session: AsyncSession = Depends(get_db_session, scope="function"),
     _: CurrentUser = Depends(current_user),
 ) -> list[dict]:
     try:
@@ -42,7 +42,7 @@ async def list_synonyms(
 async def create_synonym(
     code: str,
     payload: SynonymIn,
-    session: AsyncSession = Depends(get_db_session),
+    session: AsyncSession = Depends(get_db_session, scope="function"),
     user: CurrentUser = Depends(require_role("analyst")),
 ) -> dict:
     try:
@@ -72,7 +72,7 @@ async def create_synonym(
 async def delete_synonym(
     code: str,
     syn_id: str,
-    session: AsyncSession = Depends(get_db_session),
+    session: AsyncSession = Depends(get_db_session, scope="function"),
     _: CurrentUser = Depends(require_role("analyst")),
 ) -> Response:
     try:

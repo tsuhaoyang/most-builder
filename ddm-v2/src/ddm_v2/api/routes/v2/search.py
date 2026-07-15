@@ -20,7 +20,7 @@ async def search_api(
     rule_set_id: str | None = Query(default=None),
     limit: int = Query(default=10, ge=1, le=50),
     user: CurrentUser = Depends(current_user),
-    db: AsyncSession = Depends(get_db_session),
+    db: AsyncSession = Depends(get_db_session, scope="function"),
 ):
     filtered_types = [t for t in types if t in VALID_TYPES] or ["motion_module"]
     svc = get_search_service()

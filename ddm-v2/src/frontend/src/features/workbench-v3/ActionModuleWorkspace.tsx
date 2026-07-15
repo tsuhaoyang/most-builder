@@ -17,7 +17,6 @@ import {
 } from './nlDraft'
 import {
   useMotionModules,
-  useModuleDetails,
   useCreateModule,
   useUpdateModule,
   useDeleteModule,
@@ -134,13 +133,8 @@ export function ActionModuleWorkspace() {
   const createWiTemplate = useCreateWiTemplate()
   const qc = useQueryClient()
 
-  // 每列 frequency / Base / Eff 需 detail 的 rows[0].computed（後端持久化，前端不算）
-  const detailQueries = useModuleDetails(modules.map(m => m.id))
-  const detailRowById = new Map<string, MotionModuleRow>()
-  modules.forEach((m, i) => {
-    const r = detailQueries[i]?.data?.current_version_detail?.rows?.[0]
-    if (r) detailRowById.set(m.id, r)
-  })
+  // ADR-022 E-3：每列 Base/頻率改讀 list 摘要欄（base_tmu / frequency，後端 E-2
+  // 從 current version rows[0] 回填）——不再逐筆撈 detail（N+1 已移除）。
 
   // WI 建立列（浮動）＋ WiItemInspector 狀態
   const [wiName, setWiName] = useState('')
@@ -380,14 +374,12 @@ export function ActionModuleWorkspace() {
     if (selected.length === 0) return
     setCreatingWi(true)
     try {
-      // 每個動作的 rows[0] 快照複本（copy-on-write：WI 微調不影響來源動作）
+      // 每個動作的 rows[0] 快照複本（copy-on-write：WI 微調不影響來源動作）。
+      // E-3 後 list 不再預載 detail → 建 WI 時才逐筆撈（僅勾選的少數幾筆，非 N+1）
       const rows: MotionModuleRow[] = await Promise.all(
         selected.map(async mod => {
-          let src = detailRowById.get(mod.id)
-          if (!src) {
-            const detail = await apiGet<MotionModuleSummary>(`/api/v2/motion-modules/${mod.id}`)
-            src = detail.current_version_detail?.rows?.[0]
-          }
+          const detail = await apiGet<MotionModuleSummary>(`/api/v2/motion-modules/${mod.id}`)
+          const src = detail.current_version_detail?.rows?.[0]
           if (!src) throw new Error(`動作「${mod.name_zh}」尚無已發布版本`)
           const clone = JSON.parse(JSON.stringify(src)) as MotionModuleRow  // 深拷貝（含 vocab_refs）
           return {
@@ -695,11 +687,10 @@ export function ActionModuleWorkspace() {
                 {modules.map((mod, i) => {
                   const isSelected = selectedIds.has(mod.id)
                   const modSeq = getModuleSeq(mod)
-                  // 後端持久化的每列計算結果（detail rows[0].computed）；未載入時退回摘要欄
-                  const row = detailRowById.get(mod.id)
-                  const baseTmu = row?.computed?.total_tmu ?? null
-                  const rowFreq = row?.frequency ?? null
-                  const effTmuRow = row?.computed?.eff_tmu ?? mod.total_tmu ?? null
+                  // E-3：後端摘要欄（base_tmu = rows[0].computed.total_tmu；frequency = rows[0].frequency）
+                  const baseTmu = mod.base_tmu ?? null
+                  const rowFreq = mod.frequency ?? null
+                  const effTmuRow = mod.total_tmu ?? null
                   const rowCls = [
                     'border-t',
                     editingModuleId === mod.id ? 'bg-amber-50' : isSelected ? 'bg-blue-50' : '',

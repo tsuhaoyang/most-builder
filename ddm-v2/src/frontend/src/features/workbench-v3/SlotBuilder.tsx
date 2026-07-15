@@ -8,6 +8,7 @@ import { ComboBox } from '../../shared/ui/ComboBox'
 import { Hint } from '../../shared/ui/Hint'
 import { aBandOpts, type CycleState, type ASlot, type ABand } from '../wi-workbench/cycle'
 import type { RuleSetOptions, Vocab } from '../wi-workbench/api'
+import { ADistanceSelector } from './ADistanceSelector'
 
 // ── shared types ──────────────────────────────────────────────────────────────
 export type SlotKey = 'a0' | 'b1' | 'g' | 'a3' | 'b4' | 'p' | 'm' | 'x' | 'i' | 'a6'
@@ -113,6 +114,23 @@ const SLOT_MODAL_LABELS: Record<SlotKey, string> = {
   i: 'I 對準/檢查',
   a6: 'A 移動 — 返回段',
 }
+
+// 各格位 modal 底部計算方式說明（ADR-022 批次 C；文案照 v3 SlotModal.vue modal-formula）
+const SLOT_FORMULA: Record<SlotKey, string> = {
+  a0: '計算方式：依據距離 / 手度 / 腳步取最大值',
+  a3: '計算方式：依據距離 / 手度 / 腳步取最大值',
+  a6: 'A3 僅依據距離計算',
+  b1: '身體動作：彎腰 / 起身 / 站坐等輔助動作的分級（無＝0）',
+  b4: '身體動作：彎腰 / 起身 / 站坐等輔助動作的分級（無＝0）',
+  g: '取得控制：抓握 / 按壓等取得方式的分級',
+  p: '放置：基底動作＋至多 2 個附加條件（插入/卡合互斥）',
+  m: '控制移動：依動詞的距離 / 手度 / 腳步取最大值',
+  x: '製程時間：秒數 ÷ 0.036 = TMU',
+  i: '對準 / 檢查：定位對準或檢查確認動作的分級',
+}
+
+// A 格 modal 用寬版（左範圍圖＋右對照表，照 v3 820px）
+const A_SLOTS: ReadonlySet<SlotKey> = new Set(['a0', 'a3', 'a6'])
 
 // ── AI badge（F-05 四態）樣式 ──────────────────────────────────────────────────
 function badgeCls(text: string): string {
@@ -238,15 +256,29 @@ export function SlotBuilder({
   }
 
   // ── modal 內的選值區塊（抽自 WiWorkbench aBlock…iBlock） ─────────────────────
-  const aBlock = (slot: ASlot, onSlot: (s: ASlot) => void) => (
-    <span className="inline-flex flex-wrap items-center gap-1 align-middle px-1 bg-blue-50 border border-blue-200 rounded">
-      <Hint tip="A 移動/伸手：取 伸手、手度(扭轉)、腳步 三者分級的最大值；距離越大分數越高。" />
-      {(['reach', 'twist', 'foot'] as const).map(comp => (
-        <Sel key={comp} value={String(slot[comp] || 0)}
-          opts={aBandOpts(opts.a_bands[comp], comp).map(o => ({ v: String(o.v), l: o.l }))}
-          onChange={v => onSlot({ ...slot, [comp]: parseFloat(v) || 0 })} />
+  // A 格教學型介面（ADR-022 批次 C，照 v3 SlotModal A 版式）：
+  // 左＝工位伸手範圍圖＋右＝對照表/實際距離（ADistanceSelector）；下＝手轉角度/腳步下拉。
+  // isReturn（A3 返回段）僅距離：後端 E1 規則返回格只計伸手，twist/foot 非零會報錯。
+  const aBlock = (slot: ASlot, onSlot: (s: ASlot) => void, isReturn = false) => (
+    <div className="space-y-3">
+      <div className="text-xs font-medium text-slate-600">伸手距離</div>
+      <ADistanceSelector
+        value={slot.reach}
+        bands={opts.a_bands.reach}
+        onChange={cm => onSlot({ ...slot, reach: cm })}
+      />
+      {!isReturn && (['twist', 'foot'] as const).map(comp => (
+        <div key={comp} className="flex items-center gap-3">
+          <label className="text-xs font-medium text-slate-600 min-w-[64px]">
+            {comp === 'twist' ? '手轉角度' : '腳步'}
+          </label>
+          <Sel value={String(slot[comp] || 0)}
+            opts={aBandOpts(opts.a_bands[comp], comp).map(o => ({ v: String(o.v), l: o.l }))}
+            onChange={v => onSlot({ ...slot, [comp]: parseFloat(v) || 0 })}
+            cls="flex-1 border rounded px-2 py-1 text-sm bg-white" />
+        </div>
       ))}
-    </span>
+    </div>
   )
   const bBlock = (key: 'b1' | 'b4') => (
     <span className="inline-flex items-center align-middle">
@@ -348,7 +380,8 @@ export function SlotBuilder({
           onClick={() => setActiveSlot(null)}
         >
           <div
-            className="bg-white rounded-xl border shadow-2xl p-5 max-w-lg w-full mx-4 space-y-4"
+            className={`bg-white rounded-xl border shadow-2xl p-5 w-full mx-4 space-y-4
+              ${A_SLOTS.has(activeSlot) ? 'max-w-3xl' : 'max-w-lg'}`}
             onClick={e => e.stopPropagation()}
           >
             <div className="flex items-center justify-between">
@@ -366,7 +399,14 @@ export function SlotBuilder({
               {activeSlot === 'm' && mVerbBlock()}
               {activeSlot === 'x' && xBlock()}
               {activeSlot === 'i' && iBlock()}
-              {activeSlot === 'a6' && aBlock(cur.a6, s => set({ a6: s }))}
+              {activeSlot === 'a6' && aBlock(cur.a6, s => set({ a6: s }), true)}
+            </div>
+            {/* 計算方式說明列（ADR-022 批次 C；照 v3 modal-formula 樣式） */}
+            <div
+              className="text-xs text-slate-500 bg-slate-50 rounded px-2.5 py-1.5 border-l-[3px] border-sky-500"
+              data-testid="slot-formula"
+            >
+              {SLOT_FORMULA[activeSlot]}
             </div>
             <div className="text-xs text-slate-500 border-t pt-2">
               預覽 TMU: <b className="text-sky-700">{tmu ?? '計算中…'}</b>

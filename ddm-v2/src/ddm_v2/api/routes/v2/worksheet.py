@@ -17,7 +17,7 @@ router = APIRouter(prefix="/api/v2", tags=["v2-worksheet"])
 
 
 @router.put("/worksheets/{worksheet_id}", response_model=WorksheetReadOut)
-async def save_worksheet(worksheet_id: uuid.UUID, payload: WorksheetSaveIn, session: AsyncSession = Depends(get_db_session),
+async def save_worksheet(worksheet_id: uuid.UUID, payload: WorksheetSaveIn, session: AsyncSession = Depends(get_db_session, scope="function"),
                          user: CurrentUser = Depends(require_role("analyst"))) -> WorksheetReadOut:
     try:
         result = await svc.save_worksheet(session, worksheet_id, payload)
@@ -38,7 +38,7 @@ async def save_worksheet(worksheet_id: uuid.UUID, payload: WorksheetSaveIn, sess
 
 # ADR-019 Option A: read=viewer+ intentional; do NOT add ownership/created_by checks — see ADR-019
 @router.get("/worksheets/{worksheet_id}", response_model=WorksheetReadOut)
-async def read_worksheet(worksheet_id: uuid.UUID, session: AsyncSession = Depends(get_db_session),
+async def read_worksheet(worksheet_id: uuid.UUID, session: AsyncSession = Depends(get_db_session, scope="function"),
                          _: CurrentUser = Depends(current_user)) -> WorksheetReadOut:
     try:
         result = await svc.read_worksheet(session, worksheet_id)
@@ -49,7 +49,7 @@ async def read_worksheet(worksheet_id: uuid.UUID, session: AsyncSession = Depend
 
 # ADR-019 Option A: read=viewer+ intentional; do NOT add ownership/created_by checks — see ADR-019
 @router.get("/worksheets/{worksheet_id}/versions")
-async def worksheet_versions(worksheet_id: uuid.UUID, session: AsyncSession = Depends(get_db_session),
+async def worksheet_versions(worksheet_id: uuid.UUID, session: AsyncSession = Depends(get_db_session, scope="function"),
                              _: CurrentUser = Depends(current_user)) -> dict:
     try:
         return await svc.list_versions(session, worksheet_id)
@@ -58,7 +58,7 @@ async def worksheet_versions(worksheet_id: uuid.UUID, session: AsyncSession = De
 
 
 @router.post("/worksheets/{worksheet_id}/publish")
-async def publish_worksheet(worksheet_id: uuid.UUID, session: AsyncSession = Depends(get_db_session),
+async def publish_worksheet(worksheet_id: uuid.UUID, session: AsyncSession = Depends(get_db_session, scope="function"),
                             user: CurrentUser = Depends(require_role("approver"))) -> dict:
     try:
         return await svc.publish_worksheet(session, worksheet_id, actor=user.employee_no)
@@ -69,7 +69,7 @@ async def publish_worksheet(worksheet_id: uuid.UUID, session: AsyncSession = Dep
 
 
 @router.post("/worksheets/{worksheet_id}/clone")
-async def clone_worksheet(worksheet_id: uuid.UUID, session: AsyncSession = Depends(get_db_session),
+async def clone_worksheet(worksheet_id: uuid.UUID, session: AsyncSession = Depends(get_db_session, scope="function"),
                           user: CurrentUser = Depends(require_role("analyst"))) -> dict:
     try:
         return await svc.clone_worksheet(session, worksheet_id, actor=user.employee_no)
@@ -78,7 +78,7 @@ async def clone_worksheet(worksheet_id: uuid.UUID, session: AsyncSession = Depen
 
 
 @router.post("/worksheets/{worksheet_id}/retire")
-async def retire_worksheet(worksheet_id: uuid.UUID, session: AsyncSession = Depends(get_db_session),
+async def retire_worksheet(worksheet_id: uuid.UUID, session: AsyncSession = Depends(get_db_session, scope="function"),
                            user: CurrentUser = Depends(require_role("admin"))) -> dict:
     try:
         return await svc.retire_worksheet(session, worksheet_id, actor=user.employee_no)

@@ -20,12 +20,12 @@ class CloneDraftIn(BaseModel):
 
 
 @router.get("/rule-sets")
-async def list_rule_sets(session: AsyncSession = Depends(get_db_session), _: CurrentUser = Depends(current_user)) -> list[dict]:
+async def list_rule_sets(session: AsyncSession = Depends(get_db_session, scope="function"), _: CurrentUser = Depends(current_user)) -> list[dict]:
     return await svc.list_rule_sets(session)
 
 
 @router.get("/rule-sets/{code}/full")
-async def get_full(code: str, session: AsyncSession = Depends(get_db_session), _: CurrentUser = Depends(current_user)) -> dict:
+async def get_full(code: str, session: AsyncSession = Depends(get_db_session, scope="function"), _: CurrentUser = Depends(current_user)) -> dict:
     try:
         return await svc.load_full(session, code)
     except svc.RuleSetNotFound:
@@ -33,7 +33,7 @@ async def get_full(code: str, session: AsyncSession = Depends(get_db_session), _
 
 
 @router.post("/rule-sets/{code}/clone-draft")
-async def clone_draft(code: str, payload: CloneDraftIn, session: AsyncSession = Depends(get_db_session),
+async def clone_draft(code: str, payload: CloneDraftIn, session: AsyncSession = Depends(get_db_session, scope="function"),
                       _: CurrentUser = Depends(require_role("analyst"))) -> dict:
     try:
         return await svc.clone_draft(session, code, payload.new_code, payload.name_zh)
@@ -44,7 +44,7 @@ async def clone_draft(code: str, payload: CloneDraftIn, session: AsyncSession = 
 
 
 @router.put("/rule-sets/{code}/full")
-async def put_full(code: str, full: dict[str, Any] = Body(...), session: AsyncSession = Depends(get_db_session),
+async def put_full(code: str, full: dict[str, Any] = Body(...), session: AsyncSession = Depends(get_db_session, scope="function"),
                    _: CurrentUser = Depends(require_role("analyst"))) -> dict:
     try:
         return await svc.replace_children(session, code, full)
@@ -55,7 +55,7 @@ async def put_full(code: str, full: dict[str, Any] = Body(...), session: AsyncSe
 
 
 @router.post("/rule-sets/{code}/publish")
-async def publish(code: str, session: AsyncSession = Depends(get_db_session),
+async def publish(code: str, session: AsyncSession = Depends(get_db_session, scope="function"),
                   user: CurrentUser = Depends(require_role("approver"))) -> dict:
     try:
         return await svc.publish(session, code, actor=user.employee_no)

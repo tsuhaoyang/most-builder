@@ -2,8 +2,8 @@
 // v3 導覽的「MOST 工作台」是單頁 /most-workbench；三層 tab 版是實驗性隱藏頁、非驗證 UX。
 // 單頁內容＝ActionModuleWorkspace（建立器 → 動作清單 → WI 大綱 → WiItemInspector）。
 //
-// 斷路備註：WIPoolWorkspace（WI 組成）已由 WI 大綱取代；ProcessWorkspace（製程途程）
-// 的「WI 實體化進工時表」能力將於批次 E 搬入案件編輯情境後移除——兩檔保留但不掛載。
+// 批次 E：舊「WI 組成」「製程途程」兩實驗 tab 檔已刪除；「WI 實體化進工時表」
+// 能力搬入案件編輯情境（wi-workbench/WiWorkbench「從 WI 庫插入」）。
 import { ActionModuleWorkspace } from './ActionModuleWorkspace'
 
 export function MostWorkbenchV3() {

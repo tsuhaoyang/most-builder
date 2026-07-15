@@ -39,7 +39,7 @@ def _dataclass_to_dict(obj: object) -> object:
 @router.post("/worksheets/nl-draft")
 async def nl_draft(
     payload: NLDraftIn,
-    session: AsyncSession = Depends(get_db_session),
+    session: AsyncSession = Depends(get_db_session, scope="function"),
     _: CurrentUser = Depends(current_user),
 ) -> dict:
     """解析自然語言描述，回傳 MOST slot 建議（唯讀）。"""

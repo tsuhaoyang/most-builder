@@ -138,6 +138,11 @@ class MotionModuleResponse(BaseModel):
     # 無版本/無 rows → None。
     seq_kind: str | None = None
     hand: str | None = None
+    # ADR-022 批次 E-2 摘要欄（消前端 detail N+1）：
+    # base_tmu = rows[0].computed.total_tmu（單列基準 TMU）；frequency = rows[0].frequency。
+    # 無版本/無 rows/rows 未豐富化 → None。
+    base_tmu: float | None = None
+    frequency: float | None = None
 
     model_config = {"from_attributes": True}
 

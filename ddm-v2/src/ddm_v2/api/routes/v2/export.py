@@ -19,7 +19,7 @@ router = APIRouter(prefix="/api/v2", tags=["v2-export"])
 
 # ADR-019 Option A: read=viewer+ intentional; do NOT add ownership/created_by checks — see ADR-019
 @router.get("/worksheets/{worksheet_id}/export/wi-preview")
-async def wi_preview(worksheet_id: uuid.UUID, session: AsyncSession = Depends(get_db_session), _: CurrentUser = Depends(current_user)) -> dict:
+async def wi_preview(worksheet_id: uuid.UUID, session: AsyncSession = Depends(get_db_session, scope="function"), _: CurrentUser = Depends(current_user)) -> dict:
     try:
         return await exp.wi_preview(session, worksheet_id)
     except wsvc.WorksheetNotFound:
@@ -28,7 +28,7 @@ async def wi_preview(worksheet_id: uuid.UUID, session: AsyncSession = Depends(ge
 
 # ADR-019 Option A: read=viewer+ intentional; do NOT add ownership/created_by checks — see ADR-019
 @router.get("/worksheets/{worksheet_id}/export/excel")
-async def export_excel(worksheet_id: uuid.UUID, session: AsyncSession = Depends(get_db_session), _: CurrentUser = Depends(current_user)) -> Response:
+async def export_excel(worksheet_id: uuid.UUID, session: AsyncSession = Depends(get_db_session, scope="function"), _: CurrentUser = Depends(current_user)) -> Response:
     try:
         data = await exp.to_excel_bytes(session, worksheet_id)
     except wsvc.WorksheetNotFound:
@@ -42,7 +42,7 @@ async def export_excel(worksheet_id: uuid.UUID, session: AsyncSession = Depends(
 
 # ADR-019 Option A: read=viewer+ intentional; do NOT add ownership/created_by checks — see ADR-019
 @router.get("/worksheets/{worksheet_id}/export/lb-csv")
-async def export_lb_csv(worksheet_id: uuid.UUID, session: AsyncSession = Depends(get_db_session), _: CurrentUser = Depends(current_user)) -> Response:
+async def export_lb_csv(worksheet_id: uuid.UUID, session: AsyncSession = Depends(get_db_session, scope="function"), _: CurrentUser = Depends(current_user)) -> Response:
     try:
         text = await exp.to_lb_csv(session, worksheet_id)
     except wsvc.WorksheetNotFound:
@@ -55,7 +55,7 @@ async def export_lb_csv(worksheet_id: uuid.UUID, session: AsyncSession = Depends
 
 
 @router.post("/worksheets/{worksheet_id}/export/lb-api")
-async def export_lb_api(worksheet_id: uuid.UUID, session: AsyncSession = Depends(get_db_session), _: CurrentUser = Depends(current_user)) -> dict:
+async def export_lb_api(worksheet_id: uuid.UUID, session: AsyncSession = Depends(get_db_session, scope="function"), _: CurrentUser = Depends(current_user)) -> dict:
     try:
         return await exp.lb_api_payload(session, worksheet_id)
     except wsvc.WorksheetNotFound:
@@ -64,7 +64,7 @@ async def export_lb_api(worksheet_id: uuid.UUID, session: AsyncSession = Depends
 
 # ADR-019 Option A: read=viewer+ intentional; do NOT add ownership/created_by checks — see ADR-019
 @router.get("/worksheets/{worksheet_id}/export/report.xlsx")
-async def export_report_xlsx(worksheet_id: uuid.UUID, session: AsyncSession = Depends(get_db_session), _: CurrentUser = Depends(current_user)) -> Response:
+async def export_report_xlsx(worksheet_id: uuid.UUID, session: AsyncSession = Depends(get_db_session, scope="function"), _: CurrentUser = Depends(current_user)) -> Response:
     try:
         data = await exp.to_report_xlsx_bytes(session, worksheet_id)
     except wsvc.WorksheetNotFound:

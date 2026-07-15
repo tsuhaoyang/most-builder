@@ -32,13 +32,13 @@ def _check_roles(roles: list[str]) -> None:
 
 
 @router.get("/users", response_model=list[AppUserOut])
-async def list_users(session: AsyncSession = Depends(get_db_session), _: CurrentUser = Depends(require_role("admin"))) -> list[AppUserOut]:
+async def list_users(session: AsyncSession = Depends(get_db_session, scope="function"), _: CurrentUser = Depends(require_role("admin"))) -> list[AppUserOut]:
     rows = (await session.execute(select(AppUser).order_by(AppUser.employee_no))).scalars().all()
     return [_out(u) for u in rows]
 
 
 @router.post("/users", response_model=AppUserOut)
-async def upsert_user(payload: AppUserUpsertIn, session: AsyncSession = Depends(get_db_session),
+async def upsert_user(payload: AppUserUpsertIn, session: AsyncSession = Depends(get_db_session, scope="function"),
                       _: CurrentUser = Depends(require_role("admin"))) -> AppUserOut:
     _check_roles(payload.roles)
     u = (await session.execute(select(AppUser).where(AppUser.employee_no == payload.employee_no))).scalar_one_or_none()
@@ -53,7 +53,7 @@ async def upsert_user(payload: AppUserUpsertIn, session: AsyncSession = Depends(
 
 
 @router.patch("/users/{employee_no}", response_model=AppUserOut)
-async def patch_user(employee_no: str, payload: AppUserPatchIn, session: AsyncSession = Depends(get_db_session),
+async def patch_user(employee_no: str, payload: AppUserPatchIn, session: AsyncSession = Depends(get_db_session, scope="function"),
                      actor: CurrentUser = Depends(require_role("admin"))) -> AppUserOut:
     u = (await session.execute(select(AppUser).where(AppUser.employee_no == employee_no))).scalar_one_or_none()
     if u is None:

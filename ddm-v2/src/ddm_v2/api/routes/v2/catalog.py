@@ -30,54 +30,54 @@ router = APIRouter(prefix="/api/v2", tags=["v2-catalog"])
 
 
 @router.get("/sites", response_model=list[SiteOut])
-async def list_sites(session: AsyncSession = Depends(get_db_session), _: CurrentUser = Depends(current_user)):
+async def list_sites(session: AsyncSession = Depends(get_db_session, scope="function"), _: CurrentUser = Depends(current_user)):
     return await svc.list_sites(session)
 
 
 @router.get("/products", response_model=list[ProductOut])
-async def list_products(site_id: uuid.UUID | None = None, session: AsyncSession = Depends(get_db_session),
+async def list_products(site_id: uuid.UUID | None = None, session: AsyncSession = Depends(get_db_session, scope="function"),
                         _: CurrentUser = Depends(current_user)):
     return await svc.list_products(session, site_id)
 
 
 @router.post("/products", response_model=ProductOut, status_code=201)
-async def create_product(payload: ProductIn, session: AsyncSession = Depends(get_db_session),
+async def create_product(payload: ProductIn, session: AsyncSession = Depends(get_db_session, scope="function"),
                          _: CurrentUser = Depends(require_role("analyst"))):
     return await svc.create_product(session, payload)
 
 
 @router.patch("/products/{product_id}", response_model=ProductOut)
-async def update_product(product_id: uuid.UUID, patch: ProductPatch, session: AsyncSession = Depends(get_db_session),
+async def update_product(product_id: uuid.UUID, patch: ProductPatch, session: AsyncSession = Depends(get_db_session, scope="function"),
                          _: CurrentUser = Depends(require_role("analyst"))):
     return await svc.update_product(session, product_id, patch)
 
 
 @router.get("/skus", response_model=list[SkuOut])
-async def list_skus(product_id: uuid.UUID | None = None, session: AsyncSession = Depends(get_db_session),
+async def list_skus(product_id: uuid.UUID | None = None, session: AsyncSession = Depends(get_db_session, scope="function"),
                     _: CurrentUser = Depends(current_user)):
     return await svc.list_skus(session, product_id)
 
 
 @router.post("/skus", response_model=SkuOut, status_code=201)
-async def create_sku(payload: SkuIn, session: AsyncSession = Depends(get_db_session),
+async def create_sku(payload: SkuIn, session: AsyncSession = Depends(get_db_session, scope="function"),
                      _: CurrentUser = Depends(require_role("analyst"))):
     return await svc.create_sku(session, payload)
 
 
 @router.patch("/skus/{sku_id}", response_model=SkuOut)
-async def update_sku(sku_id: uuid.UUID, patch: SkuPatch, session: AsyncSession = Depends(get_db_session),
+async def update_sku(sku_id: uuid.UUID, patch: SkuPatch, session: AsyncSession = Depends(get_db_session, scope="function"),
                      _: CurrentUser = Depends(require_role("analyst"))):
     return await svc.update_sku(session, sku_id, patch)
 
 
 # ADR-019 Option A: listing=viewer+ intentional; UUID enumerable by design — see ADR-019
 @router.get("/skus/{sku_id}/worksheets", response_model=list[WorksheetSummaryOut])
-async def list_worksheets(sku_id: uuid.UUID, session: AsyncSession = Depends(get_db_session),
+async def list_worksheets(sku_id: uuid.UUID, session: AsyncSession = Depends(get_db_session, scope="function"),
                           _: CurrentUser = Depends(current_user)):
     return await svc.list_worksheets_by_sku(session, sku_id)
 
 
 @router.post("/skus/{sku_id}/worksheets", response_model=WorksheetCreateOut, status_code=201)
-async def create_worksheet(sku_id: uuid.UUID, payload: WorksheetCreateIn, session: AsyncSession = Depends(get_db_session),
+async def create_worksheet(sku_id: uuid.UUID, payload: WorksheetCreateIn, session: AsyncSession = Depends(get_db_session, scope="function"),
                            user: CurrentUser = Depends(require_role("analyst"))):
     return await svc.create_worksheet(session, sku_id, payload, actor=user.employee_no)

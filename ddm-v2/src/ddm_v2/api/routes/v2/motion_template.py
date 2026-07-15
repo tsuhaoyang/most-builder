@@ -60,7 +60,7 @@ def _score(description: str, keywords: list[str]) -> tuple[float, list[str]]:
 
 
 @router.get("/motion-templates", response_model=list[MotionTemplateOut])
-async def list_templates(session: AsyncSession = Depends(get_db_session), user: CurrentUser = Depends(current_user)) -> list[MotionTemplateOut]:
+async def list_templates(session: AsyncSession = Depends(get_db_session, scope="function"), user: CurrentUser = Depends(current_user)) -> list[MotionTemplateOut]:
     """標準範本（所有人）＋ 自己的草稿（僅擁有者）。"""
     rows = (await session.execute(
         select(MotionTemplate).where(MotionTemplate.is_active.is_(True)).order_by(MotionTemplate.status.desc(), MotionTemplate.category, MotionTemplate.name_zh)
@@ -70,7 +70,7 @@ async def list_templates(session: AsyncSession = Depends(get_db_session), user: 
 
 
 @router.post("/motion-templates", response_model=MotionTemplateOut, status_code=201)
-async def create_template(payload: MotionTemplateIn, session: AsyncSession = Depends(get_db_session), actor: CurrentUser = Depends(require_role("analyst"))) -> MotionTemplateOut:
+async def create_template(payload: MotionTemplateIn, session: AsyncSession = Depends(get_db_session, scope="function"), actor: CurrentUser = Depends(require_role("analyst"))) -> MotionTemplateOut:
     """一律建為個人草稿（owner=建立者）；要成標準走 /promote。"""
     t = MotionTemplate(
         id=uuid.uuid4(), name_zh=payload.name_zh, name_en=payload.name_en, category=payload.category,
@@ -84,7 +84,7 @@ async def create_template(payload: MotionTemplateIn, session: AsyncSession = Dep
 
 
 @router.post("/motion-templates/{template_id}/promote", response_model=MotionTemplateOut)
-async def promote_template(template_id: uuid.UUID, session: AsyncSession = Depends(get_db_session), approver: CurrentUser = Depends(require_role("approver"))) -> MotionTemplateOut:
+async def promote_template(template_id: uuid.UUID, session: AsyncSession = Depends(get_db_session, scope="function"), approver: CurrentUser = Depends(require_role("approver"))) -> MotionTemplateOut:
     """草稿 → 廠標準（approver+）。"""
     t = await session.get(MotionTemplate, template_id)
     if t is None:
@@ -106,7 +106,7 @@ async def promote_template(template_id: uuid.UUID, session: AsyncSession = Depen
 
 
 @router.patch("/motion-templates/{template_id}", response_model=MotionTemplateOut)
-async def patch_template(template_id: uuid.UUID, payload: MotionTemplatePatchIn, session: AsyncSession = Depends(get_db_session), user: CurrentUser = Depends(require_role("analyst"))) -> MotionTemplateOut:
+async def patch_template(template_id: uuid.UUID, payload: MotionTemplatePatchIn, session: AsyncSession = Depends(get_db_session, scope="function"), user: CurrentUser = Depends(require_role("analyst"))) -> MotionTemplateOut:
     t = await session.get(MotionTemplate, template_id)
     if t is None:
         raise HTTPException(status_code=404, detail="範本不存在")
@@ -131,7 +131,7 @@ async def patch_template(template_id: uuid.UUID, payload: MotionTemplatePatchIn,
 
 
 @router.delete("/motion-templates/{template_id}", status_code=204)
-async def delete_template(template_id: uuid.UUID, session: AsyncSession = Depends(get_db_session), user: CurrentUser = Depends(require_role("analyst"))) -> None:
+async def delete_template(template_id: uuid.UUID, session: AsyncSession = Depends(get_db_session, scope="function"), user: CurrentUser = Depends(require_role("analyst"))) -> None:
     t = await session.get(MotionTemplate, template_id)
     if t is None:
         return
@@ -142,7 +142,7 @@ async def delete_template(template_id: uuid.UUID, session: AsyncSession = Depend
 
 
 @router.post("/motion-templates/match", response_model=list[MatchHit])
-async def match_templates(payload: MatchIn, session: AsyncSession = Depends(get_db_session), _: CurrentUser = Depends(current_user)) -> list[MatchHit]:
+async def match_templates(payload: MatchIn, session: AsyncSession = Depends(get_db_session, scope="function"), _: CurrentUser = Depends(current_user)) -> list[MatchHit]:
     rows = (await session.execute(select(MotionTemplate).where(
         MotionTemplate.is_active.is_(True), MotionTemplate.status == "standard"))).scalars().all()  # 匯入只比對標準庫
     scored = []

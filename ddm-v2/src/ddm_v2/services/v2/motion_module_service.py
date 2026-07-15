@@ -243,6 +243,8 @@ def _module_to_response(
     action_count: int | None = None
     seq_kind: str | None = None
     hand: str | None = None
+    base_tmu: float | None = None
+    frequency: float | None = None
     if version is not None:
         total_tmu = float(version.total_tmu)
         action_count = len(version.rows)
@@ -251,6 +253,12 @@ def _module_to_response(
             first_row = version.rows[0]
             seq_kind = (first_row.get("cycle") or {}).get("seq")
             hand = first_row.get("hand")
+            # E-2：base_tmu / frequency 摘要欄（rows 已於 publish 豐富化 computed）
+            computed = first_row.get("computed") or {}
+            raw_base = computed.get("total_tmu", first_row.get("_computed_tmu"))
+            base_tmu = float(raw_base) if raw_base is not None else None
+            raw_freq = first_row.get("frequency")
+            frequency = float(raw_freq) if raw_freq is not None else None
         if include_detail:
             ver_detail = MotionModuleVersionResponse(
                 id=version.id,
@@ -281,6 +289,8 @@ def _module_to_response(
         action_count=action_count,
         seq_kind=seq_kind,
         hand=hand,
+        base_tmu=base_tmu,
+        frequency=frequency,
     )
 
 

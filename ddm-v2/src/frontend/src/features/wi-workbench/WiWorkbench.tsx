@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { useQueryClient } from '@tanstack/react-query'
 import { useRuleSetOptions, useVocab, useCalculate, useSaveWorksheet, useWorksheet } from './api'
 import { useWiStore, type Row } from './store'
@@ -15,6 +15,10 @@ import {
 } from './cycle'
 import { useLevelStore } from '../level-system/store'
 import { derive, type LevelCell, type GroupMeta } from '../level-system/logic'
+import {
+  useWiTemplates, useInstantiateToWorksheet,
+  type MotionModuleSummary,
+} from '../workbench-v3/api'
 
 // ─── Local types ───────────────────────────────────────────────────────────────
 interface WiGroup { id: string; name: string; rowIds: string[] }
@@ -32,6 +36,97 @@ interface NlDraftRes {
 }
 
 const HANDS = [{ v: 'RH', l: '右手' }, { v: 'LH', l: '左手' }, { v: 'BH', l: '雙手' }]
+
+// ── [ADR-022 E-4] Toast（插入 WI 結果回饋）──────────────────────────────────────
+interface WiToastState { msg: string; type: 'ok' | 'warn' | 'err' }
+
+function WiToast({ toast }: { toast: WiToastState | null }) {
+  if (!toast) return null
+  const bg = toast.type === 'ok' ? 'bg-emerald-600' : toast.type === 'warn' ? 'bg-amber-500' : 'bg-red-600'
+  return (
+    <div className={`fixed bottom-6 right-6 z-50 px-4 py-2 rounded shadow-lg text-white text-sm ${bg}`}>
+      {toast.msg}
+    </div>
+  )
+}
+
+// ── [ADR-022 E-4] 從 WI 庫插入 modal ───────────────────────────────────────────
+// 列 category='wi-template' 可見清單（後端已做能見度過濾）；名稱/動作數/TMU＋搜尋。
+// 選一筆 → 呼叫既有實體化端點 POST /worksheets/{wid}/rows/from-module（instantiate）。
+// 獨立元件：只在 modal 開啟（掛載）時才發 list 查詢。
+function InsertWiModal({ onClose, onInsert, inserting }: {
+  onClose: () => void
+  onInsert: (mod: MotionModuleSummary) => void
+  inserting: boolean
+}) {
+  const { data: wis = [], isLoading } = useWiTemplates()
+  const [q, setQ] = useState('')
+  const filtered = q.trim()
+    ? wis.filter(w => w.name_zh.toLowerCase().includes(q.trim().toLowerCase()))
+    : wis
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40" onClick={onClose}>
+      <div
+        className="bg-white rounded-xl border shadow-2xl p-5 max-w-2xl w-full mx-4 space-y-3"
+        onClick={e => e.stopPropagation()}
+        data-testid="insert-wi-modal"
+      >
+        <div className="flex items-center justify-between">
+          <h3 className="font-semibold text-base">從 WI 庫插入</h3>
+          <button onClick={onClose} className="text-slate-400 hover:text-slate-600 text-lg leading-none" aria-label="關閉">✕</button>
+        </div>
+        <input
+          className="w-full border rounded px-2 py-1.5 text-sm"
+          placeholder="搜尋 WI 名稱…"
+          value={q}
+          onChange={e => setQ(e.target.value)}
+          autoFocus
+        />
+        <div className="max-h-80 overflow-y-auto border rounded">
+          <table className="w-full text-sm">
+            <thead className="sticky top-0 bg-slate-100">
+              <tr className="text-left">
+                <th className="p-2">WI 名稱</th>
+                <th className="p-2 w-20 text-right">動作數</th>
+                <th className="p-2 w-24 text-right">TMU</th>
+                <th className="p-2 w-20"></th>
+              </tr>
+            </thead>
+            <tbody>
+              {isLoading && (
+                <tr><td colSpan={4} className="p-3 text-slate-400 text-center">載入中…</td></tr>
+              )}
+              {!isLoading && filtered.length === 0 && (
+                <tr><td colSpan={4} className="p-3 text-slate-400 text-center">
+                  {q ? '無相符 WI' : 'WI 庫尚無項目（請先在 MOST 工作台建立 WI）'}
+                </td></tr>
+              )}
+              {filtered.map(w => (
+                <tr key={w.id} className="border-t hover:bg-slate-50">
+                  <td className="p-2 max-w-sm"><span className="truncate block" title={w.name_zh}>{w.name_zh}</span></td>
+                  <td className="p-2 text-right">{w.action_count ?? '—'}</td>
+                  <td className="p-2 text-right">
+                    {w.total_tmu != null ? <b className="text-blue-700">{w.total_tmu}</b> : '—'}
+                  </td>
+                  <td className="p-2 text-right">
+                    <button
+                      onClick={() => onInsert(w)}
+                      disabled={inserting || !w.current_version}
+                      title={!w.current_version ? '尚無已發布版本' : undefined}
+                      className="text-xs px-2.5 py-1 bg-blue-600 text-white rounded disabled:opacity-40"
+                    >
+                      {inserting ? '插入中…' : '插入'}
+                    </button>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+  )
+}
 
 const SLOT_COLORS: Record<string, { filled: string; empty: string }> = {
   A: { filled: 'bg-blue-600 text-white border-blue-600', empty: 'bg-blue-50 text-blue-400 border-blue-200 border-dashed' },
@@ -141,6 +236,35 @@ export function WiWorkbench() {
 
   // ── [C] slot modal ─────────────────────────────────────────────────────────
   const [activeSlot, setActiveSlot] = useState<SlotKey | null>(null)
+
+  // ── [ADR-022 E-4] 從 WI 庫插入（實體化搬進案件編輯情境）────────────────────────
+  const [insertWiOpen, setInsertWiOpen] = useState(false)
+  const instantiate = useInstantiateToWorksheet()
+  const [wiToast, setWiToast] = useState<WiToastState | null>(null)
+  const wiToastTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
+  function showWiToast(msg: string, type: WiToastState['type'] = 'ok') {
+    if (wiToastTimer.current) clearTimeout(wiToastTimer.current)
+    setWiToast({ msg, type })
+    wiToastTimer.current = setTimeout(() => setWiToast(null), 3500)
+  }
+
+  async function insertWiFromLibrary(mod: MotionModuleSummary) {
+    if (!activeWs) { showWiToast('請先從分析案件開啟工時表', 'err'); return }
+    try {
+      // 既有實體化端點：POST /api/v2/worksheets/{wid}/rows/from-module（body: module_id）。
+      // hook onSuccess 會 invalidate ['worksheet', wid] → wsData refetch → 上方 effect
+      // setRows 重灌工時表（後端已算好每列 TMU，前端不自算）。
+      const result = await instantiate.mutateAsync({ worksheetId: activeWs, moduleId: mod.id })
+      setInsertWiOpen(false)
+      showWiToast(`已插入「${mod.name_zh}」：${result.new_rows.length} 列`, 'ok')
+      // TMU 漂移警告（沿 ProcessWorkspace 既有機制：instantiate 回應內 tmu_drift）
+      if (result.tmu_drift && result.tmu_drift.length > 0) {
+        setTimeout(() => showWiToast('部分列 TMU 因規則集不同已重算調整', 'warn'), 1500)
+      }
+    } catch (e) {
+      showWiToast('插入失敗：' + (e as Error).message, 'err')
+    }
+  }
 
   // ── load/switch worksheet ─────────────────────────────────────────────────
   useEffect(() => {
@@ -609,7 +733,19 @@ export function WiWorkbench() {
       {/* ═══ Table section ═══ */}
       <div className="bg-white rounded-xl border p-4">
         <div className="flex items-center justify-between mb-2">
-          <h2 className="font-semibold">工時表</h2>
+          <div className="flex items-center gap-3">
+            <h2 className="font-semibold">工時表</h2>
+            {/* [ADR-022 E-4] 從 WI 庫插入（實體化；需編輯權限＋已開啟工時表） */}
+            {editable && activeWs && (
+              <button
+                onClick={() => setInsertWiOpen(true)}
+                className="text-sm px-3 py-1 border border-blue-300 text-blue-700 rounded-lg hover:bg-blue-50"
+                data-testid="insert-wi-btn"
+              >
+                ＋ 從 WI 庫插入
+              </button>
+            )}
+          </div>
           <div className="text-sm">合計 <b className="text-emerald-600 text-lg">{total}</b> TMU ≈ <b className="text-emerald-600">{(total * TMU_SEC).toFixed(2)}</b> 秒</div>
         </div>
 
@@ -811,6 +947,16 @@ export function WiWorkbench() {
             })}
           </div>
         </div>
+      )}
+
+      {/* ═══ [ADR-022 E-4] 從 WI 庫插入 modal + toast ═══ */}
+      <WiToast toast={wiToast} />
+      {insertWiOpen && (
+        <InsertWiModal
+          onClose={() => setInsertWiOpen(false)}
+          onInsert={insertWiFromLibrary}
+          inserting={instantiate.isPending}
+        />
       )}
 
       {/* ═══ [C] Slot Modal ═══ */}

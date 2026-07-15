@@ -47,7 +47,7 @@ async def list_audit_log(
     ),
     limit: int = Query(50, ge=1, le=200, description="每頁筆數（最大 200）"),
     offset: int = Query(0, ge=0, description="跳過筆數"),
-    session: AsyncSession = Depends(get_db_session),
+    session: AsyncSession = Depends(get_db_session, scope="function"),
     _: CurrentUser = Depends(require_role("approver")),
 ) -> AuditLogListOut:
     """查詢工作流稽核日誌（approver 以上可查全域）。"""
