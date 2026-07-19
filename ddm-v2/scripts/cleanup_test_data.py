@@ -118,12 +118,13 @@ TARGETS: list[Target] = [
         sample_col="source_name",
     ),
     Target(
-        label="app_users (ZZZ% / SMTEST_% / GAPTEST_% / GAP_APPROVER_RETIRE_% / UT_TESTUSER_%)",
+        label="app_users (ZZZ% / SMTEST_% / GAPTEST_% / GAP_APPROVER_RETIRE_% / UT_TESTUSER_% / UT_AUDIT_% / TESTIE% / EMP_FROM_LB)",
         table="app_users",
         where=(
             "employee_no LIKE 'ZZZ%' OR employee_no LIKE 'SMTEST\\_%' "
             "OR employee_no LIKE 'GAPTEST\\_%' OR employee_no LIKE 'GAP\\_APPROVER\\_RETIRE\\_%' "
-            "OR employee_no LIKE 'UT\\_TESTUSER\\_%'"
+            "OR employee_no LIKE 'UT\\_TESTUSER\\_%' OR employee_no LIKE 'UT\\_AUDIT\\_%' "
+            "OR employee_no LIKE 'TESTIE%' OR employee_no = 'EMP_FROM_LB'"
         ),
         sample_col="employee_no",
     ),
