@@ -15,6 +15,7 @@ import {
   useRetireWorksheet,
   type CaseOut,
   type CaseStatus,
+  type CaseVersionBrief,
 } from './api'
 
 // ─── Constants ────────────────────────────────────────────────────────────────
@@ -44,36 +45,120 @@ const ACTION_ZH: Record<string, string> = {
 // ─── Sub-components ───────────────────────────────────────────────────────────
 // StatusBadge 抽至 ./status（CaseContextBar 共用，ADR-021 Phase 3）
 
-interface CaseItemProps {
-  item: CaseOut
-  selected: boolean
-  onSelect: () => void
+/**
+ * 代表版（最新版）的版本摘要。後端 `versions[]` 必含代表版；
+ * 若某案件歷史為空（僅平面欄位可用）則由平面欄位還原，語意等價。
+ */
+function repVersionOf(item: CaseOut): CaseVersionBrief {
+  const found = item.versions.find((v) => v.process_version_id === item.process_version_id)
+  return (
+    found ?? {
+      process_version_id: item.process_version_id,
+      worksheet_id: item.worksheet_id,
+      version_no: item.version_no,
+      status: item.status,
+      total_tmu: item.total_tmu,
+      created_at: item.created_at,
+      approved_at: item.approved_at,
+    }
+  )
 }
 
-function CaseItem({ item, selected, onSelect }: CaseItemProps) {
+const fmtDate = (iso: string) => new Date(iso).toLocaleDateString('zh-TW')
+
+interface CaseItemProps {
+  item: CaseOut
+  /** 此案件被選取（右側詳情正顯示它的某一版） */
+  selected: boolean
+  expanded: boolean
+  /** 目前檢視版本的 process_version_id（未選取此案件時為 null） */
+  viewingVersionId: string | null
+  onSelect: () => void
+  onToggleExpand: () => void
+  onSelectVersion: (v: CaseVersionBrief) => void
+}
+
+/**
+ * 一列＝一個**案件**（非一版，守則 §6/§7-2）。
+ * 摘要顯示代表版；version_count > 1 時給「N 版」徽章＋展開鈕，展開後可點選歷史版。
+ */
+function CaseItem({
+  item, selected, expanded, viewingVersionId, onSelect, onToggleExpand, onSelectVersion,
+}: CaseItemProps) {
+  const multi = item.version_count > 1
   return (
-    <button
-      onClick={onSelect}
-      className={`w-full text-left px-3 py-2.5 border-b hover:bg-slate-50 transition-colors ${
+    <div
+      className={`border-b ${
         selected ? 'bg-sky-50 border-l-2 border-l-sky-500' : 'border-l-2 border-l-transparent'
       }`}
+      data-testid="case-row"
     >
-      <div className="flex items-start justify-between gap-2">
-        <span className="font-medium text-sm text-slate-800 leading-tight truncate flex-1">
-          {item.process_name}
-        </span>
-        <StatusBadge status={item.status} />
-      </div>
-      <div className="mt-0.5 text-xs text-slate-500 truncate">
-        {item.product_name} / {item.sku_name}
-      </div>
-      <div className="mt-0.5 flex items-center gap-2 text-xs text-slate-400">
-        <span>版本 {item.version_no}</span>
-        {item.total_tmu != null && (
-          <span className="text-emerald-600 font-medium">{item.total_tmu} TMU</span>
+      <div className="flex items-stretch">
+        <button onClick={onSelect} className="flex-1 min-w-0 text-left px-3 py-2.5 hover:bg-slate-100/60 transition-colors">
+          <div className="flex items-start justify-between gap-2">
+            <span className="font-medium text-sm text-slate-800 leading-tight truncate flex-1">
+              {item.process_name}
+              {item.model_label && (
+                <span className="ml-1 font-normal text-slate-500">· {item.model_label}</span>
+              )}
+            </span>
+            <StatusBadge status={item.status} />
+          </div>
+          <div className="mt-0.5 text-xs text-slate-500 truncate">
+            {item.product_name} / {item.sku_name}
+          </div>
+          <div className="mt-0.5 flex items-center gap-2 text-xs text-slate-400">
+            <span>最新 {item.version_no}</span>
+            {item.total_tmu != null && (
+              <span className="text-emerald-600 font-medium">{item.total_tmu} TMU</span>
+            )}
+            {multi && (
+              <span className="px-1.5 py-0.5 rounded bg-slate-100 text-slate-600 font-medium">
+                {item.version_count} 版
+              </span>
+            )}
+          </div>
+        </button>
+        {multi && (
+          <button
+            onClick={onToggleExpand}
+            aria-expanded={expanded}
+            aria-label={expanded ? '收合版本歷史' : '展開版本歷史'}
+            title={expanded ? '收合版本歷史' : '展開版本歷史'}
+            className="px-2 text-slate-400 hover:text-slate-700 hover:bg-slate-100 transition-colors"
+          >
+            {expanded ? '▾' : '▸'}
+          </button>
         )}
       </div>
-    </button>
+
+      {multi && expanded && (
+        <ul className="bg-slate-50/80 border-t" data-testid="case-versions">
+          {item.versions.map((v) => {
+            const isViewing = selected && viewingVersionId === v.process_version_id
+            const isLatest = v.process_version_id === item.process_version_id
+            return (
+              <li key={v.process_version_id}>
+                <button
+                  onClick={() => onSelectVersion(v)}
+                  className={`w-full flex items-center gap-2 pl-6 pr-3 py-1.5 text-xs text-left hover:bg-slate-100 transition-colors ${
+                    isViewing ? 'bg-sky-100/70 font-medium' : ''
+                  }`}
+                >
+                  <span className="text-slate-700 w-12 shrink-0">{v.version_no}</span>
+                  <StatusBadge status={v.status} />
+                  <span className="text-emerald-600 w-20 shrink-0">
+                    {v.total_tmu != null ? `${v.total_tmu} TMU` : '—'}
+                  </span>
+                  <span className="text-slate-400 flex-1 text-right truncate">{fmtDate(v.created_at)}</span>
+                  {isLatest && <span className="text-sky-600 shrink-0">最新</span>}
+                </button>
+              </li>
+            )
+          })}
+        </ul>
+      )}
+    </div>
   )
 }
 
@@ -165,28 +250,57 @@ function ExportActions({ worksheetId }: ExportActionsProps) {
 
 interface DetailPanelProps {
   item: CaseOut
-  onOpenWorkbench: (item: CaseOut) => void
+  /** 目前檢視的版本（預設＝代表版，可由左側展開列指定歷史版） */
+  view: CaseVersionBrief
+  onOpenWorkbench: (item: CaseOut, view: CaseVersionBrief) => void
 }
 
-function DetailPanel({ item, onOpenWorkbench }: DetailPanelProps) {
+/**
+ * 案件詳情：所有操作（核准/退役/編輯工時表/匯出/簽核歷程）都綁**目前檢視版本**的
+ * worksheet_id / process_version_id，不固定用代表版。
+ * 可用性仍沿用既有 status 規則（歷史版通常非 draft/approved 代表版狀態，自然不可操作），
+ * 不自創權限。
+ */
+function DetailPanel({ item, view, onOpenWorkbench }: DetailPanelProps) {
   const { data: me } = useMe()
-  const approve = useApproveWorksheet(item.worksheet_id)
-  const retire = useRetireWorksheet(item.worksheet_id)
+  const approve = useApproveWorksheet(view.worksheet_id)
+  const retire = useRetireWorksheet(view.worksheet_id)
   const userCanPublish = canPublish(me)
   const { data: auditData, isLoading: auditLoading } = useCaseAuditLog(
-    item.process_version_id,
+    view.process_version_id,
     userCanPublish,
   )
 
-  const canApprove = item.status === 'draft' && userCanPublish
-  const canRetire = item.status === 'approved' && isAdmin(me)
+  const isLatest = view.process_version_id === item.process_version_id
+  // 守則 §1「案件＝單一當前狀態」：狀態流轉只允許在**代表版（最新版）**上進行。
+  // 否則核准一個歷史 draft 會讓同一條版本鏈出現兩個 approved（案件當前狀態不再唯一）。
+  const canApprove = view.status === 'draft' && userCanPublish && isLatest
+  const canRetire = view.status === 'approved' && isAdmin(me) && isLatest
 
   return (
     <div className="flex flex-col h-full overflow-y-auto p-4 space-y-4">
       {/* Header */}
       <div className="flex flex-wrap items-start gap-2">
-        <h2 className="text-lg font-semibold text-slate-800 flex-1">{item.process_name}</h2>
-        <StatusBadge status={item.status} />
+        <h2 className="text-lg font-semibold text-slate-800 flex-1">
+          {item.process_name}
+          {item.model_label && <span className="ml-1 text-base font-normal text-slate-500">· {item.model_label}</span>}
+        </h2>
+        <StatusBadge status={view.status} />
+      </div>
+
+      {/* 目前檢視版本（C-1：詳情頂部標示是哪一版） */}
+      <div
+        className={`flex flex-wrap items-center gap-2 text-sm rounded-lg px-3 py-2 ${
+          isLatest ? 'bg-sky-50 text-sky-800' : 'bg-amber-50 text-amber-800'
+        }`}
+        data-testid="viewing-version"
+      >
+        <span className="font-semibold">{view.version_no}</span>
+        <span>· {isLatest ? '最新' : '歷史'}</span>
+        <span className="text-xs opacity-75">（共 {item.version_count} 版）</span>
+        {!isLatest && (
+          <span className="text-xs">歷史版本唯讀：不可編輯，狀態流轉請回到最新版</span>
+        )}
       </div>
 
       {/* Info grid */}
@@ -198,15 +312,17 @@ function DetailPanel({ item, onOpenWorkbench }: DetailPanelProps) {
         <span className="text-slate-500">機種</span>
         <span className="font-medium">{item.sku_name}</span>
         <span className="text-slate-500">版本</span>
-        <span className="font-medium">{item.version_no}</span>
+        <span className="font-medium">{view.version_no}</span>
         <span className="text-slate-500">總 TMU</span>
         <span className="font-medium text-emerald-600">
-          {item.total_tmu != null ? `${item.total_tmu} TMU` : '—'}
+          {view.total_tmu != null ? `${view.total_tmu} TMU` : '—'}
         </span>
-        {item.approved_at && (
+        <span className="text-slate-500">建立時間</span>
+        <span className="font-medium">{new Date(view.created_at).toLocaleString('zh-TW')}</span>
+        {view.approved_at && (
           <>
             <span className="text-slate-500">核准時間</span>
-            <span className="font-medium">{new Date(item.approved_at).toLocaleString('zh-TW')}</span>
+            <span className="font-medium">{new Date(view.approved_at).toLocaleString('zh-TW')}</span>
           </>
         )}
       </div>
@@ -231,12 +347,18 @@ function DetailPanel({ item, onOpenWorkbench }: DetailPanelProps) {
             {retire.isPending ? '處理中…' : '退役'}
           </button>
         )}
+        {/* 歷史版唯讀：直接停用入口，而非讓使用者編輯到存檔才撞後端 NotEditable */}
         <button
-          onClick={() => onOpenWorkbench(item)}
-          className="px-3 py-1.5 bg-violet-600 text-white rounded text-sm hover:bg-violet-700 transition-colors"
+          disabled={!isLatest}
+          onClick={() => onOpenWorkbench(item, view)}
+          title={isLatest ? undefined : '歷史版本唯讀，請切換到最新版再編輯'}
+          className="px-3 py-1.5 bg-violet-600 text-white rounded text-sm disabled:opacity-40 disabled:cursor-not-allowed hover:bg-violet-700 transition-colors"
         >
           編輯工時表
         </button>
+        {!isLatest && (
+          <span className="self-center text-xs text-slate-500">歷史版本唯讀，請切換到最新版再編輯</span>
+        )}
       </div>
 
       {/* Mutation error feedback */}
@@ -247,8 +369,8 @@ function DetailPanel({ item, onOpenWorkbench }: DetailPanelProps) {
         <p className="text-sm text-red-600">退役失敗：{(retire.error as Error).message}</p>
       )}
 
-      {/* Export actions (ADR-021: absorbed from top-level 匯出 tab) */}
-      <ExportActions worksheetId={item.worksheet_id} />
+      {/* Export actions (ADR-021: absorbed from top-level 匯出 tab)；匯出目前檢視版本 */}
+      <ExportActions key={view.worksheet_id} worksheetId={view.worksheet_id} />
 
       {/* Audit log timeline */}
       <div>
@@ -295,29 +417,50 @@ function DetailPanel({ item, onOpenWorkbench }: DetailPanelProps) {
 export function CasesPage() {
   const { data: me } = useMe()
   const [statusFilter, setStatusFilter] = useState<CaseStatus>('')
+  // 案件識別＝代表版 worksheet_id；檢視版本另存（預設代表版）
   const [selectedId, setSelectedId] = useState<string | null>(null)
+  const [viewVersionId, setViewVersionId] = useState<string | null>(null)
+  const [expandedIds, setExpandedIds] = useState<string[]>([])
   const [showNewCase, setShowNewCase] = useState(false)
   const setActiveCase = useWorkspace((s) => s.setActiveCase)
 
   const { data, isLoading, error } = useCases({ status: statusFilter })
 
   const selectedItem = data?.items.find((i) => i.worksheet_id === selectedId) ?? null
+  // 目前檢視版本：展開列指定者，否則代表版
+  const viewedVersion = selectedItem
+    ? selectedItem.versions.find((v) => v.process_version_id === viewVersionId)
+      ?? repVersionOf(selectedItem)
+    : null
+
+  const selectCase = (item: CaseOut) => {
+    setSelectedId(item.worksheet_id)
+    setViewVersionId(item.process_version_id)
+  }
+  const selectVersion = (item: CaseOut, v: CaseVersionBrief) => {
+    setSelectedId(item.worksheet_id)
+    setViewVersionId(v.process_version_id)
+  }
+  const toggleExpand = (id: string) =>
+    setExpandedIds((prev) => (prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id]))
 
   // 「編輯工時表」（ADR-021 Phase 3）：寫入 activeWs＋案件情境 meta（CaseContextBar 用），
   // 再切到 wi tab（WiWorkbench 工時表編輯器）。custom event 讓 App.tsx 切 tab，免 prop drilling。
-  const handleOpenWorkbench = (item: CaseOut) => {
-    setActiveCase(item.worksheet_id, {
+  // C-1：帶**目前檢視版本**的 worksheet_id，不固定用代表版。
+  const handleOpenWorkbench = (item: CaseOut, view: CaseVersionBrief) => {
+    setActiveCase(view.worksheet_id, {
       processName: item.process_name,
       productName: item.product_name,
       skuName: item.sku_name,
-      versionNo: item.version_no,
-      status: item.status,
+      versionNo: view.version_no,
+      status: view.status,
     })
     window.dispatchEvent(new CustomEvent('ddm:switch-tab', { detail: 'wi' }))
   }
 
-  // 「新建案件」（ADR-021 Phase 3，原 WorksheetBar ＋新建工序表流程）：建立成功直接進入編輯情境
-  const handleCreated = (worksheetId: string, meta: ActiveCaseMeta) => {
+  // 「新建案件」（ADR-021 Phase 3，原 WorksheetBar ＋新建工序表流程）：
+  // 建立成功、或從引導區塊選「繼續編輯現有草稿」，都直接進入該工序表的編輯情境
+  const handleOpenWorksheet = (worksheetId: string, meta: ActiveCaseMeta) => {
     setShowNewCase(false)
     setActiveCase(worksheetId, meta)
     window.dispatchEvent(new CustomEvent('ddm:switch-tab', { detail: 'wi' }))
@@ -325,7 +468,7 @@ export function CasesPage() {
 
   return (
     <div className="bg-white rounded-xl border flex h-full overflow-hidden" style={{ minHeight: 0 }}>
-      {showNewCase && <NewCaseModal onClose={() => setShowNewCase(false)} onCreated={handleCreated} />}
+      {showNewCase && <NewCaseModal onClose={() => setShowNewCase(false)} onOpenWorksheet={handleOpenWorksheet} />}
       {/* ── Left list panel ── */}
       <div
         className="flex flex-col flex-shrink-0 border-r"
@@ -347,7 +490,7 @@ export function CasesPage() {
           {STATUS_TABS.map((t) => (
             <button
               key={t.value}
-              onClick={() => { setStatusFilter(t.value); setSelectedId(null) }}
+              onClick={() => { setStatusFilter(t.value); setSelectedId(null); setViewVersionId(null) }}
               className={`flex-1 py-2 text-xs font-medium transition-colors ${
                 statusFilter === t.value
                   ? 'bg-white text-sky-600 border-b-2 border-sky-500'
@@ -375,23 +518,27 @@ export function CasesPage() {
               key={item.worksheet_id}
               item={item}
               selected={selectedId === item.worksheet_id}
-              onSelect={() => setSelectedId(item.worksheet_id)}
+              expanded={expandedIds.includes(item.worksheet_id)}
+              viewingVersionId={selectedId === item.worksheet_id ? viewVersionId : null}
+              onSelect={() => selectCase(item)}
+              onToggleExpand={() => toggleExpand(item.worksheet_id)}
+              onSelectVersion={(v) => selectVersion(item, v)}
             />
           ))}
         </div>
 
-        {/* Footer count */}
+        {/* Footer count（P1-A：total 語意＝案件數，非版本數） */}
         {data != null && (
           <div className="border-t px-3 py-1.5 text-xs text-slate-400">
-            共 {data.total} 筆
+            共 {data.total} 件案件
           </div>
         )}
       </div>
 
       {/* ── Right detail panel ── */}
       <div className="flex-1 overflow-hidden" style={{ minWidth: 0 }}>
-        {selectedItem ? (
-          <DetailPanel item={selectedItem} onOpenWorkbench={handleOpenWorkbench} />
+        {selectedItem && viewedVersion ? (
+          <DetailPanel item={selectedItem} view={viewedVersion} onOpenWorkbench={handleOpenWorkbench} />
         ) : (
           <div className="h-full flex items-center justify-center text-slate-400 text-sm">
             ← 從左側選擇一個案件

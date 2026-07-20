@@ -86,6 +86,7 @@ test('MOST 工作台單頁：無 tab、WI 大綱展開、WiItemInspector 開合�
     keywords: [], scope: 'global', owner: null, status: 'standard', current_version: 1,
     created_at: '2026-07-14T00:00:00Z', updated_at: '2026-07-14T00:00:00Z',
     current_version_detail: null, total_tmu: 28, action_count: 1, seq_kind: 'GM', hand: 'BH',
+    base_tmu: 28, frequency: 1,
   }
   // current_version=2 → WI 大綱顯示「已微調」badge
   const WI_SUMMARY = {
@@ -97,6 +98,23 @@ test('MOST 工作台單頁：無 tab、WI 大綱展開、WiItemInspector 開合�
 
   await page.route('/api/**', route => {
     const url = route.request().url()
+    const method = route.request().method()
+
+    // P1-B B-1：行內頻率 → PUT rows/0 → 後端重算發新版本（freq 2 → eff 56）
+    if (method === 'PUT' && /\/rows\/\d+$/.test(url)) {
+      const body = JSON.parse(route.request().postData() ?? '{}') as { frequency?: number }
+      const freq = body.frequency ?? 1
+      return route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify({
+          ...versionDetail(ACTION_ID, 2),
+          rows: [{ ...ROW, frequency: freq,
+            computed: { total_tmu: 28, total_seconds: 1.008, eff_tmu: 28 * freq, contribution_tmu: 28 * freq } }],
+          total_tmu: 28 * freq, total_seconds: 1.008 * freq,
+        }),
+      })
+    }
 
     if (url.includes('/api/v2/rule-sets/') && url.includes('/options')) {
       return route.fulfill({
@@ -138,12 +156,14 @@ test('MOST 工作台單頁：無 tab、WI 大綱展開、WiItemInspector 開合�
       })
     }
 
-    // 動作清單（category=action）
+    // 動作清單（category=action）；scope=personal＝「我的」→ 此 mock 的動作是 global
+    // scope 認證庫 → 我的為空（正是預設「全部」的理由，守則 §4）
     if (url.includes('/api/v2/motion-modules') && url.includes('category=action')) {
+      const mine = url.includes('scope=personal')
       return route.fulfill({
         status: 200,
         contentType: 'application/json',
-        body: JSON.stringify([ACTION_SUMMARY]),
+        body: JSON.stringify(mine ? [] : [ACTION_SUMMARY]),
       })
     }
 
@@ -210,7 +230,174 @@ test('MOST 工作台單頁：無 tab、WI 大綱展開、WiItemInspector 開合�
   await expect(inspector.getByRole('heading', { name: '動作模組詳情' })).toBeVisible()
   await expect(inspector.getByRole('button', { name: '重算並儲存' })).toBeVisible()
 
+  // Inspector SIMO 配對選擇器可編輯（P1-B B-3；本 WI 僅一列 → 只有「無（獨立列）」）
+  const simoSelect = inspector.getByTestId('inspector-simo-pair')
+  await expect(simoSelect).toBeVisible()
+  await expect(simoSelect).toHaveValue('')
+  await expect(inspector.getByText('此 WI 僅一列，無可配對的對象。')).toBeVisible()
+
   // 取消 → 抽屜關閉
   await inspector.getByRole('button', { name: '取消' }).click()
   await expect(page.getByTestId('wi-item-inspector')).toHaveCount(0)
+
+  // ── P1-B B-2：全部／我的 segmented（全部 1 筆、我的 0 筆＝global 認證庫不屬個人）──
+  const ownerFilter = page.getByTestId('action-owner-filter')
+  await expect(ownerFilter.getByRole('button', { name: /全部/ })).toHaveAttribute('aria-pressed', 'true')
+  await ownerFilter.getByRole('button', { name: /我的/ }).click()
+  await expect(page.getByText('共 0 筆')).toBeVisible()
+  await ownerFilter.getByRole('button', { name: /全部/ }).click()
+  await expect(page.getByText('共 1 筆')).toBeVisible()
+
+  // ── P1-B B-1：行內頻率 input（1→2）→ PUT rows/0 → Eff 依後端回傳更新為 56 ────
+  const freqInput = page.getByTestId('action-row-freq')
+  await expect(freqInput).toHaveValue('1')
+  await freqInput.fill('2')
+  await expect(page.getByText(/已更新頻率並重算/)).toBeVisible()
+  await expect(freqInput).toHaveValue('2')
+  await expect(page.locator('tbody').getByText('56', { exact: true })).toBeVisible()
+})
+
+// ── P1-B code-review 回歸（M1/M2/M3）─────────────────────────────────────────
+// M1: apiErrorMessage 需同時吃 FastAPI array 型與服務層 object 型 422 detail
+// M2: 輸入無效（刪空）不得丟棄草稿 → 使用者續打的數字不會被接在舊值後
+// M3: commit 的比較基準不得用 render closure 快照 → 在途改回原值不被靜默吞掉
+test('P1-B 回歸：行內頻率草稿保留（M2）／在途改回值仍送出（M3）／422 訊息人話（M1）', async ({ page }) => {
+  const ACTION_ID = 'cccccccc-1111-2222-3333-444444444444'
+  const CYCLE = {
+    seq: 'GM',
+    a0: { reach_cm: 20, twist_deg: 0, foot_cm: 0 },
+    b1: { b_code: null },
+    g2: { g_code: 'g_simple', modifiers: {} },
+    a3: { reach_cm: 35, twist_deg: 0, foot_cm: 0 },
+    b4: { b_code: null },
+    p5: { p_base_code: 'p_put', p_addon_codes: [], precision: false },
+    a6: { reach_cm: 0, twist_deg: 0, foot_cm: 0 },
+  }
+  const ROW = {
+    hand: 'BH', frequency: 1, simo_pair_index: null,
+    sub_activity: '回歸動作', narrative_zh: '回歸動作敘述', vocab_refs: {},
+    computed: { total_tmu: 28, total_seconds: 1.008, eff_tmu: 28, contribution_tmu: 28 },
+    cycle: CYCLE,
+  }
+  const SUMMARY = {
+    id: ACTION_ID, site_id: null, name_zh: '回歸動作', category: 'action',
+    keywords: [], scope: 'global', owner: null, status: 'standard', current_version: 1,
+    created_at: '2026-07-14T00:00:00Z', updated_at: '2026-07-14T00:00:00Z',
+    current_version_detail: null, total_tmu: 28, action_count: 1, seq_kind: 'GM', hand: 'BH',
+    base_tmu: 28, frequency: 1,
+  }
+
+  // 送出到後端的 frequency 序列（保序斷言用）
+  const putFreqs: number[] = []
+  let putMode: 'ok' | 'slow' | 'fastapi422' | 'service422' = 'ok'
+
+  await page.route('/api/**', async route => {
+    const url = route.request().url()
+    const method = route.request().method()
+
+    if (method === 'PUT' && /\/rows\/\d+$/.test(url)) {
+      const body = JSON.parse(route.request().postData() ?? '{}') as { frequency?: number }
+      const freq = body.frequency ?? 1
+      putFreqs.push(freq)
+      if (putMode === 'fastapi422') {
+        // FastAPI/Pydantic 驗證錯誤：detail 恆為 array
+        return route.fulfill({
+          status: 422, contentType: 'application/json',
+          body: JSON.stringify({ detail: [{ type: 'missing', loc: ['body', 'frequency'], msg: 'Field required' }] }),
+        })
+      }
+      if (putMode === 'service422') {
+        return route.fulfill({
+          status: 422, contentType: 'application/json',
+          body: JSON.stringify({ detail: { code: 'SIMO_PAIR_INVALID', message: '主列不得自身宣告配對' } }),
+        })
+      }
+      if (putMode === 'slow') await new Promise(r => setTimeout(r, 1500))   // 在途窗（M3）
+      return route.fulfill({
+        status: 200, contentType: 'application/json',
+        body: JSON.stringify({
+          id: 'ver', module_id: ACTION_ID, version_no: 2, rule_set_id: 'rs-1',
+          rows: [{ ...ROW, frequency: freq,
+            computed: { total_tmu: 28, total_seconds: 1.008, eff_tmu: 28 * freq, contribution_tmu: 28 * freq } }],
+          narrative_zh: '回歸動作敘述', total_tmu: 28 * freq, total_seconds: 1.008 * freq,
+          published_by: 'IEC141289', published_at: '2026-07-14T00:00:00Z',
+        }),
+      })
+    }
+
+    if (url.includes('/api/v2/rule-sets/') && url.includes('/options')) {
+      return route.fulfill({ status: 200, contentType: 'application/json',
+        body: JSON.stringify({
+          code: 'MINIMOST_FACTORY_V2', multiplier: 1,
+          a_bands: { reach: [{ max_value: 5, index: 2 }], twist: [{ max_value: null, index: 0 }], foot: [{ max_value: null, index: 0 }] },
+          b: [], g: [{ code: 'g_simple', label: '簡單抓握', modifier_key: null, requires_modifier: false }],
+          p_bases: [{ code: 'p_put', label: '放置', label_en: 'Put' }], p_addons: [],
+          m_verbs: [{ code: 'm_push', label: '推', pricing_kind: 'distance_ladder' }],
+          x: [{ code: 'x_none', label: '無機器時間', mode: 'none' }],
+          i: [{ code: 'i_none', label: '無', label_en: 'None' }],
+        }) })
+    }
+    if (url.includes('/api/v2/minimost/calculate')) {
+      return route.fulfill({ status: 200, contentType: 'application/json',
+        body: JSON.stringify({ seq: 'GM', total_tmu: 28, total_seconds: 1.008, tech_line: 'A6 B0 G6 A10 B0 P6 A0' }) })
+    }
+    if (url.includes('/api/v2/me')) {
+      return route.fulfill({ status: 200, contentType: 'application/json',
+        body: JSON.stringify({ employee_no: 'IEC141289', roles: ['analyst'], level: 1 }) })
+    }
+    if (url.includes('/api/v2/motion-modules') && url.includes('category=action')) {
+      return route.fulfill({ status: 200, contentType: 'application/json',
+        body: JSON.stringify(url.includes('scope=personal') ? [] : [SUMMARY]) })
+    }
+    if (url.includes(`/api/v2/motion-modules/${ACTION_ID}`)) {
+      return route.fulfill({ status: 200, contentType: 'application/json',
+        body: JSON.stringify({ ...SUMMARY, current_version_detail: {
+          id: 'ver', module_id: ACTION_ID, version_no: 1, rule_set_id: 'rs-1', rows: [ROW],
+          narrative_zh: '回歸動作敘述', total_tmu: 28, total_seconds: 1.008,
+          published_by: 'IEC141289', published_at: '2026-07-14T00:00:00Z' } }) })
+    }
+    return route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify([]) })
+  })
+
+  await page.goto('/')
+  await page.getByRole('button', { name: /MOST 工作台/ }).click()
+  await page.waitForLoadState('networkidle')
+
+  const freq = page.getByTestId('action-row-freq')
+  await expect(freq).toHaveValue('1')
+
+  // ── M2：全選刪除 → 草稿保留為空（不跳回舊值）→ 續打 2 → 值必須是 "2" 而非 "12" ──
+  await freq.fill('')
+  await expect(freq).toHaveValue('')
+  await page.waitForTimeout(700)                 // 跨過 debounce：無效輸入不得 commit
+  expect(putFreqs).toEqual([])                   // 未送出任何 PUT
+  await expect(freq).toHaveValue('')             // 草稿仍空（未被丟棄回舊值）
+  await freq.pressSequentially('2')
+  await expect(freq).toHaveValue('2')            // 若草稿被丟棄，這裡會是 "12"
+  await expect(page.getByText(/已更新頻率並重算/)).toBeVisible()
+  expect(putFreqs).toEqual([2])
+
+  // ── M3：在途（存檔中）改回原值 → 不得被靜默吞掉，必須再送一次 PUT ────────────
+  putMode = 'slow'
+  await freq.fill('5')
+  await page.waitForTimeout(700)                 // 第一發已送出、仍在途（1500ms 延遲）
+  expect(putFreqs).toEqual([2, 5])
+  await freq.fill('2')                           // 在途期間改回先前的值
+  await page.waitForTimeout(4000)                // 等序列（5 → 2）跑完
+  expect(putFreqs).toEqual([2, 5, 2])            // 「改回 2」有真的送出（未被 closure 快照吞掉）
+  await expect(freq).toHaveValue('2')
+
+  // ── M1a：FastAPI array 型 422 → 顯示人話，不得出現原始 JSON ─────────────────
+  putMode = 'fastapi422'
+  await freq.fill('7')
+  await expect(page.getByText(/頻率更新失敗/)).toBeVisible()
+  await expect(page.getByText(/frequency: Field required/)).toBeVisible()
+  await expect(page.getByText(/\[\{"type"/)).toHaveCount(0)
+  await expect(freq).toHaveValue('2')            // 失敗 → 回復後端原值
+
+  // ── M1b：服務層 object 型 422 → 取 message ────────────────────────────────
+  putMode = 'service422'
+  await freq.fill('9')
+  await expect(page.getByText(/主列不得自身宣告配對/)).toBeVisible()
+  await expect(page.getByText(/SIMO_PAIR_INVALID/)).toHaveCount(0)
 })

@@ -207,6 +207,15 @@ function WiOutlineCard({
                 <span className="shrink-0">
                   Eff <b className="text-red-600">{row.computed?.eff_tmu ?? '—'}</b>
                 </span>
+                {/* 納入（後端 contribution_tmu 權威）：SIMO 從屬列＝0 且劃線（ADR-020） */}
+                <span className="shrink-0" title="納入 WI 合計的時間（SIMO 從屬列為 0）">
+                  納入{' '}
+                  {row.computed
+                    ? (row.computed.contribution_tmu === 0
+                        ? <b className="line-through text-slate-400">0</b>
+                        : <b className="text-slate-700">{row.computed.contribution_tmu}</b>)
+                    : <b className="text-slate-400">—</b>}
+                </span>
                 {isSimo && (
                   <span className="px-1 py-0.5 rounded bg-orange-100 text-orange-700 shrink-0"
                     title={`SIMO 從屬（主列 #${(row.simo_pair_index ?? 0) + 1}），貢獻 0`}>SIMO</span>

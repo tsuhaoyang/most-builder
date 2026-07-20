@@ -1,35 +1,66 @@
-// 新建案件 modal（ADR-021 Phase 3）：選產品 → SKU → 輸入機種/線別名稱 → 建立工序表。
-// 建立邏輯照原 WorksheetBar「＋新建工序表」流程搬移；階層下拉重用 catalog/api.ts 既有 hooks。
-// 建立成功後由呼叫端（CasesPage）setActiveCase 直接進入編輯情境。
-import { useEffect, useState } from 'react'
+// 新建案件 modal（ADR-021 Phase 3；P1-C 語意修正，守則 §6/§7-2）。
+//
+// 修正重點：
+// 1. **不自動預選第一個產品/SKU** —— 舊行為會讓每次「新建案件」默默在同一個 SKU 上 +1 版
+//    （demo SKU 版本爆量的成因之一）。產品/SKU 預設空、必選。
+// 2. 引導以 **P1-A 聚合鍵 `(sku_id, model_label)` 精確比對**（review #2）：
+//    - 同 SKU ＋同 model_label ⇒ 命中既有案件 → 「繼續編輯該案件的草稿」／「建立新版本」
+//    - 同 SKU 但 model_label 不同 ⇒ 這是**該 SKU 底下的另一個案件** → 只給資訊性提示，
+//      不列別的案件的草稿（點下去會跳到別的案件），主按鈕維持「建立新案件」
+//    故 model_label 輸入欄必須排在 SKU 之後、引導區塊之前。
+//    版本資料來源＝既有 catalog hook `useWorksheetsBySku`（GET /api/v2/skus/{id}/worksheets）：
+//    它本來就是 SKU 範圍且直接給 worksheet_id/version_no/status/model_label，
+//    比從 /api/v2/cases 聚合結果反查同 sku_id 案件更直接（cases 需先分頁命中該案件）。
+// 3. SKU 尚無版本＝真正的新案件。
+//
+// ⚠️ 版號來源：後端 catalog_service.create_worksheet 以 **SKU 範圍**的 process_versions
+//    COUNT+1 產號（非 per model_label），故按鈕上的版號一律用 `wss.length + 1`
+//    ——即使是該 SKU 的新案件也可能是 v12。不在此處假造 v1。
+import { useState } from 'react'
 import { useQueryClient } from '@tanstack/react-query'
-import { useProducts, useSkus, useWorksheetsBySku, useCreateWorksheet } from '../catalog/api'
+import { useProducts, useSkus, useWorksheetsBySku, useCreateWorksheet, type WorksheetSummary } from '../catalog/api'
 import { useMe } from '../../shared/auth/useMe'
+import { StatusBadge } from './status'
 import type { ActiveCaseMeta } from '../../shared/workspace'
 
 interface NewCaseModalProps {
   onClose: () => void
-  onCreated: (worksheetId: string, meta: ActiveCaseMeta) => void
+  /** 開啟某個工序表的編輯情境（新建成功 或 選擇繼續編輯現有草稿） */
+  onOpenWorksheet: (worksheetId: string, meta: ActiveCaseMeta) => void
 }
 
-export function NewCaseModal({ onClose, onCreated }: NewCaseModalProps) {
+export function NewCaseModal({ onClose, onOpenWorksheet }: NewCaseModalProps) {
   const { data: me } = useMe()
   const qc = useQueryClient()
   const { data: products = [] } = useProducts()
   const [pid, setPid] = useState('')
   const { data: skus = [] } = useSkus(pid || undefined)
   const [sid, setSid] = useState('')
-  const { data: wss = [] } = useWorksheetsBySku(sid || undefined)
+  const { data: wss = [], isLoading: wssLoading } = useWorksheetsBySku(sid || undefined)
   const createWs = useCreateWorksheet()
   const [label, setLabel] = useState('')
   const [analyst, setAnalyst] = useState('')
 
-  // 預設選第一個產品／SKU（同原 WorksheetBar 行為）
-  useEffect(() => { if (!pid && products.length) setPid(products[0].id) }, [products, pid])
-  useEffect(() => { if (skus.length && !skus.some(s => s.id === sid)) setSid(skus[0].id) }, [skus, sid])
+  const product = products.find((p) => p.id === pid)
+  const sku = skus.find((s) => s.id === sid)
+  const skuLabel = sku ? (sku.name_zh ? `${sku.sku_code}（${sku.name_zh}）` : sku.sku_code) : ''
 
-  const product = products.find(p => p.id === pid)
-  const sku = skus.find(s => s.id === sid)
+  // 聚合鍵比對：後端 model_label 為 NULL 時等同空字串（cases_service 以 coalesce 併入 case_key）
+  const normLabel = (v: string | null | undefined) => (v ?? '').trim()
+  const caseLabel = normLabel(label)
+  const ready = !!sid && !wssLoading
+  /** 同 SKU ＋同 model_label ＝同一個案件的版本鏈 */
+  const sameCase = wss.filter((w) => normLabel(w.model_label) === caseLabel)
+  /** 同 SKU 但不同 model_label ＝該 SKU 底下的其他案件（僅資訊，不可點選） */
+  const otherCaseLabels = [...new Set(
+    wss.filter((w) => normLabel(w.model_label) !== caseLabel).map((w) => normLabel(w.model_label)),
+  )]
+
+  const isExistingCase = ready && sameCase.length > 0
+  const hasOtherCases = ready && otherCaseLabels.length > 0
+  const drafts = sameCase.filter((w) => w.status === 'draft')
+  // 後端產號＝該 SKU 的 process_versions COUNT+1（見檔頭註記），不是 per-case 計數
+  const nextVersion = wss.length + 1
 
   function doCreate() {
     if (!sid || !sku || !product) return
@@ -38,10 +69,10 @@ export function NewCaseModal({ onClose, onCreated }: NewCaseModalProps) {
       {
         onSuccess: (r) => {
           qc.invalidateQueries({ queryKey: ['cases'] })
-          onCreated(r.worksheet_id, {
+          onOpenWorksheet(r.worksheet_id, {
             processName: label.trim() || `${sku.sku_code} 工序表`,
             productName: product.name_zh,
-            skuName: sku.name_zh ? `${sku.sku_code}（${sku.name_zh}）` : sku.sku_code,
+            skuName: skuLabel,
             versionNo: r.version_no,
             status: r.status,
           })
@@ -50,22 +81,35 @@ export function NewCaseModal({ onClose, onCreated }: NewCaseModalProps) {
     )
   }
 
+  function doContinue(ws: WorksheetSummary) {
+    if (!sku || !product) return
+    onOpenWorksheet(ws.worksheet_id, {
+      processName: ws.model_label || `${sku.sku_code} 工序表`,
+      productName: product.name_zh,
+      skuName: skuLabel,
+      versionNo: ws.version_no,
+      status: ws.status,
+    })
+  }
+
   const selCls = 'border rounded px-2 py-1.5 text-sm bg-white w-full'
   return (
     <div className="fixed inset-0 bg-black/40 z-50 flex items-center justify-center p-4" onClick={onClose}>
       <div
-        className="bg-white rounded-xl shadow-xl w-full max-w-md p-5 space-y-3"
+        className="bg-white rounded-xl shadow-xl w-full max-w-md p-5 space-y-3 max-h-[90vh] overflow-y-auto"
         onClick={(e) => e.stopPropagation()}
         role="dialog"
         aria-modal="true"
       >
         <h2 className="font-semibold text-slate-800">新建案件</h2>
-        <p className="text-xs text-slate-500">選擇產品與 SKU，建立新工序表後直接進入編輯情境。</p>
+        <p className="text-xs text-slate-500">
+          案件＝SKU × 機種/線別名稱。同一組合已有版本時不會建新案件，請看下方引導。
+        </p>
 
         <label className="block text-sm">
           <span className="text-slate-600">產品</span>
-          <select className={selCls} value={pid} onChange={(e) => setPid(e.target.value)}>
-            {products.length === 0 && <option value="">（尚無產品）</option>}
+          <select className={selCls} value={pid} onChange={(e) => { setPid(e.target.value); setSid('') }}>
+            <option value="">{products.length === 0 ? '（尚無產品）' : '請選擇產品…'}</option>
             {products.map((p) => (
               <option key={p.id} value={p.id}>{p.name_zh}{p.is_active ? '' : '（停用）'}</option>
             ))}
@@ -74,23 +118,78 @@ export function NewCaseModal({ onClose, onCreated }: NewCaseModalProps) {
 
         <label className="block text-sm">
           <span className="text-slate-600">SKU / 機種</span>
-          <select className={selCls} value={sid} onChange={(e) => setSid(e.target.value)}>
-            {skus.length === 0 && <option value="">（此產品尚無 SKU）</option>}
+          <select className={selCls} value={sid} onChange={(e) => setSid(e.target.value)} disabled={!pid}>
+            <option value="">
+              {!pid ? '請先選產品' : skus.length === 0 ? '（此產品尚無 SKU）' : '請選擇 SKU…'}
+            </option>
             {skus.map((s) => (
               <option key={s.id} value={s.id}>{s.sku_code}{s.name_zh ? `（${s.name_zh}）` : ''}</option>
             ))}
           </select>
         </label>
 
+        {/* 機種/線別名稱＝聚合鍵的一半，必須在引導區塊之前（review #2） */}
         <label className="block text-sm">
           <span className="text-slate-600">機種/線別名稱</span>
           <input
             className="border rounded px-2 py-1.5 text-sm w-full"
             value={label}
             onChange={(e) => setLabel(e.target.value)}
-            placeholder="可空"
+            placeholder="可空（空白亦為一個案件鍵）"
           />
         </label>
+
+        {/* A. 命中既有案件（同 SKU ＋同 model_label）：不默默 +1 版（守則 §6） */}
+        {isExistingCase && (
+          <div className="rounded-lg border border-amber-200 bg-amber-50 p-3 space-y-2" data-testid="existing-versions-guide">
+            <p className="text-sm font-medium text-amber-900">
+              此機種/線別（{caseLabel || '未命名'}）的案件已有 {sameCase.length} 個版本
+            </p>
+            <p className="text-xs text-amber-800">
+              這不是新案件。請選擇繼續編輯該案件的既有草稿，或明確建立新版本（會延長版本鏈）。
+            </p>
+
+            <div>
+              <p className="text-xs font-medium text-slate-600 mb-1">繼續編輯現有草稿</p>
+              {drafts.length === 0 ? (
+                <p className="text-xs text-slate-500">目前沒有草稿版本</p>
+              ) : (
+                <ul className="space-y-1">
+                  {drafts.map((w) => (
+                    <li key={w.worksheet_id}>
+                      <button
+                        onClick={() => doContinue(w)}
+                        className="w-full flex items-center gap-2 px-2 py-1.5 bg-white border rounded text-sm text-left hover:bg-slate-50 transition-colors"
+                      >
+                        <span className="font-medium text-slate-700">{w.version_no}</span>
+                        <StatusBadge status={w.status} />
+                        <span className="flex-1 truncate text-xs text-slate-500">{w.model_label ?? '—'}</span>
+                        <span className="text-xs text-sky-600 shrink-0">繼續編輯</span>
+                      </button>
+                    </li>
+                  ))}
+                </ul>
+              )}
+            </div>
+          </div>
+        )}
+
+        {/* B. 同 SKU 但 model_label 不同＝另一個案件：純資訊，不列別案件的草稿 */}
+        {!isExistingCase && hasOtherCases && (
+          <div className="rounded-lg border border-sky-200 bg-sky-50 p-3 space-y-1" data-testid="other-cases-info">
+            <p className="text-sm font-medium text-sky-900">
+              此 SKU 底下另有 {otherCaseLabels.length} 個其他機種/線別的案件
+            </p>
+            <p className="text-xs text-sky-800">
+              目前填寫的機種/線別尚無案件，將建立<b>新案件</b>（不會延長其他案件的版本鏈）。
+            </p>
+            <ul className="text-xs text-slate-600 list-disc list-inside">
+              {otherCaseLabels.map((l) => (
+                <li key={l || '(未命名)'}>{l || '（未命名）'}</li>
+              ))}
+            </ul>
+          </div>
+        )}
 
         <label className="block text-sm">
           <span className="text-slate-600">負責人（員編）</span>
@@ -109,11 +208,17 @@ export function NewCaseModal({ onClose, onCreated }: NewCaseModalProps) {
         <div className="flex justify-end gap-2 pt-1">
           <button onClick={onClose} className="px-3 py-1.5 border rounded text-sm">取消</button>
           <button
-            disabled={!sid || createWs.isPending}
+            disabled={!sid || wssLoading || createWs.isPending}
             onClick={doCreate}
-            className="px-3 py-1.5 bg-blue-600 text-white rounded text-sm disabled:opacity-40 hover:bg-blue-700 transition-colors"
+            className={`px-3 py-1.5 text-white rounded text-sm disabled:opacity-40 transition-colors ${
+              isExistingCase ? 'bg-slate-600 hover:bg-slate-700' : 'bg-blue-600 hover:bg-blue-700'
+            }`}
           >
-            {createWs.isPending ? '建立中…' : `建立（v${(wss.length || 0) + 1}）`}
+            {createWs.isPending
+              ? '建立中…'
+              : isExistingCase
+                ? `建立新版本（v${nextVersion}）`
+                : `建立新案件（v${nextVersion}）`}
           </button>
         </div>
       </div>

@@ -23,6 +23,9 @@ import {
   useCloneModule,
   usePublishModule,
   useCreateWiTemplate,
+  useUpdateModuleRow,
+  apiErrorMessage,
+  MODULE_QUERY_KEY,
   type MotionModuleSummary,
   type MotionModuleRow,
 } from './api'
@@ -112,6 +115,15 @@ export function ActionModuleWorkspace() {
   const [debouncedQ, setDebouncedQ] = useState('')
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set())
   const [loadingModuleId, setLoadingModuleId] = useState<string | null>(null)
+  // 行內頻率（B-1）：草稿字串（輸入中）／儲存中的列／per-row debounce timer
+  const [freqDraft, setFreqDraft] = useState<Record<string, string>>({})
+  const [freqSavingIds, setFreqSavingIds] = useState<Set<string>>(new Set())
+  const freqTimers = useRef<Record<string, ReturnType<typeof setTimeout>>>({})
+  // 最後一次送出/落地的頻率（M3：commit 比較基準取此，非 render closure 快照）
+  const freqRequested = useRef<Record<string, number>>({})
+  // per-row 送出序列（保序，避免回應亂序覆蓋較新值）
+  const freqChain = useRef<Record<string, Promise<void>>>({})
+  useEffect(() => () => { Object.values(freqTimers.current).forEach(clearTimeout) }, [])
 
   // Debounce searchQ → debouncedQ (300ms), then let API do the filtering
   useEffect(() => {
@@ -119,12 +131,23 @@ export function ActionModuleWorkspace() {
     return () => clearTimeout(t)
   }, [searchQ])
 
+  // ── 全部／我的 篩選（P1-B B-2；守則 §4「清單語意」） ─────────────────────────
+  // v3 的動作清單是「我的動作」（per-user 素材），v2 兩層模型下清單同時承載共享
+  // 認證庫 → 折衷：提供切換，**預設「全部」**（搬遷的 29 條為 global scope，
+  // 預設「我的」會是空清單）。「我的」＝ scope=personal（後端自動加 owner=當前使用者）。
+  const [ownerFilter, setOwnerFilter] = useState<'all' | 'mine'>('all')
+
   // API hooks
   // 動作清單只列「個別動作」（category='action'，ADR-022）；不帶 scope → 後端回
   // 「所有可見」（global/site＋自己的 personal），含共享標準動作（v3-import 認證庫）
-  const { data: modules = [], isLoading: modulesLoading } = useMotionModules(
-    debouncedQ ? { category: 'action', q: debouncedQ } : { category: 'action' }
-  )
+  const baseFilters = debouncedQ ? { category: 'action', q: debouncedQ } : { category: 'action' }
+  // 兩個查詢並存：切換即時（已快取）＋ segmented 上兩邊筆數都要顯示
+  const allQuery = useMotionModules(baseFilters)
+  const mineQuery = useMotionModules({ ...baseFilters, scope: 'personal' })
+  const activeQuery = ownerFilter === 'mine' ? mineQuery : allQuery
+  const modules = activeQuery.data ?? []
+  const modulesLoading = activeQuery.isLoading
+  const updateModuleRow = useUpdateModuleRow()
   const createModule = useCreateModule()
   const updateModule = useUpdateModule()
   const deleteModule = useDeleteModule()
@@ -351,6 +374,86 @@ export function ActionModuleWorkspace() {
     } catch (err) {
       showToast('複製失敗：' + (err as Error).message, 'err')
     }
+  }
+
+  // ── 行內頻率編輯（P1-B B-1；對齊 v3 清單 input-number 即時後端重算持久化）────────
+  // 鐵則：前端**不**自乘出 Eff/CT 當權威值——debounce 500ms 後 PUT rows/0，
+  // 落值一律採後端回傳的 computed（applyVersionToCaches 直寫清單快取）。
+  // 儲存中該列 Eff/CT 顯示「計算中…」；失敗 toast＋丟棄草稿（回復後端原值）。
+
+  /**
+   * 該列目前的「權威頻率」——review M3：不可用 render closure 的 `mod.frequency`
+   * 快照。優先讀最後一次成功送出的值（freqRequested，涵蓋 PUT 在途、快取尚未更新
+   * 的時間窗），否則讀 list 快取（applyVersionToCaches 直寫的後端值）。
+   */
+  function latestFreq(id: string): number | null {
+    const requested = freqRequested.current[id]
+    if (requested != null) return requested
+    for (const [, data] of qc.getQueriesData<MotionModuleSummary[]>({ queryKey: [MODULE_QUERY_KEY] })) {
+      if (Array.isArray(data)) {
+        const hit = data.find(m => m.id === id)
+        if (hit?.frequency != null) return hit.frequency
+      }
+    }
+    return null
+  }
+
+  async function commitFreq(id: string, name: string, next: number) {
+    const prev = latestFreq(id)
+    if (prev != null && next === prev) {
+      // 與權威值相同 → 無需往返；草稿可清（顯示值不變，如 "01" → "1"）
+      setFreqDraft(d => { const n = { ...d }; delete n[id]; return n })
+      return
+    }
+    freqRequested.current[id] = next      // 在途值：後續 commit 以此為 prev 比較（M3）
+    setFreqSavingIds(s => new Set(s).add(id))
+    try {
+      // 行內只換 frequency：其餘欄位（hand/cycle/sub_activity/vocab_refs/SIMO）
+      // 取目前已發布版本 rows[0] 原值回送，避免後端把未帶欄位當清空。
+      const detail = await apiGet<MotionModuleSummary>(`/api/v2/motion-modules/${id}`)
+      const src = detail.current_version_detail?.rows?.[0]
+      if (!src) throw new Error('此動作尚無已發布版本，無法調整頻率')
+      const ver = await updateModuleRow.mutateAsync({
+        id,
+        rowIndex: 0,                     // action＝單列模組（ADR-022）→ 恆 row_index=0
+        row: {
+          sub_activity: src.sub_activity ?? null,
+          hand: src.hand,
+          frequency: next,
+          simo_pair_index: src.simo_pair_index ?? null,
+          vocab_refs: src.vocab_refs ?? {},
+          cycle: src.cycle,
+        },
+      })
+      // 後端權威落值（理論上＝next；以回應為準，不假設）
+      freqRequested.current[id] = ver.rows[0]?.frequency ?? next
+      setFreqDraft(d => { const n = { ...d }; delete n[id]; return n })  // 改讀後端權威
+      showToast(`已更新頻率並重算：${name} ×${next}`, 'ok')
+    } catch (err) {
+      delete freqRequested.current[id]   // 後端值未變 → 回落 list 快取
+      setFreqDraft(d => { const n = { ...d }; delete n[id]; return n })  // 回復原值
+      showToast('頻率更新失敗：' + apiErrorMessage(err), 'err')
+    } finally {
+      setFreqSavingIds(s => { const n = new Set(s); n.delete(id); return n })
+    }
+  }
+
+  function onFreqInput(mod: MotionModuleSummary, raw: string) {
+    setFreqDraft(d => ({ ...d, [mod.id]: raw }))
+    const t = freqTimers.current[mod.id]
+    if (t) clearTimeout(t)
+    const next = parseInt(raw, 10)
+    // review M2：輸入無效（刪空／NaN／<1）只是「不 commit」，**不得丟棄草稿**——
+    // 否則使用者全選刪除後欄位會跳回舊值，接著鍵入的數字被接在舊值後（1 → "12"）。
+    if (!Number.isFinite(next) || next < 1) return
+    freqTimers.current[mod.id] = setTimeout(() => {
+      // 同列序列化：輸入框在儲存中仍可繼續編輯（不鎖），但 PUT 依送出順序執行，
+      // 避免回應亂序讓舊版本後寫入快取而覆蓋較新的值。
+      const prev = freqChain.current[mod.id] ?? Promise.resolve()
+      freqChain.current[mod.id] = prev
+        .then(() => commitFreq(mod.id, mod.name_zh, next))
+        .catch(() => { /* commitFreq 內已 toast；鏈不可中斷 */ })
+    }, 500)
   }
 
   // ── Multi-select ──────────────────────────────────────────────────────────
@@ -633,7 +736,7 @@ export function ActionModuleWorkspace() {
 
         {/* ═══ 動作清單（個人模組 Pool） ═══ */}
         <div className="bg-white rounded-xl border p-4 space-y-3">
-          {/* 工具列：搜尋 + 筆數 + 合計 */}
+          {/* 工具列：搜尋 + 全部/我的 + 筆數 + 合計 */}
           <div className="flex items-center gap-3 flex-wrap">
             <input
               className="border rounded px-2 py-1 text-sm w-52"
@@ -641,6 +744,27 @@ export function ActionModuleWorkspace() {
               value={searchQ}
               onChange={e => setSearchQ(e.target.value)}
             />
+            {/* segmented：全部（預設）｜我的（scope=personal） */}
+            <div className="inline-flex rounded-lg border overflow-hidden" data-testid="action-owner-filter">
+              {([
+                { key: 'all' as const, label: '全部', count: allQuery.data?.length },
+                { key: 'mine' as const, label: '我的', count: mineQuery.data?.length },
+              ]).map(seg => (
+                <button
+                  key={seg.key}
+                  onClick={() => setOwnerFilter(seg.key)}
+                  aria-pressed={ownerFilter === seg.key}
+                  className={`px-3 py-1 text-sm ${
+                    ownerFilter === seg.key
+                      ? 'bg-blue-600 text-white font-medium'
+                      : 'bg-white text-slate-600 hover:bg-slate-50'
+                  }`}
+                >
+                  {seg.label}
+                  <span className="ml-1 text-xs opacity-80">{seg.count ?? '…'}</span>
+                </button>
+              ))}
+            </div>
             <span className="text-sm text-slate-500">共 {modules.length} 筆</span>
             <span className="ml-auto text-sm text-slate-500">
               合計：{poolTotalTmu != null
@@ -691,6 +815,7 @@ export function ActionModuleWorkspace() {
                   const baseTmu = mod.base_tmu ?? null
                   const rowFreq = mod.frequency ?? null
                   const effTmuRow = mod.total_tmu ?? null
+                  const freqSaving = freqSavingIds.has(mod.id)
                   const rowCls = [
                     'border-t',
                     editingModuleId === mod.id ? 'bg-amber-50' : isSelected ? 'bg-blue-50' : '',
@@ -718,12 +843,29 @@ export function ActionModuleWorkspace() {
                       <td className="p-1.5 text-right">
                         {baseTmu != null ? <span>{baseTmu}</span> : '—'}
                       </td>
-                      <td className="p-1.5 text-right">{rowFreq ?? '—'}</td>
+                      {/* B-1：行內頻率 input（debounce 500ms → PUT rows/0，後端重算持久化） */}
                       <td className="p-1.5 text-right">
-                        {effTmuRow != null ? <b style={{ color: '#1a73e8' }}>{effTmuRow}</b> : '—'}
+                        {rowFreq == null ? '—' : (
+                          <input
+                            type="number" min={1}
+                            className="border rounded w-14 px-1 py-0.5 text-sm text-right"
+                            // 儲存中不鎖輸入（M2/M3：使用者可繼續編輯，送出端序列化）
+                            value={freqDraft[mod.id] ?? String(rowFreq)}
+                            onChange={e => onFreqInput(mod, e.target.value)}
+                            aria-label={`${mod.name_zh} 頻率`}
+                            data-testid="action-row-freq"
+                          />
+                        )}
                       </td>
                       <td className="p-1.5 text-right">
-                        {effTmuRow != null ? (effTmuRow * TMU_SEC).toFixed(3) : '—'}
+                        {freqSaving
+                          ? <span className="text-xs text-slate-400">計算中…</span>
+                          : effTmuRow != null
+                            ? <b style={{ color: '#1a73e8' }}>{effTmuRow}</b>
+                            : '—'}
+                      </td>
+                      <td className="p-1.5 text-right">
+                        {freqSaving ? '…' : effTmuRow != null ? (effTmuRow * TMU_SEC).toFixed(3) : '—'}
                       </td>
                       <td className="p-1.5 text-center whitespace-nowrap">
                         <button

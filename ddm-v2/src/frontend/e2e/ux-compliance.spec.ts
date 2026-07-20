@@ -49,21 +49,37 @@ const MOCK_OPTS = {
 }
 
 // ─── Mock case data (G-01) ────────────────────────────────────────────────────
+// P1-A 契約：一筆 item ＝一個**案件**（聚合鍵 sku_id×model_label），平面欄位＝代表版（最新版），
+// 另帶 model_label / version_count / versions[]（created_at ASC）。total ＝案件數。
 
 const MOCK_CASES_DRAFT = {
   total: 1,
   items: [{
     process_version_id: 'pv-001',
     worksheet_id:       'ws-001',
-    version_no:         '1',
+    version_no:         'v1',
     status:             'draft',
+    site_id:            'st-1',
     site_name:          'Site A',
+    product_id:         'p1',
     product_name:       'Product X',
+    sku_id:             'sk1',
     sku_name:           'SKU 001',
     process_name:       '組裝站作業',
     total_tmu:          28,
     created_at:         '2026-01-01T00:00:00Z',
     approved_at:        null,
+    model_label:        null,
+    version_count:      1,
+    versions: [{
+      process_version_id: 'pv-001',
+      worksheet_id:       'ws-001',
+      version_no:         'v1',
+      status:             'draft',
+      total_tmu:          28,
+      created_at:         '2026-01-01T00:00:00Z',
+      approved_at:        null,
+    }],
   }],
 }
 
@@ -74,18 +90,76 @@ const MOCK_CASES_2 = {
     {
       process_version_id: 'pv-002',
       worksheet_id:       'ws-002',
-      version_no:         '1',
+      version_no:         'v1',
       status:             'approved',
+      site_id:            'st-1',
       site_name:          'Site A',
+      product_id:         'p1',
       product_name:       'Product X',
+      sku_id:             'sk1',
       sku_name:           'SKU 001',
       process_name:       '壓合站作業',
       total_tmu:          57,
       created_at:         '2026-01-01T00:00:00Z',
       approved_at:        '2026-02-01T00:00:00Z',
+      model_label:        null,
+      version_count:      1,
+      versions: [{
+        process_version_id: 'pv-002',
+        worksheet_id:       'ws-002',
+        version_no:         'v1',
+        status:             'approved',
+        total_tmu:          57,
+        created_at:         '2026-01-01T00:00:00Z',
+        approved_at:        '2026-02-01T00:00:00Z',
+      }],
     },
   ],
 }
+
+/** 單一案件、三個版本（P1-C 折疊 UI）：代表版＝v3（最新，draft），歷史 v1/v2 */
+const MOCK_CASES_MULTIVERSION = {
+  total: 1,
+  items: [{
+    process_version_id: 'pv-103',
+    worksheet_id:       'ws-103',
+    version_no:         'v3',
+    status:             'draft',
+    site_id:            'st-1',
+    site_name:          'Site A',
+    product_id:         'p1',
+    product_name:       'Product X',
+    sku_id:             'sk1',
+    sku_name:           'SKU 001',
+    process_name:       '組裝站作業',
+    total_tmu:          80,
+    created_at:         '2026-03-01T00:00:00Z',
+    approved_at:        null,
+    model_label:        'L1 線',
+    version_count:      3,
+    versions: [
+      { process_version_id: 'pv-101', worksheet_id: 'ws-101', version_no: 'v1', status: 'draft',
+        total_tmu: 28, created_at: '2026-01-01T00:00:00Z', approved_at: null },
+      { process_version_id: 'pv-102', worksheet_id: 'ws-102', version_no: 'v2', status: 'approved',
+        total_tmu: 57, created_at: '2026-02-01T00:00:00Z', approved_at: '2026-02-05T00:00:00Z' },
+      { process_version_id: 'pv-103', worksheet_id: 'ws-103', version_no: 'v3', status: 'draft',
+        total_tmu: 80, created_at: '2026-03-01T00:00:00Z', approved_at: null },
+    ],
+  }],
+}
+
+/**
+ * NewCaseModal 引導用：同一 SKU 底下**兩個案件**（聚合鍵＝sku_id × model_label）
+ *   - 案件「L1 線」：v1 approved + v2 draft
+ *   - 案件「L2 線」：v3 draft
+ * 用來驗證引導以聚合鍵精確比對（review #2）：填 L1 線才算命中既有案件，
+ * 填 L3 線＝該 SKU 的新案件（不得列出 L1/L2 的草稿）。
+ */
+const MOCK_SKU_WORKSHEETS = [
+  { worksheet_id: 'ws-101', version_no: 'v1', status: 'approved', analyst: 'IEC141289', model_label: 'L1 線' },
+  { worksheet_id: 'ws-102', version_no: 'v2', status: 'draft', analyst: 'IEC141289', model_label: 'L1 線' },
+  { worksheet_id: 'ws-103', version_no: 'v3', status: 'draft', analyst: 'IEC141289', model_label: 'L2 線' },
+]
 
 const MOCK_AUDIT_LOG = { total: 0, items: [] }
 
@@ -115,6 +189,8 @@ async function setupRoutes(
   page: Page,
   identity = ADMIN_ME,
   cases: unknown = { total: 0, items: [] },
+  /** GET /api/v2/skus/{id}/worksheets — NewCaseModal 判斷「此 SKU 是否已有版本」 */
+  skuWorksheets: unknown = [],
 ) {
   await page.route('/api/**', route => {
     const url = route.request().url()
@@ -194,10 +270,10 @@ async function setupRoutes(
     if (url.includes('/api/v2/skus/') && url.includes('/worksheets')) {
       if (route.request().method() === 'POST') {
         return route.fulfill({ status: 200, contentType: 'application/json',
-          body: JSON.stringify({ worksheet_id: 'ws-new-001', version_no: '1', status: 'draft' }) })
+          body: JSON.stringify({ worksheet_id: 'ws-new-001', version_no: 'v1', status: 'draft' }) })
       }
       return route.fulfill({ status: 200, contentType: 'application/json',
-        body: JSON.stringify([]) })
+        body: JSON.stringify(skuWorksheets) })
     }
 
     // Everything else (products, skus, skus/<id>/worksheets, etc.) — empty list
@@ -554,6 +630,79 @@ test.describe('§G-01 分析案件清單 (checklist G-01)', () => {
   })
 })
 
+// ─── § G-01b: 案件清單折疊（P1-C，守則 §6）────────────────────────────────────
+// 一列＝一個案件（非一版）；version_count>1 給「N 版」徽章＋展開鈕，可點歷史版切詳情。
+
+test.describe('§G-01b 案件清單版本折疊 (P1-C)', () => {
+  test.beforeEach(async ({ page }) => {
+    await setupRoutes(page, ADMIN_ME, MOCK_CASES_MULTIVERSION)
+    await gotoAndWait(page)
+    await clickNavAndWait(page, /分析案件/)
+  })
+
+  test('G-01b-1: 三版的 SKU 只出現一列案件，帶「3 版」徽章與代表版（最新 v3）', async ({ page }) => {
+    await expect(page.getByTestId('case-row')).toHaveCount(1)
+    await expect(page.getByText('3 版')).toBeVisible()
+    await expect(page.getByText('最新 v3')).toBeVisible()
+    // footer 計數語意＝案件數
+    await expect(page.getByText('共 1 件案件')).toBeVisible()
+    // 未展開時不顯示版本列
+    await expect(page.getByTestId('case-versions')).toHaveCount(0)
+  })
+
+  test('G-01b-2: 展開列出全部版本（v1…v3，版本時序）', async ({ page }) => {
+    await page.getByRole('button', { name: '展開版本歷史' }).click()
+    const versions = page.getByTestId('case-versions').getByRole('listitem')
+    await expect(versions).toHaveCount(3)
+    await expect(versions.nth(0)).toContainText('v1')
+    await expect(versions.nth(1)).toContainText('v2')
+    await expect(versions.nth(2)).toContainText('v3')
+    // 各版 TMU 由後端 versions[] 提供（前端不計算）
+    await expect(versions.nth(1)).toContainText('57 TMU')
+  })
+
+  test('G-01b-3: 預設檢視代表版；點歷史版 → 詳情切到該版（版本/TMU/狀態隨之變）', async ({ page }) => {
+    await page.getByText('組裝站作業').click()
+    // 預設＝代表版 v3 · 最新
+    const viewing = page.getByTestId('viewing-version')
+    await expect(viewing).toContainText('v3')
+    await expect(viewing).toContainText('最新')
+    await expect(page.getByText('80 TMU').first()).toBeVisible()
+
+    // 展開 → 點 v2（approved，57 TMU）
+    await page.getByRole('button', { name: '展開版本歷史' }).click()
+    await page.getByTestId('case-versions').getByRole('listitem').nth(1).click()
+    await expect(viewing).toContainText('v2')
+    await expect(viewing).toContainText('歷史')
+    await expect(page.getByText('57 TMU').first()).toBeVisible()
+  })
+
+  // review #1：狀態流轉只允許在代表版（守則 §1 案件＝單一當前狀態）
+  test('G-01b-4: 歷史版不可狀態流轉／不可編輯（admin：代表版 draft 有核准鈕，歷史 draft 沒有）', async ({ page }) => {
+    await page.getByText('組裝站作業').click()
+    // 代表版 v3 = draft + admin → 核准鈕在（exact:true 避開狀態篩選 tab「已核准」/「已退役」）
+    await expect(page.getByRole('button', { name: '核准', exact: true })).toBeVisible()
+    await expect(page.getByRole('button', { name: '編輯工時表' })).toBeEnabled()
+
+    await page.getByRole('button', { name: '展開版本歷史' }).click()
+    const versions = page.getByTestId('case-versions').getByRole('listitem')
+
+    // 歷史 draft v1：不得出現核准鈕（否則同鏈會出現兩個 approved）
+    await versions.nth(0).click()
+    await expect(page.getByTestId('viewing-version')).toContainText('歷史')
+    await expect(page.getByRole('button', { name: '核准', exact: true })).toHaveCount(0)
+    // 編輯入口停用＋唯讀提示（不讓使用者編到存檔才撞 NotEditable）
+    await expect(page.getByRole('button', { name: '編輯工時表' })).toBeDisabled()
+    await expect(page.getByText('歷史版本唯讀，請切換到最新版再編輯').first()).toBeVisible()
+
+    // 歷史 approved v2：admin 也不得出現退役鈕
+    await versions.nth(1).click()
+    await expect(page.getByTestId('viewing-version')).toContainText('歷史')
+    await expect(page.getByRole('button', { name: '退役', exact: true })).toHaveCount(0)
+    await expect(page.getByRole('button', { name: '編輯工時表' })).toBeDisabled()
+  })
+})
+
 // ─── § G-02: 動作按鈕角色 gating ─────────────────────────────────────────────
 
 test.describe('§G-02 動作按鈕角色 gating (checklist G-01)', () => {
@@ -653,7 +802,7 @@ test.describe('§G-03 案件編輯情境頁 (ADR-021 Phase 3)', () => {
     await expect(bar).toBeVisible()
     await expect(bar.getByRole('button', { name: '← 返回分析案件' })).toBeVisible()
     await expect(bar.getByText('組裝站作業')).toBeVisible()
-    await expect(bar.getByText('Product X / SKU 001 · 版本 1')).toBeVisible()
+    await expect(bar.getByText('Product X / SKU 001 · 版本 v1')).toBeVisible()
     await expect(bar.getByText('草稿')).toBeVisible()
 
     // 情境列下方即 WiWorkbench 編輯器（工時表表頭存在）
@@ -675,21 +824,86 @@ test.describe('§G-03 案件編輯情境頁 (ADR-021 Phase 3)', () => {
     const dialog = page.getByRole('dialog')
     await expect(dialog.getByText('新建案件')).toBeVisible()
 
-    // 產品/SKU 下拉自動帶入第一筆（重用 catalog/api hooks）
-    await expect(dialog.locator('select').first()).toHaveValue('p1')
-    await expect(dialog.locator('select').nth(1)).toHaveValue('sk1')
+    // P1-C 守則 §6：產品/SKU **不自動預選**（舊行為會默默在同一 SKU 上 +1 版），
+    // 未選 SKU 前建立鈕停用
+    await expect(dialog.locator('select').first()).toHaveValue('')
+    await expect(dialog.locator('select').nth(1)).toHaveValue('')
+    await expect(dialog.getByRole('button', { name: /建立/ })).toBeDisabled()
+
+    // 明確選產品 → SKU（此 SKU 尚無工序表 ⇒ 真正的新案件，不出現引導區塊）
+    await dialog.locator('select').first().selectOption('p1')
+    await dialog.locator('select').nth(1).selectOption('sk1')
+    await expect(dialog.getByTestId('existing-versions-guide')).toHaveCount(0)
 
     // 輸入 line 名稱 → 建立（v1：此 SKU 尚無工序表）
     await dialog.getByPlaceholder('可空').first().fill('L1 線')
-    await dialog.getByRole('button', { name: /建立（v1）/ }).click()
+    await dialog.getByRole('button', { name: /建立新案件（v1）/ }).click()
     await page.waitForLoadState('networkidle')
 
     // 建立成功 → 直接進入案件編輯情境（情境列顯示新案件名與草稿 badge）
     const bar = page.getByTestId('case-context-bar')
     await expect(bar).toBeVisible()
     await expect(bar.getByText('L1 線')).toBeVisible()
-    await expect(bar.getByText(/Product X \/ SKU001（機種一） · 版本 1/)).toBeVisible()
+    await expect(bar.getByText(/Product X \/ SKU001（機種一） · 版本 v1/)).toBeVisible()
     await expect(bar.getByText('草稿')).toBeVisible()
+  })
+
+  test('G-03-2b: 同 SKU ＋同 model_label（命中既有案件）→ 繼續編輯草稿／建立新版本（守則 §6）', async ({ page }) => {
+    await setupRoutes(page, ADMIN_ME, MOCK_CASES_DRAFT, MOCK_SKU_WORKSHEETS)
+    await gotoAndWait(page)
+    await clickNavAndWait(page, /分析案件/)
+    await page.getByRole('button', { name: '＋ 新建案件' }).click()
+
+    const dialog = page.getByRole('dialog')
+    await dialog.locator('select').first().selectOption('p1')
+    await dialog.locator('select').nth(1).selectOption('sk1')
+    // 聚合鍵的另一半：填入既有案件的 model_label 才算命中（review #2）
+    await dialog.getByPlaceholder('可空').first().fill('L1 線')
+
+    // 引導區塊：計數與草稿清單都限縮在**該案件**（L1 線 = v1 approved + v2 draft）
+    const guide = dialog.getByTestId('existing-versions-guide')
+    await expect(guide).toBeVisible()
+    await expect(guide.getByText('此機種/線別（L1 線）的案件已有 2 個版本')).toBeVisible()
+    await expect(guide.getByRole('button', { name: /v2/ })).toBeVisible()
+    await expect(guide.getByRole('button', { name: /v1/ })).toHaveCount(0)  // approved 非草稿
+    await expect(guide.getByRole('button', { name: /v3/ })).toHaveCount(0)  // 屬於 L2 線案件，不得列出
+    // 別的案件的資訊區塊不出現（已命中既有案件）
+    await expect(dialog.getByTestId('other-cases-info')).toHaveCount(0)
+
+    // 主要動作＝建立新版本；版號＝後端 SKU 範圍 COUNT+1（3 筆 → v4）
+    await expect(dialog.getByRole('button', { name: '建立新版本（v4）' })).toBeVisible()
+
+    // 選「繼續編輯 v2 草稿」→ 不建版，直接進入該工序表編輯情境
+    await guide.getByRole('button', { name: /v2/ }).click()
+    await page.waitForLoadState('networkidle')
+    const bar = page.getByTestId('case-context-bar')
+    await expect(bar).toBeVisible()
+    await expect(bar.getByText(/版本 v2/)).toBeVisible()
+  })
+
+  test('G-03-2c: 同 SKU 但 model_label 不同 → 資訊性提示＋主按鈕維持「建立新案件」（review #2）', async ({ page }) => {
+    await setupRoutes(page, ADMIN_ME, MOCK_CASES_DRAFT, MOCK_SKU_WORKSHEETS)
+    await gotoAndWait(page)
+    await clickNavAndWait(page, /分析案件/)
+    await page.getByRole('button', { name: '＋ 新建案件' }).click()
+
+    const dialog = page.getByRole('dialog')
+    await dialog.locator('select').first().selectOption('p1')
+    await dialog.locator('select').nth(1).selectOption('sk1')
+    // 全新的機種/線別＝該 SKU 底下的新案件
+    await dialog.getByPlaceholder('可空').first().fill('L3 線')
+
+    // 不得宣稱「這不是新案件」，也不得列出別案件的草稿
+    await expect(dialog.getByTestId('existing-versions-guide')).toHaveCount(0)
+    const info = dialog.getByTestId('other-cases-info')
+    await expect(info).toBeVisible()
+    await expect(info.getByText('此 SKU 底下另有 2 個其他機種/線別的案件')).toBeVisible()
+    await expect(info.getByText('L1 線')).toBeVisible()
+    await expect(info.getByText('L2 線')).toBeVisible()
+    await expect(info.getByRole('button')).toHaveCount(0)  // 純資訊，不可誤點
+
+    // 主按鈕語意＝建立新案件（版號仍由後端 SKU 範圍 COUNT+1 決定＝v4，前端不假造 v1）
+    await expect(dialog.getByRole('button', { name: '建立新案件（v4）' })).toBeVisible()
   })
 
   test('G-03-3: viewer 不顯示「新建案件」按鈕（RBAC gating）', async ({ page }) => {

@@ -7,7 +7,7 @@
 1. **凡 `src/` import 的第三方套件，必在 `pyproject.toml` `dependencies`**（不是只 dev）。CI 用宣告的依賴跑 → 漏宣告會紅。
 2. **每個 feature（每組端點）至少一個整合測試**涵蓋：正常路徑 + 一個邊界/RBAC。
 3. 改核心邏輯（引擎/rule-set/level）→ 必過 `core_logic/run_all.py` 黃金值。
-3b. **測試資料零殘留（P0-0.2）**：整合測試一律走 conftest 的 transaction-rollback 隔離（`db_ctx`/`client`/`db_session` fixtures）；**測試內禁止自建 engine 打 `DATABASE_URL`**（會繞過隔離、汙染真實 DB）。驗收：跑兩遍 `pytest tests/integration` 前後，`motion_modules` 的 `UT-%` 計數不得增加。歷史殘留用 `scripts/cleanup_test_data.py`（預設 dry-run）清理。
+3b. **測試資料零殘留（P0-0.2）**：整合測試一律走 conftest 的 transaction-rollback 隔離（`db_ctx`/`client`/`db_session` fixtures）；**測試內禁止自建 engine 打 `DATABASE_URL`**（會繞過隔離、汙染真實 DB）。驗收：跑兩遍 `pytest tests/integration` 前後，下列測試簽名計數皆不得增加——`motion_modules` 的 `UT-%`、`sites`/`products` 的 `AGGTEST\_%`／`GUARDTEST\_%`、`skus` 的 `UTSKU-%`／`AGGTEST\_%`／`GUARDTEST\_%`、`process_versions` 總數。歷史殘留用 `scripts/cleanup_test_data.py`（預設 dry-run）清理，新增簽名必須同步進該腳本的 pattern。**自動保險絲**：`tests/integration/test_isolation_guard.py` 以獨立唯讀連線比對真實 DB，覆蓋兩條寫入路徑（clone 端點 ×N、fixture 直接 commit ×N）＋殘留掃描；資料全由測試自建（`GUARDTEST_%`），**不依賴 dev_seed，乾淨 CI DB 上照樣生效**（保險絲不得有靜默 skip 的「沒接上」狀態）。該檔是「測試內禁止自建 engine」的唯一例外，且只讀不寫。
 4. **值權威（ADR-014）**：黃金錨＝`MINIMOST_FACTORY_V2`（v3 IE 認證字典）；`rule_set_seed_v2.py` 為 converter 產物**禁手改**（改值＝改字典 JSON 後重跑 `scripts/import_v3_dictionary.py`）；V1 回放測試必須維持綠（快照隔離）。
 5. 前端改動 → typecheck + build + Playwright smoke 綠。
 

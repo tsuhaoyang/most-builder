@@ -10,7 +10,9 @@ import type { VocabIn } from '../master-data/api'
 import { buildPayload, payloadToState, type CycleState } from '../wi-workbench/cycle'
 import { TMU_SEC, ACTIVE_RULE_SET } from '../../shared/config'
 import { SlotBuilder } from './SlotBuilder'
-import { useUpdateModuleRow, type MotionModuleRow } from './api'
+import {
+  useUpdateModuleRow, useMotionModuleDetail, apiErrorMessage, type MotionModuleRow,
+} from './api'
 
 const HAND_NAME: Record<string, string> = { RH: '右手', LH: '左手', BH: '雙手' }
 
@@ -36,6 +38,9 @@ export function WiItemInspector({
   const calc = useCalculate()
   const createVocab = useCreateVocab()
   const updateRow = useUpdateModuleRow()
+  // 同 WI 其他列（SIMO 配對下拉的候選來源）；快取多半已由 WI 大綱展開時填好
+  const { data: wiDetail } = useMotionModuleDetail(moduleId)
+  const allRows = wiDetail?.current_version_detail?.rows ?? []
 
   // ── 本地編輯狀態（copy-on-write：只在按「重算並儲存」時寫回） ─────────────────
   const [cur, setCur] = useState<CycleState>(() => initState(row))
@@ -43,11 +48,15 @@ export function WiItemInspector({
   const [tmu, setTmu] = useState<number | null>(null)   // 後端 calculate 即時預覽
   const [tech, setTech] = useState('')
   const [errMsg, setErrMsg] = useState<string | null>(null)
-  const [savedComputed, setSavedComputed] = useState<{ total_tmu: number; eff_tmu: number } | null>(null)
+  const [savedComputed, setSavedComputed] =
+    useState<{ total_tmu: number; eff_tmu: number; contribution_tmu: number } | null>(null)
+  // SIMO 配對（P1-B B-3）：本列宣告「同動於第 N 列」→ 本列為從屬列、貢獻 0（ADR-020）
+  const [simoPair, setSimoPair] = useState<number | null>(row.simo_pair_index ?? null)
 
   // 換列（moduleId/rowIndex 變）→ 重新初始化；不因 detail 刷新覆蓋編輯中內容
   useEffect(() => {
     setCur(initState(row))
+    setSimoPair(row.simo_pair_index ?? null)
     setErrMsg(null)
     setSavedComputed(null)
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -83,7 +92,19 @@ export function WiItemInspector({
 
   const set = (patch: Partial<CycleState>) => setCur(c => ({ ...c, ...patch }))
 
-  const isSimo = row.simo_pair_index != null
+  const isSimo = simoPair != null
+
+  // ── SIMO 候選（ADR-020 守門，前端先擋，後端仍是權威） ─────────────────────────
+  // 1. 不可自指 → 排除本列
+  // 2. 主列不得自身宣告配對 → 已是「從屬列」（自己有 simo_pair_index）的列不可當主列
+  // 3. 本列若已被他列指為主列 → 本列不得再宣告配對（否則整組歸零）→ 停用選擇器
+  const isMainRow = allRows.some((r, j) => j !== rowIndex && r.simo_pair_index === rowIndex)
+  const simoCandidates = allRows
+    .map((r, j) => ({ index: j, row: r }))
+    .filter(({ index, row: r }) => index !== rowIndex && r.simo_pair_index == null)
+  const rowLabel = (r: MotionModuleRow, j: number) =>
+    `第 ${j + 1} 列 · ${r.narrative_zh ?? r.sub_activity ?? '（無敘述）'}`
+
   // 顯示用算術（非 TMU 規則計算）：eff = tmu × freq
   const effTmu = tmu != null ? Math.round(tmu * (cur.freq || 1) * 1000) / 1000 : null
   const ctSec = effTmu != null ? (effTmu * TMU_SEC).toFixed(3) : null
@@ -103,7 +124,7 @@ export function WiItemInspector({
       sub_activity: row.sub_activity ?? null,
       hand: cur.handCode,
       frequency: cur.freq,
-      simo_pair_index: row.simo_pair_index ?? null,  // SIMO 配對保留不動（Inspector 僅顯示）
+      simo_pair_index: simoPair,   // B-3：可編輯（ADR-020 從屬列標記）
       vocab_refs: refs,
       cycle: buildPayload(cur, opts.code),
     }
@@ -111,11 +132,17 @@ export function WiItemInspector({
       const detail = await updateRow.mutateAsync({ id: moduleId, rowIndex, row: body })
       const newRow = detail.rows[rowIndex] as MotionModuleRow | undefined
       const comp = newRow?.computed ?? null
-      if (comp) setSavedComputed({ total_tmu: comp.total_tmu, eff_tmu: comp.eff_tmu })
+      if (comp) {
+        setSavedComputed({
+          total_tmu: comp.total_tmu, eff_tmu: comp.eff_tmu, contribution_tmu: comp.contribution_tmu,
+        })
+      }
+      setSimoPair(newRow?.simo_pair_index ?? null)   // 後端權威（reorder 換算等）
       onSaved?.(detail.total_tmu)
     } catch (err) {
-      // 422 detail（EMPTY_ROWS / SIMO_PAIR_INVALID / Sequence 驗證）原樣顯示
-      setErrMsg((err as Error).message)
+      // 422 detail（EMPTY_ROWS / SIMO_PAIR_INVALID / Sequence 驗證）→ 只顯示 message，
+      // 不把 `{"code":…}` 原始 JSON 丟給使用者（apiErrorMessage）
+      setErrMsg(apiErrorMessage(err))
     }
   }
 
@@ -158,10 +185,39 @@ export function WiItemInspector({
                   <span>{HAND_NAME[cur.handCode] ?? cur.handCode}</span>
                   {isSimo && (
                     <span className="text-orange-600 font-medium">
-                      SIMO 從屬（主列 #{(row.simo_pair_index ?? 0) + 1}，貢獻 0）
+                      SIMO 從屬（主列 #{(simoPair ?? 0) + 1}，貢獻 0）
                     </span>
                   )}
+                  {isMainRow && (
+                    <span className="text-sky-600 font-medium">SIMO 主列（吸收從屬列時間）</span>
+                  )}
                 </div>
+              </div>
+
+              {/* SIMO 配對（B-3；ADR-020：宣告者＝從屬列，貢獻 0，時間由主列吸收） */}
+              <div className="rounded-lg border px-3 py-2 space-y-1">
+                <label className="flex items-center gap-2 text-sm">
+                  <span className="text-slate-500 shrink-0">同動於</span>
+                  <select
+                    className="flex-1 min-w-0 border rounded px-2 py-1 text-sm disabled:bg-slate-100"
+                    value={simoPair == null ? '' : String(simoPair)}
+                    disabled={isMainRow || allRows.length === 0}
+                    onChange={e => setSimoPair(e.target.value === '' ? null : Number(e.target.value))}
+                    data-testid="inspector-simo-pair"
+                  >
+                    <option value="">無（獨立列）</option>
+                    {simoCandidates.map(({ index, row: r }) => (
+                      <option key={index} value={index}>{rowLabel(r, index)}</option>
+                    ))}
+                  </select>
+                </label>
+                <p className="text-xs text-slate-400">
+                  {isMainRow
+                    ? '本列已被其他列指為主列 → 依 ADR-020，主列不得自身宣告配對（需先解除該列配對）。'
+                    : allRows.length <= 1
+                      ? '此 WI 僅一列，無可配對的對象。'
+                      : '選定後本列成為 SIMO 從屬列：納入總時間為 0，時間由主列吸收。'}
+                </p>
               </div>
 
               {/* 手 / 頻率 */}
@@ -232,7 +288,10 @@ export function WiItemInspector({
                 <div className="rounded-lg border border-emerald-200 bg-emerald-50 px-3 py-2 text-sm text-emerald-700"
                   data-testid="inspector-saved">
                   已重算並發布新版本：本列 Base <b>{savedComputed.total_tmu}</b> TMU · Eff{' '}
-                  <b>{savedComputed.eff_tmu}</b> TMU
+                  <b>{savedComputed.eff_tmu}</b> TMU · 納入{' '}
+                  {savedComputed.contribution_tmu === 0
+                    ? <b className="line-through text-slate-400">0</b>
+                    : <b>{savedComputed.contribution_tmu}</b>}{' '}TMU
                 </div>
               )}
 

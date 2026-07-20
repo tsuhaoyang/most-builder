@@ -21,8 +21,13 @@ docs/v3/v3-to-v2-migration-audit-202607.md §0.2）。本腳本按 tests/integra
                                   （versions 由 DB CASCADE；wi_rows.source_module_id SET NULL；
                                    wi_set_items 為 soft-ref 不受影響）
     wi_set_projects.project_code: 'UT-WISET-%'（items 由 DB CASCADE）
-    skus.sku_code               : 'UTSKU-%'（process_versions→worksheets→rows→cycles/levels 全 CASCADE）
-    products                    : external_code 'UTPRD-%' 或 name_zh='UT產品'，且已無 SKU（FK RESTRICT）
+    skus.sku_code               : 'UTSKU-%' / 'AGGTEST\\_%' / 'GUARDTEST\\_%'
+                                  （process_versions→worksheets→rows→cycles/levels 全 CASCADE）
+    products                    : external_code 'UTPRD-%' 或 name_zh='UT產品' / 'AGGTEST\\_%'
+                                  / 'GUARDTEST\\_%'，且已無 SKU（FK RESTRICT）
+    sites.name_zh               : 'AGGTEST\\_%' / 'GUARDTEST\\_%'，且已無 product（FK RESTRICT）
+                                  （AGGTEST=案件聚合測試 test_cases.py；
+                                   GUARDTEST=隔離保險絲 test_isolation_guard.py）
     work_vocab_items.name_zh    : 'UT詞彙%' / 'UT分頁詞彙%' / 'UTnoLimit%' / 'UT搜尋%' / 'UT停用%'
                                   / 'UT RBAC%'，且未被任何 wi_rows 引用（FK RESTRICT，引用中的跳過）
     rule_option_synonyms        : synonym_raw '測試拿取%' / '放置刪除%' / '伸手重複%' / 'viewer測試%'
@@ -55,7 +60,8 @@ class Target:
     sample_col: str  # dry-run 樣本顯示欄
 
 
-# 依 FK 依賴排序：projects → skus → products(需 skus 先清) → modules → vocab → 其餘
+# 依 FK 依賴排序：projects → skus → products(需 skus 先清) → sites(需 products 先清)
+#                → modules → vocab → 其餘
 TARGETS: list[Target] = [
     Target(
         label="wi_set_projects (UT-WISET-%)",
@@ -64,18 +70,34 @@ TARGETS: list[Target] = [
         sample_col="project_code",
     ),
     Target(
-        label="skus (UTSKU-%)",
+        label="skus (UTSKU-% / AGGTEST_% / GUARDTEST_%)",
         table="skus",
-        where="sku_code LIKE 'UTSKU-%'",
+        where=(
+            "sku_code LIKE 'UTSKU-%' OR sku_code LIKE 'AGGTEST\\_%' "
+            "OR sku_code LIKE 'GUARDTEST\\_%'"
+        ),
         sample_col="sku_code",
     ),
     Target(
-        label="products (UTPRD-% / UT產品，且無非測試 SKU)",
+        label="products (UTPRD-% / UT產品 / AGGTEST_% / GUARDTEST_%，且無非測試 SKU)",
         table="products",
         where=(
-            "(external_code LIKE 'UTPRD-%' OR name_zh = 'UT產品') "
+            "(external_code LIKE 'UTPRD-%' OR name_zh = 'UT產品' "
+            "OR name_zh LIKE 'AGGTEST\\_%' OR name_zh LIKE 'GUARDTEST\\_%') "
             "AND NOT EXISTS (SELECT 1 FROM skus s WHERE s.product_id = products.id "
-            "AND s.sku_code NOT LIKE 'UTSKU-%')"
+            "AND s.sku_code NOT LIKE 'UTSKU-%' AND s.sku_code NOT LIKE 'AGGTEST\\_%' "
+            "AND s.sku_code NOT LIKE 'GUARDTEST\\_%')"
+        ),
+        sample_col="name_zh",
+    ),
+    Target(
+        # AGGTEST=案件聚合測試（test_cases.py:_make_case）；
+        # GUARDTEST=隔離保險絲（test_isolation_guard.py）。兩者都自建 site→product→sku 鏈。
+        label="sites (AGGTEST_% / GUARDTEST_%，且已無 product)",
+        table="sites",
+        where=(
+            "(name_zh LIKE 'AGGTEST\\_%' OR name_zh LIKE 'GUARDTEST\\_%') "
+            "AND NOT EXISTS (SELECT 1 FROM products p WHERE p.site_id = sites.id)"
         ),
         sample_col="name_zh",
     ),

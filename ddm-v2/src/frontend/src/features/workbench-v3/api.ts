@@ -108,15 +108,54 @@ export interface PublishModuleBody {
 }
 
 export interface ModuleFilters {
+  /** 'personal' → 後端自動加 owner=當前使用者（「我的動作」）；不帶＝所有可見 */
   scope?: string
   category?: string
   q?: string
+}
+
+/**
+ * 錯誤訊息萃取（P1-B）：client.ts 的 toError 會把非字串 detail 整包 JSON.stringify。
+ * 兩種 detail 形狀都要處理（review M1）：
+ *   1. 服務層自訂（object）：`422 {"code":"SIMO_PAIR_INVALID","message":"…"}` → message
+ *   2. FastAPI/Pydantic 驗證（**恆為 array**）：
+ *      `422 [{"type":"missing","loc":[…],"msg":"Field required"}]` → msg（多筆取前 2 筆串接）
+ * 解析失敗（非結構化 detail）→ 原字串照舊（不吞錯、不編訊息）。
+ */
+export function apiErrorMessage(err: unknown): string {
+  const raw = err instanceof Error ? err.message : String(err)
+  const m = raw.match(/^(\d{3})\s+(\{[\s\S]*\}|\[[\s\S]*\])$/)
+  if (!m) return raw
+  try {
+    const d: unknown = JSON.parse(m[2])
+    if (Array.isArray(d)) {
+      const parts = d.slice(0, 2).map(one => {
+        const e = one as { msg?: unknown; code?: unknown; loc?: unknown }
+        const text = typeof e.msg === 'string' ? e.msg
+          : typeof e.code === 'string' ? e.code
+          : null
+        if (!text) return null
+        // loc 末段（欄位名）有助定位，如「frequency: Field required」
+        const field = Array.isArray(e.loc) ? e.loc[e.loc.length - 1] : null
+        return typeof field === 'string' ? `${field}: ${text}` : text
+      }).filter((s): s is string => !!s)
+      if (parts.length > 0) return parts.join('；')
+    } else if (d && typeof d === 'object') {
+      const o = d as { message?: unknown; code?: unknown }
+      if (typeof o.message === 'string' && o.message) return o.message
+      if (typeof o.code === 'string' && o.code) return o.code
+    }
+  } catch { /* 非 JSON → 落回原字串 */ }
+  return raw
 }
 
 // ── Query key ─────────────────────────────────────────────────────────────────
 
 const QK = 'motion-modules' as const
 const WI_QK = 'wi-templates' as const
+
+/** 動作/模組 list 查詢鍵前綴（供呼叫端讀最新後端摘要，避免用 render closure 快照） */
+export const MODULE_QUERY_KEY = QK
 
 // ── Queries ───────────────────────────────────────────────────────────────────
 
@@ -235,12 +274,26 @@ function applyVersionToCaches(qc: QueryClient, id: string, ver: MotionModuleVers
       : old)
   // WI 列表快取（[WI_QK]）：更新該筆摘要（total_tmu / action_count / current_version）
   qc.setQueriesData<MotionModuleSummary[] | undefined>({ queryKey: [WI_QK] }, old =>
-    Array.isArray(old)
-      ? old.map(m =>
-          m.id === id
-            ? { ...m, current_version: ver.version_no, total_tmu: ver.total_tmu, action_count: ver.rows.length }
-            : m)
-      : old)
+    Array.isArray(old) ? old.map(m => (m.id === id ? mergeSummary(m, ver) : m)) : old)
+  // 動作清單快取（[QK, filters]）：同步摘要欄，讓行內頻率編輯後 Base/頻率/Eff 直接
+  // 顯示後端權威值（P1-B：不 refetch、更不前端自乘）。detail 快取（[QK,'detail',id]）
+  // 是物件不是陣列，由 Array.isArray 擋掉，不會被這裡誤寫。
+  qc.setQueriesData<MotionModuleSummary[] | undefined>({ queryKey: [QK] }, old =>
+    Array.isArray(old) ? old.map(m => (m.id === id ? mergeSummary(m, ver) : m)) : old)
+}
+
+/** 以新版本 detail 覆寫 list 摘要欄（欄位定義同後端 E-2：取 rows[0]） */
+function mergeSummary(m: MotionModuleSummary, ver: MotionModuleVersionDetail): MotionModuleSummary {
+  const first = ver.rows[0]
+  return {
+    ...m,
+    current_version: ver.version_no,
+    total_tmu: ver.total_tmu,
+    action_count: ver.rows.length,
+    base_tmu: first?.computed?.total_tmu ?? m.base_tmu ?? null,
+    frequency: first?.frequency ?? m.frequency ?? null,
+    hand: first?.hand ?? m.hand ?? null,
+  }
 }
 
 export const useUpdateModuleRow = () => {

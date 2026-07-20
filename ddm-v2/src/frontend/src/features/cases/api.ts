@@ -5,21 +5,45 @@ import { apiGet, apiPost } from '../../shared/api/client'
 
 // ─── Domain types ─────────────────────────────────────────────────────────────
 
-export interface CaseOut {
+/** 案件底下的一個版本（後端按版本時序 created_at ASC 排好，前端不重排） */
+export interface CaseVersionBrief {
   process_version_id: string
   worksheet_id: string
   version_no: string
   status: 'draft' | 'approved' | 'retired'
-  site_name: string
-  product_name: string
-  sku_name: string
-  process_name: string
   total_tmu: number | null
   created_at: string
   approved_at: string | null
 }
 
+/**
+ * 一筆＝一個「案件」（P1-A 聚合鍵＝ sku_id × model_label），
+ * 平面欄位取自**代表版＝最新版**；歷史折疊資料在 `versions[]`。
+ * 守則 §6：清單不再一版一列。
+ */
+export interface CaseOut {
+  process_version_id: string
+  worksheet_id: string
+  version_no: string
+  status: 'draft' | 'approved' | 'retired'
+  site_id: string
+  site_name: string
+  product_id: string
+  product_name: string
+  sku_id: string
+  sku_name: string
+  process_name: string
+  total_tmu: number | null
+  created_at: string
+  approved_at: string | null
+  model_label: string | null
+  /** 此案件的版本總數（>1 時清單顯示「N 版」徽章＋展開鈕） */
+  version_count: number
+  versions: CaseVersionBrief[]
+}
+
 export interface CasesListResponse {
+  /** 案件數（P1-A 起語意已從「版本數」改為「案件數」） */
   total: number
   items: CaseOut[]
 }

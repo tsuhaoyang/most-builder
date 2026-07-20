@@ -92,8 +92,15 @@ const COUNT_STYLES: { status: string; label: string; color: string }[] = [
   { status: 'retired',  label: '已退役', color: 'text-slate-500' },
 ]
 
-function CaseStatsCard({ items, isLoading, error }: {
+/**
+ * P1-C 語意檢查：`/api/v2/cases` 自 P1-A 起已是**案件級聚合**（一筆＝一案件，
+ * status＝代表版狀態），故此卡計的是「案件數」而非「版本數」——標題「案件狀態統計」正確，
+ * 只在副標把口徑寫明（依代表版＝最新版狀態），避免與版本鏈混淆。
+ */
+function CaseStatsCard({ items, total, isLoading, error }: {
   items: CaseOut[] | undefined
+  /** P1-A 契約的權威案件數（items 受後端 limit 截斷，不可用 items.length 代替） */
+  total: number | undefined
   isLoading: boolean
   error: unknown
 }) {
@@ -106,16 +113,19 @@ function CaseStatsCard({ items, isLoading, error }: {
       ) : !items?.length ? (
         <p className="text-sm text-slate-400">目前沒有案件</p>
       ) : (
-        <div className="grid grid-cols-3 gap-2 flex-1">
-          {COUNT_STYLES.map(({ status, label, color }) => (
-            <div key={status} className="flex flex-col items-center justify-center bg-slate-50 rounded-lg py-3">
-              <span className={`text-2xl font-bold ${color}`}>
-                {items.filter((i) => i.status === status).length}
-              </span>
-              <span className="text-xs text-slate-500 mt-1">{label}</span>
-            </div>
-          ))}
-        </div>
+        <>
+          <div className="grid grid-cols-3 gap-2 flex-1">
+            {COUNT_STYLES.map(({ status, label, color }) => (
+              <div key={status} className="flex flex-col items-center justify-center bg-slate-50 rounded-lg py-3">
+                <span className={`text-2xl font-bold ${color}`}>
+                  {items.filter((i) => i.status === status).length}
+                </span>
+                <span className="text-xs text-slate-500 mt-1">{label}</span>
+              </div>
+            ))}
+          </div>
+          <p className="text-xs text-slate-400">共 {total ?? items.length} 件案件（狀態依最新版）</p>
+        </>
       )}
     </Card>
   )
@@ -150,7 +160,15 @@ function RecentCasesCard({ items, isLoading, error }: {
                 onClick={goCases}
                 className="w-full flex items-center gap-2 py-2 text-left hover:bg-slate-50 transition-colors rounded px-1"
               >
-                <span className="flex-1 text-sm text-slate-700 truncate">{c.process_name}</span>
+                <span className="flex-1 text-sm text-slate-700 truncate">
+                  {c.process_name}
+                  {c.model_label && <span className="text-slate-500"> · {c.model_label}</span>}
+                </span>
+                {c.version_count > 1 && (
+                  <span className="px-1.5 py-0.5 rounded bg-slate-100 text-slate-600 text-xs whitespace-nowrap">
+                    {c.version_count} 版
+                  </span>
+                )}
                 <StatusBadge status={c.status} />
                 <span className="text-xs text-slate-400 whitespace-nowrap">
                   {new Date(updatedAt(c)).toLocaleDateString('zh-TW')}
@@ -174,7 +192,7 @@ export function DashboardPage() {
       <h2 className="text-lg font-semibold text-slate-800">儀表板</h2>
       <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
         <RuleSetCard />
-        <CaseStatsCard items={cases.data?.items} isLoading={cases.isLoading} error={cases.error} />
+        <CaseStatsCard items={cases.data?.items} total={cases.data?.total} isLoading={cases.isLoading} error={cases.error} />
         <RecentCasesCard items={cases.data?.items} isLoading={cases.isLoading} error={cases.error} />
       </div>
     </div>
