@@ -27,7 +27,7 @@ from ddm_v2.most_engine.calculate import compute_table
 from ddm_v2.most_engine.narrative import HAND_NAMES, build_narrative
 from ddm_v2.most_engine.providers import load_options_from_db
 from ddm_v2.most_engine.rule_set_data import TMU_TO_SEC, RuleSetData
-from ddm_v2.schemas.v2.most import CycleIn, cycle_in_to_engine
+from ddm_v2.schemas.v2.most import CycleIn, cycle_in_to_engine, resolve_cycle_rule_set
 from ddm_v2.schemas.v2.motion_module import (
     FromModuleRequest,
     ModuleRowIn,
@@ -150,6 +150,11 @@ async def _validate_and_compute_rows(
     """
     # ADR-020 寫入守門：simo_pair_index 合法性（越界/自指/主列自身宣告配對 → 422）
     _validate_simo_pairs([row.simo_pair_index for row in rows])
+
+    # ADR-023 §3.4：rows[].cycle 會被 dump 成版本快照 JSON（回放權威原始輸入）→ 先回填版本代碼。
+    # 與 worksheet_service 用同一個 helper，兩條持久化路徑契約一致。
+    for row in rows:
+        resolve_cycle_rule_set(row.cycle, rule_set_code)
 
     # 逐列先過 compute_cycle 取得帶 row_index 的錯誤（compute_table 不回列號），
     # 數值仍以下方 compute_table 回傳為準（同一引擎、同一演算法）。
@@ -1167,6 +1172,10 @@ async def instantiate_to_worksheet(
             actual_tmu = float(row_data.get("_computed_tmu") or 0)
             actual_seconds = round(actual_tmu * TMU_TO_SEC, 4)
             cycle_obj = CycleIn.model_validate(cycle_dict_raw) if cycle_dict_raw else None
+
+        # ADR-023 §3.4：實體化寫入 most_cycles.slot_inputs（回放權威原始輸入）→ 回填實際使用的版本。
+        # 涵蓋上面兩條分支（引擎重算成功 / 用模組快取值的 fallback），與 worksheet_service 同 helper。
+        resolve_cycle_rule_set(cycle_obj, rs_row.code)
 
         new_row_id = uuid.uuid4()
         seq_no = next_seq + idx

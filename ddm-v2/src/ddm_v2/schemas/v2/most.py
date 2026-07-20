@@ -9,7 +9,9 @@ from typing import Any, Literal
 
 from pydantic import BaseModel, Field
 
-DEFAULT_RULE_SET = "MINIMOST_FACTORY_V2"  # ADR-014：v3 IE 認證字典；V1 僅供既有 cycle 回放
+# ADR-023 §3.5：此處**不得**持有規則版本預設值。Pydantic 層沒有 session，
+# 無法查 active rule-set；把值權威放在 schema 層正是 V1/V2 分裂的機械成因。
+# rule_set_code 未給（None）→ 由服務層以 get_active_rule_set_code() 填。
 
 
 # ── slot 輸入 ──
@@ -81,7 +83,7 @@ class CycleIn(BaseModel):
     """一條 GM/CM cycle。GM 用 a3/b4/p5；CM 用 m3/x4/i5（依 seq 取用）。"""
 
     seq: Literal["GM", "CM"]
-    rule_set_code: str = DEFAULT_RULE_SET
+    rule_set_code: str | None = None  # None → 服務層填 active（ADR-023 §3.5）
     a0: ASlot = Field(default_factory=ASlot)
     b1: BSlot = Field(default_factory=BSlot)
     g2: GSlot = Field(default_factory=GSlot)
@@ -94,6 +96,21 @@ class CycleIn(BaseModel):
     a6: ASlot = Field(default_factory=ASlot)
     frequency: float = 1
     simo_group_id: str | None = None
+
+
+def resolve_cycle_rule_set(cycle: CycleIn | None, code: str) -> CycleIn | None:
+    """把服務層解析出的規則版本回填進 cycle（就地修改後回傳同一物件）。
+
+    ADR-023 §3.4／worksheet_service §模組 docstring：cycle 的 JSON 快照（most_cycles.slot_inputs、
+    motion_module_versions.rows[].cycle）是**回放的權威原始輸入**，必須自帶版本代碼，
+    不得留 None——否則日後重播時無從得知當初用哪一版算的。
+
+    ⚠️ 所有把 CycleIn dump 成持久化 JSON 的路徑都必須先過這個函式
+    （worksheet_service 存 WI、motion_module_service 發布模組版本與實體化）。
+    """
+    if cycle is not None and cycle.rule_set_code is None:
+        cycle.rule_set_code = code
+    return cycle
 
 
 def cycle_in_to_engine(c: CycleIn) -> dict[str, Any]:

@@ -28,6 +28,7 @@ from ddm_v2.schemas.v2.most import (
     SlotBreakdown,
     cycle_in_to_engine,
 )
+from ddm_v2.services.v2.rule_set_service import get_active_rule_set_code
 
 router = APIRouter(prefix="/api/v2", tags=["v2-most"])
 
@@ -58,8 +59,10 @@ async def rule_set_options(code: str, session: AsyncSession = Depends(get_db_ses
 
 @router.post("/minimost/calculate", response_model=CalculateResponse)
 async def calculate(cycle: CycleIn, session: AsyncSession = Depends(get_db_session, scope="function"), _: CurrentUser = Depends(current_user)) -> CalculateResponse:
+    # ADR-023 §3.5：未指定版本 → 目前 active（不再由 schema 層寫死預設）。
+    code = cycle.rule_set_code or await get_active_rule_set_code(session)
     try:
-        rs = await _load_rule_set(session, cycle.rule_set_code)
+        rs = await _load_rule_set(session, code)
     except RuleSetIncomplete as e:
         raise HTTPException(status_code=409, detail=str(e)) from e
     try:

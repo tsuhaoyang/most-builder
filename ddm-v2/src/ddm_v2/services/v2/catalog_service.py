@@ -9,8 +9,8 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from ddm_v2.exceptions import ConflictError, NotFoundError
 from ddm_v2.models.v2.org import Product, Site, Sku
-from ddm_v2.models.v2.rule_set import RuleSet
 from ddm_v2.models.v2.worksheet import MostWorksheet, ProcessVersion
+from ddm_v2.services.v2.rule_set_service import get_active_rule_set
 
 
 def _site(s: Site) -> dict[str, Any]:
@@ -124,10 +124,12 @@ async def create_worksheet(session: AsyncSession, sku_id: uuid.UUID, payload, ac
     if await session.get(Sku, sku_id) is None:
         raise NotFoundError(f"sku 不存在：{sku_id}")
     count = len((await session.execute(select(ProcessVersion).where(ProcessVersion.sku_id == sku_id))).scalars().all())
-    rs = (await session.execute(select(RuleSet).where(RuleSet.code == "MINIMOST_FACTORY_V1"))).scalar_one_or_none()
+    # ADR-023 §3.5：新建 worksheet 的預設規則版本＝目前 active（不再寫死 V1）。
+    # 無 active 直接拋 NoActiveRuleSet（500），不得靜默寫 NULL。
+    rs = await get_active_rule_set(session)
     pv = ProcessVersion(id=uuid.uuid4(), sku_id=sku_id, version_no=f"v{count + 1}", status="draft", created_by=actor)
     ws = MostWorksheet(id=uuid.uuid4(), process_version_id=pv.id, model_label=payload.model_label,
-                       analyst=payload.analyst, default_rule_set_id=rs.id if rs else None, status="draft")
+                       analyst=payload.analyst, default_rule_set_id=rs.id, status="draft")
     session.add(pv)
     session.add(ws)
     await session.flush()

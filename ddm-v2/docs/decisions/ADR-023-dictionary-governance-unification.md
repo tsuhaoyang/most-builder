@@ -93,7 +93,11 @@ ADR-014 約束的是**「認證版本的值」**，不是「禁止一切線上�
 
 `schemas/v2/most.py:12` 的 `DEFAULT_RULE_SET = "MINIMOST_FACTORY_V2"`，但 `catalog_service.py:127` 新建 worksheet 寫死 **V1**、`worksheet_service.py:58` 空 rows 存檔 fallback **V1** → **同一 worksheet 的 default 是 V1、rows schema default 是 V2**。前端同樣不一致（`config.ts` V2、`wi-workbench/api.ts:20` 預設 V1、`RuleSetViewer.tsx:58` 初始 V1）。
 
-**規格**：新增 `get_active_rule_set()/get_active_rule_set_code()`；上述所有寫死處改讀 active；**移除 `schemas/v2/most.py` 的 `DEFAULT_RULE_SET`**（Pydantic 層無 session，不該持有值權威）；前端刪 `ACTIVE_RULE_SET` 常數改用 `GET /api/v2/rule-sets/active` ＋ `useActiveRuleSet()` hook。
+**第三個路徑（2026-07-20 補：原規格漏列，由 D1 code-review 發現）**：`services/v2/import_service.py:170-175` 用 `select(RuleSet).order_by(created_at.desc()).limit(1)` 當 fallback——不是寫死字串，但同樣繞過 active，且**本 ADR 讓它更危險**：clone-draft 支援自動命名後，「最新建立的 rule_set」極可能是未發布的 draft clone，會讓匯入的 rows 用未過 `validate_complete()` 的規則集計算。**一併改讀 active。**
+
+**規格**：新增 `get_active_rule_set()/get_active_rule_set_code()`；上述所有寫死處**與隱式預設處**改讀 active；**移除 `schemas/v2/most.py` 的 `DEFAULT_RULE_SET`**（Pydantic 層無 session，不該持有值權威）；前端刪 `ACTIVE_RULE_SET` 常數改用 `GET /api/v2/rule-sets/active` ＋ `useActiveRuleSet()` hook。
+
+**部署面行為變更（須寫進 release note）**：全新部署且 `DDM_SEED_DEMO=false` 時，庫內零 rule_sets → `POST /skus/{id}/worksheets` 會 500（`NoActiveRuleSet`），而非如舊版靜默寫入 `default_rule_set_id=NULL`。這是「不得靜默寫 NULL」的預期結果。
 
 Migration 資料遷移：`is_active=true WHERE code='MINIMOST_FACTORY_V2'`；`provenance='certified_import' WHERE code IN (V1,V2)`；**V1 保持 published + inactive**（回放版本，永遠可載入但不再被選中）。
 

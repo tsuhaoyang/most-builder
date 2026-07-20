@@ -22,9 +22,10 @@ from ddm_v2.most_engine import compute_cycle, load_rule_set_from_db
 from ddm_v2.most_engine.narrative import HAND_NAMES, build_narrative
 from ddm_v2.most_engine.providers import load_options_from_db
 from ddm_v2.most_engine.rule_set_data import TMU_TO_SEC
-from ddm_v2.schemas.v2.most import cycle_in_to_engine
+from ddm_v2.schemas.v2.most import cycle_in_to_engine, resolve_cycle_rule_set
 from ddm_v2.schemas.v2.worksheet import WorksheetSaveIn
 from ddm_v2.services.v2.audit_service import log_audit
+from ddm_v2.services.v2.rule_set_service import get_active_rule_set_code
 
 
 class WorksheetNotFound(Exception):
@@ -55,7 +56,8 @@ async def save_worksheet(session: AsyncSession, worksheet_id: uuid.UUID, payload
     if "allowance_percent" in payload.model_fields_set:
         ws.allowance_percent = payload.allowance_percent
 
-    code = payload.rows[0].cycle.rule_set_code if payload.rows else "MINIMOST_FACTORY_V1"
+    # ADR-023 §3.5：規則版本以 payload 的 cycle 為準；未指定（空 rows 或 client 未帶）→ 目前 active。
+    code = (payload.rows[0].cycle.rule_set_code if payload.rows else None) or await get_active_rule_set_code(session)
     rs_row = (await session.execute(select(RuleSet).where(RuleSet.code == code))).scalar_one_or_none()
     if rs_row is None:
         raise RuleSetNotFound(code)
@@ -128,6 +130,8 @@ async def save_worksheet(session: AsyncSession, worksheet_id: uuid.UUID, payload
 
     now = datetime.now(timezone.utc)
     for r in payload.rows:
+        # slot_inputs 是回放的權威原始輸入 → 必須自帶解析後的規則版本，不可留 None（ADR-023 §3.4）
+        resolve_cycle_rule_set(r.cycle, code)
         engine_cycle = cycle_in_to_engine(r.cycle)
         result = compute_cycle(engine_cycle, rsdata)
         voc = {"object": vname.get(r.object_vocab_id, ""),

@@ -164,6 +164,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v2/worksheets/{worksheet_id}/retire": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Retire Worksheet */
+        post: operations["retire_worksheet_api_v2_worksheets__worksheet_id__retire_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v2/vocab": {
         parameters: {
             query?: never;
@@ -235,7 +252,7 @@ export interface paths {
         put?: never;
         /**
          * Promote Template
-         * @description 草稿 → 廠標準（manager+）。
+         * @description 草稿 → 廠標準（approver+）。
          */
         post: operations["promote_template_api_v2_motion_templates__template_id__promote_post"];
         delete?: never;
@@ -273,6 +290,209 @@ export interface paths {
         put?: never;
         /** Match Templates */
         post: operations["match_templates_api_v2_motion_templates_match_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v2/motion-modules": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List Modules */
+        get: operations["list_modules_api_v2_motion_modules_get"];
+        put?: never;
+        /** Create Module */
+        post: operations["create_module_api_v2_motion_modules_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v2/motion-modules/{module_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Module */
+        get: operations["get_module_api_v2_motion_modules__module_id__get"];
+        /** Update Module */
+        put: operations["update_module_api_v2_motion_modules__module_id__put"];
+        post?: never;
+        /** Delete Module */
+        delete: operations["delete_module_api_v2_motion_modules__module_id__delete"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v2/motion-modules/reorder": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /** Reorder Modules */
+        put: operations["reorder_modules_api_v2_motion_modules_reorder_put"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v2/motion-modules/{module_id}/clone": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Clone Module */
+        post: operations["clone_module_api_v2_motion_modules__module_id__clone_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v2/motion-modules/{module_id}/publish": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Publish Version */
+        post: operations["publish_version_api_v2_motion_modules__module_id__publish_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v2/motion-modules/{module_id}/versions/from-rows": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Create Version From Rows
+         * @description apply-back：把已修改的 rows 同步回模組，建立新版本（F-03b §3）。
+         */
+        post: operations["create_version_from_rows_api_v2_motion_modules__module_id__versions_from_rows_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v2/motion-modules/{module_id}/rows/{row_index}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /**
+         * Update Module Row
+         * @description 替換單列 → 引擎重算全表 → 發新版本（回新版本 detail）。
+         */
+        put: operations["update_module_row_api_v2_motion_modules__module_id__rows__row_index__put"];
+        post?: never;
+        /**
+         * Delete Module Row
+         * @description 刪除單列 → 重算 → 發新版本；刪到 0 列 → 422（WI 至少 1 動作）。
+         */
+        delete: operations["delete_module_row_api_v2_motion_modules__module_id__rows__row_index__delete"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v2/motion-modules/{module_id}/rows/reorder": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Reorder Module Rows
+         * @description 重排 rows → 發新版本。ordered_indexes 須為 0..n-1 完整排列（否則 422）。
+         */
+        post: operations["reorder_module_rows_api_v2_motion_modules__module_id__rows_reorder_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v2/motion-modules/{module_id}/promote": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Promote Module */
+        post: operations["promote_module_api_v2_motion_modules__module_id__promote_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v2/motion-modules/{module_id}/versions": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Versions */
+        get: operations["get_versions_api_v2_motion_modules__module_id__versions_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v2/worksheets/{worksheet_id}/rows/from-module": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Instantiate To Worksheet */
+        post: operations["instantiate_to_worksheet_api_v2_worksheets__worksheet_id__rows_from_module_post"];
         delete?: never;
         options?: never;
         head?: never;
@@ -341,6 +561,23 @@ export interface paths {
         put?: never;
         /** Export Lb Api */
         post: operations["export_lb_api_api_v2_worksheets__worksheet_id__export_lb_api_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v2/worksheets/{worksheet_id}/export/report.xlsx": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Export Report Xlsx */
+        get: operations["export_report_xlsx_api_v2_worksheets__worksheet_id__export_report_xlsx_get"];
+        put?: never;
+        post?: never;
         delete?: never;
         options?: never;
         head?: never;
@@ -449,6 +686,26 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v2/imports/{import_id}/submit": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Submit Import
+         * @description Phase 2b：staged rows → worksheet WiRow（stub MOST cycle，analyst 後補分析）。
+         */
+        post: operations["submit_import_api_v2_imports__import_id__submit_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v2/rule-sets": {
         parameters: {
             query?: never;
@@ -458,6 +715,26 @@ export interface paths {
         };
         /** List Rule Sets */
         get: operations["list_rule_sets_api_v2_rule_sets_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v2/rule-sets/active": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Active
+         * @description 目前啟用中的 rule-set（前端取代寫死常數；ADR-023 §3.5）。無 active＝設定錯誤 → 500。
+         */
+        get: operations["get_active_api_v2_rule_sets_active_get"];
         put?: never;
         post?: never;
         delete?: never;
@@ -518,6 +795,48 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v2/rule-sets/{code}/activate": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Activate
+         * @description 啟用為唯一 active 版本（ADR-023 §3.2）。非 published → 400；不完整 → 409。
+         */
+        post: operations["activate_api_v2_rule_sets__code__activate_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v2/rule-sets/{code}/retire": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Retire
+         * @description 下架版本（ADR-023 §3.2）。啟用中版本 → 400（須先啟用其他版本）。
+         *
+         *     ⚠️ 下架不影響回放：已引用該版本的 cycle 仍可載入重算（§3.4）。
+         */
+        post: operations["retire_api_v2_rule_sets__code__retire_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v2/admin/users": {
         parameters: {
             query?: never;
@@ -551,6 +870,333 @@ export interface paths {
         head?: never;
         /** Patch User */
         patch: operations["patch_user_api_v2_admin_users__employee_no__patch"];
+        trace?: never;
+    };
+    "/api/v2/sites": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List Sites */
+        get: operations["list_sites_api_v2_sites_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v2/products": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List Products */
+        get: operations["list_products_api_v2_products_get"];
+        put?: never;
+        /** Create Product */
+        post: operations["create_product_api_v2_products_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v2/products/{product_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        /** Update Product */
+        patch: operations["update_product_api_v2_products__product_id__patch"];
+        trace?: never;
+    };
+    "/api/v2/skus": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List Skus */
+        get: operations["list_skus_api_v2_skus_get"];
+        put?: never;
+        /** Create Sku */
+        post: operations["create_sku_api_v2_skus_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v2/skus/{sku_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        /** Update Sku */
+        patch: operations["update_sku_api_v2_skus__sku_id__patch"];
+        trace?: never;
+    };
+    "/api/v2/skus/{sku_id}/worksheets": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List Worksheets */
+        get: operations["list_worksheets_api_v2_skus__sku_id__worksheets_get"];
+        put?: never;
+        /** Create Worksheet */
+        post: operations["create_worksheet_api_v2_skus__sku_id__worksheets_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v2/search": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Search Api */
+        get: operations["search_api_api_v2_search_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v2/rule-sets/{code}/synonyms": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List Synonyms */
+        get: operations["list_synonyms_api_v2_rule_sets__code__synonyms_get"];
+        put?: never;
+        /** Create Synonym */
+        post: operations["create_synonym_api_v2_rule_sets__code__synonyms_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v2/rule-sets/{code}/synonyms/{syn_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /** Delete Synonym */
+        delete: operations["delete_synonym_api_v2_rule_sets__code__synonyms__syn_id__delete"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v2/worksheets/nl-draft": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Nl Draft
+         * @description 解析自然語言描述，回傳 MOST slot 建議（唯讀）。
+         */
+        post: operations["nl_draft_api_v2_worksheets_nl_draft_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v2/audit-log": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Audit Log
+         * @description 查詢工作流稽核日誌（approver 以上可查全域）。
+         */
+        get: operations["list_audit_log_api_v2_audit_log_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v2/cases": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List Cases */
+        get: operations["list_cases_api_v2_cases_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v2/wi-set-projects": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List Projects */
+        get: operations["list_projects_api_v2_wi_set_projects_get"];
+        put?: never;
+        /** Create Project */
+        post: operations["create_project_api_v2_wi_set_projects_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v2/wi-set-projects/{project_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Project */
+        get: operations["get_project_api_v2_wi_set_projects__project_id__get"];
+        /** Update Project */
+        put: operations["update_project_api_v2_wi_set_projects__project_id__put"];
+        post?: never;
+        /** Delete Project */
+        delete: operations["delete_project_api_v2_wi_set_projects__project_id__delete"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v2/wi-set-projects/{project_id}/items": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Add Item
+         * @description 新增條目。
+         *
+         *     快照規則（F-02a，值權威原則）：
+         *     - wi_template_id 有值 → 快照一律由伺服器從 motion module 解析回填，
+         *       忽略 client 送來的快照值（避免 client 端算值繞過 most_engine 權威）。
+         *     - wi_template_id 無值（手動條目）→ 使用 client 快照值（未給的數值欄預設 0）。
+         */
+        post: operations["add_item_api_v2_wi_set_projects__project_id__items_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v2/wi-set-projects/{project_id}/items/{item_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /** Remove Item */
+        delete: operations["remove_item_api_v2_wi_set_projects__project_id__items__item_id__delete"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v2/wi-set-projects/{project_id}/items/reorder": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /** Reorder Items */
+        put: operations["reorder_items_api_v2_wi_set_projects__project_id__items_reorder_put"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v2/wi-set-projects/{project_id}/duplicate": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Duplicate Project */
+        post: operations["duplicate_project_api_v2_wi_set_projects__project_id__duplicate_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
         trace?: never;
     };
     "/": {
@@ -591,6 +1237,9 @@ export interface components {
              * @default 0
              */
             foot_cm: number;
+            /** Repeat Count */
+            repeat_count?: number | null;
+            manual_override?: components["schemas"]["ManualOverride"] | null;
         };
         /** AppUserOut */
         AppUserOut: {
@@ -629,10 +1278,54 @@ export interface components {
             /** Site Ids */
             site_ids?: string[];
         };
+        /** AuditLogEntry */
+        AuditLogEntry: {
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** Entity Type */
+            entity_type: string;
+            /**
+             * Entity Id
+             * Format: uuid
+             */
+            entity_id: string;
+            /** Action */
+            action: string;
+            /** From Status */
+            from_status: string | null;
+            /** To Status */
+            to_status: string | null;
+            /** Actor */
+            actor: string;
+            /** Comment */
+            comment: string | null;
+            /** Payload */
+            payload: {
+                [key: string]: unknown;
+            } | null;
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+        };
+        /** AuditLogListOut */
+        AuditLogListOut: {
+            /** Total */
+            total: number;
+            /** Items */
+            items: components["schemas"]["AuditLogEntry"][];
+        };
         /** BSlot */
         BSlot: {
             /** B Code */
             b_code?: string | null;
+            /** Repeat Count */
+            repeat_count?: number | null;
+            manual_override?: components["schemas"]["ManualOverride"] | null;
         };
         /** Body_upload_api_v2_imports_upload_post */
         Body_upload_api_v2_imports_upload_post: {
@@ -654,10 +1347,110 @@ export interface components {
             /** Breakdown */
             breakdown: components["schemas"]["SlotBreakdown"][];
         };
+        /** CaseListOut */
+        CaseListOut: {
+            /** Total */
+            total: number;
+            /** Items */
+            items: components["schemas"]["CaseOut"][];
+        };
+        /**
+         * CaseOut
+         * @description 一筆＝一個案件（聚合鍵 sku_id × model_label），欄位取自代表版（最新版）。
+         */
+        CaseOut: {
+            /**
+             * Process Version Id
+             * Format: uuid
+             */
+            process_version_id: string;
+            /**
+             * Worksheet Id
+             * Format: uuid
+             */
+            worksheet_id: string;
+            /** Version No */
+            version_no: string;
+            /** Status */
+            status: string;
+            /**
+             * Site Id
+             * Format: uuid
+             */
+            site_id: string;
+            /** Site Name */
+            site_name: string;
+            /**
+             * Product Id
+             * Format: uuid
+             */
+            product_id: string;
+            /** Product Name */
+            product_name: string;
+            /**
+             * Sku Id
+             * Format: uuid
+             */
+            sku_id: string;
+            /** Sku Name */
+            sku_name: string;
+            /** Process Name */
+            process_name: string;
+            /** Approved At */
+            approved_at: string | null;
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /** Total Tmu */
+            total_tmu: number | null;
+            /** Model Label */
+            model_label?: string | null;
+            /**
+             * Version Count
+             * @default 1
+             */
+            version_count: number;
+            /**
+             * Versions
+             * @default []
+             */
+            versions: components["schemas"]["CaseVersionBrief"][];
+        };
+        /**
+         * CaseVersionBrief
+         * @description 案件歷史折疊用的版本摘要（按版本序＝created_at 由舊到新）。
+         */
+        CaseVersionBrief: {
+            /**
+             * Process Version Id
+             * Format: uuid
+             */
+            process_version_id: string;
+            /**
+             * Worksheet Id
+             * Format: uuid
+             */
+            worksheet_id: string;
+            /** Version No */
+            version_no: string;
+            /** Status */
+            status: string;
+            /** Total Tmu */
+            total_tmu: number | null;
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /** Approved At */
+            approved_at: string | null;
+        };
         /** CloneDraftIn */
         CloneDraftIn: {
             /** New Code */
-            new_code: string;
+            new_code?: string | null;
             /** Name Zh */
             name_zh?: string | null;
         };
@@ -671,11 +1464,8 @@ export interface components {
              * @enum {string}
              */
             seq: "GM" | "CM";
-            /**
-             * Rule Set Code
-             * @default MINIMOST_FACTORY_V1
-             */
-            rule_set_code: string;
+            /** Rule Set Code */
+            rule_set_code?: string | null;
             a0?: components["schemas"]["ASlot"];
             b1?: components["schemas"]["BSlot"];
             g2?: components["schemas"]["GSlot"];
@@ -694,6 +1484,19 @@ export interface components {
             /** Simo Group Id */
             simo_group_id?: string | null;
         };
+        /**
+         * FromModuleRequest
+         * @description POST /worksheets/{wid}/rows/from-module body。
+         */
+        FromModuleRequest: {
+            /**
+             * Module Id
+             * Format: uuid
+             */
+            module_id: string;
+            /** Version No */
+            version_no?: number | null;
+        };
         /** GSlot */
         GSlot: {
             /** G Code */
@@ -702,6 +1505,9 @@ export interface components {
             modifiers?: {
                 [key: string]: boolean;
             };
+            /** Repeat Count */
+            repeat_count?: number | null;
+            manual_override?: components["schemas"]["ManualOverride"] | null;
         };
         /** HTTPValidationError */
         HTTPValidationError: {
@@ -712,6 +1518,52 @@ export interface components {
         ISlot: {
             /** I Code */
             i_code?: string | null;
+            /** Repeat Count */
+            repeat_count?: number | null;
+            manual_override?: components["schemas"]["ManualOverride"] | null;
+        };
+        /** InstantiateResponse */
+        InstantiateResponse: {
+            /** New Rows */
+            new_rows: components["schemas"]["InstantiatedRowOut"][];
+            /** Tmu Drift */
+            tmu_drift?: {
+                [key: string]: unknown;
+            }[];
+            /**
+             * Skipped Vocab Missing
+             * @default 0
+             */
+            skipped_vocab_missing: number;
+        };
+        /** InstantiatedRowOut */
+        InstantiatedRowOut: {
+            /**
+             * Wi Row Id
+             * Format: uuid
+             */
+            wi_row_id: string;
+            /** Seq No */
+            seq_no: number;
+            /** Sub Activity */
+            sub_activity: string | null;
+            /** Hand */
+            hand: string | null;
+            /** Frequency */
+            frequency: number;
+            /** Simo Group Id */
+            simo_group_id: string | null;
+            /**
+             * Source Module Id
+             * Format: uuid
+             */
+            source_module_id: string;
+            /** Source Module Version */
+            source_module_version: number;
+            /** Total Tmu */
+            total_tmu: number;
+            /** Total Seconds */
+            total_seconds: number;
         };
         /** LevelFieldsIn */
         LevelFieldsIn: {
@@ -852,6 +1704,21 @@ export interface components {
         MSlot: {
             /** M Components */
             m_components?: components["schemas"]["MComponent"][];
+            /** Repeat Count */
+            repeat_count?: number | null;
+            manual_override?: components["schemas"]["ManualOverride"] | null;
+        };
+        /**
+         * ManualOverride
+         * @description E7：人工覆寫（值取代＋留痕）。
+         */
+        ManualOverride: {
+            /** Tmu */
+            tmu: number;
+            /** Reason */
+            reason: string;
+            /** By */
+            by?: string | null;
         };
         /** MapIn */
         MapIn: {
@@ -889,6 +1756,158 @@ export interface components {
              * @default 3
              */
             limit: number;
+        };
+        /**
+         * ModuleRowIn
+         * @description 一個模組列（publish 時送入，存成 rows JSONB 元素）。
+         */
+        ModuleRowIn: {
+            /** Sub Activity */
+            sub_activity?: string | null;
+            /** Hand */
+            hand: string;
+            /**
+             * Frequency
+             * @default 1
+             */
+            frequency: number;
+            /** Simo Pair Index */
+            simo_pair_index?: number | null;
+            /** Vocab Refs */
+            vocab_refs?: {
+                [key: string]: unknown;
+            };
+            cycle: components["schemas"]["CycleIn"];
+        };
+        /**
+         * MotionModuleCreate
+         * @description POST /motion-modules body。
+         *
+         *     category 規範（ADR-022 資料模型表；DB 無 CHECK，屬約定值）：
+         *     - 'action'：單動作素材（恰 1 row；對應 v3 most_sequence_items）
+         *     - 'wi-template'：WI 大綱項（rows = 動作快照複本；對應 v3 MI statements）
+         *     - None / 其他文字：既有範本沿用（16 筆 null category 範本不動）
+         */
+        MotionModuleCreate: {
+            /** Name Zh */
+            name_zh: string;
+            /** Category */
+            category?: string | null;
+            /** Keywords */
+            keywords?: string[];
+            /**
+             * Scope
+             * @default personal
+             * @enum {string}
+             */
+            scope: "personal" | "site" | "global";
+            /** Owner */
+            owner?: string | null;
+            /** Site Id */
+            site_id?: string | null;
+        };
+        /** MotionModuleResponse */
+        MotionModuleResponse: {
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** Site Id */
+            site_id: string | null;
+            /** Name Zh */
+            name_zh: string;
+            /** Category */
+            category: string | null;
+            /** Keywords */
+            keywords: string[];
+            /** Scope */
+            scope: string;
+            /** Owner */
+            owner: string | null;
+            /** Status */
+            status: string;
+            /** Current Version */
+            current_version: number;
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /**
+             * Updated At
+             * Format: date-time
+             */
+            updated_at: string;
+            current_version_detail?: components["schemas"]["MotionModuleVersionResponse"] | null;
+            /** Total Tmu */
+            total_tmu?: number | null;
+            /** Action Count */
+            action_count?: number | null;
+            /** Seq Kind */
+            seq_kind?: string | null;
+            /** Hand */
+            hand?: string | null;
+            /** Base Tmu */
+            base_tmu?: number | null;
+            /** Frequency */
+            frequency?: number | null;
+        };
+        /**
+         * MotionModuleUpdate
+         * @description PUT /motion-modules/{id} body（全選填，只送想改的欄位）。
+         *
+         *     SM-4：owner 欄位已移除，不允許呼叫方重新指派 owner；
+         *     owner 在 create 時由 service 設定，之後不可更改。
+         */
+        MotionModuleUpdate: {
+            /** Name Zh */
+            name_zh?: string | null;
+            /** Category */
+            category?: string | null;
+            /** Keywords */
+            keywords?: string[] | null;
+            /** Scope */
+            scope?: ("personal" | "site" | "global") | null;
+            /** Site Id */
+            site_id?: string | null;
+        };
+        /** MotionModuleVersionResponse */
+        MotionModuleVersionResponse: {
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /**
+             * Module Id
+             * Format: uuid
+             */
+            module_id: string;
+            /** Version No */
+            version_no: number;
+            /**
+             * Rule Set Id
+             * Format: uuid
+             */
+            rule_set_id: string;
+            /** Rows */
+            rows: {
+                [key: string]: unknown;
+            }[];
+            /** Narrative Zh */
+            narrative_zh: string | null;
+            /** Total Tmu */
+            total_tmu: number;
+            /** Total Seconds */
+            total_seconds: number;
+            /** Published By */
+            published_by: string;
+            /**
+             * Published At
+             * Format: date-time
+             */
+            published_at: string;
         };
         /** MotionTemplateIn */
         MotionTemplateIn: {
@@ -948,6 +1967,13 @@ export interface components {
             /** Is Active */
             is_active?: boolean | null;
         };
+        /** NLDraftIn */
+        NLDraftIn: {
+            /** Text */
+            text: string;
+            /** Rule Set Code */
+            rule_set_code: string;
+        };
         /** PSlot */
         PSlot: {
             /** P Base Code */
@@ -959,6 +1985,9 @@ export interface components {
              * @default false
              */
             precision: boolean;
+            /** Repeat Count */
+            repeat_count?: number | null;
+            manual_override?: components["schemas"]["ManualOverride"] | null;
         };
         /** PreviewOut */
         PreviewOut: {
@@ -977,6 +2006,56 @@ export interface components {
             n: number;
             /** Warnings */
             warnings: string[];
+        };
+        /** ProductIn */
+        ProductIn: {
+            /**
+             * Site Id
+             * Format: uuid
+             */
+            site_id: string;
+            /** Name Zh */
+            name_zh: string;
+            /** External Code */
+            external_code?: string | null;
+            /** Name En */
+            name_en?: string | null;
+            /** Description */
+            description?: string | null;
+        };
+        /** ProductOut */
+        ProductOut: {
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /**
+             * Site Id
+             * Format: uuid
+             */
+            site_id: string;
+            /** External Code */
+            external_code: string | null;
+            /** Name Zh */
+            name_zh: string;
+            /** Name En */
+            name_en: string | null;
+            /** Description */
+            description: string | null;
+            /** Is Active */
+            is_active: boolean;
+        };
+        /** ProductPatch */
+        ProductPatch: {
+            /** Name Zh */
+            name_zh?: string | null;
+            /** Name En */
+            name_en?: string | null;
+            /** Description */
+            description?: string | null;
+            /** Is Active */
+            is_active?: boolean | null;
         };
         /** ProfileIn */
         ProfileIn: {
@@ -1018,6 +2097,33 @@ export interface components {
             /** Owner */
             owner: string | null;
         };
+        /**
+         * PublishRequest
+         * @description POST /motion-modules/{id}/publish body。
+         *
+         *     rule_set_id / rule_set_code 恰好擇一（F-01 契約）：
+         *     - rule_set_id：直接指定規則版本 UUID。
+         *     - rule_set_code：由 service 解析成 id（找不到 → 404）。
+         */
+        PublishRequest: {
+            /** Rows */
+            rows: components["schemas"]["ModuleRowIn"][];
+            /** Rule Set Id */
+            rule_set_id?: string | null;
+            /** Rule Set Code */
+            rule_set_code?: string | null;
+        };
+        /**
+         * RowsReorderRequest
+         * @description POST /motion-modules/{id}/rows/reorder body。
+         *
+         *     ordered_indexes 必須是 current version rows 的 0..n-1 完整排列
+         *     （service 驗證；否則 422 REORDER_INVALID）。
+         */
+        RowsReorderRequest: {
+            /** Ordered Indexes */
+            ordered_indexes: number[];
+        };
         /** SheetPreview */
         SheetPreview: {
             /** Name */
@@ -1029,12 +2135,109 @@ export interface components {
             /** N Cols */
             n_cols: number;
         };
+        /** SiteOut */
+        SiteOut: {
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** External Code */
+            external_code: string | null;
+            /** Name Zh */
+            name_zh: string;
+            /** Name En */
+            name_en: string | null;
+            /** Is Active */
+            is_active: boolean;
+        };
+        /** SkuIn */
+        SkuIn: {
+            /**
+             * Product Id
+             * Format: uuid
+             */
+            product_id: string;
+            /** Sku Code */
+            sku_code: string;
+            /** Name Zh */
+            name_zh?: string | null;
+            /** Name En */
+            name_en?: string | null;
+        };
+        /** SkuOut */
+        SkuOut: {
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /**
+             * Product Id
+             * Format: uuid
+             */
+            product_id: string;
+            /** Sku Code */
+            sku_code: string;
+            /** Name Zh */
+            name_zh: string | null;
+            /** Name En */
+            name_en: string | null;
+            /** Is Active */
+            is_active: boolean;
+        };
+        /** SkuPatch */
+        SkuPatch: {
+            /** Name Zh */
+            name_zh?: string | null;
+            /** Name En */
+            name_en?: string | null;
+            /** Is Active */
+            is_active?: boolean | null;
+        };
         /** SlotBreakdown */
         SlotBreakdown: {
             /** Letter */
             letter: string;
             /** Tmu */
             tmu: number;
+        };
+        /** SubmitIn */
+        SubmitIn: {
+            /**
+             * Worksheet Id
+             * Format: uuid
+             */
+            worksheet_id: string;
+            /** Rule Set Code */
+            rule_set_code?: string | null;
+        };
+        /** SubmitOut */
+        SubmitOut: {
+            /** Worksheet Id */
+            worksheet_id: string;
+            /** N Rows */
+            n_rows: number;
+            /** N With Analysis */
+            n_with_analysis: number;
+            /** N Need Review */
+            n_need_review: number;
+            /** Warnings */
+            warnings: string[];
+        };
+        /** SynonymIn */
+        SynonymIn: {
+            /** Parameter */
+            parameter: string;
+            /** Option Code */
+            option_code: string;
+            /** Synonym Raw */
+            synonym_raw: string;
+            /**
+             * Priority
+             * @default 0
+             */
+            priority: number;
         };
         /** UploadOut */
         UploadOut: {
@@ -1070,6 +2273,22 @@ export interface components {
             input?: unknown;
             /** Context */
             ctx?: Record<string, never>;
+        };
+        /**
+         * VersionFromRowsRequest
+         * @description POST /motion-modules/{id}/versions/from-rows body。
+         *
+         *     語義（F-03b §3）：把已修改的 rows 同步回模組，建立新版本；
+         *     不改 module.status，讓使用者自行決定是否 promote。
+         */
+        VersionFromRowsRequest: {
+            /** Rows */
+            rows: components["schemas"]["ModuleRowIn"][];
+            /**
+             * Rule Set Id
+             * Format: uuid
+             */
+            rule_set_id: string;
         };
         /** VocabItemIn */
         VocabItemIn: {
@@ -1120,6 +2339,8 @@ export interface components {
             name_en?: string | null;
             /** External Code */
             external_code?: string | null;
+            /** Is Active */
+            is_active?: boolean | null;
         };
         /** WiRowSaveIn */
         WiRowSaveIn: {
@@ -1154,10 +2375,187 @@ export interface components {
             frequency: number;
             /** Simo Group Id */
             simo_group_id?: string | null;
+            /** Simo With Row Id */
+            simo_with_row_id?: string | null;
             /** Narrative */
             narrative?: string | null;
             cycle: components["schemas"]["CycleIn"];
             level?: components["schemas"]["LevelFieldsIn"];
+        };
+        /**
+         * WiSetItemCreate
+         * @description POST /wi-set-projects/{id}/items body。
+         *
+         *     F-02a 契約（值權威原則）：
+         *     - 有 wi_template_id → 快照由伺服器從 motion module（含 current version）解析回填，
+         *       client 送來的快照值一律忽略。
+         *     - 無 wi_template_id（手動條目）→ wi_name_snapshot 必填，其餘快照欄選填（預設 0）。
+         */
+        WiSetItemCreate: {
+            /** Wi Template Id */
+            wi_template_id?: string | null;
+            /** Wi Code Snapshot */
+            wi_code_snapshot?: string | null;
+            /** Wi Name Snapshot */
+            wi_name_snapshot?: string | null;
+            /** Action Count Snapshot */
+            action_count_snapshot?: number | null;
+            /** Total Tmu Snapshot */
+            total_tmu_snapshot?: number | null;
+            /** Total Seconds Snapshot */
+            total_seconds_snapshot?: number | null;
+            /** Notes */
+            notes?: string | null;
+        };
+        /**
+         * WiSetItemOut
+         * @description WI 條目輸出（含 id / project_id / seq_no / timestamps）。
+         */
+        WiSetItemOut: {
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /**
+             * Project Id
+             * Format: uuid
+             */
+            project_id: string;
+            /** Seq No */
+            seq_no: number;
+            /** Wi Template Id */
+            wi_template_id: string | null;
+            /** Wi Code Snapshot */
+            wi_code_snapshot: string | null;
+            /** Wi Name Snapshot */
+            wi_name_snapshot: string;
+            /** Action Count Snapshot */
+            action_count_snapshot: number;
+            /** Total Tmu Snapshot */
+            total_tmu_snapshot: number;
+            /** Total Seconds Snapshot */
+            total_seconds_snapshot: number;
+            /** Notes */
+            notes: string | null;
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /**
+             * Updated At
+             * Format: date-time
+             */
+            updated_at: string;
+        };
+        /**
+         * WiSetProjectCreate
+         * @description POST /wi-set-projects body。name 必填，其餘選填。
+         */
+        WiSetProjectCreate: {
+            /** Project Code */
+            project_code: string;
+            /** Name */
+            name: string;
+            /** Site */
+            site?: string | null;
+            /** Bu */
+            bu?: string | null;
+            /** Process */
+            process?: string | null;
+            /** Family */
+            family?: string | null;
+            /** Model */
+            model?: string | null;
+            /** Description */
+            description?: string | null;
+        };
+        /**
+         * WiSetProjectOut
+         * @description WI 專案輸出（含 id / items list / timestamps）。
+         */
+        WiSetProjectOut: {
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** Project Code */
+            project_code: string;
+            /** Name */
+            name: string;
+            /** Site */
+            site: string | null;
+            /** Bu */
+            bu: string | null;
+            /** Process */
+            process: string | null;
+            /** Family */
+            family: string | null;
+            /** Model */
+            model: string | null;
+            /** Description */
+            description: string | null;
+            /** Status */
+            status: string;
+            /** Created By */
+            created_by: string;
+            /** Items */
+            items?: components["schemas"]["WiSetItemOut"][];
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /**
+             * Updated At
+             * Format: date-time
+             */
+            updated_at: string;
+        };
+        /**
+         * WiSetProjectUpdate
+         * @description PUT /wi-set-projects/{id} body（全選填）。
+         */
+        WiSetProjectUpdate: {
+            /** Project Code */
+            project_code?: string | null;
+            /** Name */
+            name?: string | null;
+            /** Site */
+            site?: string | null;
+            /** Bu */
+            bu?: string | null;
+            /** Process */
+            process?: string | null;
+            /** Family */
+            family?: string | null;
+            /** Model */
+            model?: string | null;
+            /** Description */
+            description?: string | null;
+            /** Status */
+            status?: string | null;
+        };
+        /** WorksheetCreateIn */
+        WorksheetCreateIn: {
+            /** Model Label */
+            model_label?: string | null;
+            /** Analyst */
+            analyst?: string | null;
+        };
+        /** WorksheetCreateOut */
+        WorksheetCreateOut: {
+            /**
+             * Worksheet Id
+             * Format: uuid
+             */
+            worksheet_id: string;
+            /** Version No */
+            version_no: string;
+            /** Status */
+            status: string;
         };
         /** WorksheetReadOut */
         WorksheetReadOut: {
@@ -1174,11 +2572,35 @@ export interface components {
             }[];
             /** Total Tmu */
             total_tmu: number;
+            /** Normal Seconds */
+            normal_seconds: number;
+            /** Allowance Percent */
+            allowance_percent?: number | null;
+            /** Standard Seconds */
+            standard_seconds?: number | null;
         };
         /** WorksheetSaveIn */
         WorksheetSaveIn: {
             /** Rows */
             rows?: components["schemas"]["WiRowSaveIn"][];
+            /** Allowance Percent */
+            allowance_percent?: number | null;
+        };
+        /** WorksheetSummaryOut */
+        WorksheetSummaryOut: {
+            /**
+             * Worksheet Id
+             * Format: uuid
+             */
+            worksheet_id: string;
+            /** Version No */
+            version_no: string;
+            /** Status */
+            status: string;
+            /** Analyst */
+            analyst: string | null;
+            /** Model Label */
+            model_label: string | null;
         };
         /** XSlot */
         XSlot: {
@@ -1189,6 +2611,29 @@ export interface components {
              * @default 0
              */
             x_seconds: number;
+            /** Repeat Count */
+            repeat_count?: number | null;
+            manual_override?: components["schemas"]["ManualOverride"] | null;
+        };
+        /**
+         * ReorderRequest
+         * @description PUT /motion-modules/reorder body。
+         *
+         *     ordered_ids: 前端期望的新排序（UUID 字串清單）。
+         *     本 iteration 不持久化至 DB（motion_modules 無 seq_no 欄位）；
+         *     前端在 local state 管理顯示順序。
+         */
+        ddm_v2__schemas__v2__motion_module__ReorderRequest: {
+            /** Ordered Ids */
+            ordered_ids: string[];
+        };
+        /**
+         * ReorderRequest
+         * @description PUT /wi-set-projects/{id}/items/reorder body。
+         */
+        ddm_v2__schemas__v2__wi_set__ReorderRequest: {
+            /** Ordered Ids */
+            ordered_ids: string[];
         };
     };
     responses: never;
@@ -1518,10 +2963,47 @@ export interface operations {
             };
         };
     };
+    retire_worksheet_api_v2_worksheets__worksheet_id__retire_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                worksheet_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     list_vocab_api_v2_vocab_get: {
         parameters: {
             query?: {
                 kind?: string | null;
+                q?: string | null;
+                limit?: number | null;
+                offset?: number;
+                include_inactive?: boolean;
             };
             header?: never;
             path?: never;
@@ -1827,6 +3309,506 @@ export interface operations {
             };
         };
     };
+    list_modules_api_v2_motion_modules_get: {
+        parameters: {
+            query?: {
+                q?: string | null;
+                scope?: string | null;
+                category?: string | null;
+                status?: string | null;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MotionModuleResponse"][];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    create_module_api_v2_motion_modules_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["MotionModuleCreate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MotionModuleResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_module_api_v2_motion_modules__module_id__get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                module_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MotionModuleResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    update_module_api_v2_motion_modules__module_id__put: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                module_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["MotionModuleUpdate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MotionModuleResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    delete_module_api_v2_motion_modules__module_id__delete: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                module_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    reorder_modules_api_v2_motion_modules_reorder_put: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ddm_v2__schemas__v2__motion_module__ReorderRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    clone_module_api_v2_motion_modules__module_id__clone_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                module_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MotionModuleResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    publish_version_api_v2_motion_modules__module_id__publish_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                module_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["PublishRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MotionModuleVersionResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    create_version_from_rows_api_v2_motion_modules__module_id__versions_from_rows_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                module_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["VersionFromRowsRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MotionModuleVersionResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    update_module_row_api_v2_motion_modules__module_id__rows__row_index__put: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                module_id: string;
+                row_index: number;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ModuleRowIn"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MotionModuleVersionResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    delete_module_row_api_v2_motion_modules__module_id__rows__row_index__delete: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                module_id: string;
+                row_index: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MotionModuleVersionResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    reorder_module_rows_api_v2_motion_modules__module_id__rows_reorder_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                module_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["RowsReorderRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MotionModuleVersionResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    promote_module_api_v2_motion_modules__module_id__promote_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                module_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+            /** @description Successful Response */
+            501: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+        };
+    };
+    get_versions_api_v2_motion_modules__module_id__versions_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                module_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MotionModuleVersionResponse"][];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    instantiate_to_worksheet_api_v2_worksheets__worksheet_id__rows_from_module_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                worksheet_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["FromModuleRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["InstantiateResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     wi_preview_api_v2_worksheets__worksheet_id__export_wi_preview_get: {
         parameters: {
             query?: never;
@@ -1942,6 +3924,37 @@ export interface operations {
                     "application/json": {
                         [key: string]: unknown;
                     };
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    export_report_xlsx_api_v2_worksheets__worksheet_id__export_report_xlsx_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                worksheet_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
                 };
             };
             /** @description Validation Error */
@@ -2138,7 +4151,76 @@ export interface operations {
             };
         };
     };
+    submit_import_api_v2_imports__import_id__submit_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                import_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["SubmitIn"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SubmitOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     list_rule_sets_api_v2_rule_sets_get: {
+        parameters: {
+            query?: {
+                /** @description 只回 published+active（供 UI 下拉；ADR-023 §3.4 規則 2） */
+                selectable?: boolean;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    }[];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_active_api_v2_rule_sets_active_get: {
         parameters: {
             query?: never;
             header?: never;
@@ -2155,7 +4237,7 @@ export interface operations {
                 content: {
                     "application/json": {
                         [key: string]: unknown;
-                    }[];
+                    };
                 };
             };
         };
@@ -2302,6 +4384,72 @@ export interface operations {
             };
         };
     };
+    activate_api_v2_rule_sets__code__activate_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                code: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    retire_api_v2_rule_sets__code__retire_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                code: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     list_users_api_v2_admin_users_get: {
         parameters: {
             query?: never;
@@ -2377,6 +4525,833 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["AppUserOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_sites_api_v2_sites_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SiteOut"][];
+                };
+            };
+        };
+    };
+    list_products_api_v2_products_get: {
+        parameters: {
+            query?: {
+                site_id?: string | null;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProductOut"][];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    create_product_api_v2_products_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ProductIn"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProductOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    update_product_api_v2_products__product_id__patch: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                product_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ProductPatch"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProductOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_skus_api_v2_skus_get: {
+        parameters: {
+            query?: {
+                product_id?: string | null;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SkuOut"][];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    create_sku_api_v2_skus_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["SkuIn"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SkuOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    update_sku_api_v2_skus__sku_id__patch: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                sku_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["SkuPatch"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SkuOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_worksheets_api_v2_skus__sku_id__worksheets_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                sku_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["WorksheetSummaryOut"][];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    create_worksheet_api_v2_skus__sku_id__worksheets_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                sku_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["WorksheetCreateIn"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["WorksheetCreateOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    search_api_api_v2_search_get: {
+        parameters: {
+            query: {
+                q: string;
+                types?: string[];
+                rule_set_id?: string | null;
+                limit?: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_synonyms_api_v2_rule_sets__code__synonyms_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                code: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    }[];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    create_synonym_api_v2_rule_sets__code__synonyms_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                code: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["SynonymIn"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    delete_synonym_api_v2_rule_sets__code__synonyms__syn_id__delete: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                code: string;
+                syn_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    nl_draft_api_v2_worksheets_nl_draft_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["NLDraftIn"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_audit_log_api_v2_audit_log_get: {
+        parameters: {
+            query?: {
+                /** @description 精確比對 entity_type */
+                entity_type?: string | null;
+                /** @description 精確比對 entity_id */
+                entity_id?: string | null;
+                /** @description 精確比對員工編號 */
+                actor?: string | null;
+                /** @description 精確比對 action（approve/promote/publish/retire…） */
+                action?: string | null;
+                /** @description created_at >= from_dt */
+                from_dt?: string | null;
+                /** @description created_at <= to_dt */
+                to_dt?: string | null;
+                /** @description 廠區過濾（impl-06d）：僅對 entity_type='process_version' 套用，其他 entity_type 不受影響。approver 傳自己廠區；admin 不傳查全域。 */
+                site_id?: string | null;
+                /** @description 每頁筆數（最大 200） */
+                limit?: number;
+                /** @description 跳過筆數 */
+                offset?: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuditLogListOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_cases_api_v2_cases_get: {
+        parameters: {
+            query?: {
+                status?: string | null;
+                site_id?: string | null;
+                limit?: number;
+                offset?: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CaseListOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_projects_api_v2_wi_set_projects_get: {
+        parameters: {
+            query?: {
+                status?: string | null;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["WiSetProjectOut"][];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    create_project_api_v2_wi_set_projects_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["WiSetProjectCreate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["WiSetProjectOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_project_api_v2_wi_set_projects__project_id__get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                project_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["WiSetProjectOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    update_project_api_v2_wi_set_projects__project_id__put: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                project_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["WiSetProjectUpdate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["WiSetProjectOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    delete_project_api_v2_wi_set_projects__project_id__delete: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                project_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    add_item_api_v2_wi_set_projects__project_id__items_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                project_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["WiSetItemCreate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["WiSetItemOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    remove_item_api_v2_wi_set_projects__project_id__items__item_id__delete: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                project_id: string;
+                item_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    reorder_items_api_v2_wi_set_projects__project_id__items_reorder_put: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                project_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ddm_v2__schemas__v2__wi_set__ReorderRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    duplicate_project_api_v2_wi_set_projects__project_id__duplicate_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                project_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["WiSetProjectOut"];
                 };
             };
             /** @description Validation Error */

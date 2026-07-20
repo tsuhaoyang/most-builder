@@ -168,11 +168,11 @@ async def submit_to_worksheet(
             from ddm_v2.models.v2.rule_set import RuleSet as RuleSetModel
             rs_row = await session.get(RuleSetModel, ws.default_rule_set_id)
     if rs_row is None:
-        # fallback: 取最新建立的 rule_set
-        from ddm_v2.models.v2.rule_set import RuleSet as RuleSetModel
-        rs_row = (await session.execute(
-            select(RuleSetModel).order_by(RuleSetModel.created_at.desc()).limit(1)
-        )).scalar_one()
+        # ADR-023 §3.5：fallback ＝ **目前 active**，與 catalog/worksheet 同一條路。
+        # 舊版取「最新建立的 rule_set」會抓到剛 clone 出來的未發布 draft
+        # （D1 的 clone-draft 自動命名讓這條路更容易被踩），屬靜默降級。
+        from ddm_v2.services.v2.rule_set_service import get_active_rule_set
+        rs_row = await get_active_rule_set(session)
 
     # ── 4. 目前 worksheet 最大 seq_no ──
     max_seq_result = (await session.execute(

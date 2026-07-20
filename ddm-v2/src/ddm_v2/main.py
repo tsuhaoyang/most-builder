@@ -17,6 +17,7 @@ from fastapi import FastAPI, Request, status
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, JSONResponse, RedirectResponse
 from fastapi.staticfiles import StaticFiles
+from sqlalchemy.exc import IntegrityError
 
 # v2 定點重建路由
 from ddm_v2.api.routes.v2.admin_users import router as v2_admin_router
@@ -45,6 +46,7 @@ from ddm_v2.exceptions import (
     ValidationError,
 )
 from ddm_v2.schemas.common import ErrorDetail, ErrorResponse
+from ddm_v2.services.v2.rule_set_service import NoActiveRuleSet
 from ddm_v2.settings import Settings, get_settings
 
 logger = logging.getLogger(__name__)
@@ -190,6 +192,32 @@ def _register_exception_handlers(app: FastAPI) -> None:
             status_code=status.HTTP_401_UNAUTHORIZED,
             content=ErrorResponse(error=ErrorDetail(code="UNAUTHORIZED", message=exc.message, detail=exc.detail)).model_dump(),
         )
+
+    @app.exception_handler(NoActiveRuleSet)
+    async def no_active_rule_set_handler(request: Request, exc: NoActiveRuleSet) -> JSONResponse:
+        """ADR-023 §3.5：無 active rule-set＝系統設定錯誤（非使用者錯誤）→ 500，不得靜默 fallback。"""
+        return JSONResponse(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            content=ErrorResponse(error=ErrorDetail(code="NO_ACTIVE_RULE_SET", message=str(exc))).model_dump(),
+        )
+
+    @app.exception_handler(IntegrityError)
+    async def integrity_error_handler(request: Request, exc: IntegrityError) -> JSONResponse:
+        """併發 activate 的敗方（撞 uq_rule_sets_single_active）→ 409 可重試，而非裸 500。
+
+        ADR-023 §3.2：partial unique index 是「恆有且僅有一個 active」的 DB 防線；
+        它被觸發代表另一交易剛搶先啟用，屬可重試的衝突，不是伺服器故障。
+        其他 IntegrityError 維持既有 500 語意（不吞錯）。
+        """
+        if "uq_rule_sets_single_active" in str(exc.orig):
+            return JSONResponse(
+                status_code=status.HTTP_409_CONFLICT,
+                content=ErrorResponse(error=ErrorDetail(
+                    code="RULE_SET_ACTIVATE_CONFLICT",
+                    message="另一個規則版本剛被啟用，請重新整理後再試",
+                )).model_dump(),
+            )
+        raise exc
 
     @app.exception_handler(DomainError)
     async def domain_error_handler(request: Request, exc: DomainError) -> JSONResponse:

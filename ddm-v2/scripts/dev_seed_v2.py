@@ -15,6 +15,7 @@ from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 import ddm_v2.models.v2 as M
 from ddm_v2.seed.v2.rule_set_seed import seed_rule_set_factory_v1
 from ddm_v2.seed.v2.rule_set_seed_v2 import seed_rule_set_factory_v2
+from ddm_v2.services.v2.rule_set_service import activate as activate_rule_set
 
 # 固定 UUID（demo 可引用）
 SITE = uuid.UUID("11111111-1111-1111-1111-111111111111")
@@ -44,6 +45,27 @@ async def main() -> None:
             print("seeded rule_set:", rs.code)
         else:
             print("rule_set exists:", rs.code)
+
+        # ADR-023 §3.3 規則 3 / §3.5：治理旗標由本編排腳本設定（值本身仍由 seed 模組權威）。
+        # - V1/V2 皆走 import_v3_dictionary → seed 的認證路徑 → provenance='certified_import'
+        # - V2 為 active（ADR-014 值權威）；V1 保持 published + inactive（回放版本）
+        # 全新 DB 時 migration 的資料遷移跑在 seed 之前（當時無資料），故此處必須補設，
+        # 否則新環境會沒有 active rule-set。
+        for r in (rs_v1, rs):
+            # 守衛式：只補未標記者，不覆寫營運端可能已調整的血緣（與下方 is_active 對稱）
+            if r.provenance != "certified_import":
+                r.provenance = "certified_import"
+                print("  provenance=certified_import:", r.code)
+        await s.flush()
+        existing_active = (await s.execute(
+            select(M.RuleSet).where(M.RuleSet.is_active.is_(True)))).scalar_one_or_none()
+        if existing_active is None:
+            # 走正規 activate()（含 published 前置＋validate_complete＋audit log），
+            # 不直接寫 is_active——繞過前置檢查等於在 seed 開後門。
+            await activate_rule_set(s, rs.code, actor="dev_seed")
+            print("activated rule_set:", rs.code)
+        else:
+            print("active rule_set exists:", existing_active.code)
 
         async def ensure(model, pk, **kw):
             obj = await s.get(model, pk)
