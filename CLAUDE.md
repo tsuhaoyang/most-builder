@@ -42,11 +42,13 @@ PYTHONPATH=src .venv/bin/python scripts/dev_seed_templates.py  # motion template
 PYTHONPATH=src .venv/bin/python scripts/dev_seed_30rows.py     # (optional) 30 sample rows
 
 # Run (single server, frontend + API same origin)
-PYTHONPATH=src .venv/bin/python scripts/preview_server.py      # http://localhost:8099
+PYTHONPATH=src .venv/bin/python scripts/preview_server.py      # http://127.0.0.1:8099
+# ⚠️ 只綁 loopback：本檔以 AUTH_DEV_USER=IEC141289 免認證運作，任何連得到的人都是 admin。
+#    要給同事看 demo 才顯式 DDM_PREVIEW_HOST=0.0.0.0（ADR-023 D7b）。
 
-# Tests
-PYTHONPATH=src pytest                          # unit only (no DB needed)
-PYTHONPATH=src DATABASE_URL=... pytest         # unit + integration
+# Tests（unit 與 integration 必須分開跑：兩邊有同名檔案，一起跑會 basename 衝突）
+PYTHONPATH=src pytest tests/unit                # unit only (no DB needed)
+PYTHONPATH=src DATABASE_URL=... pytest tests/integration
 PYTHONPATH=src pytest tests/unit/test_most_engine.py::test_name  # single test
 PYTHONPATH=src python scripts/core_logic/run_all.py             # golden-value validation
 
@@ -69,10 +71,17 @@ E2E_BASE_URL=http://127.0.0.1:8099 npx playwright test   # e2e (needs preview_se
 ### Docker
 
 ```bash
-docker compose up -d --build  # starts db + app on :8877; entrypoint auto-runs alembic + seeds admin
-# To expose DB to host (for psql/alembic locally):
-docker compose -f docker-compose.yml -f docker-compose.dev.yml up -d db
+# ⚠️ 一律疊加 dev overlay，否則 db 的主機 port 會被拿掉（見下方陷阱）
+docker compose -f docker-compose.yml -f docker-compose.dev.yml up -d --build
 ```
+
+**陷阱**：`docker-compose.yml` 本身**不發佈** db 的主機 port（那是 `docker-compose.dev.yml`
+的 override）。所以單跑 `docker compose up -d` 會把 db 重建成只有容器內可達，
+**本機的 `pytest tests/integration` 會整批 skip、`psql` 連不上** —— 症狀長得像程式迴歸，
+其實是環境副作用。2026-07-21 已絆倒過一次。
+
+app 綁 `127.0.0.1:8877`（ADR-023 D7b）：gateway 模式無條件信任入站 `X-Username`，
+曝露到 loopback 以外等同零憑證 admin。對外一律前掛 Traefik ForwardAuth。
 
 ## Architecture
 
