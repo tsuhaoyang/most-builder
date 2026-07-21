@@ -49,6 +49,68 @@ const A_REACH = [
   { id: 'a3', max_value: null, index_value: 24, sort_order: 2, is_active: true },
 ]
 
+/** `GET /diff` 回應（D7 / H-1）。預設：有差異、無 clone 紀錄。 */
+function makeDiff(over: Record<string, unknown> = {}) {
+  return {
+    target_code: V1.code,
+    target_status: 'published',
+    base_code: V2.code,
+    base_is_active: true,
+    compared_with_self: false,
+    source_code: null,
+    base_is_source: null,
+    diff: {
+      header: { name_zh: { before: 'MiniMOST 工廠規則 v2', after: 'MiniMOST 工廠規則 v1' } },
+      sections: {
+        g: {
+          added: [{ key: 'g_new', after: { code: 'g_new', base_tmu: 5 } }],
+          removed: [{ key: 'g_old', before: { code: 'g_old', base_tmu: 9 } }],
+          changed: [{
+            key: 'g_grasp',
+            fields: {
+              base_tmu: { before: 6, after: 12 },
+              sentence_text_zh: { before: '抓握', after: '抓取' },
+            },
+          }],
+        },
+      },
+      row_counts: { g: { before: 11, after: 11 }, b: { before: 4, after: 7 } },
+      summary: {
+        added: 1, removed: 1, changed: 1,
+        changed_sections: ['g'], header_changed: ['name_zh'], identical: false,
+      },
+    },
+    ...over,
+  }
+}
+
+/** 區塊 0/0/0，header 只有 name_zh（＝剛 clone 未改任何值的實際形狀）。 */
+const NAME_ONLY_DIFF = makeDiff({
+  diff: {
+    header: { name_zh: { before: 'v2', after: 'v2 (草稿)' } },
+    sections: {},
+    row_counts: { g: { before: 11, after: 11 } },
+    summary: { added: 0, removed: 0, changed: 0, changed_sections: [], header_changed: ['name_zh'], identical: false },
+  },
+})
+
+/** 區塊 0/0/0，但乘數變了 —— 唯一「值全變了卻看不出來」的情境。 */
+const MULTIPLIER_ONLY_DIFF = makeDiff({
+  diff: {
+    header: { multiplier: { before: 1, after: 1.05 } },
+    sections: {},
+    row_counts: { g: { before: 11, after: 11 } },
+    summary: { added: 0, removed: 0, changed: 0, changed_sections: [], header_changed: ['multiplier'], identical: false },
+  },
+})
+
+const IDENTICAL_DIFF = makeDiff({
+  diff: {
+    header: {}, sections: {}, row_counts: {},
+    summary: { added: 0, removed: 0, changed: 0, changed_sections: [], header_changed: [], identical: true },
+  },
+})
+
 interface Captured { method: string; url: string; body: unknown }
 
 /**
@@ -60,6 +122,8 @@ async function setup(page: Page, opts: {
   withRetired?: boolean
   /** DELETE 回 409 RULE_SET_IN_USE（帶各表引用筆數）。 */
   deleteInUse?: boolean
+  /** `GET /diff` 的回應覆寫；'error' → 500（模擬取不到差異）。 */
+  diff?: Record<string, unknown> | 'error'
 } = {}) {
   const writes: Captured[] = []
   const state = { cloned: false, deleted: false, unretired: false }
@@ -83,6 +147,7 @@ async function setup(page: Page, opts: {
       state.cloned = true
       return json({ code: DRAFT.code, name_zh: DRAFT.name_zh })
     }
+    if (url.includes('/publish') && method === 'POST') return json({ code: DRAFT.code, status: 'published' })
     if (url.includes('/activate') && method === 'POST') return json({ ok: true })
     // unretire 要先比對（/retire 是它的子字串）
     if (url.includes('/unretire') && method === 'POST') {
@@ -107,6 +172,12 @@ async function setup(page: Page, opts: {
     }
 
     if (url.includes('/api/v2/rule-sets/active')) return json({ id: V2.id, code: V2.code, name_zh: V2.name_zh })
+
+    // 版本差異（D7 / H-1）
+    if (url.includes('/diff')) {
+      if (opts.diff === 'error') return json({ detail: '差異服務暫時無法使用' }, 500)
+      return json(opts.diff ?? makeDiff())
+    }
     if (url.includes('/synonyms')) return json([
       { id: 's1', parameter: 'G', option_code: 'g_grasp', synonym_raw: '握住', synonym_norm: '握住', priority: 1 },
     ])
@@ -567,5 +638,201 @@ test.describe('§D4-B 反向操作（D3b）', () => {
     await expect(page.getByTestId(`dict-version-${V1.code}`).getByRole('button', { name: '刪除' })).toHaveCount(0)
     await expect(page.getByTestId(`dict-version-${V2.code}`).getByRole('button', { name: '刪除' })).toHaveCount(0)
     await expect(page.getByTestId(`dict-version-${RETIRED.code}`).getByRole('button', { name: '刪除' })).toHaveCount(0)
+  })
+})
+
+// ── D8：發布/啟用前的版本差異（H-1 覆核者資訊） ────────────────────
+test.describe('§D8 版本差異', () => {
+  test('D8-1: 發布確認框內嵌 summary，並標明比較基準 base_code', async ({ page }) => {
+    const writes = await setup(page, { withDraft: true })
+    await openDictionary(page)
+    await page.getByTestId(`dict-version-${DRAFT.code}`).getByRole('button', { name: '發布' }).click()
+
+    const dlg = page.getByTestId('dict-confirm-dialog')
+    await expect(dlg).toBeVisible()
+    const sum = dlg.getByTestId('diff-summary')
+    await expect(sum).toBeVisible()
+    // 新增/刪除/變更筆數
+    await expect(sum.getByText('新增')).toBeVisible()
+    await expect(sum.getByText('刪除')).toBeVisible()
+    await expect(sum.getByText('變更')).toBeVisible()
+    // 受影響區塊以中文顯示
+    await expect(sum.getByText(/G 取得控制/)).toBeVisible()
+    // 必須標明比較基準
+    await expect(dlg.getByTestId('diff-view').getByText(V2.code, { exact: true }).first()).toBeVisible()
+    await expect(dlg.getByText(/目前啟用中/)).toBeVisible()
+    // 尚未確認 → 不得已送出
+    expect(writes.filter(w => w.url.includes('/publish'))).toHaveLength(0)
+
+    await dlg.getByRole('button', { name: '確認發布' }).click()
+    await expect(page.getByText('發布成功')).toBeVisible()
+    const pubs = writes.filter(w => w.url.includes('/publish'))
+    expect(pubs).toHaveLength(1)
+    expect(pubs[0].method).toBe('POST')
+    expect(pubs[0].url).toContain(DRAFT.code)
+  })
+
+  test('D8-2: 啟用確認框同時有「不回溯」警語與差異（警語才完整）', async ({ page }) => {
+    await setup(page)
+    await openDictionary(page)
+    await page.getByTestId(`dict-version-${V1.code}`).getByRole('button', { name: '啟用' }).click()
+
+    const dlg = page.getByTestId('dict-confirm-dialog')
+    await expect(dlg.getByText(/不會回溯修正已建立的資料/)).toBeVisible()
+    await expect(dlg.getByTestId('diff-summary')).toBeVisible()
+  })
+
+  test('D8-3: 展開逐欄差異可見前後值，且 TMU 欄標示「影響工時」', async ({ page }) => {
+    await setup(page)
+    await openDictionary(page)
+    await page.getByTestId(`dict-version-${V1.code}`).getByRole('button', { name: '檢視差異' }).click()
+
+    const panel = page.getByTestId('dict-diff-panel')
+    await expect(panel).toBeVisible()
+    const detail = panel.getByTestId('diff-detail')
+    await expect(detail).toBeVisible()
+    // g_grasp 的 base_tmu 6 → 12
+    await expect(detail.getByText('g_grasp')).toBeVisible()
+    await expect(detail.getByText('6', { exact: true })).toBeVisible()
+    await expect(detail.getByText('12', { exact: true })).toBeVisible()
+    // 值欄要被標為影響工時；文案欄不標
+    await expect(detail.getByText('影響工時').first()).toBeVisible()
+    // 整批換掉的區塊：列數 before→after 可見
+    await expect(detail.getByText(/列數 11 → 11/)).toBeVisible()
+  })
+
+  test('D8-4: base_is_source=false → 顯示後端 lineage_note（不自造句）', async ({ page }) => {
+    const note = '比較基準是目前 active 的 V2，但本版是從 V0 clone 出來的——不可全部視為本次改動。'
+    await setup(page, {
+      diff: makeDiff({ source_code: 'MINIMOST_FACTORY_V0', base_is_source: false, lineage_note: note }),
+    })
+    await openDictionary(page)
+    await page.getByTestId(`dict-version-${V1.code}`).getByRole('button', { name: '檢視差異' }).click()
+
+    const warn = page.getByTestId('diff-lineage-warning')
+    await expect(warn).toBeVisible()
+    await expect(warn.getByText(note)).toBeVisible()
+  })
+
+  test('D8-5: source_code=null → 說明無法判斷血緣（不猜成來自 active）', async ({ page }) => {
+    await setup(page)   // 預設 source_code: null
+    await openDictionary(page)
+    await page.getByTestId(`dict-version-${V1.code}`).getByRole('button', { name: '檢視差異' }).click()
+
+    const unknown = page.getByTestId('diff-lineage-unknown')
+    await expect(unknown).toBeVisible()
+    await expect(unknown.getByText(/無法判斷血緣/)).toBeVisible()
+    await expect(page.getByTestId('diff-lineage-warning')).toHaveCount(0)
+  })
+
+  test('D8-6: compared_with_self 與 identical 是不同文案（不得都說「無差異」）', async ({ page }) => {
+    // (a) 本版就是 active → 沒有比較對象
+    await setup(page, { diff: makeDiff({ compared_with_self: true, target_code: V2.code }) })
+    await openDictionary(page)
+    await page.getByTestId(`dict-version-${V2.code}`).getByRole('button', { name: '檢視差異' }).click()
+    const self = page.getByTestId('diff-self')
+    await expect(self).toBeVisible()
+    await expect(self.getByText(/沒有可比較的基準/)).toBeVisible()
+    await expect(page.getByTestId('diff-identical')).toHaveCount(0)
+    const selfText = (await self.textContent()) ?? ''
+    await page.getByTestId('dict-diff-panel').getByRole('button', { name: '關閉' }).last().click()
+
+    // (b) 逐欄相同 → 明說完全相同
+    await setup(page, { diff: IDENTICAL_DIFF })
+    await openDictionary(page)
+    await page.getByTestId(`dict-version-${V1.code}`).getByRole('button', { name: '檢視差異' }).click()
+    const ident = page.getByTestId('diff-identical')
+    await expect(ident).toBeVisible()
+    await expect(ident.getByText(/逐欄比對完全相同/)).toBeVisible()
+    await expect(page.getByTestId('diff-self')).toHaveCount(0)
+
+    // 兩者文案必須不同（都顯示同一句就是空洞通過）
+    const identText = (await ident.textContent()) ?? ''
+    expect(identText.trim()).not.toBe(selfText.trim())
+  })
+
+  test('D8-7: diff 載入失敗 → 顯示錯誤，且確認鈕不可按（不靜默放行）', async ({ page }) => {
+    const writes = await setup(page, { withDraft: true, diff: 'error' })
+    await openDictionary(page)
+    await page.getByTestId(`dict-version-${DRAFT.code}`).getByRole('button', { name: '發布' }).click()
+
+    const dlg = page.getByTestId('dict-confirm-dialog')
+    await expect(dlg.getByTestId('diff-error')).toBeVisible()
+    await expect(dlg.getByText(/無法取得版本差異/)).toBeVisible()
+    // 不得當成「沒有差異」而放行
+    await expect(dlg.getByRole('button', { name: '確認發布' })).toBeDisabled()
+    await expect(dlg.getByTestId('confirm-blocked-reason')).toBeVisible()
+    await expect(dlg.getByTestId('diff-summary')).toHaveCount(0)
+    await expect(dlg.getByTestId('diff-identical')).toHaveCount(0)
+    expect(writes.filter(w => w.url.includes('/publish'))).toHaveLength(0)
+  })
+
+  test('D8-8: 「檢視差異」只對 draft/published 顯示；retired 沒有', async ({ page }) => {
+    await setup(page, { withDraft: true, withRetired: true })
+    await openDictionary(page)
+    for (const code of [DRAFT.code, V1.code, V2.code]) {
+      await expect(page.getByTestId(`dict-version-${code}`).getByRole('button', { name: '檢視差異' })).toBeVisible()
+    }
+    await expect(page.getByTestId(`dict-version-${RETIRED.code}`).getByRole('button', { name: '檢視差異' })).toHaveCount(0)
+  })
+
+  test('D8-9: diff 走 GET /rule-sets/{code}/diff（method 與 URL 契約）', async ({ page }) => {
+    const seen: { method: string; url: string }[] = []
+    await setup(page)
+    // 後註冊者優先：spy 記錄後 fallback 給 setup 的處理器回實際資料
+    await page.route('**/diff*', async route => {
+      seen.push({ method: route.request().method(), url: route.request().url() })
+      await route.fallback()
+    })
+    await openDictionary(page)
+    await page.getByTestId(`dict-version-${V1.code}`).getByRole('button', { name: '檢視差異' }).click()
+    await expect(page.getByTestId('diff-view')).toBeVisible()
+
+    expect(seen.length).toBeGreaterThan(0)
+    expect(seen[0].method).toBe('GET')
+    expect(seen[0].url).toContain(`/api/v2/rule-sets/${V1.code}/diff`)
+  })
+})
+
+// ── D8b：「值未變動」的判準（兩案例互為對照，單獨一個會空洞通過） ──
+test.describe('§D8b 值未變動 vs 乘數變動', () => {
+  test('D8b-1: 區塊 0/0/0 ＋ header 僅 name_zh → 顯示「值未變動」', async ({ page }) => {
+    await setup(page, { diff: NAME_ONLY_DIFF })
+    await openDictionary(page)
+    await page.getByTestId(`dict-version-${V1.code}`).getByRole('button', { name: '檢視差異' }).click()
+
+    const banner = page.getByTestId('diff-values-unchanged')
+    await expect(banner).toBeVisible()
+    await expect(banner.getByText(/僅版本名稱不同/)).toBeVisible()
+    // 不得同時出現乘數警示
+    await expect(page.getByTestId('diff-multiplier-warning')).toHaveCount(0)
+  })
+
+  test('D8b-2: 區塊 0/0/0 ＋ header 含 multiplier → 不得說「值未變動」，且乘數警示可見', async ({ page }) => {
+    await setup(page, { diff: MULTIPLIER_ONLY_DIFF })
+    await openDictionary(page)
+    await page.getByTestId(`dict-version-${V1.code}`).getByRole('button', { name: '檢視差異' }).click()
+
+    const panel = page.getByTestId('dict-diff-panel')
+    // 這是本組的核心：乘數會等比縮放所有 TMU，絕不能宣告「值未變動」
+    await expect(panel.getByTestId('diff-values-unchanged')).toHaveCount(0)
+    await expect(panel.getByText('值未變動')).toHaveCount(0)
+
+    const warn = panel.getByTestId('diff-multiplier-warning')
+    await expect(warn).toBeVisible()
+    await expect(warn.getByText(/等比影響本版所有工時/)).toBeVisible()
+    await expect(warn.getByText(/TMU 乘數/)).toBeVisible()
+    // 逐欄仍看得到 1 → 1.05
+    await expect(panel.getByTestId('diff-detail').getByText('1.05')).toBeVisible()
+  })
+
+  test('D8b-3: 有區塊變更時兩種橫幅都不出現（判準要求區塊零變更）', async ({ page }) => {
+    await setup(page)   // 預設 fixture：g 區塊有增刪改
+    await openDictionary(page)
+    await page.getByTestId(`dict-version-${V1.code}`).getByRole('button', { name: '檢視差異' }).click()
+
+    await expect(page.getByTestId('diff-summary')).toBeVisible()
+    await expect(page.getByTestId('diff-values-unchanged')).toHaveCount(0)
+    await expect(page.getByTestId('diff-multiplier-warning')).toHaveCount(0)
   })
 })

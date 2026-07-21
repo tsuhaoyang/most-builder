@@ -129,6 +129,60 @@ export function describeInUse(err: unknown): string | null {
   return `此草稿已被 ${parts.join('、')}引用，無法刪除。`
 }
 
+// ── 差異（D7 / H-1）─────────────────────────────────────────────────
+
+export interface FieldDelta { before: unknown; after: unknown }
+export interface DiffAdded { key: string; after: Record<string, unknown> }
+export interface DiffRemoved { key: string; before: Record<string, unknown> }
+export interface DiffChanged { key: string; fields: Record<string, FieldDelta> }
+export interface DiffSection {
+  added?: DiffAdded[]
+  removed?: DiffRemoved[]
+  changed?: DiffChanged[]
+}
+export interface DiffSummary {
+  added: number
+  removed: number
+  changed: number
+  changed_sections: string[]
+  header_changed: string[]
+  identical: boolean
+}
+export interface RuleSetDiff {
+  target_code: string
+  target_status: string
+  /** 比較基準＝目前 active 版本；呈現時必須標明。 */
+  base_code: string
+  base_is_active: boolean
+  /** target 本身就是 active → 沒有比較對象（與 identical 不同義）。 */
+  compared_with_self: boolean
+  /** 本版 clone 自哪一版；查不到 clone 紀錄＝null（不得猜成 base）。 */
+  source_code: string | null
+  /** source 是否等於 base；null＝不知道。 */
+  base_is_source: boolean | null
+  /** base_is_source === false 時後端附上的說明（優先顯示，不要自己造句）。 */
+  lineage_note?: string
+  diff: {
+    header: Record<string, FieldDelta>
+    sections: Record<string, DiffSection>
+    row_counts: Record<string, { before: number; after: number }>
+    summary: DiffSummary
+  }
+}
+
+/**
+ * 本版相對目前 active 版本的值差異。
+ *
+ * **前端不自行比對兩份 full**（守則 §7 第 3 條）：差異一律用後端算好的。
+ * 取不到就是取不到——呼叫端必須顯示錯誤，不得當成「無差異」而放行。
+ */
+export const useRuleSetDiff = (code: string | null, enabled = true) =>
+  useQuery({
+    queryKey: ['rule-set-diff', code],
+    queryFn: () => apiGet<RuleSetDiff>(`/api/v2/rule-sets/${encodeURIComponent(code!)}/diff`),
+    enabled: !!code && enabled,
+  })
+
 /** 匯出（ADR-023 §3.6，D3）。回 `PUT /full` 對稱形狀 ＋ schema_version/exported_at。 */
 export const exportRuleSet = (code: string) =>
   apiGet<Record<string, unknown>>(`/api/v2/rule-sets/${encodeURIComponent(code)}/export`)

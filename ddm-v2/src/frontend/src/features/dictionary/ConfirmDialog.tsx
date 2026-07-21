@@ -7,7 +7,7 @@ import { useState, type ReactNode } from 'react'
  * unretire、無 DELETE），強制使用者手打版本 code；一般高衝擊操作（activate）
  * 只需按鈕確認。
  */
-export function ConfirmDialog({ title, body, confirmLabel, tone = 'warn', requireText, busy, error, onCancel, onConfirm }: {
+export function ConfirmDialog({ title, body, confirmLabel, tone = 'warn', requireText, busy, error, blockConfirm, blockReason, onCancel, onConfirm }: {
   title: string
   body: ReactNode
   confirmLabel: string
@@ -16,11 +16,17 @@ export function ConfirmDialog({ title, body, confirmLabel, tone = 'warn', requir
   requireText?: string
   busy?: boolean
   error?: string | null
+  /**
+   * 外部條件不允許確認（例如版本差異尚未取得）。
+   * 差異載入中／失敗時**不得**讓確認鈕可按而假裝沒有差異（守則 §7 第 8 條）。
+   */
+  blockConfirm?: boolean
+  blockReason?: string
   onCancel: () => void
   onConfirm: () => void
 }) {
   const [typed, setTyped] = useState('')
-  const blocked = requireText !== undefined && typed !== requireText
+  const blocked = (requireText !== undefined && typed !== requireText) || !!blockConfirm
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/30 p-4" role="dialog" aria-modal="true">
@@ -42,7 +48,10 @@ export function ConfirmDialog({ title, body, confirmLabel, tone = 'warn', requir
           )}
           {error && <p className="text-sm text-red-600">{error}</p>}
         </div>
-        <div className="flex justify-end gap-2 px-4 py-3 border-t">
+        <div className="flex justify-end items-center gap-2 px-4 py-3 border-t">
+          {blockConfirm && blockReason && (
+            <span className="text-xs text-slate-500 mr-auto" data-testid="confirm-blocked-reason">{blockReason}</span>
+          )}
           <button onClick={onCancel} disabled={busy} className="px-3 py-1 rounded border text-sm">取消</button>
           <button
             onClick={onConfirm} disabled={busy || blocked}

@@ -1,7 +1,8 @@
 import { useMemo, useState, type ReactNode } from 'react'
 import { ConfirmDialog } from './ConfirmDialog'
+import { DiffView } from './DiffView'
 import { canEdit as canEditFn, canPublish as canPublishFn, useMe } from '../../shared/auth/useMe'
-import { describeInUse, exportRuleSet, useRuleSetVersions, useVersionMutations, type RuleSetSummary } from './api'
+import { describeInUse, exportRuleSet, useRuleSetDiff, useRuleSetVersions, useVersionMutations, type RuleSetSummary } from './api'
 
 /**
  * L1：字典版本清單（對照 v3 DictionariesPage 版本區）。
@@ -32,6 +33,8 @@ interface ConfirmState {
   run: () => Promise<unknown>
   /** 把特定錯誤轉成人話（回 null＝沿用一般訊息）。 */
   describeError?: (err: unknown) => string | null
+  /** 內嵌此版本相對 active 的差異；載入中/失敗時擋住確認鈕。 */
+  showDiffFor?: string
 }
 
 const fmtDate = (iso: string | null) =>
@@ -76,6 +79,14 @@ export function VersionList({ onOpen }: { onOpen: (code: string) => void }) {
   const [busy, setBusy] = useState(false)
   const [cErr, setCErr] = useState<string | null>(null)
 
+  const [diffCode, setDiffCode] = useState<string | null>(null)
+
+  // 確認框內嵌的差異（publish/activate）；獨立檢視另有 diffCode
+  const confirmDiff = useRuleSetDiff(confirm?.showDiffFor ?? null)
+  const panelDiff = useRuleSetDiff(diffCode)
+  // 差異未取得（載入中或失敗）→ 不得讓確認鈕可按而假裝沒有差異
+  const diffBlocked = !!confirm?.showDiffFor && (confirmDiff.isLoading || !!confirmDiff.error)
+
   const active = useMemo(() => versions.find(v => v.is_active) ?? null, [versions])
 
   const run = async (label: string, fn: () => Promise<unknown>) => {
@@ -106,6 +117,25 @@ export function VersionList({ onOpen }: { onOpen: (code: string) => void }) {
    * 不碰任何 module/cycle；而 publish 已把 `computed.total_tmu` 寫進 rows JSON 並凍結
    * `rule_set_id`。故誤按後切回去不會修正期間內已落盤的值。
    */
+  /** 發布＝兩人覆核的決定點：必須看得到「被覆核的是什麼」（H-1）。 */
+  const askPublish = (v: RuleSetSummary) => {
+    setCErr(null)
+    setConfirm({
+      label: '發布',
+      title: '發布此字典版本？',
+      tone: 'warn',
+      confirmLabel: '確認發布',
+      showDiffFor: v.code,
+      run: () => publish.mutateAsync(v.code),
+      body: (
+        <>
+          <p>將把 <span className="font-mono">{v.code}</span> 由草稿改為「已發布」。</p>
+          <p className="text-xs text-slate-500">發布後內容即凍結（僅同義詞可再補），但尚不會被新建模採用——要採用需另外按「啟用」。</p>
+        </>
+      ),
+    })
+  }
+
   const askActivate = (v: RuleSetSummary) => {
     setCErr(null)
     setConfirm({
@@ -113,6 +143,7 @@ export function VersionList({ onOpen }: { onOpen: (code: string) => void }) {
       title: '啟用此字典版本？',
       tone: 'warn',
       confirmLabel: '確認啟用',
+      showDiffFor: v.code,
       run: () => activate.mutateAsync(v.code),
       body: (
         <>
@@ -289,7 +320,7 @@ export function VersionList({ onOpen }: { onOpen: (code: string) => void }) {
                     )}
 
                     {v.status === 'draft' && (
-                      <Btn tone="ok" disabled={!canPublish} onClick={() => void run('發布', () => publish.mutateAsync(v.code))}>
+                      <Btn tone="ok" disabled={!canPublish} onClick={() => askPublish(v)}>
                         發布
                       </Btn>
                     )}
@@ -313,6 +344,10 @@ export function VersionList({ onOpen }: { onOpen: (code: string) => void }) {
                       </Btn>
                     )}
 
+                    {(v.status === 'draft' || v.status === 'published') && canEdit && (
+                      <Btn onClick={() => setDiffCode(v.code)}>檢視差異</Btn>
+                    )}
+
                     {/* 匯出為唯讀操作，viewer 亦可用 */}
                     <Btn onClick={() => void doExport(v.code)}>匯出</Btn>
                   </div>
@@ -329,15 +364,50 @@ export function VersionList({ onOpen }: { onOpen: (code: string) => void }) {
       {confirm && (
         <ConfirmDialog
           title={confirm.title}
-          body={confirm.body}
+          body={
+            <>
+              {confirm.body}
+              {confirm.showDiffFor && (
+                <div className="pt-2 border-t mt-2">
+                  <p className="text-sm font-medium mb-1">這次會變動什麼</p>
+                  <DiffView
+                    data={confirmDiff.data}
+                    isLoading={confirmDiff.isLoading}
+                    error={confirmDiff.error}
+                    compact
+                  />
+                </div>
+              )}
+            </>
+          }
           confirmLabel={confirm.confirmLabel}
           tone={confirm.tone}
           requireText={confirm.requireText}
           busy={busy}
           error={cErr}
+          blockConfirm={diffBlocked}
+          blockReason={confirmDiff.isLoading ? '差異載入中，請稍候' : '未能取得版本差異，無法確認'}
           onCancel={() => { setConfirm(null); setCErr(null) }}
           onConfirm={() => void runConfirmed()}
         />
+      )}
+
+      {diffCode && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/30 p-4" role="dialog" aria-modal="true">
+          <div className="bg-white rounded-xl shadow-xl w-full max-w-2xl max-h-full flex flex-col" data-testid="dict-diff-panel">
+            <div className="flex items-center px-4 py-3 border-b">
+              <h3 className="font-medium">版本差異</h3>
+              <span className="ml-2 font-mono text-xs text-slate-400">{diffCode}</span>
+              <button onClick={() => setDiffCode(null)} className="ml-auto text-slate-400 hover:text-slate-700" aria-label="關閉">✕</button>
+            </div>
+            <div className="p-4 overflow-y-auto">
+              <DiffView data={panelDiff.data} isLoading={panelDiff.isLoading} error={panelDiff.error} />
+            </div>
+            <div className="flex justify-end px-4 py-3 border-t">
+              <button onClick={() => setDiffCode(null)} className="px-3 py-1 rounded border text-sm">關閉</button>
+            </div>
+          </div>
+        </div>
       )}
     </div>
   )
