@@ -1,6 +1,8 @@
 """v2 rule-set 編輯/版本化 API（#1）。
 
 版本級：list / active / full / clone-draft / put-full / publish / activate / retire（ADR-023 §3.2）。
+匯出入（D3）：`GET /rule-sets/{code}/export`（＝full ＋ metadata）／`POST /rule-sets/import`
+（只建 draft+manual；§3.6。**認證值權威仍只走 CLI**：`scripts/import_v3_dictionary.py`）。
 選項級（D2）：/rule-sets/{code}/params/{param}/... —— 每參數一組端點，**非泛型**。
 v3 的「一套 PUT /options/{id} 打天下」在 v2 不成立（ADR-023 §2：12 張不同構子表）。
 
@@ -20,7 +22,7 @@ from __future__ import annotations
 from typing import Any
 
 from fastapi import APIRouter, Body, Depends, HTTPException, Query
-from pydantic import BaseModel, ValidationError
+from pydantic import BaseModel, ConfigDict, ValidationError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from ddm_v2.auth.deps import CurrentUser, current_user, require_role
@@ -90,9 +92,55 @@ async def put_full(code: str, full: dict[str, Any] = Body(...), session: AsyncSe
         raise HTTPException(status_code=404, detail=f"rule-set 不存在：{code}")
     except svc.NotEditable as e:
         raise HTTPException(status_code=409, detail=str(e))
-    except BandInvalid as e:
-        # 帶界契約與 PUT /bands 同源（D2 HIGH-2）
+    except (BandInvalid, svc.PayloadInvalid) as e:
+        # 帶界契約與 PUT /bands 同源（D2 HIGH-2）；區塊鍵/欄位型別與 import 同源（D3 HIGH-1/2）
         raise HTTPException(status_code=400, detail=str(e))
+
+
+@router.get("/rule-sets/{code}/export")
+async def export_rule_set(code: str, session: AsyncSession = Depends(get_db_session, scope="function"),
+                          user: CurrentUser = Depends(current_user)) -> dict:
+    """匯出版本（ADR-023 §3.6）。形狀＝`GET /full` ＋ `schema_version/exported_at/exported_by`。
+
+    RBAC 為 current_user（IE 需要看；與 `GET /full` 同級，無值變更風險）。
+    去掉三個 metadata 欄後即為 `PUT /full` 的合法 body——export→離線編輯→import 閉環。
+    """
+    try:
+        return await svc.export_full(session, code, exported_by=user.employee_no)
+    except svc.RuleSetNotFound:
+        raise HTTPException(status_code=404, detail=f"rule-set 不存在：{code}")
+
+
+class ImportIn(BaseModel):
+    # body 直接是 export 形狀（extra 欄位＝各子表），另可帶 new_code / name_zh。
+    model_config = ConfigDict(extra="allow")
+
+    new_code: str | None = None
+    name_zh: str | None = None
+
+
+@router.post("/rule-sets/import")
+async def import_rule_set(payload: ImportIn = Body(...),
+                          session: AsyncSession = Depends(get_db_session, scope="function"),
+                          user: CurrentUser = Depends(require_role("analyst"))) -> dict:
+    """由匯出負載建立新草稿（ADR-023 §3.6）。**只建 draft + manual**。
+
+    schema_version 必填且須為 "1"；缺區塊鍵、必要子表為空、multiplier 非正數或帶界非法
+    → 400（不得靜默建立不完整版本）；new_code 撞既有 code → 409；缺省 code 依 clone-draft
+    同一套自動命名規則。
+
+    回應含 `warnings`：合法但會改變計算路徑的情況（目前唯一一項＝`m_foot` 為空 →
+    `foot_tmu()` 靜默回退 `ladder_tmu()`）必須在匯入當下就講出來。
+    """
+    body = payload.model_dump()
+    new_code = body.pop("new_code", None)
+    name_zh = body.pop("name_zh", None)
+    try:
+        return await svc.import_draft(session, body, new_code, name_zh, actor=user.employee_no)
+    except (svc.PayloadInvalid, BandInvalid) as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    except svc.RuleSetExists:
+        raise HTTPException(status_code=409, detail=f"code 已存在：{new_code}")
 
 
 @router.post("/rule-sets/{code}/publish")

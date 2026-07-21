@@ -19,12 +19,13 @@ from datetime import datetime, timezone
 from typing import Any
 
 from sqlalchemy import delete, func, select, update
+from sqlalchemy.exc import DBAPIError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from ddm_v2.models.v2 import rule_set_tables as rt
 from ddm_v2.models.v2.rule_set import RuleSet
 from ddm_v2.most_engine.providers import load_rule_set_from_db
-from ddm_v2.schemas.v2.rule_set_options import resolve, validate_bands
+from ddm_v2.schemas.v2.rule_set_options import BandInvalid, resolve, validate_bands
 from ddm_v2.services.v2.audit_service import log_audit
 
 
@@ -103,8 +104,34 @@ async def list_rule_sets(session: AsyncSession, selectable: bool = False) -> lis
     ]
 
 
+def _deterministic_order(model: Any) -> list[Any]:
+    """全序的 ORDER BY：`sort_order` → 其餘內容欄 → `id`（D3 code-review MED-2）。
+
+    為什麼不能只用 `sort_order`：`rule_a_bands` 三個 component 共用一張表且各自從 0 起算
+    （`[0..6, 0..3, 0..4]`），`ORDER BY sort_order` 有三向 tie 且無 tiebreaker →
+    `GET /full` / `/export` 的 `a_bands` 順序跨次呼叫不保證相同（API 非決定性），
+    以位置比對的 round-trip 測試也就建立在運氣上。
+
+    為什麼 tiebreaker 不能只加 `id`：子表主鍵是 `uuid4()`，匯入時會重新產生，
+    **跨版本不可比**。只加 id 能修好單一版本內的決定性，卻會讓「來源版本」與
+    「匯入版本」的 tie 群組各自排出不同順序 → round-trip 反而變成隨機紅燈。
+    故 tiebreaker 取**內容欄**（跨版本相同內容 → 相同順序），`id` 只當最後兜底
+    （唯有整列完全相同才會用到，那時順序不可觀測）。
+    """
+    from sqlalchemy import inspect as sa_inspect
+
+    content = [
+        getattr(model, c.key)
+        for c in sa_inspect(model).mapper.column_attrs
+        if c.key not in ("id", "rule_set_id", "sort_order")
+    ]
+    return [model.sort_order, *content, model.id]
+
+
 async def _rows(session: AsyncSession, model: type, rs_id: uuid.UUID) -> list[Any]:
-    return list((await session.execute(select(model).where(model.rule_set_id == rs_id).order_by(model.sort_order))).scalars().all())
+    return list((await session.execute(
+        select(model).where(model.rule_set_id == rs_id).order_by(*_deterministic_order(model))
+    )).scalars().all())
 
 
 async def load_full(session: AsyncSession, code: str) -> dict[str, Any]:
@@ -218,12 +245,214 @@ async def clone_draft(session: AsyncSession, code: str, new_code: str | None, na
     return {"code": new_code, "status": "draft", "provenance": "cloned"}
 
 
+# ══════════════════════════════════════════════════════════════════
+# 匯出／匯入（ADR-023 §3.6 / D3）
+# ══════════════════════════════════════════════════════════════════
+
+EXPORT_SCHEMA_VERSION = "1"
+
+# 匯出負載中「描述這次匯出」而非「描述字典內容」的欄位。
+# 匯入時一律忽略（它們不是 PUT /full 的輸入），round-trip 對稱性以「去掉這三欄即可 PUT」定義。
+EXPORT_METADATA_KEYS = ("schema_version", "exported_at", "exported_by")
+
+# `load_full()` 產出的 12 個子表區塊鍵。**負載必須每一個鍵都在**（值可以是空陣列）。
+# 這條「鍵存在性」檢查與「非空」檢查是兩件事，見 _assert_sections。
+FULL_SECTION_KEYS = (
+    "a_bands", "b", "g", "p_bases", "p_addons", "m_ladder", "m_foot",
+    "m_verbs", "m_rotation", "m_hand", "x", "i",
+)
+
+# 必須**非空**的子表（與 validate_active_options / RuleSetData.validate_complete 的必要集合對齊）。
+REQUIRED_IMPORT_SECTIONS = ("b", "g", "p_bases", "m_ladder", "m_verbs", "x", "i")
+REQUIRED_A_COMPONENTS = ("reach", "twist", "foot")
+
+# 「空表 → 引擎**靜默**改用別的表算」的區塊。空是合法的（V1 本來就沒有 foot 表，
+# 回退是回放相容所需），但必須在匯入當下就講出來，不能等到工時已經低估 40–70% 才發現。
+# 判準是「缺席時引擎是否給顯式錯誤」——p_addons→P_ADDON_UNKNOWN、m_rotation→M_ROTATION_RANGE、
+# m_hand→M_HAND_RANGE 都會報錯，只有 m_foot 是 `rule_set_data.foot_tmu` 靜默回退 `ladder_tmu`。
+SILENT_FALLBACK_SECTIONS: dict[str, str] = {
+    "m_foot": "m_foot 為空：腳步動作將回退至距離階梯表計算",
+}
+
+
+class PayloadInvalid(ValueError):
+    """負載結構/欄位不合法（缺區塊鍵、欄位缺漏、型別錯誤、multiplier 非正數）→ 400。
+
+    ADR-023 §3.6：缺子表**不得**靜默建立不完整版本（那會產生一個 publish 時才炸、
+    或更糟——activate 後才在 runtime 靜默算錯值的版本，見 SILENT_FALLBACK_SECTIONS）。
+    """
+
+
+async def export_full(session: AsyncSession, code: str, exported_by: str | None) -> dict[str, Any]:
+    """匯出一個版本（ADR-023 §3.6）。
+
+    形狀＝`load_full()` ＋ 三個 metadata 欄。**刻意不輸出 minimost_ai_dictionary_v1.json 格式**：
+    那份 JSON 是**輸入**（JSON → import_v3_dictionary.py → seed → DB），反向產生會製造
+    第二個值權威來源（ADR-014）。
+    """
+    full = await load_full(session, code)
+    full["schema_version"] = EXPORT_SCHEMA_VERSION
+    full["exported_at"] = datetime.now(timezone.utc).isoformat()
+    full["exported_by"] = exported_by
+    return full
+
+
+def _assert_sections(payload: dict[str, Any], *, source: str) -> None:
+    """區塊層驗證：**鍵存在性** ＋ 必要區塊非空（D3 code-review HIGH-1）。
+
+    兩層之所以要分開：`load_full()` 對空表也會輸出 `"m_foot": []`，所以
+    「鍵在但陣列空」＝來源版本真的沒有那張表（例如 V1），是**合法**的匯入；
+    而「鍵整個不見」＝負載被手動編輯或工具 round-trip 弄丟了一個區塊，
+    必須擋下——否則 m_foot 掉了會讓 `foot_tmu()` 靜默回退 `ladder_tmu()`
+    （≤10cm 的腳步動作低估 40–70%），且 `validate_complete()` 與
+    `validate_active_options()` 都不檢查 m_foot，publish/activate 全程無警告。
+    """
+    absent = [k for k in FULL_SECTION_KEYS if k not in payload]
+    if absent:
+        raise PayloadInvalid(
+            f"{source}負載缺少區塊：{', '.join(absent)}（疑似手動編輯遺漏；"
+            f"若該表本來就沒有資料請給空陣列 []，不要整個刪掉——"
+            f"缺 m_foot 會讓腳步動作靜默改用距離階梯表計算）"
+        )
+    empty = [k for k in REQUIRED_IMPORT_SECTIONS if not payload.get(k)]
+    a_rows = payload.get("a_bands") or []
+    empty += [
+        f"a_bands[{c}]" for c in REQUIRED_A_COMPONENTS
+        if not [r for r in a_rows if isinstance(r, dict) and r.get("component") == c]
+    ]
+    if empty:
+        raise PayloadInvalid(
+            f"{source}負載的必要子表是空的：{', '.join(empty)}（不得建立不完整版本）"
+        )
+
+
+def _assert_multiplier(payload: dict[str, Any]) -> None:
+    """`system_tmu_multiplier` 會等比縮放該版本**每一個** TMU，故型別與正負都要擋。
+
+    未驗證時 `"abc"` → asyncpg DataError 500；`0`/負數則會被接受並靜默把整個版本
+    的工時歸零或反號（D3 code-review MED-1）。
+    """
+    mult = payload.get("multiplier")
+    if mult is None:
+        return
+    if isinstance(mult, bool) or not isinstance(mult, (int, float)) or mult <= 0:
+        raise PayloadInvalid(
+            f"multiplier 必須是正數，收到 {mult!r}（它會等比縮放此版本的所有 TMU）"
+        )
+
+
+def payload_warnings(payload: dict[str, Any]) -> list[str]:
+    """建立版本時要對使用者講出來的「合法但會改變計算路徑」情況。"""
+    return [msg for key, msg in SILENT_FALLBACK_SECTIONS.items() if not payload.get(key)]
+
+
+def _validate_payload(payload: dict[str, Any], *, source: str) -> None:
+    """區塊 → multiplier → 帶界，一組驗證供 import 與 `PUT /full` 共用。
+
+    帶界驗證（`validate_full_bands`）必須包在型別 guard 內：手動編輯最常見的錯誤
+    （帶列缺 `max_cm` / 缺 `revolutions` / 帶列根本不是 dict）是在 `validate_bands`
+    **內部**拋 KeyError/TypeError，不是在 `_insert_children`——D3 初版把 guard 掛在
+    後者，導致 6 種畸形負載有 5 種回 500（code-review HIGH-2）。
+    """
+    _assert_sections(payload, source=source)
+    _assert_multiplier(payload)
+    try:
+        validate_full_bands(payload)
+    except BandInvalid:
+        raise  # 帶界契約違反：訊息已經是給人看的，原樣往上（端點對映 400）
+    except (KeyError, TypeError, AttributeError, IndexError) as e:
+        raise PayloadInvalid(f"{source}負載的帶（band）列欄位不合法：{e!r}") from e
+
+
+def _assert_importable(payload: dict[str, Any]) -> None:
+    got = payload.get("schema_version")
+    if got is None:
+        raise PayloadInvalid(
+            f"匯入負載缺 schema_version（本系統接受 '{EXPORT_SCHEMA_VERSION}'）"
+        )
+    # 型別也要嚴格（不做 str() 寬鬆比對）：契約寫的是字串 "1"，JSON number 1 是另一種型別，
+    # 靜默接受等於把版本協商變成猜測。
+    if not isinstance(got, str) or got != EXPORT_SCHEMA_VERSION:
+        raise PayloadInvalid(
+            f"不支援的 schema_version={got!r}，本系統只接受 '{EXPORT_SCHEMA_VERSION}'"
+        )
+    _validate_payload(payload, source="匯入")
+
+
+async def import_draft(
+    session: AsyncSession,
+    payload: dict[str, Any],
+    new_code: str | None,
+    name_zh: str | None,
+    actor: str | None = None,
+) -> dict[str, Any]:
+    """由匯出負載建立新草稿（ADR-023 §3.6）。
+
+    **只建 `status='draft', provenance='manual'`**——匯入來源是離線編輯過的檔案，
+    既非認證匯入（那條路只走 `scripts/import_v3_dictionary.py` ＋ git ＋ CI Gate 3），
+    也不是 clone。要上線必須再走 publish/activate 的既有把關。
+
+    驗證順序：schema_version → 區塊鍵/必要子表非空 → multiplier → 帶界（與 `PUT /full`
+    同一組 `_validate_payload`，否則 import 會成為繞過帶界契約的後門）→ code 查重 → 才寫入。
+    """
+    _assert_importable(payload)
+
+    src_code = str(payload.get("code") or "IMPORTED")
+    if new_code is None:
+        new_code = await _auto_draft_code(session, src_code)
+    elif await _exists(session, new_code):
+        raise RuleSetExists(new_code)
+
+    multiplier = payload.get("multiplier")
+    rs = RuleSet(
+        id=uuid.uuid4(),
+        code=new_code,
+        name_zh=name_zh or payload.get("name_zh") or new_code,
+        status="draft",
+        system_tmu_multiplier=multiplier if multiplier is not None else 1,
+        is_active=False,
+        provenance="manual",
+    )
+    session.add(rs)
+    await session.flush()
+    try:
+        _insert_children(session, rs.id, payload)
+    except (KeyError, TypeError, AttributeError, ValueError) as e:
+        # 欄位缺漏/型別錯誤：明確回 400 並附欄位名，不得讓它變成 500，也不得補預設值蒙混。
+        raise PayloadInvalid(f"匯入負載欄位不合法：{e!r}") from e
+    try:
+        # flush 單獨包：這裡只可能是 DB 層的型別/約束錯（例如 sort:"x" → DataError），
+        # 上面那個 guard 不含 flush，才不會把真正的內部 TypeError 誤報成使用者輸入問題（LOW-1）。
+        await session.flush()
+    except DBAPIError as e:
+        raise PayloadInvalid(f"匯入負載欄位型別不合法（資料庫拒收）：{e.orig!r}") from e
+    await log_audit(
+        session,
+        entity_type="rule_set",
+        entity_id=rs.id,
+        action="import",
+        from_status=None,
+        to_status="draft",
+        actor=actor or "unknown",
+        payload={"code": new_code, "source_code": src_code, "provenance": "manual"},
+    )
+    await session.flush()
+    return {
+        "code": new_code, "status": "draft", "provenance": "manual",
+        # 合法但會改變計算路徑的情況要在匯入當下講出來（HIGH-1 第 3 點）
+        "warnings": payload_warnings(payload),
+    }
+
+
 async def replace_children(session: AsyncSession, code: str, full: dict[str, Any]) -> dict[str, Any]:
     # ADR-023 §3.3 規則 3 明文：「任何選項級寫入**或 PUT /full**一律 409」——
     # 故整份替換與選項級 CRUD 共用同一 gate（certified_import 也擋）。
     rs = await assert_editable(session, code)
-    # HIGH-2：帶界契約與 PUT /bands 同源，PUT /full 不得繞過（見 validate_full_bands）
-    validate_full_bands(full)
+    # D2 HIGH-2：帶界契約與 PUT /bands 同源，PUT /full 不得繞過（見 validate_full_bands）。
+    # D3 HIGH-1/HIGH-2：區塊鍵存在性、multiplier 正數、帶列型別 guard 與 import 同源——
+    # 這條路徑同樣是「建立版本內容」，掉了 m_foot 一樣會靜默回退 ladder。
+    # 既有呼叫端（前端字典 UI 與 4 支整合測試）一律送完整 `GET /full` 負載，故不破壞既有契約。
+    _validate_payload(full, source="")
     if "name_zh" in full and full["name_zh"]:
         rs.name_zh = full["name_zh"]
     if "multiplier" in full and full["multiplier"] is not None:
@@ -232,8 +461,16 @@ async def replace_children(session: AsyncSession, code: str, full: dict[str, Any
                   rt.RuleMLadderBand, rt.RuleMFootBand, rt.RuleMVerb, rt.RuleMRotationBand, rt.RuleMHandBand, rt.RuleXOption, rt.RuleIOption):
         await session.execute(delete(model).where(model.rule_set_id == rs.id))
     await session.flush()
-    _insert_children(session, rs.id, full)
-    await session.flush()
+    try:
+        _insert_children(session, rs.id, full)
+    except (KeyError, TypeError, AttributeError, ValueError) as e:
+        raise PayloadInvalid(f"負載欄位不合法：{e!r}") from e
+    try:
+        await session.flush()
+    except DBAPIError as e:
+        raise PayloadInvalid(f"負載欄位型別不合法（資料庫拒收）：{e.orig!r}") from e
+    # 回應維持 `load_full()` 形狀（export/PUT 對稱性的地基），故 warnings 不併進本回應；
+    # 空 m_foot 的提示由 import 端點負責（該處是「新建版本」的入口）。
     return await load_full(session, code)
 
 

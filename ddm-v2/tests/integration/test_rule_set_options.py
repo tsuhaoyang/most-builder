@@ -457,12 +457,17 @@ async def test_clone_preserves_every_column_of_every_child_table(client, db_sess
 
     from ddm_v2.models.v2 import rule_set_tables as rt
     from ddm_v2.models.v2.rule_set import RuleSet
+    from ddm_v2.services.v2 import rule_set_service as svc
 
     async def _rows(model, code: str) -> list:
+        # 決定性排序（D3 code-review MED-2）：只用 sort_order 的話，rule_a_bands 三個
+        # component 共用一張表、各自從 0 起算會產生三向 tie，來源與 clone 兩次查詢
+        # 打不同 heap 就會錯位。本測試原本靠運氣通過。
         rs_id = (await db_session.execute(
             select(RuleSet.id).where(RuleSet.code == code))).scalar_one()
         return list((await db_session.execute(
-            select(model).where(model.rule_set_id == rs_id).order_by(model.sort_order)
+            select(model).where(model.rule_set_id == rs_id)
+            .order_by(*svc._deterministic_order(model))
         )).scalars().all())
 
     total_cells = 0
