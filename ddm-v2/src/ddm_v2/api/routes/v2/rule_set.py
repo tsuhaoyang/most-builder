@@ -67,7 +67,18 @@ async def get_active(session: AsyncSession = Depends(get_db_session, scope="func
 
 
 @router.get("/rule-sets/{code}/full")
-async def get_full(code: str, session: AsyncSession = Depends(get_db_session, scope="function"), _: CurrentUser = Depends(current_user)) -> dict:
+async def get_full(code: str, session: AsyncSession = Depends(get_db_session, scope="function"),
+                   _: CurrentUser = Depends(require_role("analyst"))) -> dict:
+    """整份 12 張子表（值權威內容）。
+
+    RBAC＝analyst（D7b 收緊，原為 `current_user`）：IE 認證工時字典是 IE 部門的 know-how，
+    原本任何有帳號的員工——包含 `deps.current_user` JIT 建立、`roles=[]`、level=0 的新
+    使用者——都能一次拿走整份值。而且同一份內容在 `GET /diff` 已是 analyst，形成
+    「`/full` 拿得到的東西 `/diff` 反而拒絕」的矛盾。三支（full/export/diff）現已一致。
+
+    ⚠️ 不連坐收緊 `GET /rule-sets`（版本清單）、`/rule-sets/active`、`/rule-sets/{code}/options`：
+    工作台建模需要它們，且它們給的是「可選項目」而非整份值表。
+    """
     try:
         return await svc.load_full(session, code)
     except svc.RuleSetNotFound:
@@ -112,6 +123,10 @@ async def diff_rule_set(code: str, session: AsyncSession = Depends(get_db_sessio
     差異結構：`diff.sections[<區塊>].{added,removed,changed}`（changed 逐欄帶前後值）
     ＋ `diff.row_counts`（12 區塊前後列數）＋ `diff.header`（name_zh / multiplier）。
 
+    另附血緣（D7b）：`source_code`（本版 clone 自哪一版；查稽核紀錄，無紀錄＝null）與
+    `base_is_source`。來源不是 active 時多一個 `lineage_note`，提醒覆核者這份 diff
+    混了「兩條血緣的既有落差」與「作者這次的編輯」，不可全部當成本次改動。
+
     RBAC：analyst 以上（唯讀，且與 `GET /full` 同樣是字典內容）。
     """
     try:
@@ -122,10 +137,11 @@ async def diff_rule_set(code: str, session: AsyncSession = Depends(get_db_sessio
 
 @router.get("/rule-sets/{code}/export")
 async def export_rule_set(code: str, session: AsyncSession = Depends(get_db_session, scope="function"),
-                          user: CurrentUser = Depends(current_user)) -> dict:
+                          user: CurrentUser = Depends(require_role("analyst"))) -> dict:
     """匯出版本（ADR-023 §3.6）。形狀＝`GET /full` ＋ `schema_version/exported_at/exported_by`。
 
-    RBAC 為 current_user（IE 需要看；與 `GET /full` 同級，無值變更風險）。
+    RBAC＝analyst（D7b 收緊，原為 `current_user`）：它與 `GET /full` 是同一份內容，
+    只多三個 metadata 欄——兩者權限必須一致，否則收緊 `/full` 只是把外流改走這條路。
     去掉三個 metadata 欄後即為 `PUT /full` 的合法 body——export→離線編輯→import 閉環。
     """
     try:

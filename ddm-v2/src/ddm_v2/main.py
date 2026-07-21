@@ -36,6 +36,10 @@ from ddm_v2.api.routes.v2.search import router as v2_search_router
 from ddm_v2.api.routes.v2.synonyms import router as v2_synonyms_router
 from ddm_v2.api.routes.v2.vocab import router as v2_vocab_router
 from ddm_v2.api.routes.v2.worksheet import router as v2_worksheet_router
+from ddm_v2.auth.startup_checks import (  # noqa: F401  （TRUSTED_GATEWAY_ENV 對外沿用舊匯入路徑）
+    TRUSTED_GATEWAY_ENV,
+    warn_if_identity_config_insecure,
+)
 from ddm_v2.database import get_engine
 from ddm_v2.exceptions import (
     ConflictError,
@@ -95,39 +99,41 @@ def _validate_startup_security(settings) -> None:
         )
 
 
-# 營運者用來「宣告本服務只經可信 gateway 可達」的環境變數。設了就不再發 C-1 警告。
-# 刻意只當旗標、不做來源 IP/CIDR 比對：本專案的部署防線是拓撲（Traefik ForwardAuth ＋
-# 只綁 loopback 的 port），在 app 內再加一層 IP 比對會讓本機開發與 CI 破功，收益卻有限。
-TRUSTED_GATEWAY_ENV = "DDM_TRUSTED_GATEWAY"
+def _validate_cors_security(settings: Settings) -> None:
+    """`allow_origins` 含萬用字元 ＋ `allow_credentials=True` → 啟動失敗（D7b · M-1）。
 
+    Starlette 在這個組合下**不會**回 `Access-Control-Allow-Origin: *`，而是**鏡射請求的
+    Origin** 並加 `Vary: Origin`——效果是「允許任意來源攜帶憑證」。在
+    `DDM_AUTH_MODE=verify`（.env.example 建議值）下，受害者於 LB 登入後造訪惡意站，
+    該站 `fetch(..., {credentials:'include'})` 就能讀走整份字典/worksheet/使用者清單，
+    並發得出 PUT/DELETE。
 
-def _warn_if_gateway_trust_unconfirmed() -> None:
-    """gateway 模式且未宣告可信來源 → WARNING（ADR-023 D7 / C-1）。
-
-    gateway 模式的身分**完全**來自入站的 `X-Username` header（見 auth/identity.py），
-    它的安全性 100% 依賴「本服務只能經 gateway 進來」這個部署前提。前提一旦不成立
-    （例如 app port 綁到 0.0.0.0），任何人都能零憑證取得 admin。這個前提在程式碼裡
-    看不出來，所以至少要在啟動時講出來。
-
-    **純 log**：不擋啟動、不改變任何行為——本機開發與 CI 都必須照常跑。
+    為什麼是 raise 而不是降級成 warn（或靜默拿掉 credentials）：
+    - 設定未給時的 fallback 已在 `settings.py` 改成具體的 loopback 白名單，所以走到
+      這個組合**只可能是有人顯式設了 `DDM_CORS_ALLOW_ORIGINS=*`**——那不是疏忽，是
+      互斥的兩個要求同時被提出，沒有「作者其實想要哪個」可推測。
+    - 靜默把 `allow_credentials` 改成 False 會讓合法的跨源登入在 runtime 才神秘失敗，
+      屬於本 repo 硬規則禁止的「吞錯換通過」。
+    與 secret key 的差別在於：預設值不安全是「沒設定」，可以在 dev 只 warn；這裡是
+    「設定互相衝突」，無論哪個環境都無解，故一律 fail-closed。
     """
-    if os.getenv("DDM_AUTH_MODE", "gateway").lower() != "gateway":
+    if not settings.cors_allow_credentials:
         return
-    if os.getenv(TRUSTED_GATEWAY_ENV):
+    if "*" not in settings.cors_allow_origins:
         return
-    logger.warning(
-        "DDM_AUTH_MODE=gateway：本服務**信任入站的 X-Username header** 作為身分來源，"
-        "沒有任何憑證檢查。請確認本服務只經 gateway（Traefik ForwardAuth）可達；"
-        "若 app port 曝露到 loopback 以外，等同開放無認證的 admin 存取。"
-        f"確認後設 {TRUSTED_GATEWAY_ENV}=1 可關閉本警告；"
-        "需直接對外請改用 DDM_AUTH_MODE=verify。"
+    raise RuntimeError(
+        "CORS 設定互斥：DDM_CORS_ALLOW_ORIGINS 含 '*' 且 DDM_CORS_ALLOW_CREDENTIALS=true。"
+        "Starlette 在此組合下會鏡射任意 Origin 並允許攜帶憑證（等同對所有網站開放已登入的 API）。"
+        "請改列出具體來源（例：DDM_CORS_ALLOW_ORIGINS=https://most.example.com），"
+        "或在確實不需要 cookie/認證跨源時設 DDM_CORS_ALLOW_CREDENTIALS=false。"
     )
 
 
 def create_app(settings: Settings | None = None) -> FastAPI:
     """建立 FastAPI app（middleware / v2 routers / 例外處理）。"""
     app_settings = settings or get_settings()
-    _warn_if_gateway_trust_unconfirmed()
+    warn_if_identity_config_insecure()
+    _validate_cors_security(app_settings)
 
     app = FastAPI(
         title=app_settings.app_name,

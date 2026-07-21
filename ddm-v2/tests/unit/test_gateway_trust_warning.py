@@ -5,6 +5,10 @@
 這個前提在程式碼裡看不出來，所以 app factory 至少要發一筆 WARNING。
 
 ⚠️ 純 log：本檔同時鎖住「不得改變行為」——警告不擋啟動、也不影響路由掛載。
+
+D7b：實作已從 `main.py` 搬到 `auth/startup_checks.py`（讓不走 factory 的入口也叫得到），
+本檔改測「經由 `create_app()` 仍然照發」——搬家不得讓既有入口失去警告。
+dev-override 與入口涵蓋見 `test_startup_security.py`。
 """
 from __future__ import annotations
 
@@ -12,17 +16,21 @@ import logging
 
 import pytest
 
+from ddm_v2.auth.startup_checks import DEV_USER_ENV
 from ddm_v2.main import TRUSTED_GATEWAY_ENV, create_app
 
 pytestmark = pytest.mark.unit
 
-_MARKER = "X-Username"  # 警告必須點名這個 header，否則讀者不知道前提是什麼
+_MARKER = "DDM_AUTH_MODE=gateway"  # 警告必須點名模式，否則讀者不知道前提是什麼
 
 
 @pytest.fixture(autouse=True)
 def _clean_auth_env(monkeypatch):
     monkeypatch.delenv("DDM_AUTH_MODE", raising=False)
     monkeypatch.delenv(TRUSTED_GATEWAY_ENV, raising=False)
+    # dev override 也會發一筆提到 X-Username 的警告；本檔只驗 gateway 那筆，
+    # 且不能因為執行者 shell 裡剛好有 AUTH_DEV_USER 就變紅。
+    monkeypatch.delenv(DEV_USER_ENV, raising=False)
 
 
 def _warnings(caplog) -> list[str]:
@@ -40,7 +48,7 @@ def test_gateway_mode_emits_warning(caplog):
     assert len(msgs) == 1, f"gateway 模式應發且只發一筆 X-Username 信任警告，收到 {msgs}"
     # 只斷言「有 WARNING」會空洞通過：main.py 本來就會為 DDM_SECRET_KEY 發警告。
     # 訊息必須說得出「信任什麼」與「該怎麼辦」，否則讀到的人無法行動。
-    assert "gateway" in msgs[0]
+    assert "X-Username" in msgs[0]      # 點名被信任的到底是什麼
     assert TRUSTED_GATEWAY_ENV in msgs[0]
 
 

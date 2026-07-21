@@ -28,6 +28,26 @@ def _resolve_path(raw: str | None, default: Path, root_dir: Path) -> Path:
     return candidate
 
 
+# ── CORS 的「未設定」預設（D7b · M-1）────────────────────────────────
+# 原本三個 CORS 設定的 fallback 都是 `["*"]`，且 `allow_credentials` fallback 為 True。
+# 「未設定」＝「最寬鬆」是危險的預設：Starlette 遇到 `*` ＋ credentials 會鏡射任意
+# Origin（見 main._validate_cors_security），等於對所有網站開放已登入的 API。
+# 這裡改成 fail-closed——列出本專案實際會用到的本機來源，要放寬必須顯式設環境變數。
+#
+# 正式部署其實用不到 CORS（前端與 API 同源）；這份預設只服務本機開發：
+#   5173＝Vite dev server、8099＝preview_server、8877＝docker compose 對外 port。
+DEFAULT_CORS_ORIGINS: tuple[str, ...] = (
+    "http://127.0.0.1:5173", "http://localhost:5173",
+    "http://127.0.0.1:8099", "http://localhost:8099",
+    "http://127.0.0.1:8877", "http://localhost:8877",
+)
+DEFAULT_CORS_METHODS: tuple[str, ...] = ("GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS")
+# 身分 header 保留：gateway 模式的前端/測試會帶 X-Username（見 auth/identity.py）。
+DEFAULT_CORS_HEADERS: tuple[str, ...] = (
+    "Authorization", "Content-Type", "X-Username", "X-User-Id", "X-Plant-Code",
+)
+
+
 @dataclass(frozen=True)
 class Settings:
     root_dir: Path
@@ -57,10 +77,10 @@ def get_settings() -> Settings:
         secret_key=os.getenv("DDM_SECRET_KEY", "ddm-v2-release-candidate-202603-rc1-secure-key"),
         access_token_expire_hours=int(os.getenv("DDM_ACCESS_TOKEN_EXPIRE_HOURS", "8")),
         tmu_factor=float(os.getenv("DDM_TMU_FACTOR", "0.036")),
-        cors_allow_origins=_parse_csv(os.getenv("DDM_CORS_ALLOW_ORIGINS"), ["*"]),
+        cors_allow_origins=_parse_csv(os.getenv("DDM_CORS_ALLOW_ORIGINS"), list(DEFAULT_CORS_ORIGINS)),
         cors_allow_credentials=_parse_bool(os.getenv("DDM_CORS_ALLOW_CREDENTIALS"), True),
-        cors_allow_methods=_parse_csv(os.getenv("DDM_CORS_ALLOW_METHODS"), ["*"]),
-        cors_allow_headers=_parse_csv(os.getenv("DDM_CORS_ALLOW_HEADERS"), ["*"]),
+        cors_allow_methods=_parse_csv(os.getenv("DDM_CORS_ALLOW_METHODS"), list(DEFAULT_CORS_METHODS)),
+        cors_allow_headers=_parse_csv(os.getenv("DDM_CORS_ALLOW_HEADERS"), list(DEFAULT_CORS_HEADERS)),
         database_url=os.getenv("DATABASE_URL", "postgresql+asyncpg://ddm_user:ddm_pass@localhost:5432/ddm_v2"),
         database_echo=_parse_bool(os.getenv("DATABASE_ECHO"), False),
     )

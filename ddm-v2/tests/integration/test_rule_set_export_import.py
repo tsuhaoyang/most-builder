@@ -135,17 +135,41 @@ async def test_export_contains_every_section_including_d2_fields(exported):
     assert exported["m_foot"], "m_foot 整表缺失（D2 修過的漏表）"
 
 
-async def test_export_visible_to_viewer(client, exported):
-    """RBAC：export 是 current_user 級（IE/viewer 都要能看），不得誤掛寫入角色 gate。"""
-    viewer = "GAPTEST_VIEWER_EXPORT_001"
-    ur = await client.post("/api/v2/admin/users", json={
-        "employee_no": viewer, "display_name": "Gap Test Viewer Export",
-        "roles": [], "site_ids": [],
+async def _user(client, employee_no: str, roles: list[str]) -> str:
+    r = await client.post("/api/v2/admin/users", json={
+        "employee_no": employee_no, "display_name": employee_no,
+        "roles": roles, "site_ids": [],
     })
-    assert ur.status_code == 200, ur.text
-    r = await client.get(f"/api/v2/rule-sets/{CERTIFIED}/export", headers={"X-Username": viewer})
     assert r.status_code == 200, r.text
-    assert r.json()["exported_by"] == viewer
+    return employee_no
+
+
+@pytest.mark.parametrize("path", ["export", "full"])
+async def test_full_and_export_require_analyst(client, exported, path):
+    """RBAC 收緊（D7b）：零角色使用者不得一次拿走整份 IE 認證字典。
+
+    **這是刻意的行為變更**：`/export` 與 `/full` 原本是 `current_user` 級——任何有帳號的
+    員工（含 `deps.current_user` JIT 建出、`roles=[]`、level=0 的新使用者）都讀得到整份值。
+    使用者已裁決收緊至 analyst，與 D7 就是 analyst 的 `/diff` 對齊；否則同一份內容會有
+    兩個權限等級（`/full` 給、`/diff` 擋）。
+    """
+    viewer = await _user(client, "GAPTEST_VIEWER_EXPORT_001", [])
+    r = await client.get(f"/api/v2/rule-sets/{CERTIFIED}/{path}", headers={"X-Username": viewer})
+    assert r.status_code == 403, r.text
+    # 只斷言 403 會空洞通過：帳號停用、404、其他 gate 都可能是 403/4xx。
+    # 訊息必須指出擋人的是 analyst 這道角色門檻。
+    assert "analyst" in r.json()["detail"]
+
+
+@pytest.mark.parametrize("path", ["export", "full"])
+async def test_full_and_export_allowed_for_analyst(client, exported, path):
+    """收緊不得過頭：analyst（IE 的日常角色）必須照常讀得到，否則字典管理直接壞掉。"""
+    analyst = await _user(client, "GAPTEST_ANALYST_EXPORT_001", ["analyst"])
+    r = await client.get(f"/api/v2/rule-sets/{CERTIFIED}/{path}", headers={"X-Username": analyst})
+    assert r.status_code == 200, r.text
+    assert r.json()["code"] == CERTIFIED
+    if path == "export":
+        assert r.json()["exported_by"] == analyst
 
 
 async def test_export_unknown_code_returns_404(client):

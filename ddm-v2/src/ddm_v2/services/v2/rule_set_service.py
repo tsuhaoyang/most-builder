@@ -24,6 +24,7 @@ from sqlalchemy.exc import DBAPIError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from ddm_v2.models.v2 import rule_set_tables as rt
+from ddm_v2.models.v2.audit import WorkflowAuditLog
 from ddm_v2.models.v2.rule_set import RuleSet
 from ddm_v2.most_engine.providers import load_rule_set_from_db
 from ddm_v2.schemas.v2.rule_set_options import (
@@ -360,9 +361,15 @@ def _prepare_row(section_key: str, index: int, row: Any) -> tuple[Any, dict[str,
             src.setdefault(new, src[old])
     kwargs = {f: src[f] for f in spec.schema.model_fields if src.get(f) is not None}
     kwargs.setdefault("sort_order", index)
-    # is_active 顯式處理：schema 預設是 True，但既有語意是 `bool(r.get("is_active", True))`
-    # ——明寫 null 要落成 False，不能被「None 就用預設」吃掉。
-    kwargs["is_active"] = bool(src.get("is_active", True))
+    # is_active 只保留「明寫 null → False」這個特例（`kwargs` 的建法會把 None 濾掉，
+    # 落到 schema 預設 True，與既有語意相反），其餘一律交給 schema 驗。
+    #
+    # 不可以寫 `bool(src.get("is_active", True))`（D7b · L-1）：`bool("false") is True`，
+    # 而離線編輯/CSV 轉出的 JSON 很常把布林寫成字串——那會把「停用」靜默翻成「啟用」，
+    # 直接改變引擎讀得到的選項集合。交給 Pydantic 則 "false"/"0" 正確解析為 False，
+    # 無法解讀的字串（"maybe"）走既有的 PayloadInvalid → 400，而不是被脅迫成 True。
+    raw_is_active = src.get("is_active", True)
+    kwargs["is_active"] = False if raw_is_active is None else raw_is_active
 
     try:
         values: dict[str, Any] = spec.schema.model_validate(kwargs).model_dump()
@@ -541,6 +548,14 @@ async def import_draft(
         await session.flush()
     except DBAPIError as e:
         raise PayloadInvalid(f"匯入負載欄位型別不合法（資料庫拒收）：{e.orig!r}") from e
+    # 稽核錨點（D7b · M-2）：digest 與列數取自**落盤後**的 `load_full()`，與 `clone_draft`
+    # 同一組函式、同一個產生器——同樣的內容在兩條路徑上得到同樣的 digest，才比對得起來。
+    #
+    # 為什麼 import 特別需要這個：clone 的來源在庫內、delete 有全量快照，唯獨 import 的
+    # 來源是一份系統外的離線 JSON（系統裡沒有副本）。它是「外部撰寫的值進入系統的唯一
+    # 入口」，若稽核只記 {code, source_code, provenance}，事後問「這份 draft 匯入當下是
+    # 什麼值」就完全無錨點——連「後來有沒有被改過」都答不出來。
+    stored = await load_full(session, new_code)
     await log_audit(
         session,
         entity_type="rule_set",
@@ -549,7 +564,14 @@ async def import_draft(
         from_status=None,
         to_status="draft",
         actor=actor or "unknown",
-        payload={"code": new_code, "source_code": src_code, "provenance": "manual"},
+        payload={
+            "code": new_code,
+            "source_code": src_code,
+            "provenance": "manual",
+            "multiplier": float(rs.system_tmu_multiplier),
+            "row_counts": section_row_counts(stored),
+            "snapshot_sha256": snapshot_digest(stored),
+        },
     )
     await session.flush()
     return {
@@ -623,18 +645,59 @@ async def diff_against_active(session: AsyncSession, code: str) -> dict[str, Any
 
     無 active → `NoActiveRuleSet`（§3.5：設定錯誤，不靜默 fallback）。
     `code` 本身就是 active 時 diff 為空（`summary.identical=true`），不是錯誤。
+
+    **血緣揭露（D7b）**：若 target 是從**非 active** 的版本 clone 出來的，這份 diff 就
+    混了兩件事——「兩條血緣本來就有的落差」與「作者這次真正編輯的內容」。覆核者若不
+    知情會把前者誤讀成後者。故回應附上 clone 來源（查 `workflow_audit_log` 的
+    `clone_draft` 紀錄，不需 migration）與 `base_is_source` 旗標；`false` 時另附
+    `lineage_note` 明說「基準非本版之來源」。查不到 clone 紀錄（手動匯入/認證匯入/
+    D7 之前建立的舊版本）→ `source_code=None`、`base_is_source=None`（不知道就說不知道，
+    不要猜成 True）。
     """
     target = await load_full(session, code)          # 不存在 → RuleSetNotFound（404）
     active = await get_active_rule_set(session)
     base = await load_full(session, active.code)
-    return {
+    source_code = await _clone_source_code(session, uuid.UUID(target["id"]))
+    base_is_source = None if source_code is None else (source_code == active.code)
+    result: dict[str, Any] = {
         "target_code": code,
         "target_status": target.get("status"),
         "base_code": active.code,          # 比較基準版本 code：回應必須標明
         "base_is_active": True,
         "compared_with_self": active.code == code,
+        "source_code": source_code,        # 本版 clone 自哪一版（無 clone 紀錄 → None）
+        "base_is_source": base_is_source,
         "diff": diff_full(base, target),
     }
+    if base_is_source is False:
+        result["lineage_note"] = (
+            f"比較基準是目前 active 的 {active.code}，但本版是從 {source_code} clone 出來的"
+            "——下列差異同時包含「兩版之間本來就有的落差」與「本版被編輯的內容」，"
+            "不可全部視為作者這次的改動。"
+        )
+    return result
+
+
+async def _clone_source_code(session: AsyncSession, rs_id: uuid.UUID) -> str | None:
+    """由稽核紀錄回推此版本 clone 自哪一版（最新一筆 `clone_draft`）。
+
+    `rule_sets` 沒有指向來源的欄位，而 `clone_draft` 的稽核 payload 已存 `source_code`
+    ——讀既有紀錄即可，不必為此加 migration/欄位。
+    """
+    row = (await session.execute(
+        select(WorkflowAuditLog.payload)
+        .where(
+            WorkflowAuditLog.entity_type == "rule_set",
+            WorkflowAuditLog.entity_id == rs_id,
+            WorkflowAuditLog.action == "clone_draft",
+        )
+        .order_by(WorkflowAuditLog.created_at.desc())
+        .limit(1)
+    )).scalar_one_or_none()
+    if not isinstance(row, dict):
+        return None
+    src = row.get("source_code")
+    return src if isinstance(src, str) else None
 
 
 async def validate_active_options(session: AsyncSession, rs_id: uuid.UUID, code: str) -> None:
