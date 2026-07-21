@@ -76,7 +76,18 @@ AND created_by='IEC141289' AND created_at∈[07-07,07-14)`）＝測試隔離改�
 3. ❌ 前端計算/捏造 TMU、快照、句子（後端 computed/narrative 權威）
 4. ❌ 新增頂層 tab 或恢復三層實驗頁
 5. ❌ 測試落真實 DB（rollback 隔離；跑兩遍計數不變）
-6. ❌ `[SPEC GAP]` 型測試（斷言缺口存在而綠燈）
+6. ❌ **無法變紅的測試**（本 session 已重複出現四次，每次都由 code-review 攔下）：
+   - ❌ `[SPEC GAP]` 型：斷言「缺口存在」而綠燈
+   - ❌ **skip 條件是被測程式的回應**（例：`if r.status_code == 500: skip("資料未種")`
+     ——而 500 正是該端點壞掉的表現，真回歸會變 skip 不會變紅）。
+     **skip 條件必須是資料前置條件**（例：`if not await _seeded(db): skip(...)`）
+   - ❌ 只做讀取卻宣稱防寫入回歸（例：只 GET 然後斷言計數不變）
+   - ❌ 斷言太寬而失去鑑別力（例：`assert rows == []`、`assert tmu > 0`
+     ——把被測邏輯改回錯誤版本仍會綠）
+   - ❌ **多重條件下的空洞通過**：斷言 409 但目標同時滿足兩個 409 條件時，
+     須斷言 `detail.code` 才能證明是預期那道 gate 攔的
+   - ✅ **規則：每個宣稱防回歸的測試，交付時須附「非空洞性證明」**——把對應
+     修正/gate 還原後貼出該測試的失敗訊息。**無法變紅的測試等於沒有測試。**
 7. ❌ UI reference 用 html_con（母版=ddm-v3 畫面＋ADR-021/022）
 8. ❌ 靜默 fallback/夾檔/吞錯（no-error-bypass；不確定就 422）
 9. ❌ **agent 執行 repo-wide `git stash`**（並行席位常在寫檔，會吞掉他人在途工作）。
