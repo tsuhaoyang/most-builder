@@ -22,12 +22,18 @@ v3 `lexical_options` 綁 `dictionary_version_id` CASCADE（換字典版本＝物
 
 | | v3 | v2 |
 |---|---|---|
-| 選項模型 | **單一泛型表** `parameter_options`，7 參數共用（`option_code/display_text_zh/tmu_value/...`） | **11 張專用子表**，因參數語意不同構 |
+| 選項模型 | **單一泛型表** `parameter_options`，7 參數共用（`option_code/display_text_zh/tmu_value/...`） | **12 張專用子表**，因參數語意不同構 |
 | A | 同一張表的選項 | `rule_a_bands`＝**區間帶**（component/max_value/index_value），無「選項代碼」概念 |
 | P | 同上 | `rule_p_bases` ＋ `rule_p_addons`（兩張，addon ≤2） |
 | M | 同上 | **五張**：verbs / ladder_bands / foot_bands / rotation_bands / hand_bands |
 
-**結論：v3 的「七個參數分頁」是 UI 概念，v2 照抄；但 v3 的「一套 `PUT /options/{id}` 打天下」在 v2 不可能成立。** v2 的選項級 CRUD 必須是每參數一組端點（P/M 需分頁內次級 tab）。A 因帶界必須連續無洞，採整組替換而非單筆增刪。
+**結論：v3 的「七個參數分頁」是 UI 概念，v2 照抄；但 v3 的「一套 `PUT /options/{id}` 打天下」在 v2 不可能成立。** v2 的選項級 CRUD 必須是每參數一組端點（P/M 需分頁內次級 tab）。
+
+**帶型（band）vs 選項型（option）的分界（2026-07-21 修正：原文只提 A，實作時發現 M 的四張子表同屬帶型）**：
+- **帶型**＝`rule_a_bands`（reach/twist/foot）＋ `rule_m_ladder_bands` / `m_foot_bands` / `m_rotation_bands` / `m_hand_bands`。**無 `code` 欄，無法以 `options/{option_code}` 定址**；且帶界必須整體遞增無重疊，逐筆編輯會產生非法中間態 → **一律整組替換**（`PUT /params/{A|M}/bands`），驗證：遞增／無重疊／open-ended 僅末位；rotation 依 `revolutions` **分組**各自成序。
+- **選項型**＝b / g / p_bases / p_addons / m_verbs / x / i → 選項級 CRUD。
+- **帶界驗證不得只掛在 `PUT /bands`**：`PUT /full`（`replace_children`）必須套用同一組驗證，否則整組替換的立論被姊妹端點架空（D2 code-review HIGH-2；rotation 是唯一不經 `_sort_bands` 排序的帶族，錯序會靜默算出錯誤 TMU）。
+- **A 帶的靜默夾取風險**：`rule_set_data.py:63` 對 A 帶超界輸入 `return bands[-1][1]`（**唯一會靜默夾取的一族**；ladder/hand 回 range 錯誤）。故物理無上界的 `A.reach`/`A.foot` 末帶應為 open-ended；`A.twist`（180° 物理有界）可為有限值。
 
 ## 3. 決策
 
@@ -122,7 +128,7 @@ Migration 資料遷移：`is_active=true WHERE code='MINIMOST_FACTORY_V2'`；`pr
 | 批次 | 內容 | Migration |
 |---|---|---|
 | **D1** | 後端：`is_active`＋`provenance`＋partial unique index；`activate`/`retire`/`GET active`；publish 加 `validate_complete()`；clone-draft 自動命名；**兩處寫死 V1 改讀 active**；replay isolation 整合測試 | **有**（v2_0020） |
-| **D2** | 後端：選項級 CRUD（每參數端點＋P/M 次級 section；A 整組替換）＋`assert_editable` 統一 gate（certified_import/非 draft → 409）；11 張子表加 `is_active` | **有**（v2_0021） |
+| **D2** | 後端：選項級 CRUD（每參數端點＋P/M 次級 section；A 與 M 帶型整組替換）＋`assert_editable` 統一 gate（certified_import/非 draft → 409）；12 張子表加 `is_active` | **有**（v2_0021） |
 | **D3** | 後端：export/import draft | 無 |
 | **D4** | 前端：統一兩層字典 UI（L1 版本清單＋L2 七參數分頁＋選項 dialog）；clone-on-write；刪 `ACTIVE_RULE_SET` 改 hook | 無 |
 | **D5** | 前端：詞彙庫改歸「主數據」；範本庫歸屬待 ADR-021 裁決 | 無 |
