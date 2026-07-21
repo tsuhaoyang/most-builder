@@ -1,19 +1,39 @@
 """v2 rule-set 編輯/版本化 API（#1）。
 
-list / active / full / clone-draft / put-full / publish / activate / retire。
-生命週期契約見 ADR-023 §3.2。
+版本級：list / active / full / clone-draft / put-full / publish / activate / retire（ADR-023 §3.2）。
+選項級（D2）：/rule-sets/{code}/params/{param}/... —— 每參數一組端點，**非泛型**。
+v3 的「一套 PUT /options/{id} 打天下」在 v2 不成立（ADR-023 §2：12 張不同構子表）。
+
+| param | 次級選擇 | 形狀 | 端點 |
+|---|---|---|---|
+| A | `?component=reach\\|twist\\|foot`（必填） | 帶 | `GET options` / `PUT bands`（整組替換） |
+| B, G, X, I | 無 | 選項 | `GET/POST options`、`PATCH/DELETE options/{code}`、`POST .../duplicate` |
+| P | `?section=base\\|addon`（必填） | 選項 | 同上 |
+| M | `?section=verb`（必填） | 選項 | 同上 |
+| M | `?section=ladder\\|foot\\|rotation\\|hand` | 帶 | `GET options` / `PUT bands` |
+
+所有寫入：`require_role("analyst")` ＋ `rule_set_service.assert_editable`
+（certified_import → 409、非 draft → 409）。
 """
 from __future__ import annotations
 
 from typing import Any
 
 from fastapi import APIRouter, Body, Depends, HTTPException, Query
-from pydantic import BaseModel
+from pydantic import BaseModel, ValidationError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from ddm_v2.auth.deps import CurrentUser, current_user, require_role
 from ddm_v2.database import get_db_session
 from ddm_v2.most_engine.rule_set_data import RuleSetIncomplete
+from ddm_v2.schemas.v2.rule_set_options import (
+    BandInvalid,
+    BandsReplaceIn,
+    ParamInvalid,
+    SectionInvalid,
+    SectionRequired,
+)
+from ddm_v2.services.v2 import rule_option_service as opt_svc
 from ddm_v2.services.v2 import rule_set_service as svc
 
 router = APIRouter(prefix="/api/v2", tags=["v2-ruleset"])
@@ -70,6 +90,9 @@ async def put_full(code: str, full: dict[str, Any] = Body(...), session: AsyncSe
         raise HTTPException(status_code=404, detail=f"rule-set 不存在：{code}")
     except svc.NotEditable as e:
         raise HTTPException(status_code=409, detail=str(e))
+    except BandInvalid as e:
+        # 帶界契約與 PUT /bands 同源（D2 HIGH-2）
+        raise HTTPException(status_code=400, detail=str(e))
 
 
 @router.post("/rule-sets/{code}/publish")
@@ -113,3 +136,146 @@ async def retire(code: str, session: AsyncSession = Depends(get_db_session, scop
         raise HTTPException(status_code=404, detail=f"rule-set 不存在：{code}")
     except svc.NotEditable as e:
         raise HTTPException(status_code=400, detail=str(e))
+
+
+# ══════════════════════════════════════════════════════════════════
+# 選項級 CRUD（ADR-023 D2）
+# ══════════════════════════════════════════════════════════════════
+
+_SECTION_Q = Query(
+    None,
+    description="P/M 的次級區塊（P: base|addon；M: verb|ladder|foot|rotation|hand）。缺省 → 400，不會靜默選一個。",
+)
+_COMPONENT_Q = Query(None, description="A 的分量（reach|twist|foot）；即 A 的 section。")
+
+
+def _handle(exc: Exception) -> HTTPException:
+    """選項級端點的統一錯誤對映（單一實作＝不會有端點對映不一致）。"""
+    if isinstance(exc, svc.CertifiedImmutable):
+        return HTTPException(status_code=409, detail={"code": "CERTIFIED_IMMUTABLE", "message": str(exc)})
+    if isinstance(exc, svc.NotEditable):
+        return HTTPException(status_code=409, detail={"code": "RULE_SET_FROZEN", "message": str(exc)})
+    if isinstance(exc, svc.RuleSetNotFound):
+        return HTTPException(status_code=404, detail=f"rule-set 不存在：{exc}")
+    if isinstance(exc, opt_svc.OptionNotFound):
+        return HTTPException(status_code=404, detail=f"選項不存在：{exc}")
+    if isinstance(exc, opt_svc.OptionExists):
+        return HTTPException(status_code=409, detail=f"選項代碼已存在：{exc}")
+    if isinstance(exc, (SectionRequired, SectionInvalid, ParamInvalid)):
+        return HTTPException(status_code=400, detail=str(exc))
+    if isinstance(exc, (opt_svc.BandInvalid, opt_svc.BandsNotSupported, opt_svc.OptionConstraintViolation)):
+        return HTTPException(status_code=400, detail=str(exc))
+    if isinstance(exc, ValidationError):
+        # payload 與該 (param, section) 的 schema 不符 → 422（欄位級錯誤原樣回傳）
+        return HTTPException(status_code=422, detail=exc.errors(include_url=False))
+    raise exc
+
+
+_OPT_ERRORS = (
+    svc.CertifiedImmutable, svc.NotEditable, svc.RuleSetNotFound,
+    opt_svc.OptionNotFound, opt_svc.OptionExists, opt_svc.OptionConstraintViolation,
+    opt_svc.BandInvalid, opt_svc.BandsNotSupported,
+    SectionRequired, SectionInvalid, ParamInvalid, ValidationError,
+)
+
+
+@router.get("/rule-sets/{code}/params/{param}/options")
+async def list_param_options(
+    code: str,
+    param: str,
+    section: str | None = _SECTION_Q,
+    component: str | None = _COMPONENT_Q,
+    active_only: bool = Query(False, description="只回啟用中的列（供下拉；編輯畫面請留 false）"),
+    session: AsyncSession = Depends(get_db_session, scope="function"),
+    _: CurrentUser = Depends(current_user),
+) -> dict:
+    """讀一個 (param, section) 的所有列。帶型區塊也走這裡（回應的 `kind` 區分）。"""
+    try:
+        return await opt_svc.list_options(session, code, param, section or component, active_only=active_only)
+    except _OPT_ERRORS as e:
+        raise _handle(e) from e
+
+
+@router.post("/rule-sets/{code}/params/{param}/options")
+async def create_param_option(
+    code: str,
+    param: str,
+    payload: dict[str, Any] = Body(...),
+    section: str | None = _SECTION_Q,
+    session: AsyncSession = Depends(get_db_session, scope="function"),
+    _: CurrentUser = Depends(require_role("analyst")),
+) -> dict:
+    try:
+        return await opt_svc.create_option(session, code, param, section, payload)
+    except _OPT_ERRORS as e:
+        raise _handle(e) from e
+
+
+@router.patch("/rule-sets/{code}/params/{param}/options/{option_code}")
+async def update_param_option(
+    code: str,
+    param: str,
+    option_code: str,
+    payload: dict[str, Any] = Body(...),
+    section: str | None = _SECTION_Q,
+    session: AsyncSession = Depends(get_db_session, scope="function"),
+    _: CurrentUser = Depends(require_role("analyst")),
+) -> dict:
+    """部分更新：未給的欄位沿用現值，但合併後仍過**完整** schema 驗證。"""
+    try:
+        return await opt_svc.update_option(session, code, param, section, option_code, payload)
+    except _OPT_ERRORS as e:
+        raise _handle(e) from e
+
+
+@router.delete("/rule-sets/{code}/params/{param}/options/{option_code}")
+async def delete_param_option(
+    code: str,
+    param: str,
+    option_code: str,
+    section: str | None = _SECTION_Q,
+    session: AsyncSession = Depends(get_db_session, scope="function"),
+    _: CurrentUser = Depends(require_role("analyst")),
+) -> dict:
+    """硬刪（draft 專屬，無人引用 → 不需 soft-delete）。"""
+    try:
+        return await opt_svc.delete_option(session, code, param, section, option_code)
+    except _OPT_ERRORS as e:
+        raise _handle(e) from e
+
+
+@router.post("/rule-sets/{code}/params/{param}/options/{option_code}/duplicate")
+async def duplicate_param_option(
+    code: str,
+    param: str,
+    option_code: str,
+    section: str | None = _SECTION_Q,
+    session: AsyncSession = Depends(get_db_session, scope="function"),
+    _: CurrentUser = Depends(require_role("analyst")),
+) -> dict:
+    """複製一筆選項；新 code 為 `{code}_copy`／`{code}_copy_2`…（保證唯一）。"""
+    try:
+        return await opt_svc.duplicate_option(session, code, param, section, option_code)
+    except _OPT_ERRORS as e:
+        raise _handle(e) from e
+
+
+@router.put("/rule-sets/{code}/params/{param}/bands")
+async def replace_param_bands(
+    code: str,
+    param: str,
+    payload: BandsReplaceIn = Body(...),
+    component: str | None = _COMPONENT_Q,
+    section: str | None = _SECTION_Q,
+    session: AsyncSession = Depends(get_db_session, scope="function"),
+    _: CurrentUser = Depends(require_role("analyst")),
+) -> dict:
+    """帶型區塊**整組替換**（A / M.ladder|foot|rotation|hand）。
+
+    帶界必須遞增、無重疊，open-ended（上界 null）只能在末位；
+    單筆增刪不提供，因為那會產生非法中間態（ADR-023 §2）。
+    """
+    try:
+        return await opt_svc.replace_bands(session, code, param, component or section, payload.items)
+    except _OPT_ERRORS as e:
+        raise _handle(e) from e
