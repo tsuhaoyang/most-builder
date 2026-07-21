@@ -17,8 +17,14 @@ export interface Vocab { id: string; kind: string; name_zh: string }
 export interface Template { id: string; name_zh: string; seq_kind: string; cycle_template: unknown; status: string }
 export interface CalcResult { seq: string; total_tmu: number; total_seconds: number; tech_line: string }
 
-export const useRuleSetOptions = (code = 'MINIMOST_FACTORY_V1') =>
-  useQuery({ queryKey: ['ruleopts', code], queryFn: () => apiGet<RuleSetOptions>(`/api/v2/rule-sets/${code}/options`) })
+// code 必填且無預設（ADR-023 §3.5）：預設值會讓 UI 在 active 未載入時靜默用錯版本計算。
+// 呼叫端請傳 `useActiveRuleSetCode()`；未載入時為 undefined → query 停用。
+export const useRuleSetOptions = (code: string | undefined) =>
+  useQuery({
+    queryKey: ['ruleopts', code],
+    queryFn: () => apiGet<RuleSetOptions>(`/api/v2/rule-sets/${code}/options`),
+    enabled: !!code,
+  })
 
 export const useVocab = () =>
   useQuery({ queryKey: ['vocab'], queryFn: () => apiGet<Vocab[]>('/api/v2/vocab') })

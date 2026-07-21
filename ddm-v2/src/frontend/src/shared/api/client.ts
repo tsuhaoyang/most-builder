@@ -7,11 +7,44 @@ function buildHeaders(json = true): Record<string, string> {
   return h
 }
 
+/**
+ * 後端錯誤。`detail` 保留原始結構供呼叫端判別錯誤碼
+ * （如 ADR-023 的 CERTIFIED_IMMUTABLE / RULE_SET_FROZEN）。
+ */
+export class ApiError extends Error {
+  constructor(public status: number, public detail: unknown, message: string) {
+    super(message)
+    this.name = 'ApiError'
+  }
+
+  /** 後端結構化錯誤碼（`{code, message}` 形狀時才有）。 */
+  get code(): string | null {
+    const d = this.detail as any
+    return d && typeof d === 'object' && typeof d.code === 'string' ? d.code : null
+  }
+
+  /** 給人看的訊息：結構化錯誤取 message，不吐原始 JSON。 */
+  get humanMessage(): string {
+    const d = this.detail as any
+    if (typeof d === 'string') return d
+    if (d && typeof d === 'object' && typeof d.message === 'string') return d.message
+    return this.message
+  }
+}
+
 async function toError(r: Response): Promise<Error> {
   let d: any = null
   try { d = await r.json() } catch { /* ignore */ }
-  const detail = d?.detail ? (typeof d.detail === 'string' ? d.detail : JSON.stringify(d.detail)) : r.statusText
-  return new Error(`${r.status} ${detail}`)
+  const detail = d?.detail ?? null
+  // 訊息格式維持 `${status} ${detail}`；物件型 detail 優先取 message（人話）而非整包 JSON。
+  const text = detail === null
+    ? r.statusText
+    : typeof detail === 'string'
+      ? detail
+      : typeof detail?.message === 'string'
+        ? detail.message
+        : JSON.stringify(detail)
+  return new ApiError(r.status, detail, `${r.status} ${text}`)
 }
 
 export async function apiGet<T>(path: string): Promise<T> {

@@ -1,0 +1,193 @@
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
+import { ApiError, apiDelete, apiDeleteJson, apiGet, apiPatch, apiPost, apiPut } from '../../shared/api/client'
+
+/**
+ * MOST 字典（資料層稱 rule-set；ADR-023 §3.1 明記兩者同物）API。
+ *
+ * 兩種形狀（ADR-023 §2）：
+ * - `kind='options'`：有 code 的選項表 → 單筆 CRUD
+ * - `kind='bands'`：區間帶表，無 code → 只能整組替換 `PUT /params/{param}/bands`
+ */
+
+export interface RuleSetSummary {
+  id: string
+  code: string
+  name_zh: string
+  status: 'draft' | 'published' | 'retired'
+  is_active: boolean
+  provenance: 'certified_import' | 'manual' | 'cloned' | null
+  created_at: string | null
+  notes: string | null
+  multiplier: number
+}
+
+export type OptionRow = Record<string, unknown> & { id: string }
+
+export interface ParamOptionsResponse {
+  rule_set_code: string
+  param: string
+  section: string
+  kind: 'options' | 'bands'
+  items: OptionRow[]
+}
+
+export interface Synonym {
+  id: string
+  parameter: string
+  option_code: string
+  synonym_raw: string
+  synonym_norm: string
+  priority: number
+}
+
+/**
+ * A 的次級選擇在 API 上叫 `component`，其餘叫 `section`
+ * （後端 SECTION_QUERY_NAME）。單一區塊的參數（B/G/X/I）不帶查詢參數。
+ */
+function sectionQuery(param: string, section: string): string {
+  if (section === 'default') return ''
+  const name = param === 'A' ? 'component' : 'section'
+  return `?${name}=${encodeURIComponent(section)}`
+}
+
+const base = (code: string, param: string) =>
+  `/api/v2/rule-sets/${encodeURIComponent(code)}/params/${param}`
+
+// ── 版本級 ─────────────────────────────────────────────────────────
+
+export const useRuleSetVersions = () =>
+  useQuery({
+    queryKey: ['rule-sets'],
+    queryFn: () => apiGet<RuleSetSummary[]>('/api/v2/rule-sets'),
+  })
+
+export function useVersionMutations() {
+  const qc = useQueryClient()
+  const done = () => {
+    void qc.invalidateQueries({ queryKey: ['rule-sets'] })
+    void qc.invalidateQueries({ queryKey: ['rule-set-active'] })
+  }
+  return {
+    cloneDraft: useMutation({
+      // new_code 不傳 → 後端自動命名 {code}_DRAFT_{YYYYMMDDHHMM}（ADR-023 §3.2）
+      mutationFn: (code: string) =>
+        apiPost<{ code: string; name_zh: string }>(
+          `/api/v2/rule-sets/${encodeURIComponent(code)}/clone-draft`,
+          {},
+        ),
+      onSuccess: done,
+    }),
+    publish: useMutation({
+      mutationFn: (code: string) =>
+        apiPost<unknown>(`/api/v2/rule-sets/${encodeURIComponent(code)}/publish`),
+      onSuccess: done,
+    }),
+    activate: useMutation({
+      mutationFn: (code: string) =>
+        apiPost<unknown>(`/api/v2/rule-sets/${encodeURIComponent(code)}/activate`),
+      onSuccess: done,
+    }),
+    retire: useMutation({
+      mutationFn: (code: string) =>
+        apiPost<unknown>(`/api/v2/rule-sets/${encodeURIComponent(code)}/retire`),
+      onSuccess: done,
+    }),
+    // D3b：retired → published；is_active 維持 false（解除封存 ≠ 啟用）
+    unretire: useMutation({
+      mutationFn: (code: string) =>
+        apiPost<unknown>(`/api/v2/rule-sets/${encodeURIComponent(code)}/unretire`),
+      onSuccess: done,
+    }),
+    // D3b：僅 draft 可刪；13 張子表由 DB CASCADE 連帶清除
+    remove: useMutation({
+      mutationFn: (code: string) =>
+        apiDeleteJson<unknown>(`/api/v2/rule-sets/${encodeURIComponent(code)}`),
+      onSuccess: done,
+    }),
+  }
+}
+
+/** 各引用表的中文名（`RULE_SET_IN_USE` 的 `detail.references` 鍵）。 */
+const REFERRER_ZH: Record<string, string> = {
+  most_cycles: '動作循環',
+  most_worksheets: '工時表',
+  motion_module_versions: '動作模組版本',
+}
+
+/**
+ * 把 `RULE_SET_IN_USE` 的引用筆數轉成人話。
+ * 非該錯誤碼回 null——呼叫端沿用一般錯誤訊息。
+ */
+export function describeInUse(err: unknown): string | null {
+  if (!(err instanceof ApiError) || err.code !== 'RULE_SET_IN_USE') return null
+  const refs = (err.detail as { references?: Record<string, number> })?.references
+  if (!refs) return err.humanMessage
+  const parts = Object.entries(refs)
+    .filter(([, n]) => n > 0)
+    .map(([table, n]) => `${n} 筆${REFERRER_ZH[table] ?? table}`)
+  if (parts.length === 0) return err.humanMessage
+  return `此草稿已被 ${parts.join('、')}引用，無法刪除。`
+}
+
+/** 匯出（ADR-023 §3.6，D3）。回 `PUT /full` 對稱形狀 ＋ schema_version/exported_at。 */
+export const exportRuleSet = (code: string) =>
+  apiGet<Record<string, unknown>>(`/api/v2/rule-sets/${encodeURIComponent(code)}/export`)
+
+// ── 選項/帶級 ───────────────────────────────────────────────────────
+
+export const useParamOptions = (code: string, param: string, section: string) =>
+  useQuery({
+    queryKey: ['rule-set-params', code, param, section],
+    // active_only 留 false：編輯畫面必須看得到已停用的列才能重新啟用
+    queryFn: () =>
+      apiGet<ParamOptionsResponse>(`${base(code, param)}/options${sectionQuery(param, section)}`),
+    enabled: !!code,
+  })
+
+export const useSynonyms = (code: string) =>
+  useQuery({
+    queryKey: ['rule-set-synonyms', code],
+    queryFn: () => apiGet<Synonym[]>(`/api/v2/rule-sets/${encodeURIComponent(code)}/synonyms`),
+    enabled: !!code,
+  })
+
+export function useOptionMutations(code: string, param: string, section: string) {
+  const qc = useQueryClient()
+  const q = sectionQuery(param, section)
+  const done = () => {
+    void qc.invalidateQueries({ queryKey: ['rule-set-params', code, param, section] })
+  }
+  return {
+    create: useMutation({
+      mutationFn: (payload: Record<string, unknown>) =>
+        apiPost<OptionRow>(`${base(code, param)}/options${q}`, payload),
+      onSuccess: done,
+    }),
+    update: useMutation({
+      mutationFn: ({ optionCode, payload }: { optionCode: string; payload: Record<string, unknown> }) =>
+        apiPatch<OptionRow>(
+          `${base(code, param)}/options/${encodeURIComponent(optionCode)}${q}`,
+          payload,
+        ),
+      onSuccess: done,
+    }),
+    remove: useMutation({
+      mutationFn: (optionCode: string) =>
+        apiDelete(`${base(code, param)}/options/${encodeURIComponent(optionCode)}${q}`),
+      onSuccess: done,
+    }),
+    duplicate: useMutation({
+      mutationFn: (optionCode: string) =>
+        apiPost<OptionRow>(
+          `${base(code, param)}/options/${encodeURIComponent(optionCode)}/duplicate${q}`,
+        ),
+      onSuccess: done,
+    }),
+    /** 帶型整組替換：單筆增刪不提供（會產生非法中間態，ADR-023 §2）。 */
+    replaceBands: useMutation({
+      mutationFn: (items: Record<string, unknown>[]) =>
+        apiPut<unknown>(`${base(code, param)}/bands${q}`, { items }),
+      onSuccess: done,
+    }),
+  }
+}

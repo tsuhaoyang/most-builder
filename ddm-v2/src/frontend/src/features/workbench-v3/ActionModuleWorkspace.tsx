@@ -8,7 +8,9 @@ import { useRuleSetOptions, useVocab, useCalculate } from '../wi-workbench/api'
 import { useCreateVocab } from '../master-data/api'
 import type { VocabIn } from '../master-data/api'
 import { defaultCycle, buildPayload, payloadToState, shortNarr, type CycleState } from '../wi-workbench/cycle'
-import { TMU_SEC, ACTIVE_RULE_SET } from '../../shared/config'
+import { TMU_SEC } from '../../shared/config'
+import { useActiveRuleSet } from '../../shared/api/useActiveRuleSet'
+import { RuleSetUnavailable } from '../../shared/ui/RuleSetUnavailable'
 import { apiGet, apiPost } from '../../shared/api/client'
 import { SlotBuilder, aIsFilled } from './SlotBuilder'
 import {
@@ -81,7 +83,9 @@ function Toast({ toast }: { toast: ToastState | null }) {
 export function ActionModuleWorkspace() {
   // ADR-014 值權威：工作台建模/發布一律用 V2（29 個搬遷動作即以 V2 字典發布，
   // 複本 rows 含 V2 選項碼；用 V1 發布會 422 X_UNKNOWN 等）
-  const { data: opts } = useRuleSetOptions(ACTIVE_RULE_SET)
+  const activeRs = useActiveRuleSet()
+  const { data: opts, error: optsErr } = useRuleSetOptions(activeRs.data?.code)
+  const ruleSetErr = activeRs.error ?? optsErr
   const { data: vocab = [] } = useVocab()
   const calc = useCalculate()
   const createVocab = useCreateVocab()
@@ -182,6 +186,10 @@ export function ActionModuleWorkspace() {
     return () => clearTimeout(id)
   }, [JSON.stringify(payload)]) // eslint-disable-line react-hooks/exhaustive-deps
 
+  // 錯誤態必須與載入態可分（否則無 active 版本時會永遠停在 spinner）
+  if (ruleSetErr) return (
+    <div className="bg-white rounded-xl border p-6"><RuleSetUnavailable error={ruleSetErr} /></div>
+  )
   if (!opts) return (
     <div className="bg-white rounded-xl border p-6 text-slate-500">載入 rule-set…</div>
   )

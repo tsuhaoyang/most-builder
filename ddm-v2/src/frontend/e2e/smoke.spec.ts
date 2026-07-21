@@ -9,7 +9,7 @@ test('app loads, identity + dashboard cards (ADR-021 default tab)', async ({ pag
   // Sidebar nav button for MOST 工作台 (workbench-v3, ADR-021)
   await expect(page.getByRole('button', { name: /MOST 工作台/ })).toBeVisible()
   // 預設 tab = 儀表板：三張卡（資料來自真實 DB 種子）
-  await expect(page.getByText('Rule-set 總覽')).toBeVisible()
+  await expect(page.getByText('MOST 字典總覽')).toBeVisible()
   await expect(page.getByText('案件狀態統計')).toBeVisible()
   await expect(page.getByText('近期案件')).toBeVisible()
 })
@@ -17,9 +17,23 @@ test('app loads, identity + dashboard cards (ADR-021 default tab)', async ({ pag
 test('sidebar navigation renders each migrated feature', async ({ page }) => {
   await page.goto('/')
 
-  // Rule-set tab (admin-gated; seed user IEC141289 is admin)
-  await page.getByRole('button', { name: /Rule-set/ }).click()
-  await expect(page.getByText(/A — 移動距離/)).toBeVisible()
+  // MOST 字典 tab（admin-gated；seed user IEC141289 是 admin）
+  // ADR-023 D4：兩層結構，先落在 L1 版本清單
+  await page.getByRole('button', { name: /MOST 字典/ }).click()
+  await expect(page.getByRole('heading', { name: '字典版本管理' })).toBeVisible()
+  await expect(page.getByTestId('dict-version-list')).toBeVisible()
+  // 真後端種子：V2 為啟用中版本
+  await expect(page.getByTestId('dict-active-card')).toBeVisible()
+  // L2：唯一以真 API 進到內容層的路徑 —— 進版本 → 切 G 分頁 → 斷言有選項列
+  await page.getByTestId('dict-version-MINIMOST_FACTORY_V2').getByRole('button', { name: '編輯' }).click()
+  await expect(page.getByTestId('dict-option-editor')).toBeVisible()
+  await page.getByRole('tab', { name: 'G 取得控制' }).click()
+  await expect(page.getByTestId('dict-option-g_tap')).toBeVisible()
+  await expect(page.locator('[data-testid^="dict-option-g_"]').first()).toBeVisible()
+  // A 分頁（帶型）也以真 API 驗一次
+  await page.getByRole('tab', { name: 'A 距離' }).click()
+  await expect(page.getByTestId('dict-band-editor')).toBeVisible()
+  await page.getByRole('button', { name: '← 返回版本列表' }).click()
 
   // NOTE: SOP 版本 tab has been retired (L-04). Removed from test.
   // NOTE: 主數據 tab has been retired (L-03). Not present in sidebar.
@@ -114,6 +128,12 @@ test('MOST 工作台單頁：無 tab、WI 大綱展開、WiItemInspector 開合�
           total_tmu: 28 * freq, total_seconds: 1.008 * freq,
         }),
       })
+    }
+
+    // 啟用中 rule-set（useActiveRuleSet；ADR-023 §3.5 取代寫死常數）
+    if (url.includes('/api/v2/rule-sets/active')) {
+      return route.fulfill({ status: 200, contentType: 'application/json',
+        body: JSON.stringify({ id: 'rs-1', code: 'MINIMOST_FACTORY_V2', name_zh: 'MiniMOST 工廠規則 v2' }) })
     }
 
     if (url.includes('/api/v2/rule-sets/') && url.includes('/options')) {
@@ -323,6 +343,12 @@ test('P1-B 回歸：行內頻率草稿保留（M2）／在途改回值仍送出�
           published_by: 'IEC141289', published_at: '2026-07-14T00:00:00Z',
         }),
       })
+    }
+
+    // 啟用中 rule-set（useActiveRuleSet；ADR-023 §3.5 取代寫死常數）
+    if (url.includes('/api/v2/rule-sets/active')) {
+      return route.fulfill({ status: 200, contentType: 'application/json',
+        body: JSON.stringify({ id: 'rs-1', code: 'MINIMOST_FACTORY_V2', name_zh: 'MiniMOST 工廠規則 v2' }) })
     }
 
     if (url.includes('/api/v2/rule-sets/') && url.includes('/options')) {

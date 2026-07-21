@@ -12,7 +12,7 @@
 
 | 物件 | 權威語意 | v2 現況 | 禁止的 legacy 模式 |
 |---|---|---|---|
-| 規則值（rule_sets） | 單一 active、clone-draft→發布前驗證→原子切換 | **無 is_active 欄**；V1/V2 同時 published；`catalog_service.py:127`、`worksheet_service.py:58` **寫死 V1** 與 `schemas/v2/most.py` 的 DEFAULT V2 矛盾 | ❌ 在程式碼寫死 rule-set code 當預設——一律讀 active（待 P2 批次補旗標） |
+| 規則值（rule_sets） | 單一 active、clone-draft→發布前驗證→原子切換 | ✅ **已對齊（ADR-023 D1–D4）**：`is_active`＋partial unique index（恰好一個 active）；`catalog_service`/`worksheet_service` 的寫死 V1 與 `schemas/v2/most.py` 的 DEFAULT V2 皆已移除，一律讀 active | ❌ 在程式碼寫死 rule-set code 當預設；❌ 讓治理狀態（status/is_active）進入 `load_rule_set_from_db` 的載入查詢（回放鐵則） |
 | 分析案件（process_versions） | 案件=平面清單＋狀態機（draft→approved→retired）；重分析=退回改或顯式另存 | 案件≡版本鏈（每 SKU v1,v2,…遞增），**案件清單直接 SELECT 每一版** | ❌ 把版本當案件展示；❌「新建案件」默默在既有 SKU 上 +1 版（NewCaseModal 曾自動預選第一個 SKU） |
 | 動作/WI（motion_modules） | ADR-022：不可變版本＋current_version 指針＝正確設計，**保留** | ✅ 已對齊 | ❌ 回頭在 rows 上做可變 UPDATE |
 | 消費端快照 | case/cycle 記錄使用的版本 id | ✅ 兩邊等價 | — |
@@ -50,15 +50,29 @@ AND created_by='IEC141289' AND created_at∈[07-07,07-14)`）＝測試隔離改�
 | 已選浮動列 | 已選 N 筆 · TMU/秒合計 | 只有筆數 | P2 |
 | 每列 WI 語句覆寫 | user_edited per row | 單一覆寫欄 | P2 |
 
-## 5. rule-set 治理缺口（P2 實施規格）
+## 5. rule-set 治理（ADR-023，D1–D4 已實施）
 
-1. `rule_sets` 加 `is_active`（partial unique index `WHERE is_active`）；
+1. ✅ `rule_sets` 加 `is_active`（partial unique index `WHERE is_active`）；
    `publish` 改 v3 語意：發布前完整性驗證（每參數至少一啟用選項）＋
    原子「deactivate 其他＋activate 自己」
-2. `catalog_service`/`worksheet_service` 寫死 V1 → 改讀 active（同時解決
-   「案件編輯器 V1/工作台 V2 分裂」的懸案）
-3. 選項級編輯端點（教學型格位介面若要編值會需要）；archive 端點
-4. `version_no` 產號 `COUNT+1` → `MAX+1` 帶鎖或 sequence（併發撞 unique 500）
+2. ✅ `catalog_service`/`worksheet_service` 寫死 V1 → 改讀 active（「案件編輯器 V1／
+   工作台 V2 分裂」懸案已結）
+3. ✅ 選項級編輯端點＋帶型整組替換；retire（封存）端點；clone-on-write；匯出/匯入 draft
+4. ✅ **反向操作**（D3b）：`DELETE /rule-sets/{code}`（draft-only，CASCADE 13 張子表）＋
+   `POST /{code}/unretire`（retired→published，**`is_active` 維持 false**）。
+   - 刪除是本頁**唯一真正不可逆**的操作 → UI 用 type-to-confirm；封存可逆 → 一般確認。
+     **確認強度必須與真實後果一致**，不要反過來。
+   - **刪除前必檢引用**：`most_cycles`／`most_worksheets.default_rule_set_id`／
+     `motion_module_versions` 三個 RESTRICT 引用方，有引用 → 409 `RULE_SET_IN_USE`＋筆數。
+     這是回放鐵則的另一面：刪掉被引用的版本＝歷史資料載不到規則。
+     有測試以 `pg_catalog` 比對引用方清單，**新增第四個引用表會讓測試先紅**，不會變成 runtime 500。
+   - audit log 刻意**無 FK**（`v2_0017` 明載「允許實體刪除後 log 留存」）＋ append-only trigger
+     （`v2_0018`）→ 順序是**先寫 audit→flush→刪實體**；`delete` 的 audit payload 必須自帶
+     `code`/`name_zh`/`provenance`/`children_deleted`，因為實體消失後它是唯一紀錄。
+5. ⬜ **未做**：`version_no` 產號 `COUNT+1` → `MAX+1` 帶鎖或 sequence（併發撞 unique 500）
+
+**動這塊前必讀 ADR-023 §3.4 回放鐵則**：治理狀態只在*選版*生效，
+`load_rule_set_from_db` 的載入查詢**不得**含 `status`/`is_active`。
 
 ## 6. 案件清單收斂（P1 實施規格）
 
@@ -71,7 +85,14 @@ AND created_by='IEC141289' AND created_at∈[07-07,07-14)`）＝測試隔離改�
 
 ## 7. 禁止清單（速查）
 
-1. ❌ 寫死 rule-set code 當預設（讀 active）
+1. ❌ 寫死 rule-set code 當預設（一律讀 active；前端經 `useActiveRuleSet`）。
+   延伸：❌ **「取不到 active 就退回某個預設 code」的靜默 fallback**——取不到就是錯誤狀態，
+   要顯示錯誤，不是猜一個版本繼續算（這是 ADR-023 的核心動機，也是第 8 條的特例）
+1b. ❌ **讓治理狀態進入載入路徑**（ADR-023 §3.4 回放鐵則）：`load_rule_set_from_db`
+   加上 `status`/`is_active` 過濾，會讓歷史 cycle 在其版本被封存後算不出原值或靜默改值。
+   治理在*選版*，不在*載入*
+1c. ❌ **對 `provenance='certified_import'` 的版本做任何寫入**（ADR-014×ADR-023）：
+   線上調值一律 clone-on-write；匯入產物恆 `draft`＋`manual`，不得由 payload 指定血緣
 2. ❌ 案件清單一版一列；「新建案件」默默 +1 版
 3. ❌ 前端計算/捏造 TMU、快照、句子（後端 computed/narrative 權威）
 4. ❌ 新增頂層 tab 或恢復三層實驗頁

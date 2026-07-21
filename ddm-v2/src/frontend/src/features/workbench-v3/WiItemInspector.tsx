@@ -8,7 +8,9 @@ import { useRuleSetOptions, useVocab, useCalculate } from '../wi-workbench/api'
 import { useCreateVocab } from '../master-data/api'
 import type { VocabIn } from '../master-data/api'
 import { buildPayload, payloadToState, type CycleState } from '../wi-workbench/cycle'
-import { TMU_SEC, ACTIVE_RULE_SET } from '../../shared/config'
+import { TMU_SEC } from '../../shared/config'
+import { useActiveRuleSet } from '../../shared/api/useActiveRuleSet'
+import { RuleSetUnavailable } from '../../shared/ui/RuleSetUnavailable'
 import { SlotBuilder } from './SlotBuilder'
 import {
   useUpdateModuleRow, useMotionModuleDetail, apiErrorMessage, type MotionModuleRow,
@@ -33,7 +35,9 @@ export function WiItemInspector({
   moduleId, moduleName, rowIndex, row, onClose, onSaved,
 }: WiItemInspectorProps) {
   // ADR-014 值權威：row 重算/發版一律用 V2（與工作台一致；WI rows 為 V2 選項碼快照）
-  const { data: opts } = useRuleSetOptions(ACTIVE_RULE_SET)
+  const activeRs = useActiveRuleSet()
+  const { data: opts, error: optsErr } = useRuleSetOptions(activeRs.data?.code)
+  const ruleSetErr = activeRs.error ?? optsErr
   const { data: vocab = [] } = useVocab()
   const calc = useCalculate()
   const createVocab = useCreateVocab()
@@ -172,7 +176,8 @@ export function WiItemInspector({
 
         {/* body */}
         <div className="flex-1 overflow-y-auto p-4 space-y-4">
-          {!opts && <p className="text-sm text-slate-500">載入 rule-set…</p>}
+          {ruleSetErr && <RuleSetUnavailable error={ruleSetErr} />}
+          {!opts && !ruleSetErr && <p className="text-sm text-slate-500">載入 rule-set…</p>}
           {opts && (
             <>
               {/* 列摘要：句子＋SIMO 標記 */}

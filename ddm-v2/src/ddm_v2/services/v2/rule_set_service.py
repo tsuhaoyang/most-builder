@@ -18,7 +18,7 @@ import uuid
 from datetime import datetime, timezone
 from typing import Any
 
-from sqlalchemy import delete, func, select, update
+from sqlalchemy import delete, func, select, text, update
 from sqlalchemy.exc import DBAPIError
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -49,10 +49,16 @@ class CertifiedImmutable(NotEditable):
     """
 
 
-async def assert_editable(session: AsyncSession, code: str) -> RuleSet:
+async def assert_editable(
+    session: AsyncSession, code: str, *, not_draft_hint: str = "已凍結，請先建立草稿"
+) -> RuleSet:
     """所有寫入端點共用的不可變 gate（ADR-023 §3.3 規則 1＋3）。
 
     404（不存在）→ 409（認證匯入）→ 409（非 draft）。單一實作＝不會有端點漏掛。
+
+    `not_draft_hint` 只換非 draft 分支的「該怎麼辦」尾句：DELETE（D3b）走的是同一組
+    前置條件與同一個順序，但「請先建立草稿」對想刪版本的人是錯誤指引。訊息可換、
+    判斷順序不可分岔——所以是參數而不是第二份實作。
     """
     rs = (await session.execute(select(RuleSet).where(RuleSet.code == code))).scalar_one_or_none()
     if rs is None:
@@ -63,7 +69,7 @@ async def assert_editable(session: AsyncSession, code: str) -> RuleSet:
             "如需修改請改 minimost_ai_dictionary_v1.json 後重跑 scripts/import_v3_dictionary.py"
         )
     if rs.status != "draft":
-        raise NotEditable(f"rule-set {code} 狀態為 {rs.status}，已凍結，請先建立草稿")
+        raise NotEditable(f"rule-set {code} 狀態為 {rs.status}，{not_draft_hint}")
     return rs
 
 
@@ -574,6 +580,139 @@ async def activate(session: AsyncSession, code: str, actor: str | None = None) -
     )
     await session.flush()
     return {"code": code, "status": rs.status, "is_active": True, "changed": True}
+
+
+class RuleSetActive(NotEditable):
+    """啟用中版本不得刪除（防呆；draft 理論上不會 active，但顯式擋，不靠推論）。"""
+
+
+class RuleSetInUse(Exception):
+    """版本已被歷史資料引用 → 不可刪（ADR-023 §3.4 回放鐵則）。
+
+    刪掉一個被 cycle/module 版本引用的 rule-set，會讓那些歷史資料再也載不到規則版本
+    （`load_rule_set_from_db` 依鐵則不做治理狀態過濾，它只會找不到列）。
+    DB 三條 RESTRICT FK 是最後防線；這一層先攔下來，才能回可讀的 409＋引用數，
+    而不是 IntegrityError 500。
+    """
+
+    def __init__(self, code: str, refs: dict[str, int]) -> None:
+        self.code = code
+        self.refs = refs
+        detail = "、".join(f"{k}={v}" for k, v in refs.items() if v)
+        super().__init__(
+            f"rule-set {code} 已被歷史資料引用（{detail}），不可刪除——"
+            "刪除會讓那些資料無法回放當時的規則版本（ADR-023 §3.4）"
+        )
+
+
+# 對 rule_sets 具 ondelete='RESTRICT' 的引用方（與 DB 一致；見 v2_0001/v2_0011 migration）。
+# 這三張表任一有列指向本版本，刪除都必須先被擋下。CASCADE 的 12 張規則子表 ＋
+# rule_option_synonyms 屬於「版本自身的內容」，由 DB 級聯清掉，不算引用。
+_RESTRICT_REFERRERS: tuple[tuple[str, str], ...] = (
+    ("most_cycles", "rule_set_id"),
+    ("most_worksheets", "default_rule_set_id"),
+    ("motion_module_versions", "rule_set_id"),
+)
+
+# 由 rule_sets 級聯刪除的子表（12 張規則表 ＋ 同義詞表）。刪除後逐張確認歸零。
+CASCADED_CHILD_TABLES: tuple[str, ...] = (
+    "rule_a_bands", "rule_b_options", "rule_g_actions", "rule_p_bases", "rule_p_addons",
+    "rule_m_ladder_bands", "rule_m_foot_bands", "rule_m_verbs", "rule_m_rotation_bands",
+    "rule_m_hand_bands", "rule_x_options", "rule_i_options", "rule_option_synonyms",
+)
+
+
+async def count_references(session: AsyncSession, rs_id: uuid.UUID) -> dict[str, int]:
+    """數各引用方指向此版本的列數（0 也回，讓呼叫端能顯示完整表列）。"""
+    refs: dict[str, int] = {}
+    for table, column in _RESTRICT_REFERRERS:
+        stmt = text(f"SELECT count(*) FROM {table} WHERE {column} = :rs_id")  # noqa: S608 - 表/欄名為模組常數
+        refs[table] = int((await session.execute(stmt, {"rs_id": rs_id})).scalar_one())
+    return refs
+
+
+async def count_children(session: AsyncSession, rs_id: uuid.UUID) -> dict[str, int]:
+    """數 13 張級聯子表各自的列數（刪除前快照，供稽核與回應）。"""
+    return {
+        table: int((await session.execute(
+            text(f"SELECT count(*) FROM {table} WHERE rule_set_id = :i"),  # noqa: S608 - 表名為模組常數
+            {"i": rs_id},
+        )).scalar_one())
+        for table in CASCADED_CHILD_TABLES
+    }
+
+
+async def delete_rule_set(session: AsyncSession, code: str, actor: str | None = None) -> dict[str, Any]:
+    """刪除一個 draft 版本（ADR-023 D3b）。
+
+    clone-on-write 是 draft 產生器（每次要改認證版的值就生一個），沒有反向操作 draft 只會
+    累積——本 repo 已經清過一次 268 筆測試殘留版本。
+
+    前置（順序與 `assert_editable` 同源，不分岔）：
+    404 不存在 → 409 認證匯入 → 409 非 draft → 409 啟用中 → 409 被引用。
+    12 張規則子表 ＋ rule_option_synonyms 由 DB `ondelete='CASCADE'` 級聯清除
+    （model 與 migration 兩邊都確認過），故不手動逐表刪。
+
+    稽核：`workflow_audit_log` **刻意無 FK**（v2_0017 migration 明文「允許實體刪除後 log 留存」）
+    且 v2_0018 起 DB trigger 禁 UPDATE/DELETE，所以先寫 audit 再刪實體不會撞 FK，
+    log 也留得住。payload 記下 code/name/provenance/子表列數——實體沒了之後，
+    這行 log 是唯一還說得清「刪掉的是什麼」的紀錄。
+    """
+    rs = await assert_editable(session, code, not_draft_hint="僅 draft 版本可刪除")
+    if rs.is_active:
+        raise RuleSetActive(f"rule-set {code} 為啟用中版本，不可刪除（請先啟用其他版本）")
+
+    refs = await count_references(session, rs.id)
+    if any(refs.values()):
+        raise RuleSetInUse(code, refs)
+
+    children = await count_children(session, rs.id)
+    rs_id, name_zh, provenance = rs.id, rs.name_zh, rs.provenance
+    await log_audit(
+        session,
+        entity_type="rule_set",
+        entity_id=rs_id,
+        action="delete",
+        from_status="draft",
+        to_status=None,
+        actor=actor or "unknown",
+        payload={"code": code, "name_zh": name_zh, "provenance": provenance,
+                 "children_deleted": children},
+    )
+    await session.flush()
+    await session.delete(rs)
+    await session.flush()
+    return {"code": code, "deleted": True, "children_deleted": children}
+
+
+async def unretire(session: AsyncSession, code: str, actor: str | None = None) -> dict[str, Any]:
+    """解除封存：retired → published（ADR-023 D3b）。
+
+    `retired` 的語意是「不再用於新工作」，歷史 cycle 依 §3.4 鐵則本來就照常載入，
+    所以解除封存不影響任何資料完整性——把它做成終態是 UX 陷阱而非安全性質。
+
+    `is_active` **維持 False**：解除封存不等於啟用；要啟用得另外走 `POST /activate`
+    （那條路才有 validate_complete + 單一 active 的把關）。
+    """
+    rs = (await session.execute(select(RuleSet).where(RuleSet.code == code))).scalar_one_or_none()
+    if rs is None:
+        raise RuleSetNotFound(code)
+    if rs.status != "retired":
+        raise NotEditable(f"rule-set {code} 狀態為 {rs.status}，僅 retired 版本可解除封存")
+    rs.status = "published"
+    rs.is_active = False
+    await log_audit(
+        session,
+        entity_type="rule_set",
+        entity_id=rs.id,
+        action="unretire",
+        from_status="retired",
+        to_status="published",
+        actor=actor or "unknown",
+        payload={"code": code, "is_active": False},
+    )
+    await session.flush()
+    return {"code": code, "status": "published", "is_active": False}
 
 
 async def retire(session: AsyncSession, code: str, actor: str | None = None) -> dict[str, Any]:

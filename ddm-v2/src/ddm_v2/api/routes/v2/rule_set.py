@@ -1,6 +1,8 @@
 """v2 rule-set 編輯/版本化 API（#1）。
 
 版本級：list / active / full / clone-draft / put-full / publish / activate / retire（ADR-023 §3.2）。
+反向操作（D3b）：`DELETE /rule-sets/{code}`（僅 draft）／`POST /rule-sets/{code}/unretire`
+（retired → published，不改 is_active）——補上 clone-on-write 與 retire 原本「有去無回」的缺口。
 匯出入（D3）：`GET /rule-sets/{code}/export`（＝full ＋ metadata）／`POST /rule-sets/import`
 （只建 draft+manual；§3.6。**認證值權威仍只走 CLI**：`scripts/import_v3_dictionary.py`）。
 選項級（D2）：/rule-sets/{code}/params/{param}/... —— 每參數一組端點，**非泛型**。
@@ -184,6 +186,60 @@ async def retire(code: str, session: AsyncSession = Depends(get_db_session, scop
         raise HTTPException(status_code=404, detail=f"rule-set 不存在：{code}")
     except svc.NotEditable as e:
         raise HTTPException(status_code=400, detail=str(e))
+
+
+@router.post("/rule-sets/{code}/unretire")
+async def unretire(code: str, session: AsyncSession = Depends(get_db_session, scope="function"),
+                   user: CurrentUser = Depends(require_role("approver"))) -> dict:
+    """解除封存：retired → published（ADR-023 D3b）。
+
+    `retired` 原本是終態（只有 publish/activate/retire，無反向操作），誤按封存後無 UI 可救。
+    但 retired 的語意只是「不再用於新工作」，歷史 cycle 依 §3.4 鐵則照常載入——
+    解除封存不影響任何資料完整性。
+
+    ⚠️ `is_active` 維持 false：解除封存**不等於**啟用，要啟用請另外呼叫 `/activate`。
+    """
+    try:
+        return await svc.unretire(session, code, actor=user.employee_no)
+    except svc.RuleSetNotFound:
+        raise HTTPException(status_code=404, detail=f"rule-set 不存在：{code}")
+    except svc.NotEditable as e:
+        raise HTTPException(status_code=409, detail={"code": "RULE_SET_NOT_RETIRED", "message": str(e)})
+
+
+@router.delete("/rule-sets/{code}")
+async def delete_rule_set(code: str, session: AsyncSession = Depends(get_db_session, scope="function"),
+                          user: CurrentUser = Depends(require_role("approver"))) -> dict:
+    """刪除一個 draft 版本（ADR-023 D3b）。clone-on-write 的反向操作。
+
+    409 一律帶 `detail.code`，讓前端能區分五種拒絕原因（不是只看狀態碼）：
+
+    | detail.code | 原因 |
+    |---|---|
+    | `CERTIFIED_IMMUTABLE` | provenance='certified_import'（認證版本不受線上治理操作） |
+    | `RULE_SET_NOT_DRAFT` | status 為 published/retired |
+    | `RULE_SET_ACTIVE` | is_active=true |
+    | `RULE_SET_IN_USE` | 已被 cycle/worksheet/module 版本引用（`detail.references` 附各表引用數） |
+
+    12 張規則子表 ＋ rule_option_synonyms 由 DB CASCADE 一併刪除（回應的
+    `children_deleted` 為刪除前的列數快照）。
+    """
+    try:
+        return await svc.delete_rule_set(session, code, actor=user.employee_no)
+    except svc.RuleSetNotFound:
+        raise HTTPException(status_code=404, detail=f"rule-set 不存在：{code}")
+    except svc.CertifiedImmutable as e:
+        raise HTTPException(status_code=409, detail={"code": "CERTIFIED_IMMUTABLE", "message": str(e)})
+    except svc.RuleSetActive as e:
+        raise HTTPException(status_code=409, detail={"code": "RULE_SET_ACTIVE", "message": str(e)})
+    except svc.NotEditable as e:
+        # RuleSetActive/CertifiedImmutable 都是 NotEditable 的子類，已在上面先攔；到這裡只剩「非 draft」。
+        raise HTTPException(status_code=409, detail={"code": "RULE_SET_NOT_DRAFT", "message": str(e)})
+    except svc.RuleSetInUse as e:
+        raise HTTPException(status_code=409, detail={
+            "code": "RULE_SET_IN_USE", "message": str(e),
+            "references": {k: v for k, v in e.refs.items() if v},
+        })
 
 
 # ══════════════════════════════════════════════════════════════════

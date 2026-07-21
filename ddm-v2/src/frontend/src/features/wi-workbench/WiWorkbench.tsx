@@ -5,6 +5,8 @@ import { useWiStore, type Row } from './store'
 import { useMe, canEdit } from '../../shared/auth/useMe'
 import { useWorkspace } from '../../shared/workspace'
 import { TMU_SEC } from '../../shared/config'
+import { useActiveRuleSet } from '../../shared/api/useActiveRuleSet'
+import { RuleSetUnavailable } from '../../shared/ui/RuleSetUnavailable'
 import { apiPost } from '../../shared/api/client'
 import { ComboBox } from '../../shared/ui/ComboBox'
 import { Hint } from '../../shared/ui/Hint'
@@ -199,7 +201,8 @@ function nlDraftPatch(res: NlDraftRes): Partial<CycleState> {
 // ─── Main component ────────────────────────────────────────────────────────────
 export function WiWorkbench() {
   const { data: me } = useMe()
-  const { data: opts } = useRuleSetOptions()
+  const active = useActiveRuleSet()
+  const { data: opts, error: optsErr } = useRuleSetOptions(active.data?.code)
   const { data: vocab = [] } = useVocab()
   const calc = useCalculate()
   const createVocab = useCreateVocab()
@@ -300,6 +303,9 @@ export function WiWorkbench() {
     return () => clearTimeout(id)
   }, [JSON.stringify(payload)]) // eslint-disable-line react-hooks/exhaustive-deps
 
+  // 錯誤態必須與載入態可分（否則設定錯誤會永遠停在 spinner）
+  const ruleSetErr = active.error ?? optsErr
+  if (ruleSetErr) return <div className="bg-white rounded-xl border p-6"><RuleSetUnavailable error={ruleSetErr} /></div>
   if (!opts) return <div className="bg-white rounded-xl border p-6 text-slate-500">載入 rule-set…</div>
 
   // ── helpers ───────────────────────────────────────────────────────────────

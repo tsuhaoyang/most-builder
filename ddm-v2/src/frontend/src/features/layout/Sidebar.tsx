@@ -13,7 +13,7 @@ const PRIMARY_NAV: NavItem[] = [
   { id: 'case',         label: '分析案件',            shortLabel: '案' },
   { id: 'dictionaries', label: '字典管理',            shortLabel: '典', minRole: 'analyst' },
   { id: 'users',        label: '使用者管理',          shortLabel: '人', minRole: 'admin' },
-  { id: 'ruleset',      label: 'Rule-set',            shortLabel: 'R', minRole: 'admin' },
+  { id: 'ruleset',      label: 'MOST 字典',           shortLabel: '字', minRole: 'admin' },
 ]
 
 /** Legacy v2 tabs (L-04: SOP retired; kept as empty array for future use). */

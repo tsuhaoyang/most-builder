@@ -201,6 +201,12 @@ async function setupRoutes(
         body: JSON.stringify(identity) })
     }
 
+    // 啟用中 rule-set（useActiveRuleSet；ADR-023 §3.5 取代寫死常數）
+    if (url.includes('/api/v2/rule-sets/active')) {
+      return route.fulfill({ status: 200, contentType: 'application/json',
+        body: JSON.stringify({ id: 'rs-1', code: 'MINIMOST_FACTORY_V2', name_zh: 'MiniMOST 工廠規則 v2' }) })
+    }
+
     // Rule-set options (WiWorkbench + ActionModuleWorkspace)
     // 必須在 catch-all 之前處理，否則返回 [] 導致 opts.a_bands.reach crash
     if (url.includes('/api/v2/rule-sets/') && url.includes('/options')) {
@@ -212,7 +218,9 @@ async function setupRoutes(
     if (url.match(/\/api\/v2\/rule-sets(\?|$)/)) {
       return route.fulfill({ status: 200, contentType: 'application/json',
         body: JSON.stringify([{ id: 'rs-1', code: 'MINIMOST_FACTORY_V2',
-          name_zh: 'MiniMOST 工廠規則 v2', status: 'published', multiplier: 1 }]) })
+          name_zh: 'MiniMOST 工廠規則 v2', status: 'published', multiplier: 1,
+          is_active: true, provenance: 'certified_import',
+          created_at: '2026-07-07T10:24:25Z', notes: null }]) })
     }
 
     // WI preview export (案件詳情匯出區, ADR-021)
@@ -320,20 +328,20 @@ test.describe('§A-01 Sidebar 結構 (UX spec §1.1–1.2)', () => {
   test('A-01-3: admin 展開時看到 ADR-021 的 7+2 導覽項目（順序固定）', async ({ page }) => {
     await gotoAndWait(page)
     // ADR-021 目標 IA：儀表板 / MOST 工作台 / WI 專案建立 / Level System / 分析案件
-    //                / 字典管理(analyst+) / 使用者管理(admin) / Rule-set(admin)
+    //                / 字典管理(analyst+) / 使用者管理(admin) / MOST 字典(admin)
     const nav = page.locator('nav').first()
     const labels = ['儀表板', 'MOST 工作台', 'WI 專案建立', 'Level System',
-      '分析案件', '字典管理', '使用者管理', 'Rule-set']
+      '分析案件', '字典管理', '使用者管理', 'MOST 字典']
     for (const label of labels) {
       await expect(nav.getByRole('button', { name: new RegExp(label) })).toBeVisible()
     }
-    // 側欄剛好 8 項（admin：7 一般 + 2 admin，其中儀表板~Rule-set 共 8 顆按鈕）
+    // 側欄剛好 8 項（admin：7 一般 + 2 admin，其中儀表板~MOST 字典 共 8 顆按鈕）
     await expect(nav.getByRole('button')).toHaveCount(labels.length)
     // 順序固定（ADR-021）
     const texts = await nav.getByRole('button').allInnerTexts()
     expect(texts.map(t => t.replace(/\s+/g, ' ').trim())).toEqual([
       '表 儀表板', 'M MOST 工作台', 'W WI 專案建立', 'L Level System',
-      '案 分析案件', '典 字典管理', '人 使用者管理', 'R Rule-set',
+      '案 分析案件', '典 字典管理', '人 使用者管理', '字 MOST 字典',
     ])
   })
 
@@ -434,10 +442,10 @@ test.describe('§A-04 儀表板 (ADR-021)', () => {
     await setupRoutes(page, ADMIN_ME, MOCK_CASES_2)
     await gotoAndWait(page)
     await expect(page.getByRole('heading', { name: '儀表板' })).toBeVisible()
-    // 卡 1：Rule-set 總覽（mock: MINIMOST_FACTORY_V2 published，帶新工序表預設標籤）
-    await expect(page.getByText('Rule-set 總覽')).toBeVisible()
+    // 卡 1：MOST 字典總覽（mock: MINIMOST_FACTORY_V2 published+active → 啟用中徽章）
+    await expect(page.getByText('MOST 字典總覽')).toBeVisible()
     await expect(page.getByText('MINIMOST_FACTORY_V2')).toBeVisible()
-    await expect(page.getByText('新工序表預設')).toBeVisible()
+    await expect(page.getByText('啟用中')).toBeVisible()
     // 卡 2：案件狀態統計
     await expect(page.getByText('案件狀態統計')).toBeVisible()
     // 卡 3：近期案件（mock 兩筆）

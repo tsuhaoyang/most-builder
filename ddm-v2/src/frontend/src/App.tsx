@@ -3,7 +3,7 @@ import { useMe, canEdit } from './shared/auth/useMe'
 import { ImportModal } from './features/import/ImportModal'
 import { WiWorkbench } from './features/wi-workbench/WiWorkbench'
 import { LevelSystem } from './features/level-system/LevelSystem'
-import { RuleSetViewer } from './features/rule-set/RuleSetViewer'
+import { DictionaryPage } from './features/dictionary/DictionaryPage'
 import { UsersPanel } from './features/users/UsersPanel'
 import { AppLayout } from './features/layout/AppLayout'
 import { DashboardPage } from './features/dashboard/DashboardPage'
@@ -49,7 +49,7 @@ export default function App() {
           <WorksheetRequiredNotice />
         )
       case 'level':   return <LevelSystem />
-      case 'ruleset': return <RuleSetViewer />
+      case 'ruleset': return <DictionaryPage />
       case 'case':    return <CasesPage />
       case 'users':        return <UsersPanel />
       case 'dictionaries': return <DictionariesPage />

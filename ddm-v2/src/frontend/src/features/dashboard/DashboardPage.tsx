@@ -2,7 +2,7 @@
 // 三張卡：Rule-set 總覽 / 案件狀態統計 / 近期案件。
 // 一切數據來自後端 API（前端只聚合渲染，不計算 TMU、不寫死預設值）。
 import type { ReactNode } from 'react'
-import { useRuleSetList } from '../rule-set/api'
+import { useRuleSetVersions } from '../dictionary/api'
 import { useCases, type CaseOut } from '../cases/api'
 
 // ─── Shared bits ──────────────────────────────────────────────────────────────
@@ -43,17 +43,14 @@ const LoadError = ({ error }: { error: unknown }) => (
   <p className="text-sm text-red-600">載入失敗：{(error as Error).message}</p>
 )
 
-// ─── Card 1: Rule-set 總覽 ────────────────────────────────────────────────────
-// 後端無單一「啟用」旗標（V1/V2 可同為 published），故不宣稱單一啟用，列出全部。
-// MINIMOST_FACTORY_V2 為新工序表預設（dev_seed_v2.py 語意；值權威 ADR-014）。
-
-const DEFAULT_RULE_SET_CODE = 'MINIMOST_FACTORY_V2'
+// ─── Card 1: MOST 字典總覽 ────────────────────────────────────────────────────
+// 「新工序表預設」＝後端 is_active 旗標（ADR-023 §3.5），不再由前端寫死版本 code。
 
 function RuleSetCard() {
-  const { data, isLoading, error } = useRuleSetList()
+  const { data, isLoading, error } = useRuleSetVersions()
 
   return (
-    <Card title="Rule-set 總覽">
+    <Card title="MOST 字典總覽">
       {isLoading ? (
         <Loading />
       ) : error ? (
@@ -70,9 +67,9 @@ function RuleSetCard() {
                 </span>
                 <span className="block text-xs text-slate-500 truncate">{rs.name_zh}</span>
               </div>
-              {rs.code === DEFAULT_RULE_SET_CODE && (
-                <span className="px-2 py-0.5 rounded text-xs font-medium bg-sky-100 text-sky-700 whitespace-nowrap">
-                  新工序表預設
+              {rs.is_active && (
+                <span className="px-2 py-0.5 rounded text-xs font-medium bg-emerald-100 text-emerald-800 whitespace-nowrap">
+                  啟用中
                 </span>
               )}
               <StatusBadge status={rs.status} />
