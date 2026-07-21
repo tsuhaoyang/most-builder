@@ -18,6 +18,7 @@ import uuid
 from datetime import datetime, timezone
 from typing import Any
 
+from pydantic import ValidationError as PydanticValidationError
 from sqlalchemy import delete, func, select, text, update
 from sqlalchemy.exc import DBAPIError
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -25,8 +26,16 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from ddm_v2.models.v2 import rule_set_tables as rt
 from ddm_v2.models.v2.rule_set import RuleSet
 from ddm_v2.most_engine.providers import load_rule_set_from_db
-from ddm_v2.schemas.v2.rule_set_options import BandInvalid, resolve, validate_bands
+from ddm_v2.schemas.v2.rule_set_options import (
+    BandInvalid,
+    ParamInvalid,
+    SectionInvalid,
+    SectionRequired,
+    resolve,
+    validate_bands,
+)
 from ddm_v2.services.v2.audit_service import log_audit
+from ddm_v2.services.v2.rule_set_diff import diff_full, section_row_counts, snapshot_digest
 
 
 class RuleSetNotFound(Exception):
@@ -162,33 +171,6 @@ async def load_full(session: AsyncSession, code: str) -> dict[str, Any]:
     }
 
 
-def _insert_children(session: AsyncSession, rs_id: uuid.UUID, full: dict[str, Any]) -> None:
-    def so(i: int, r: dict) -> int:
-        return r.get("sort", i)
-    for i, r in enumerate(full.get("a_bands", [])):
-        session.add(rt.RuleABand(id=uuid.uuid4(), rule_set_id=rs_id, component=r["component"], max_value=r.get("max_value"), index_value=int(r["index"]), sort_order=so(i, r), is_active=bool(r.get("is_active", True))))
-    for i, r in enumerate(full.get("b", [])):
-        session.add(rt.RuleBOption(id=uuid.uuid4(), rule_set_id=rs_id, code=r["code"], label_zh=r["label_zh"], label_en=r.get("label_en"), index_value=int(r["index"]), is_default=bool(r.get("is_default")), sentence_text_zh=r.get("sentence_text_zh"), sort_order=so(i, r), is_active=bool(r.get("is_active", True))))
-    for i, r in enumerate(full.get("g", [])):
-        session.add(rt.RuleGAction(id=uuid.uuid4(), rule_set_id=rs_id, code=r["code"], label_zh=r["label_zh"], label_en=r.get("label_en"), modifier_key=r.get("modifier_key"), requires_modifier=bool(r.get("requires_modifier")), base_tmu=int(r["base_tmu"]), sentence_text_zh=r.get("sentence_text_zh"), sort_order=so(i, r), is_active=bool(r.get("is_active", True))))
-    for i, r in enumerate(full.get("p_bases", [])):
-        session.add(rt.RulePBase(id=uuid.uuid4(), rule_set_id=rs_id, code=r["code"], label_zh=r["label_zh"], label_en=r.get("label_en"), category=r.get("category"), direction_mode=r.get("direction_mode"), base_tmu=int(r["base_tmu"]), sentence_text_zh=r.get("sentence_text_zh"), sort_order=so(i, r), is_active=bool(r.get("is_active", True))))
-    for i, r in enumerate(full.get("p_addons", [])):
-        session.add(rt.RulePAddon(id=uuid.uuid4(), rule_set_id=rs_id, code=r["code"], label_zh=r["label_zh"], label_en=r.get("label_en"), delta_tmu=int(r["delta"]), needs_precision=bool(r.get("needs_precision")), max_select=int(r.get("max_select", 2)), display_rule=r.get("display_rule") or "show_self", sentence_text_zh=r.get("sentence_text_zh"), sort_order=so(i, r), is_active=bool(r.get("is_active", True))))
-    for i, r in enumerate(full.get("m_ladder", [])):
-        session.add(rt.RuleMLadderBand(id=uuid.uuid4(), rule_set_id=rs_id, max_cm=r.get("max_cm"), tmu=int(r["tmu"]), sort_order=so(i, r), is_active=bool(r.get("is_active", True))))
-    for i, r in enumerate(full.get("m_foot", [])):
-        session.add(rt.RuleMFootBand(id=uuid.uuid4(), rule_set_id=rs_id, max_cm=r.get("max_cm"), tmu=int(r["tmu"]), sort_order=so(i, r), is_active=bool(r.get("is_active", True))))
-    for i, r in enumerate(full.get("m_verbs", [])):
-        session.add(rt.RuleMVerb(id=uuid.uuid4(), rule_set_id=rs_id, code=r["code"], label_zh=r["label_zh"], label_en=r.get("label_en"), pricing_kind=r["pricing_kind"], fixed_tmu=r.get("fixed_tmu"), sentence_text_zh=r.get("sentence_text_zh"), sort_order=so(i, r), is_active=bool(r.get("is_active", True))))
-    for i, r in enumerate(full.get("m_rotation", [])):
-        session.add(rt.RuleMRotationBand(id=uuid.uuid4(), rule_set_id=rs_id, max_diameter_cm=r.get("max_diameter_cm"), revolutions=int(r["revolutions"]), tmu=int(r["tmu"]), sort_order=so(i, r), is_active=bool(r.get("is_active", True))))
-    for i, r in enumerate(full.get("m_hand", [])):
-        session.add(rt.RuleMHandBand(id=uuid.uuid4(), rule_set_id=rs_id, max_deg=r.get("max_deg"), tmu=int(r["tmu"]), sort_order=so(i, r), is_active=bool(r.get("is_active", True))))
-    for i, r in enumerate(full.get("x", [])):
-        session.add(rt.RuleXOption(id=uuid.uuid4(), rule_set_id=rs_id, code=r["code"], label_zh=r["label_zh"], label_en=r.get("label_en"), mode=r["mode"], fixed_seconds=r.get("fixed_seconds"), sentence_text_zh=r.get("sentence_text_zh"), sort_order=so(i, r), is_active=bool(r.get("is_active", True))))
-    for i, r in enumerate(full.get("i", [])):
-        session.add(rt.RuleIOption(id=uuid.uuid4(), rule_set_id=rs_id, code=r["code"], label_zh=r["label_zh"], label_en=r.get("label_en"), index_value=int(r["index"]), vision_scope=r.get("vision_scope"), sentence_text_zh=r.get("sentence_text_zh"), sort_order=so(i, r), is_active=bool(r.get("is_active", True))))
 
 
 def validate_full_bands(full: dict[str, Any]) -> None:
@@ -232,7 +214,22 @@ async def _auto_draft_code(session: AsyncSession, src_code: str) -> str:
     raise RuleSetExists(base)
 
 
-async def clone_draft(session: AsyncSession, code: str, new_code: str | None, name_zh: str | None) -> dict[str, Any]:
+async def clone_draft(
+    session: AsyncSession, code: str, new_code: str | None, name_zh: str | None,
+    actor: str | None = None,
+) -> dict[str, Any]:
+    """由既有版本 clone 出一個 draft（ADR-023 §3.2）。
+
+    稽核（D7 / H-1）：這是**值改動鏈的起點**——「clone 草稿 → 改值 → 請人發布」原本
+    整條鏈只有最後一步（publish，記的是覆核者）留下紀錄。
+
+    payload 存 `source_code` ＋ `snapshot_sha256` ＋ 各區塊列數，**不存整份值快照**：
+    clone 出來的內容依定義逐欄等於來源版本，而
+    (a) 之後對這個 draft 的每一次改值都有前後值稽核（option CRUD／`PUT /full`），
+    (b) 來源版本若被刪除，`delete_rule_set` 會存下它的完整快照，
+    所以「這個 draft 當初是什麼值」在稽核鏈上恆可還原，hash 只負責釘死「當初 clone 的
+    是不是這份內容」。存第二份全量快照只會讓每次 clone 多寫數百 KB 的重複資料。
+    """
     src = (await session.execute(select(RuleSet).where(RuleSet.code == code))).scalar_one_or_none()
     if src is None:
         raise RuleSetNotFound(code)
@@ -247,6 +244,26 @@ async def clone_draft(session: AsyncSession, code: str, new_code: str | None, na
     session.add(new_rs)
     await session.flush()
     _insert_children(session, new_rs.id, full)
+    await session.flush()
+    await log_audit(
+        session,
+        entity_type="rule_set",
+        entity_id=new_rs.id,
+        action="clone_draft",
+        from_status=None,
+        to_status="draft",
+        actor=actor or "unknown",
+        payload={
+            "code": new_code,
+            "source_code": code,
+            "source_status": src.status,
+            "source_is_active": src.is_active,
+            "provenance": "cloned",
+            "multiplier": float(src.system_tmu_multiplier),
+            "row_counts": section_row_counts(full),
+            "snapshot_sha256": snapshot_digest(full),
+        },
+    )
     await session.flush()
     return {"code": new_code, "status": "draft", "provenance": "cloned"}
 
@@ -287,6 +304,95 @@ class PayloadInvalid(ValueError):
     ADR-023 §3.6：缺子表**不得**靜默建立不完整版本（那會產生一個 publish 時才炸、
     或更糟——activate 後才在 runtime 靜默算錯值的版本，見 SILENT_FALLBACK_SECTIONS）。
     """
+
+
+# `load_full()`／匯出負載的區塊鍵 → (param, section, 區塊鍵名 → schema 欄位名)。
+# section=None＝逐列由 `component` 欄決定（A 三分量共用一張表）。
+# dict 的插入順序＝子表寫入順序（與 D3 之前的手寫版本一致，勿重排）。
+_SECTION_SCHEMA_MAP: dict[str, tuple[str, str | None, dict[str, str]]] = {
+    "a_bands": ("A", None, {"index": "index_value", "sort": "sort_order"}),
+    "b": ("B", "default", {"index": "index_value", "sort": "sort_order"}),
+    "g": ("G", "default", {"sort": "sort_order"}),
+    "p_bases": ("P", "base", {"sort": "sort_order"}),
+    "p_addons": ("P", "addon", {"delta": "delta_tmu", "sort": "sort_order"}),
+    "m_ladder": ("M", "ladder", {"sort": "sort_order"}),
+    "m_foot": ("M", "foot", {"sort": "sort_order"}),
+    "m_verbs": ("M", "verb", {"sort": "sort_order"}),
+    "m_rotation": ("M", "rotation", {"sort": "sort_order"}),
+    "m_hand": ("M", "hand", {"sort": "sort_order"}),
+    "x": ("X", "default", {"sort": "sort_order"}),
+    "i": ("I", "default", {"index": "index_value", "sort": "sort_order"}),
+}
+
+assert set(_SECTION_SCHEMA_MAP) == set(FULL_SECTION_KEYS)
+
+
+def _prepare_row(section_key: str, index: int, row: Any) -> tuple[Any, dict[str, Any]]:
+    """把一列負載轉成「已過欄位級契約」的 ORM kwargs（ADR-023 D7 / M-1）。
+
+    為什麼必須存在：`import` 與 `PUT /full` 原本是直接 `int(r["base_tmu"])` 寫進 DB，
+    **完全繞過** `schemas/v2/rule_set_options.py` 的 `Field(ge=0)`，而 DB 的 CHECK 只覆蓋
+    列舉欄、數值欄沒有 CHECK。結果是 `base_tmu: -50` 一路綠燈通過
+    import → validate_complete（只看表在不在，不看值）→ publish → activate，
+    最後在 runtime 產出**負的 TMU**——比「把值改小」更難目視察覺。
+
+    契約來源沿用選項級 CRUD 的同一組 schema（`OptionSpec.resolve()` 的分派表），
+    所以 `PUT /options/{code}` 擋得住的值，這兩條路徑也擋得住——不會有第二套數值契約。
+
+    欄位取值刻意**白名單**（只取 schema 宣告的欄位，其餘忽略），與改動前的行為一致：
+    本次修的是「數值契約被繞過」，不順手把未知欄位從忽略改成 422（那會影響既有呼叫端，
+    屬另一個決策）。值為 None 的欄一律不傳、交給 schema 預設——12 個 schema 裡所有
+    可為 None 的欄位其預設都正是 None，故語意不變。
+    """
+    param, section, renames = _SECTION_SCHEMA_MAP[section_key]
+    if not isinstance(row, dict):
+        raise PayloadInvalid(f"{section_key}[{index}] 不是物件（收到 {type(row).__name__}）")
+    if section is None:
+        section = str(row.get("component") or "").strip() or None
+    try:
+        spec = resolve(param, section)
+    except (ParamInvalid, SectionInvalid, SectionRequired) as e:
+        raise PayloadInvalid(f"{section_key}[{index}] 的 component 不合法：{e}") from e
+
+    src = dict(row)
+    for old, new in renames.items():
+        if old in src:
+            src.setdefault(new, src[old])
+    kwargs = {f: src[f] for f in spec.schema.model_fields if src.get(f) is not None}
+    kwargs.setdefault("sort_order", index)
+    # is_active 顯式處理：schema 預設是 True，但既有語意是 `bool(r.get("is_active", True))`
+    # ——明寫 null 要落成 False，不能被「None 就用預設」吃掉。
+    kwargs["is_active"] = bool(src.get("is_active", True))
+
+    try:
+        values: dict[str, Any] = spec.schema.model_validate(kwargs).model_dump()
+    except PydanticValidationError as e:
+        detail = "；".join(
+            f"{'.'.join(str(x) for x in err['loc']) or '(整列)'}={err.get('input')!r} → {err['msg']}"
+            for err in e.errors()
+        )
+        raise PayloadInvalid(f"{section_key}[{index}] 欄位不合法（{detail}）") from e
+    if spec.filter_field is not None:  # A 三分量共用一張表：component 不在 schema 內但要落盤
+        values[spec.filter_field] = spec.filter_value
+    return spec.model, values
+
+
+def validate_children_values(full: dict[str, Any]) -> None:
+    """對 12 個區塊的每一列跑欄位級契約（不寫入）。
+
+    必須在 `replace_children` **刪除既有子表之前**呼叫：否則一份含負數 TMU 的負載會先把
+    整份字典刪掉、再在插入時才失敗，留下「驗證失敗但資料已毀」的中間態。
+    """
+    for section_key in _SECTION_SCHEMA_MAP:
+        for i, row in enumerate(full.get(section_key) or []):
+            _prepare_row(section_key, i, row)
+
+
+def _insert_children(session: AsyncSession, rs_id: uuid.UUID, full: dict[str, Any]) -> None:
+    for section_key in _SECTION_SCHEMA_MAP:
+        for i, row in enumerate(full.get(section_key) or []):
+            model, values = _prepare_row(section_key, i, row)
+            session.add(model(id=uuid.uuid4(), rule_set_id=rs_id, **values))
 
 
 async def export_full(session: AsyncSession, code: str, exported_by: str | None) -> dict[str, Any]:
@@ -368,6 +474,9 @@ def _validate_payload(payload: dict[str, Any], *, source: str) -> None:
         raise  # 帶界契約違反：訊息已經是給人看的，原樣往上（端點對映 400）
     except (KeyError, TypeError, AttributeError, IndexError) as e:
         raise PayloadInvalid(f"{source}負載的帶（band）列欄位不合法：{e!r}") from e
+    # D7 / M-1：欄位級數值契約（負 TMU 等）。**必須在任何寫入之前**——`replace_children`
+    # 會先 DELETE 全部子表再插入，若留到插入時才失敗，一份非法負載就能把整份字典刪光。
+    validate_children_values(payload)
 
 
 def _assert_importable(payload: dict[str, Any]) -> None:
@@ -450,7 +559,19 @@ async def import_draft(
     }
 
 
-async def replace_children(session: AsyncSession, code: str, full: dict[str, Any]) -> dict[str, Any]:
+async def replace_children(
+    session: AsyncSession, code: str, full: dict[str, Any], actor: str | None = None
+) -> dict[str, Any]:
+    """整份 12 張子表替換（`PUT /full`）。
+
+    稽核（D7 / H-1）：這是**改「值」最強力的一條路徑**，原本完全無紀錄。
+    payload 存的是逐區塊逐列的**前後值差異**（`rule_set_diff.diff_full`）＋ 12 區塊的
+    前後列數，而不是兩份全量快照：
+    - 只存列數還原不了值（資安席對 delete 的同一項指摘）；
+    - 存兩份全量快照則每次 PUT 都寫兩倍字典（絕大多數 PUT 只動幾列），
+      而 diff 已完整回答「改了哪個參數的哪個選項、從什麼變成什麼」——
+      真的整份換掉時 diff 自然退化成全量，資訊不會少。
+    """
     # ADR-023 §3.3 規則 3 明文：「任何選項級寫入**或 PUT /full**一律 409」——
     # 故整份替換與選項級 CRUD 共用同一 gate（certified_import 也擋）。
     rs = await assert_editable(session, code)
@@ -459,6 +580,7 @@ async def replace_children(session: AsyncSession, code: str, full: dict[str, Any
     # 這條路徑同樣是「建立版本內容」，掉了 m_foot 一樣會靜默回退 ladder。
     # 既有呼叫端（前端字典 UI 與 4 支整合測試）一律送完整 `GET /full` 負載，故不破壞既有契約。
     _validate_payload(full, source="")
+    before = await load_full(session, code)  # 稽核用前值快照：必須在刪除子表之前取
     if "name_zh" in full and full["name_zh"]:
         rs.name_zh = full["name_zh"]
     if "multiplier" in full and full["multiplier"] is not None:
@@ -475,9 +597,44 @@ async def replace_children(session: AsyncSession, code: str, full: dict[str, Any
         await session.flush()
     except DBAPIError as e:
         raise PayloadInvalid(f"負載欄位型別不合法（資料庫拒收）：{e.orig!r}") from e
+    after = await load_full(session, code)
+    await log_audit(
+        session,
+        entity_type="rule_set",
+        entity_id=rs.id,
+        action="update_full",
+        from_status=rs.status,
+        to_status=rs.status,
+        actor=actor or "unknown",
+        payload={"code": code, "diff": diff_full(before, after)},
+    )
+    await session.flush()
     # 回應維持 `load_full()` 形狀（export/PUT 對稱性的地基），故 warnings 不併進本回應；
     # 空 m_foot 的提示由 import 端點負責（該處是「新建版本」的入口）。
-    return await load_full(session, code)
+    return after
+
+
+async def diff_against_active(session: AsyncSession, code: str) -> dict[str, Any]:
+    """`code` 相對**目前 active 版本**的值差異（ADR-023 D7 / H-1 第 3 點）。
+
+    為什麼基準是 active 而不是 clone 來源：發布/啟用這一版之後，被取代的東西就是
+    現在 active 的那一版——那才是覆核者需要看的「差在哪」。
+    （`rule_sets` 也沒有指向 clone 來源的欄位，且不值得為此加 migration。）
+
+    無 active → `NoActiveRuleSet`（§3.5：設定錯誤，不靜默 fallback）。
+    `code` 本身就是 active 時 diff 為空（`summary.identical=true`），不是錯誤。
+    """
+    target = await load_full(session, code)          # 不存在 → RuleSetNotFound（404）
+    active = await get_active_rule_set(session)
+    base = await load_full(session, active.code)
+    return {
+        "target_code": code,
+        "target_status": target.get("status"),
+        "base_code": active.code,          # 比較基準版本 code：回應必須標明
+        "base_is_active": True,
+        "compared_with_self": active.code == code,
+        "diff": diff_full(base, target),
+    }
 
 
 async def validate_active_options(session: AsyncSession, rs_id: uuid.UUID, code: str) -> None:
@@ -655,8 +812,10 @@ async def delete_rule_set(session: AsyncSession, code: str, actor: str | None = 
 
     稽核：`workflow_audit_log` **刻意無 FK**（v2_0017 migration 明文「允許實體刪除後 log 留存」）
     且 v2_0018 起 DB trigger 禁 UPDATE/DELETE，所以先寫 audit 再刪實體不會撞 FK，
-    log 也留得住。payload 記下 code/name/provenance/子表列數——實體沒了之後，
-    這行 log 是唯一還說得清「刪掉的是什麼」的紀錄。
+    log 也留得住。payload 記下 code/name/provenance/子表列數 ＋ **`load_full()` 全量快照**
+    ——實體沒了之後，這行 log 是唯一還說得清「刪掉的是什麼」的紀錄，而列數說不清值
+    （D7 / H-1：只存列數等於沒有紀錄）。這是唯一存全量快照的路徑，因為也只有這裡
+    「值的最後一份副本」會跟著實體一起消失。
     """
     rs = await assert_editable(session, code, not_draft_hint="僅 draft 版本可刪除")
     if rs.is_active:
@@ -667,6 +826,7 @@ async def delete_rule_set(session: AsyncSession, code: str, actor: str | None = 
         raise RuleSetInUse(code, refs)
 
     children = await count_children(session, rs.id)
+    snapshot = await load_full(session, code)
     rs_id, name_zh, provenance = rs.id, rs.name_zh, rs.provenance
     await log_audit(
         session,
@@ -677,7 +837,9 @@ async def delete_rule_set(session: AsyncSession, code: str, actor: str | None = 
         to_status=None,
         actor=actor or "unknown",
         payload={"code": code, "name_zh": name_zh, "provenance": provenance,
-                 "children_deleted": children},
+                 "children_deleted": children,
+                 "snapshot_sha256": snapshot_digest(snapshot),
+                 "snapshot": snapshot},
     )
     await session.flush()
     await session.delete(rs)

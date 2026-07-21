@@ -95,9 +95,39 @@ def _validate_startup_security(settings) -> None:
         )
 
 
+# 營運者用來「宣告本服務只經可信 gateway 可達」的環境變數。設了就不再發 C-1 警告。
+# 刻意只當旗標、不做來源 IP/CIDR 比對：本專案的部署防線是拓撲（Traefik ForwardAuth ＋
+# 只綁 loopback 的 port），在 app 內再加一層 IP 比對會讓本機開發與 CI 破功，收益卻有限。
+TRUSTED_GATEWAY_ENV = "DDM_TRUSTED_GATEWAY"
+
+
+def _warn_if_gateway_trust_unconfirmed() -> None:
+    """gateway 模式且未宣告可信來源 → WARNING（ADR-023 D7 / C-1）。
+
+    gateway 模式的身分**完全**來自入站的 `X-Username` header（見 auth/identity.py），
+    它的安全性 100% 依賴「本服務只能經 gateway 進來」這個部署前提。前提一旦不成立
+    （例如 app port 綁到 0.0.0.0），任何人都能零憑證取得 admin。這個前提在程式碼裡
+    看不出來，所以至少要在啟動時講出來。
+
+    **純 log**：不擋啟動、不改變任何行為——本機開發與 CI 都必須照常跑。
+    """
+    if os.getenv("DDM_AUTH_MODE", "gateway").lower() != "gateway":
+        return
+    if os.getenv(TRUSTED_GATEWAY_ENV):
+        return
+    logger.warning(
+        "DDM_AUTH_MODE=gateway：本服務**信任入站的 X-Username header** 作為身分來源，"
+        "沒有任何憑證檢查。請確認本服務只經 gateway（Traefik ForwardAuth）可達；"
+        "若 app port 曝露到 loopback 以外，等同開放無認證的 admin 存取。"
+        f"確認後設 {TRUSTED_GATEWAY_ENV}=1 可關閉本警告；"
+        "需直接對外請改用 DDM_AUTH_MODE=verify。"
+    )
+
+
 def create_app(settings: Settings | None = None) -> FastAPI:
     """建立 FastAPI app（middleware / v2 routers / 例外處理）。"""
     app_settings = settings or get_settings()
+    _warn_if_gateway_trust_unconfirmed()
 
     app = FastAPI(
         title=app_settings.app_name,

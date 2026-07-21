@@ -76,9 +76,9 @@ async def get_full(code: str, session: AsyncSession = Depends(get_db_session, sc
 
 @router.post("/rule-sets/{code}/clone-draft")
 async def clone_draft(code: str, payload: CloneDraftIn, session: AsyncSession = Depends(get_db_session, scope="function"),
-                      _: CurrentUser = Depends(require_role("analyst"))) -> dict:
+                      user: CurrentUser = Depends(require_role("analyst"))) -> dict:
     try:
-        return await svc.clone_draft(session, code, payload.new_code, payload.name_zh)
+        return await svc.clone_draft(session, code, payload.new_code, payload.name_zh, actor=user.employee_no)
     except svc.RuleSetNotFound:
         raise HTTPException(status_code=404, detail=f"rule-set 不存在：{code}")
     except svc.RuleSetExists:
@@ -87,9 +87,9 @@ async def clone_draft(code: str, payload: CloneDraftIn, session: AsyncSession = 
 
 @router.put("/rule-sets/{code}/full")
 async def put_full(code: str, full: dict[str, Any] = Body(...), session: AsyncSession = Depends(get_db_session, scope="function"),
-                   _: CurrentUser = Depends(require_role("analyst"))) -> dict:
+                   user: CurrentUser = Depends(require_role("analyst"))) -> dict:
     try:
-        return await svc.replace_children(session, code, full)
+        return await svc.replace_children(session, code, full, actor=user.employee_no)
     except svc.RuleSetNotFound:
         raise HTTPException(status_code=404, detail=f"rule-set 不存在：{code}")
     except svc.NotEditable as e:
@@ -97,6 +97,27 @@ async def put_full(code: str, full: dict[str, Any] = Body(...), session: AsyncSe
     except (BandInvalid, svc.PayloadInvalid) as e:
         # 帶界契約與 PUT /bands 同源（D2 HIGH-2）；區塊鍵/欄位型別與 import 同源（D3 HIGH-1/2）
         raise HTTPException(status_code=400, detail=str(e))
+
+
+@router.get("/rule-sets/{code}/diff")
+async def diff_rule_set(code: str, session: AsyncSession = Depends(get_db_session, scope="function"),
+                        _: CurrentUser = Depends(require_role("analyst"))) -> dict:
+    """本版本相對**目前 active 版本**的值差異（ADR-023 D7 / H-1）。
+
+    給覆核者看「按下 publish 之後，線上的值會從什麼變成什麼」。在此之前 publish 只回
+    `{"code":..., "status":"published"}`，approver 對被覆核的內容零資訊——
+    log 上只留他的員編，卻分不出他是改值的人還是覆核的人。
+
+    基準固定為 active（＝發布啟用後會被取代的那一版），回應以 `base_code` 標明。
+    差異結構：`diff.sections[<區塊>].{added,removed,changed}`（changed 逐欄帶前後值）
+    ＋ `diff.row_counts`（12 區塊前後列數）＋ `diff.header`（name_zh / multiplier）。
+
+    RBAC：analyst 以上（唯讀，且與 `GET /full` 同樣是字典內容）。
+    """
+    try:
+        return await svc.diff_against_active(session, code)
+    except svc.RuleSetNotFound:
+        raise HTTPException(status_code=404, detail=f"rule-set 不存在：{code}")
 
 
 @router.get("/rule-sets/{code}/export")
@@ -307,10 +328,10 @@ async def create_param_option(
     payload: dict[str, Any] = Body(...),
     section: str | None = _SECTION_Q,
     session: AsyncSession = Depends(get_db_session, scope="function"),
-    _: CurrentUser = Depends(require_role("analyst")),
+    user: CurrentUser = Depends(require_role("analyst")),
 ) -> dict:
     try:
-        return await opt_svc.create_option(session, code, param, section, payload)
+        return await opt_svc.create_option(session, code, param, section, payload, actor=user.employee_no)
     except _OPT_ERRORS as e:
         raise _handle(e) from e
 
@@ -323,11 +344,11 @@ async def update_param_option(
     payload: dict[str, Any] = Body(...),
     section: str | None = _SECTION_Q,
     session: AsyncSession = Depends(get_db_session, scope="function"),
-    _: CurrentUser = Depends(require_role("analyst")),
+    user: CurrentUser = Depends(require_role("analyst")),
 ) -> dict:
     """部分更新：未給的欄位沿用現值，但合併後仍過**完整** schema 驗證。"""
     try:
-        return await opt_svc.update_option(session, code, param, section, option_code, payload)
+        return await opt_svc.update_option(session, code, param, section, option_code, payload, actor=user.employee_no)
     except _OPT_ERRORS as e:
         raise _handle(e) from e
 
@@ -339,11 +360,11 @@ async def delete_param_option(
     option_code: str,
     section: str | None = _SECTION_Q,
     session: AsyncSession = Depends(get_db_session, scope="function"),
-    _: CurrentUser = Depends(require_role("analyst")),
+    user: CurrentUser = Depends(require_role("analyst")),
 ) -> dict:
     """硬刪（draft 專屬，無人引用 → 不需 soft-delete）。"""
     try:
-        return await opt_svc.delete_option(session, code, param, section, option_code)
+        return await opt_svc.delete_option(session, code, param, section, option_code, actor=user.employee_no)
     except _OPT_ERRORS as e:
         raise _handle(e) from e
 
@@ -355,11 +376,11 @@ async def duplicate_param_option(
     option_code: str,
     section: str | None = _SECTION_Q,
     session: AsyncSession = Depends(get_db_session, scope="function"),
-    _: CurrentUser = Depends(require_role("analyst")),
+    user: CurrentUser = Depends(require_role("analyst")),
 ) -> dict:
     """複製一筆選項；新 code 為 `{code}_copy`／`{code}_copy_2`…（保證唯一）。"""
     try:
-        return await opt_svc.duplicate_option(session, code, param, section, option_code)
+        return await opt_svc.duplicate_option(session, code, param, section, option_code, actor=user.employee_no)
     except _OPT_ERRORS as e:
         raise _handle(e) from e
 
@@ -372,7 +393,7 @@ async def replace_param_bands(
     component: str | None = _COMPONENT_Q,
     section: str | None = _SECTION_Q,
     session: AsyncSession = Depends(get_db_session, scope="function"),
-    _: CurrentUser = Depends(require_role("analyst")),
+    user: CurrentUser = Depends(require_role("analyst")),
 ) -> dict:
     """帶型區塊**整組替換**（A / M.ladder|foot|rotation|hand）。
 
@@ -380,6 +401,6 @@ async def replace_param_bands(
     單筆增刪不提供，因為那會產生非法中間態（ADR-023 §2）。
     """
     try:
-        return await opt_svc.replace_bands(session, code, param, component or section, payload.items)
+        return await opt_svc.replace_bands(session, code, param, component or section, payload.items, actor=user.employee_no)
     except _OPT_ERRORS as e:
         raise _handle(e) from e

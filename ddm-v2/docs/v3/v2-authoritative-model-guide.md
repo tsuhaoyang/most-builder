@@ -93,6 +93,21 @@ AND created_by='IEC141289' AND created_at∈[07-07,07-14)`）＝測試隔離改�
    治理在*選版*，不在*載入*
 1c. ❌ **對 `provenance='certified_import'` 的版本做任何寫入**（ADR-014×ADR-023）：
    線上調值一律 clone-on-write；匯入產物恆 `draft`＋`manual`，不得由 payload 指定血緣
+1d. ❌ **在未經 gateway 的情況下曝露 app port**（ADR-023 D7 / C-1）：
+   `DDM_AUTH_MODE=gateway`（預設）的身分**完全**來自入站的 `X-Username` header，
+   沒有任何憑證檢查——port 一旦綁到 loopback 以外，`curl -H 'X-Username: <任一員編>'`
+   就是零憑證 admin（且會 JIT 建帳，是既有垃圾使用者資料的來源之一）。
+   `docker-compose.yml` 固定綁 `127.0.0.1:`；對外一律前掛 Traefik ForwardAuth，
+   過渡期直連請改 `DDM_AUTH_MODE=verify`。
+   延伸：❌ **只靠部署拓撲當唯一防線**——拓撲前提在程式碼裡看不見，改 compose/新增
+   反向代理的人不會知道自己拆掉了認證。故 app 啟動時必發 WARNING 講明這個前提
+   （`main.py::_warn_if_gateway_trust_unconfirmed`），確認後以 `DDM_TRUSTED_GATEWAY=1` 關閉
+1e. ❌ **改「值」的路徑沒有 audit**（ADR-023 D7 / H-1）：`log_audit` 不能只掛在狀態遷移
+   （publish/activate/retire…）。`PUT /full`、clone-draft、選項級 CRUD、`PUT /bands`
+   才是真正改 TMU 的地方；少了它們，log 上只有按 publish 的 approver 員編，
+   **分不出「改值的人」與「覆核的人」**，兩人覆核形同盲簽。
+   延伸：❌ **audit payload 只存列數/區塊名**——還原不了值等於沒有紀錄；
+   須存前後值（帶型存整組前後快照；實體刪除須存 `load_full()` 全量快照）
 2. ❌ 案件清單一版一列；「新建案件」默默 +1 版
 3. ❌ 前端計算/捏造 TMU、快照、句子（後端 computed/narrative 權威）
 4. ❌ 新增頂層 tab 或恢復三層實驗頁

@@ -36,8 +36,14 @@ services:
     depends_on:
       db:
         condition: service_healthy
+    # ⚠️ 只綁 loopback（ADR-023 D7 / C-1）。gateway 模式（本檔預設）**無條件信任入站的
+    # `X-Username` header**——把這個 port 曝露到 loopback 以外，等同開放「零憑證即 admin」
+    # 的存取（`curl -H 'X-Username: <任一員編>' .../api/v2/me` 就會拿到身分，甚至 JIT 建帳）。
+    # 要對外提供服務，前面**必須**掛 Traefik ForwardAuth（由 gateway 覆寫 X-Username），
+    # 不可直接改成 0.0.0.0。過渡期若真的需要直接對外，請改用 DDM_AUTH_MODE=verify
+    # （自驗 LB session、不讀 client 的 X-Username）。
     ports:
-      - "${DDM_PORT:-8877}:8000"
+      - "127.0.0.1:${DDM_PORT:-8877}:8000"
     environment:
       DDM_ROOT_DIR: /app
       DDM_DATA_DIR: /app/data

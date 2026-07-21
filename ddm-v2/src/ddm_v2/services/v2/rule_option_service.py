@@ -25,6 +25,7 @@ from ddm_v2.schemas.v2.rule_set_options import (
     resolve,
     validate_bands,
 )
+from ddm_v2.services.v2.audit_service import log_audit
 from ddm_v2.services.v2.rule_set_service import RuleSetNotFound, assert_editable
 
 __all__ = [
@@ -117,6 +118,37 @@ async def _find(session: AsyncSession, spec: OptionSpec, rs_id: uuid.UUID, optio
     return row
 
 
+async def _log_option_change(
+    session: AsyncSession,
+    rs: Any,
+    spec: OptionSpec,
+    action: str,
+    actor: str | None,
+    **payload: Any,
+) -> None:
+    """選項/帶級寫入的稽核（ADR-023 D7 / H-1）。
+
+    為什麼非有不可：`log_audit` 原本只掛在 import/publish/activate/delete/unretire/retire
+    ——全是**狀態遷移**，一個都不是「改值」。真正把 G 動作 `base_tmu` 6 改成 3 的那一刻
+    完全無紀錄，事後 log 上只有按 publish 的 approver 員編，分不出「改值的人」與
+    「覆核的人」，兩人覆核形同盲簽。
+
+    payload 一律帶 `param`/`section`/`option_code` ＋ **前後值**（帶型是整組前後快照），
+    因為只記「某人動過 G 參數」還原不了被改成什麼。
+    """
+    await log_audit(
+        session,
+        entity_type="rule_set",
+        entity_id=rs.id,
+        action=action,
+        from_status=rs.status,
+        to_status=rs.status,
+        actor=actor or "unknown",
+        payload={"code": rs.code, "param": spec.param, "section": spec.section, **payload},
+    )
+    await session.flush()
+
+
 def _require_options(spec: OptionSpec) -> None:
     if spec.kind != "options":
         raise BandsNotSupported(
@@ -176,12 +208,13 @@ async def _check_cross_row(session: AsyncSession, spec: OptionSpec, rs_id: uuid.
 
 
 async def create_option(
-    session: AsyncSession, code: str, param: str, section: str | None, payload: dict[str, Any]
+    session: AsyncSession, code: str, param: str, section: str | None, payload: dict[str, Any],
+    actor: str | None = None,
 ) -> dict[str, Any]:
     spec = resolve(param, section)
     _require_options(spec)
-    await assert_editable(session, code)
-    rs_id = await _get_rule_set_id(session, code)
+    rs = await assert_editable(session, code)
+    rs_id = rs.id
     data = validate_payload(spec, payload)
     existing = (
         await session.execute(
@@ -194,17 +227,24 @@ async def create_option(
     row = spec.model(id=uuid.uuid4(), rule_set_id=rs_id, **data)
     session.add(row)
     await session.flush()
-    return _serialize(spec, row)
+    after = _serialize(spec, row)
+    await _log_option_change(
+        session, rs, spec, "option_create", actor,
+        option_code=data["code"], before=None, after=after,
+    )
+    return after
 
 
 async def update_option(
-    session: AsyncSession, code: str, param: str, section: str | None, option_code: str, payload: dict[str, Any]
+    session: AsyncSession, code: str, param: str, section: str | None, option_code: str,
+    payload: dict[str, Any], actor: str | None = None,
 ) -> dict[str, Any]:
     spec = resolve(param, section)
     _require_options(spec)
-    await assert_editable(session, code)
-    rs_id = await _get_rule_set_id(session, code)
+    rs = await assert_editable(session, code)
+    rs_id = rs.id
     row = await _find(session, spec, rs_id, option_code)
+    before = _serialize(spec, row)  # 稽核前值：必須在 setattr 之前取
     data = validate_payload(spec, payload, base=row)
     if data["code"] != option_code:
         clash = (
@@ -218,20 +258,36 @@ async def update_option(
     for field, value in data.items():
         setattr(row, field, value)
     await session.flush()
-    return _serialize(spec, row)
+    after = _serialize(spec, row)
+    await _log_option_change(
+        session, rs, spec, "option_update", actor,
+        option_code=option_code, before=before, after=after,
+        changed_fields={
+            f: {"before": before.get(f), "after": after.get(f)}
+            for f in sorted(set(before) | set(after))
+            if before.get(f) != after.get(f)
+        },
+    )
+    return after
 
 
 async def delete_option(
-    session: AsyncSession, code: str, param: str, section: str | None, option_code: str
+    session: AsyncSession, code: str, param: str, section: str | None, option_code: str,
+    actor: str | None = None,
 ) -> dict[str, Any]:
     """硬刪（見模組 docstring：draft 無人引用，不需 soft-delete）。"""
     spec = resolve(param, section)
     _require_options(spec)
-    await assert_editable(session, code)
-    rs_id = await _get_rule_set_id(session, code)
+    rs = await assert_editable(session, code)
+    rs_id = rs.id
     row = await _find(session, spec, rs_id, option_code)
+    before = _serialize(spec, row)  # 實體刪除後，這是唯一還說得清刪掉什麼值的紀錄
     await session.execute(delete(spec.model).where(spec.model.id == row.id))
     await session.flush()
+    await _log_option_change(
+        session, rs, spec, "option_delete", actor,
+        option_code=option_code, before=before, after=None,
+    )
     return {"deleted": option_code, "param": spec.param, "section": spec.section}
 
 
@@ -253,12 +309,13 @@ async def _next_copy_code(session: AsyncSession, spec: OptionSpec, rs_id: uuid.U
 
 
 async def duplicate_option(
-    session: AsyncSession, code: str, param: str, section: str | None, option_code: str
+    session: AsyncSession, code: str, param: str, section: str | None, option_code: str,
+    actor: str | None = None,
 ) -> dict[str, Any]:
     spec = resolve(param, section)
     _require_options(spec)
-    await assert_editable(session, code)
-    rs_id = await _get_rule_set_id(session, code)
+    rs = await assert_editable(session, code)
+    rs_id = rs.id
     src = await _find(session, spec, rs_id, option_code)
     new_code = await _next_copy_code(session, spec, rs_id, option_code)
     data = {f: getattr(src, f) for f in spec.schema.model_fields}
@@ -267,20 +324,32 @@ async def duplicate_option(
     row = spec.model(id=uuid.uuid4(), rule_set_id=rs_id, **data)
     session.add(row)
     await session.flush()
-    return _serialize(spec, row)
+    after = _serialize(spec, row)
+    await _log_option_change(
+        session, rs, spec, "option_duplicate", actor,
+        option_code=new_code, source_option_code=option_code, before=None, after=after,
+    )
+    return after
 
 
 async def replace_bands(
-    session: AsyncSession, code: str, param: str, section: str | None, items: list[dict[str, Any]]
+    session: AsyncSession, code: str, param: str, section: str | None, items: list[dict[str, Any]],
+    actor: str | None = None,
 ) -> dict[str, Any]:
-    """整組替換一個帶型區塊（A 依 component、M 依 section）。"""
+    """整組替換一個帶型區塊（A 依 component、M 依 section）。
+
+    稽核 payload 存**整組前後快照**：帶型沒有「選項代碼」可指認單列（ADR-023 §2），
+    改動的語意本來就是「這一組帶從 X 變成 Y」，逐列 diff 反而會誤導
+    （中間插入一帶會讓其後每一帶看起來都被改過）。
+    """
     spec = resolve(param, section)
     _require_bands(spec)
-    await assert_editable(session, code)
-    rs_id = await _get_rule_set_id(session, code)
+    rs = await assert_editable(session, code)
+    rs_id = rs.id
 
     data = [validate_payload(spec, item) for item in items]
     validate_bands(spec, data)
+    before = [_serialize(spec, r) for r in await _rows(session, spec, rs_id)]
 
     stmt: Any = delete(spec.model).where(spec.model.rule_set_id == rs_id)
     if spec.filter_field is not None:
@@ -292,4 +361,10 @@ async def replace_bands(
         extra = {spec.filter_field: spec.filter_value} if spec.filter_field else {}
         session.add(spec.model(id=uuid.uuid4(), rule_set_id=rs_id, **{**item, "sort_order": i}, **extra))
     await session.flush()
-    return await list_options(session, code, param, section)
+    result = await list_options(session, code, param, section)
+    await _log_option_change(
+        session, rs, spec, "bands_replace", actor,
+        before=before, after=result["items"],
+        row_counts={"before": len(before), "after": len(result["items"])},
+    )
+    return result

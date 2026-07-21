@@ -1,0 +1,76 @@
+"""C-1（ADR-023 D7）：gateway 模式的信任前提必須在啟動時講出來。
+
+背景：`DDM_AUTH_MODE=gateway`（預設）時 `auth/identity.py` **無條件採信入站的
+`X-Username`**——安全性 100% 依賴「本服務只經 gateway 可達」這個部署前提。
+這個前提在程式碼裡看不出來，所以 app factory 至少要發一筆 WARNING。
+
+⚠️ 純 log：本檔同時鎖住「不得改變行為」——警告不擋啟動、也不影響路由掛載。
+"""
+from __future__ import annotations
+
+import logging
+
+import pytest
+
+from ddm_v2.main import TRUSTED_GATEWAY_ENV, create_app
+
+pytestmark = pytest.mark.unit
+
+_MARKER = "X-Username"  # 警告必須點名這個 header，否則讀者不知道前提是什麼
+
+
+@pytest.fixture(autouse=True)
+def _clean_auth_env(monkeypatch):
+    monkeypatch.delenv("DDM_AUTH_MODE", raising=False)
+    monkeypatch.delenv(TRUSTED_GATEWAY_ENV, raising=False)
+
+
+def _warnings(caplog) -> list[str]:
+    return [
+        r.getMessage() for r in caplog.records
+        if r.levelno == logging.WARNING and _MARKER in r.getMessage()
+    ]
+
+
+def test_gateway_mode_emits_warning(caplog):
+    """預設（未設 DDM_AUTH_MODE ＝ gateway）就必須警告。"""
+    with caplog.at_level(logging.WARNING, logger="ddm_v2.main"):
+        create_app()
+    msgs = _warnings(caplog)
+    assert len(msgs) == 1, f"gateway 模式應發且只發一筆 X-Username 信任警告，收到 {msgs}"
+    # 只斷言「有 WARNING」會空洞通過：main.py 本來就會為 DDM_SECRET_KEY 發警告。
+    # 訊息必須說得出「信任什麼」與「該怎麼辦」，否則讀到的人無法行動。
+    assert "gateway" in msgs[0]
+    assert TRUSTED_GATEWAY_ENV in msgs[0]
+
+
+def test_explicit_gateway_mode_emits_warning(caplog, monkeypatch):
+    monkeypatch.setenv("DDM_AUTH_MODE", "GATEWAY")  # 大小寫不敏感
+    with caplog.at_level(logging.WARNING, logger="ddm_v2.main"):
+        create_app()
+    assert len(_warnings(caplog)) == 1
+
+
+def test_trusted_gateway_declared_silences_warning(caplog, monkeypatch):
+    """營運者宣告「已確認只經 gateway 可達」後不再嘮叨（否則警告會被當噪音忽略）。"""
+    monkeypatch.setenv(TRUSTED_GATEWAY_ENV, "1")
+    with caplog.at_level(logging.WARNING, logger="ddm_v2.main"):
+        create_app()
+    assert _warnings(caplog) == []
+
+
+def test_verify_mode_does_not_warn(caplog, monkeypatch):
+    """verify 模式不讀 client 的 X-Username（身分來自 LB 驗證回應）→ 不適用本警告。"""
+    monkeypatch.setenv("DDM_AUTH_MODE", "verify")
+    with caplog.at_level(logging.WARNING, logger="ddm_v2.main"):
+        create_app()
+    assert _warnings(caplog) == []
+
+
+def test_warning_does_not_block_startup(caplog):
+    """純 log：不得擋啟動、不得改變路由掛載（本機開發與 CI 必須照常跑）。"""
+    with caplog.at_level(logging.WARNING, logger="ddm_v2.main"):
+        app = create_app()
+    assert _warnings(caplog), "前提：本案例確實走到會警告的分支"
+    paths = {getattr(r, "path", None) for r in app.routes}
+    assert "/api/v2/rule-sets/{code}/full" in paths
