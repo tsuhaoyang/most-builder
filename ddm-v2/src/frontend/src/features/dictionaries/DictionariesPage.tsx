@@ -1,5 +1,10 @@
 /**
- * DictionariesPage — H-01/02 字典管理
+ * DictionariesPage — H-01/02 主數據管理
+ *
+ * 為什麼不叫「字典」：在 v2，「字典」只指 MOST 規則值（rule_sets ＋ 12 張子表，
+ * 有版本、clone-on-write、須可回放），那是 features/dictionary/ 的「MOST 字典」頁。
+ * 本頁是主數據——詞彙庫與範本庫是廠內現況（可從 MES/ERP/PLM 同步），無版本、跟隨現實，
+ * 不影響工時計算結果。見 ADR-024。
  *
  * Tab 1「詞彙庫」: WorkVocabItem CRUD (viewer 唯讀；analyst+ 可新增/停用/啟用)
  * Tab 2「動作模組範本」: MotionTemplate list + promote (approver+ 才顯示升格按鈕)
@@ -317,7 +322,7 @@ export function DictionariesPage() {
   return (
     <div className="space-y-4">
       <div className="bg-white rounded-xl border p-4">
-        <h2 className="font-semibold">字典管理</h2>
+        <h2 className="font-semibold">主數據管理</h2>
         <p className="text-xs text-slate-500 mt-0.5">
           管理工作詞彙（WorkVocabItem）與動作模組範本（MotionTemplate）。
           身分：{me?.employee_no}（{me?.roles?.join(' · ') || 'viewer'}）

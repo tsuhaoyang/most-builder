@@ -57,6 +57,7 @@ async def _make_published_module(client, rs_id: str, rows: list[dict], prefix: s
     sfx = uuid.uuid4().hex[:6]
     r = await client.post("/api/v2/motion-modules", json={
         "name_zh": f"{prefix}-{sfx}", "scope": "global",
+        "category": "action",
     })
     assert r.status_code == 201, r.text
     mid = r.json()["id"]
@@ -123,6 +124,7 @@ async def test_apply_back_persists_computed(client):
         pytest.skip("DB 無 rule_set，略過")
     r = await client.post("/api/v2/motion-modules", json={
         "name_zh": f"A1-FromRows-{uuid.uuid4().hex[:6]}", "scope": "personal",
+        "category": "action",
     })
     mid = r.json()["id"]
     resp = await client.post(f"/api/v2/motion-modules/{mid}/versions/from-rows", json={
@@ -337,6 +339,7 @@ async def test_delete_row_unpublished_module_404(client):
     """尚無發布版本（current_version=0）→ 404。"""
     r = await client.post("/api/v2/motion-modules", json={
         "name_zh": f"A2-Del-NoVer-{uuid.uuid4().hex[:6]}", "scope": "global",
+        "category": "action",
     })
     mid = r.json()["id"]
     resp = await client.delete(f"/api/v2/motion-modules/{mid}/rows/0")

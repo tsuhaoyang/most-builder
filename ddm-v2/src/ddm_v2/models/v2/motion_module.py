@@ -39,7 +39,14 @@ class MotionModule(Base, TimestampMixin):
         nullable=True,
     )
     name_zh: Mapped[str] = mapped_column(Text, nullable=False)
-    category: Mapped[str | None] = mapped_column(Text)
+    # ADR-024 §4：只作為 ADR-022 的兩層判別值（'action' ／ 'wi-template'），
+    # 不得再承載領域分類（取放／組裝／鎖附…）。
+    # 值域由兩個約束合力守住（D9b）：
+    #   - NOT NULL（v2_0023）              不能沒有值
+    #   - ck_motion_modules_category_valid 只能是這兩個值
+    # ⚠️ 兩者缺一不可：CHECK 只在謂詞為 FALSE 時拒絕，而 `NULL IN (...)` 求值為 NULL，
+    # 所以單靠 CHECK 擋不住 NULL——而 NULL 的模組兩層皆不屬，正是隱形列 bug 的原始形狀。
+    category: Mapped[str] = mapped_column(Text, nullable=False)
     keywords: Mapped[list[str]] = mapped_column(
         ARRAY(Text), nullable=False, server_default=text("'{}'::text[]")
     )
@@ -67,6 +74,10 @@ class MotionModule(Base, TimestampMixin):
         ),
         CheckConstraint(
             "scope != 'personal' OR owner IS NOT NULL", name="ck_motion_modules_personal_owner"
+        ),
+        # ADR-024 §4（v2_0022 建立 CHECK，v2_0023 補 NOT NULL）。見上方欄位註解。
+        CheckConstraint(
+            "category IN ('action','wi-template')", name="ck_motion_modules_category_valid"
         ),
     )
 

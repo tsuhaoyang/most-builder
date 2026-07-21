@@ -15,6 +15,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from ddm_v2.auth.deps import CurrentUser, current_user, require_role
 from ddm_v2.database import get_db_session
 from ddm_v2.models.v2.motion_template import MotionTemplate
+from ddm_v2.schemas.v2.most import CycleIn
 from ddm_v2.schemas.v2.motion_template import (
     MatchHit,
     MatchIn,
@@ -25,6 +26,17 @@ from ddm_v2.schemas.v2.motion_template import (
 from ddm_v2.services.v2.audit_service import log_audit
 
 router = APIRouter(prefix="/api/v2", tags=["v2-motion-templates"])
+
+
+def _dump_cycle(cycle: CycleIn) -> dict:
+    """範本的 cycle 快照一律不含 rule_set_code（ADR-024 §3-2）。
+
+    範本是「怎麼填七格」的樣板，不是回放快照——它沒有「當初用哪一版算的」這回事。
+    套用時必須解析 active rule-set（ADR-023 §3.5），所以存一個版本代碼進去只會誤導：
+    既有 16 筆存的是 legacy 的 MINIMOST_FACTORY_V1，P2 接上匯入後會靜默算錯 TMU。
+    （對比：motion_module_versions.rows[].cycle 是回放權威，那裡必須留 rule_set_code。）
+    """
+    return cycle.model_dump(mode="json", exclude={"rule_set_code"})
 
 
 def _out(t: MotionTemplate) -> MotionTemplateOut:
@@ -75,7 +87,7 @@ async def create_template(payload: MotionTemplateIn, session: AsyncSession = Dep
     t = MotionTemplate(
         id=uuid.uuid4(), name_zh=payload.name_zh, name_en=payload.name_en, category=payload.category,
         keywords=payload.keywords, seq_kind=payload.seq_kind,
-        cycle_template=payload.cycle_template.model_dump(mode="json"),
+        cycle_template=_dump_cycle(payload.cycle_template),
         status="draft", owner=actor.employee_no, created_by=actor.employee_no,
     )
     session.add(t)
@@ -123,7 +135,7 @@ async def patch_template(template_id: uuid.UUID, payload: MotionTemplatePatchIn,
     if payload.seq_kind is not None:
         t.seq_kind = payload.seq_kind
     if payload.cycle_template is not None:
-        t.cycle_template = payload.cycle_template.model_dump(mode="json")
+        t.cycle_template = _dump_cycle(payload.cycle_template)
     if payload.is_active is not None:
         t.is_active = payload.is_active
     await session.flush()

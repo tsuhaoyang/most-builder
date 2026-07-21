@@ -73,14 +73,21 @@ class FromModuleRequest(BaseModel):
 class MotionModuleCreate(BaseModel):
     """POST /motion-modules body。
 
-    category 規範（ADR-022 資料模型表；DB 無 CHECK，屬約定值）：
+    category（ADR-022 兩層判別值；**必填**，ADR-024 §4 / D9b）：
     - 'action'：單動作素材（恰 1 row；對應 v3 most_sequence_items）
     - 'wi-template'：WI 大綱項（rows = 動作快照複本；對應 v3 MI statements）
-    - None / 其他文字：既有範本沿用（16 筆 null category 範本不動）
+
+    ⚠️ 刻意不給預設值。category 決定模組屬於哪一層，**沒有它的模組兩層皆不屬**——
+    工作台濾 'action'、WI 庫濾 'wi-template'，都列不出來 → 完全隱形。
+    ADR-024「事後剖析」的 16 筆隱形模組就是這個形狀（當時是舊語意的中文領域分類）。
+    省略 category 是呼叫端錯誤，應回 422，而不是建出一個沒人看得見的模組。
+
+    也刻意不做「省略時預設 'action'」：那是靜默猜測呼叫端意圖（守則 §7 第 8 條），
+    WI 範本被預設成 action 會直接錯層。DB 端由 ck_motion_modules_category_valid 兜底。
     """
 
     name_zh: str = Field(..., min_length=1, max_length=200)
-    category: str | None = None
+    category: Literal["action", "wi-template"]
     keywords: list[str] = Field(default_factory=list)
     scope: Literal["personal", "site", "global"] = "personal"
     owner: str | None = None      # personal scope 時自動填 current_user；可覆寫
@@ -92,10 +99,13 @@ class MotionModuleUpdate(BaseModel):
 
     SM-4：owner 欄位已移除，不允許呼叫方重新指派 owner；
     owner 在 create 時由 service 設定，之後不可更改。
+
+    category 選填（不送＝不改），但**送了就必須是合法的兩層判別值**——
+    否則等於用 PUT 把既有模組改成隱形（ADR-024 §4 / D9b）。
     """
 
     name_zh: str | None = Field(None, min_length=1, max_length=200)
-    category: str | None = None
+    category: Literal["action", "wi-template"] | None = None
     keywords: list[str] | None = None
     scope: Literal["personal", "site", "global"] | None = None
     site_id: uuid.UUID | None = None

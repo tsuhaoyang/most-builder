@@ -443,7 +443,8 @@ async def test_module_publish_and_instantiate_persist_rule_set_code(client, db_s
     active = await _rule_set(db_session, V2)
     sfx = uuid.uuid4().hex[:6]
     mid = (await client.post("/api/v2/motion-modules",
-                             json={"name_zh": f"UT-RSCode-{sfx}", "scope": "global"})).json()["id"]
+                             json={"name_zh": f"UT-RSCode-{sfx}", "category": "action",
+                                   "scope": "global"})).json()["id"]
 
     # cycle 刻意不帶 rule_set_code
     cycle = dict(GM_V1)

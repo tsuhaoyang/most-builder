@@ -35,7 +35,9 @@ python3.12 -m venv .venv
 .venv/bin/pip install -e ".[dev]"
 
 # DB migration + seed
-export DATABASE_URL="postgresql+asyncpg://USER:PASS@localhost:5432/ddm_v2"
+# 資料庫名是 ddm_v2_most（不是 ddm_v2）；帳密以 compose 的 db 服務為準，可查：
+#   docker compose exec db sh -c 'echo $POSTGRES_USER/$POSTGRES_DB'
+export DATABASE_URL="postgresql+asyncpg://USER:PASS@localhost:5432/ddm_v2_most"
 PYTHONPATH=src .venv/bin/alembic upgrade head
 PYTHONPATH=src .venv/bin/python scripts/dev_seed_v2.py         # hierarchy + worksheet + admin
 PYTHONPATH=src .venv/bin/python scripts/dev_seed_templates.py  # motion template library

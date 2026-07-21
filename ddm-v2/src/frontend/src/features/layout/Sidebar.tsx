@@ -11,7 +11,7 @@ const PRIMARY_NAV: NavItem[] = [
   { id: 'wi-project',   label: 'WI 專案建立',        shortLabel: 'W' },
   { id: 'level',        label: 'Level System',       shortLabel: 'L' },
   { id: 'case',         label: '分析案件',            shortLabel: '案' },
-  { id: 'dictionaries', label: '字典管理',            shortLabel: '典', minRole: 'analyst' },
+  { id: 'dictionaries', label: '主數據管理',          shortLabel: '主', minRole: 'analyst' },
   { id: 'users',        label: '使用者管理',          shortLabel: '人', minRole: 'admin' },
   { id: 'ruleset',      label: 'MOST 字典',           shortLabel: '字', minRole: 'admin' },
 ]

@@ -328,10 +328,11 @@ test.describe('§A-01 Sidebar 結構 (UX spec §1.1–1.2)', () => {
   test('A-01-3: admin 展開時看到 ADR-021 的 7+2 導覽項目（順序固定）', async ({ page }) => {
     await gotoAndWait(page)
     // ADR-021 目標 IA：儀表板 / MOST 工作台 / WI 專案建立 / Level System / 分析案件
-    //                / 字典管理(analyst+) / 使用者管理(admin) / MOST 字典(admin)
+    //                / 主數據管理(analyst+) / 使用者管理(admin) / MOST 字典(admin)
+    // ADR-024：第 6 項原名「字典管理」，更名為「主數據管理」（「字典」在 v2 只指 MOST 規則值）
     const nav = page.locator('nav').first()
     const labels = ['儀表板', 'MOST 工作台', 'WI 專案建立', 'Level System',
-      '分析案件', '字典管理', '使用者管理', 'MOST 字典']
+      '分析案件', '主數據管理', '使用者管理', 'MOST 字典']
     for (const label of labels) {
       await expect(nav.getByRole('button', { name: new RegExp(label) })).toBeVisible()
     }
@@ -341,7 +342,7 @@ test.describe('§A-01 Sidebar 結構 (UX spec §1.1–1.2)', () => {
     const texts = await nav.getByRole('button').allInnerTexts()
     expect(texts.map(t => t.replace(/\s+/g, ' ').trim())).toEqual([
       '表 儀表板', 'M MOST 工作台', 'W WI 專案建立', 'L Level System',
-      '案 分析案件', '典 字典管理', '人 使用者管理', '字 MOST 字典',
+      '案 分析案件', '主 主數據管理', '人 使用者管理', '字 MOST 字典',
     ])
   })
 
@@ -360,10 +361,14 @@ test.describe('§A-01 Sidebar 結構 (UX spec §1.1–1.2)', () => {
     await expect(page.getByRole('button', { name: /SOP/ })).not.toBeVisible()
   })
 
-  test('A-01-5: 主數據已退役，sidebar 不含「主數據」(checklist L-03)', async ({ page }) => {
+  test('A-01-5: 舊 MasterData tab 已退役，「主數據」入口有且只有一個 (checklist L-03, ADR-024)', async ({ page }) => {
     await gotoAndWait(page)
-    // MasterData.tsx deleted; no '主數據' nav entry
-    await expect(page.getByRole('button', { name: /主數據/ })).not.toBeVisible()
+    // 舊 MasterData.tsx（標題「主數據 / 詞彙庫」）已刪除，其詞彙 CRUD 併入「主數據管理」頁的詞彙庫分頁。
+    // 原斷言以「側欄不含『主數據』字樣」當代理；ADR-024 將第 6 項正名為「主數據管理」後該代理失效。
+    // 改為斷言原始意圖：不得有第二個主數據入口（舊 tab 沒有復活）。
+    const masterDataNav = page.locator('nav').first().getByRole('button', { name: /主數據/ })
+    await expect(masterDataNav).toHaveCount(1)
+    await expect(masterDataNav).toHaveText(/主數據管理/)
   })
 })
 
@@ -405,20 +410,20 @@ test.describe('§A-02 Sidebar 折疊/展開 (UX spec §1.1)', () => {
 // ─── § A-02: 角色可見性 ───────────────────────────────────────────────────────
 
 test.describe('§A-02 角色可見性 (checklist A-02)', () => {
-  test('A-02-3: viewer 身分不顯示字典管理/使用者管理', async ({ page }) => {
+  test('A-02-3: viewer 身分不顯示主數據管理/使用者管理', async ({ page }) => {
     await setupRoutes(page, VIEWER_ME)
     await gotoAndWait(page)
-    // level=0 → canEdit=false → '字典管理' (minRole:'analyst') hidden
+    // level=0 → canEdit=false → '主數據管理' (minRole:'analyst') hidden
     // level=0 → isAdmin=false → '使用者管理' (minRole:'admin') hidden
-    await expect(page.getByRole('button', { name: /字典管理/ })).not.toBeVisible()
+    await expect(page.getByRole('button', { name: /主數據管理/ })).not.toBeVisible()
     await expect(page.getByRole('button', { name: /使用者管理/ })).not.toBeVisible()
   })
 
-  test('A-02-4: admin 身分顯示字典管理/使用者管理', async ({ page }) => {
+  test('A-02-4: admin 身分顯示主數據管理/使用者管理', async ({ page }) => {
     await setupRoutes(page, ADMIN_ME)
     await gotoAndWait(page)
     // level=3 → isAdmin=true → both visible
-    await expect(page.getByRole('button', { name: /字典管理/ })).toBeVisible()
+    await expect(page.getByRole('button', { name: /主數據管理/ })).toBeVisible()
     await expect(page.getByRole('button', { name: /使用者管理/ })).toBeVisible()
   })
 })
@@ -752,17 +757,17 @@ test.describe('§G-02 動作按鈕角色 gating (checklist G-01)', () => {
   })
 })
 
-// ─── § H-01: 字典管理頁面 ────────────────────────────────────────────────────
+// ─── § H-01: 主數據管理頁面 ────────────────────────────────────────────────────
 
-test.describe('§H-01 字典管理頁面 (checklist H-01)', () => {
+test.describe('§H-01 主數據管理頁面 (checklist H-01)', () => {
   test.beforeEach(async ({ page }) => {
     await setupRoutes(page, ADMIN_ME)
     await gotoAndWait(page)
-    await clickNavAndWait(page, /字典管理/)
+    await clickNavAndWait(page, /主數據管理/)
   })
 
-  test('H-01-1: 字典管理頁 heading 存在', async ({ page }) => {
-    await expect(page.getByRole('heading', { name: '字典管理' })).toBeVisible()
+  test('H-01-1: 主數據管理頁 heading 存在', async ({ page }) => {
+    await expect(page.getByRole('heading', { name: '主數據管理' })).toBeVisible()
   })
 
   test('H-01-2: Tab「詞彙庫」存在並顯示詞彙列表', async ({ page }) => {
@@ -783,14 +788,14 @@ test.describe('§H-01 字典管理頁面 (checklist H-01)', () => {
   })
 })
 
-// ─── § I-01: RBAC viewer 看不到字典管理 ────────────────────────────────────────
+// ─── § I-01: RBAC viewer 看不到主數據管理 ────────────────────────────────────────
 
-test.describe('§I-01 RBAC viewer 無字典管理入口 (checklist I-01, A-02)', () => {
-  test('I-01-1: viewer 身分 sidebar 無字典管理 button', async ({ page }) => {
+test.describe('§I-01 RBAC viewer 無主數據管理入口 (checklist I-01, A-02)', () => {
+  test('I-01-1: viewer 身分 sidebar 無主數據管理 button', async ({ page }) => {
     await setupRoutes(page, VIEWER_ME)
     await gotoAndWait(page)
     // level=0 → canEdit=false → minRole:'analyst' item hidden
-    await expect(page.getByRole('button', { name: /字典管理/ })).not.toBeVisible()
+    await expect(page.getByRole('button', { name: /主數據管理/ })).not.toBeVisible()
   })
 })
 
@@ -961,9 +966,12 @@ test.describe('§L 退役確認 (checklist L-03, L-04)', () => {
     await gotoAndWait(page)
   })
 
-  test('L-03: 主數據（MasterData）tab 已退役，sidebar 無入口', async ({ page }) => {
-    // MasterData.tsx deleted; no nav item '主數據' in PRIMARY_NAV
-    await expect(page.getByRole('button', { name: /主數據/ })).not.toBeVisible()
+  test('L-03: 舊 MasterData tab 已退役（未以獨立入口復活）', async ({ page }) => {
+    // MasterData.tsx 已刪除、PRIMARY_NAV 無 'master-data' 項；features/master-data/ 僅剩 api.ts
+    // 供工作台複用。ADR-024 後「主數據管理」是唯一帶「主數據」字樣的入口（原 H-01 頁更名而來）。
+    const masterDataNav = page.locator('nav').first().getByRole('button', { name: /主數據/ })
+    await expect(masterDataNav).toHaveCount(1)
+    await expect(masterDataNav).toHaveText(/主數據管理/)
   })
 
   test('L-04: SOP 版本 tab 已退役，sidebar 無入口', async ({ page }) => {

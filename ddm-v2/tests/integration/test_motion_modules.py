@@ -31,6 +31,7 @@ async def test_create_and_get_module(client):
     sfx = uuid.uuid4().hex[:6]
     r = await client.post("/api/v2/motion-modules", json={
         "name_zh": f"測試模組-{sfx}",
+        "category": "action",
         "scope": "personal",
         "keywords": ["取放", "測試"],
     })
@@ -52,6 +53,7 @@ async def test_update_metadata_draft(client):
     """draft 模組可改 metadata。"""
     r = await client.post("/api/v2/motion-modules", json={
         "name_zh": "UT-Upd-Draft",
+        "category": "action",
         "scope": "personal",
     })
     assert r.status_code == 201, r.text
@@ -75,6 +77,7 @@ async def test_publish_version(client):
     sfx = uuid.uuid4().hex[:6]
     r = await client.post("/api/v2/motion-modules", json={
         "name_zh": f"UT-Pub-{sfx}",
+        "category": "action",
         "scope": "global",
     })
     assert r.status_code == 201, r.text
@@ -118,6 +121,7 @@ async def test_get_versions(client):
 
     r = await client.post("/api/v2/motion-modules", json={
         "name_zh": "UT-Versions",
+        "category": "action",
         "scope": "global",
     })
     mid = r.json()["id"]
@@ -143,6 +147,7 @@ async def test_list_modules(client):
     sfx = uuid.uuid4().hex[:6]
     r = await client.post("/api/v2/motion-modules", json={
         "name_zh": f"UT-List-{sfx}",
+        "category": "action",
         "scope": "global",
     })
     assert r.status_code == 201, r.text
@@ -167,6 +172,7 @@ async def test_publish_empty_rows(client):
         pytest.skip("DB 無 rule_set，略過")
     r = await client.post("/api/v2/motion-modules", json={
         "name_zh": "UT-EmptyRows",
+        "category": "action",
         "scope": "global",
     })
     mid = r.json()["id"]
@@ -185,6 +191,7 @@ async def test_publish_bad_cycle(client):
         pytest.skip("DB 無 rule_set，略過")
     r = await client.post("/api/v2/motion-modules", json={
         "name_zh": "UT-BadCycle",
+        "category": "action",
         "scope": "global",
     })
     mid = r.json()["id"]
@@ -232,6 +239,7 @@ async def test_rbac_viewer_cannot_create(client):
     h = {"X-Username": "ZZZMMVIEWER999"}
     r = await client.post("/api/v2/motion-modules", json={
         "name_zh": "viewer-test",
+        "category": "action",
         "scope": "personal",
     }, headers=h)
     assert r.status_code == 403, r.text
@@ -249,6 +257,7 @@ async def test_rbac_viewer_cannot_publish(client):
     # 先用 admin 建模組
     cr = await client.post("/api/v2/motion-modules", json={
         "name_zh": "UT-ViewerPub",
+        "category": "action",
         "scope": "global",
     })
     assert cr.status_code == 201, cr.text
@@ -273,6 +282,7 @@ async def test_sm1_idor_personal_module_blocked(client):
     # admin 建立 personal 模組
     r = await client.post("/api/v2/motion-modules", json={
         "name_zh": "SM1-Personal-Owner",
+        "category": "action",
         "scope": "personal",
     })
     assert r.status_code == 201, r.text
@@ -294,6 +304,7 @@ async def test_sm2_publish_max_rows_exceeded(client):
         pytest.skip("DB 無 rule_set，略過")
     r = await client.post("/api/v2/motion-modules", json={
         "name_zh": "SM2-MaxRows",
+        "category": "action",
         "scope": "global",
     })
     assert r.status_code == 201, r.text
@@ -326,6 +337,7 @@ async def test_sm3_ie_cannot_create_global_module(client):
     h = {"X-Username": ie_user}
     r = await client.post("/api/v2/motion-modules", json={
         "name_zh": "SM3-IE-Global-Attempt",
+        "category": "action",
         "scope": "global",
     }, headers=h)
     assert r.status_code == 403, r.text
@@ -333,6 +345,7 @@ async def test_sm3_ie_cannot_create_global_module(client):
     # site scope 也應被擋
     r2 = await client.post("/api/v2/motion-modules", json={
         "name_zh": "SM3-IE-Site-Attempt",
+        "category": "action",
         "scope": "site",
     }, headers=h)
     assert r2.status_code == 403, r2.text
@@ -340,6 +353,7 @@ async def test_sm3_ie_cannot_create_global_module(client):
     # personal scope 仍可建
     r3 = await client.post("/api/v2/motion-modules", json={
         "name_zh": "SM3-IE-Personal-OK",
+        "category": "action",
         "scope": "personal",
     }, headers=h)
     assert r3.status_code == 201, r3.text
@@ -359,6 +373,7 @@ async def test_sm3_manager_can_create_site_module(client):
     h = {"X-Username": mgr_user}
     r = await client.post("/api/v2/motion-modules", json={
         "name_zh": "SM3-MGR-Site-OK",
+        "category": "action",
         "scope": "site",
     }, headers=h)
     assert r.status_code == 201, r.text
@@ -368,6 +383,7 @@ async def test_sm4_update_cannot_change_owner(client):
     """SM-4：PUT update 忽略 owner 欄位（不允許重新指派）。"""
     r = await client.post("/api/v2/motion-modules", json={
         "name_zh": "SM4-OwnerTest",
+        "category": "action",
         "scope": "personal",
     })
     assert r.status_code == 201, r.text
@@ -394,6 +410,7 @@ async def test_sm5_publish_personal_module_blocked_for_others(client):
     # admin 建立 personal 模組
     r = await client.post("/api/v2/motion-modules", json={
         "name_zh": "SM5-Personal-PubGuard",
+        "category": "action",
         "scope": "personal",
     })
     assert r.status_code == 201, r.text
@@ -434,6 +451,7 @@ async def test_sm7_apply_back_creates_new_version(client):
     sfx = uuid.uuid4().hex[:6]
     r = await client.post("/api/v2/motion-modules", json={
         "name_zh": f"SM7-ApplyBack-{sfx}",
+        "category": "action",
         "scope": "personal",
     })
     assert r.status_code == 201, r.text
@@ -486,6 +504,7 @@ async def test_sm7_apply_back_ownership_guard(client):
     # admin 建立 personal 模組
     r = await client.post("/api/v2/motion-modules", json={
         "name_zh": "SM7-ApplyBack-Guard",
+        "category": "action",
         "scope": "personal",
     })
     assert r.status_code == 201, r.text
@@ -575,6 +594,7 @@ async def test_update_non_draft_rejected(client, db_session):
     sfx = uuid.uuid4().hex[:6]
     r = await client.post("/api/v2/motion-modules", json={
         "name_zh": f"UT-T4-NonDraft-{sfx}",
+        "category": "action",
         "scope": "global",
     })
     assert r.status_code == 201, r.text
@@ -595,6 +615,7 @@ async def test_delete_draft_module_success(client):
     sfx = uuid.uuid4().hex[:6]
     r = await client.post("/api/v2/motion-modules", json={
         "name_zh": f"UT-Del-Draft-{sfx}",
+        "category": "action",
         "scope": "personal",
     })
     assert r.status_code == 201, r.text
@@ -612,6 +633,7 @@ async def test_delete_standard_module_rejected(client, db_session):
     sfx = uuid.uuid4().hex[:6]
     r = await client.post("/api/v2/motion-modules", json={
         "name_zh": f"UT-Del-Std-{sfx}",
+        "category": "action",
         "scope": "global",
     })
     assert r.status_code == 201, r.text
@@ -630,6 +652,7 @@ async def test_delete_other_personal_module_blocked(client):
     # admin（IEC141289）建立 personal 模組，owner = IEC141289
     r = await client.post("/api/v2/motion-modules", json={
         "name_zh": f"UT-Del-Other-{sfx}",
+        "category": "action",
         "scope": "personal",
     })
     assert r.status_code == 201, r.text
@@ -664,6 +687,7 @@ async def test_clone_module_creates_personal_copy(client):
     sfx = uuid.uuid4().hex[:6]
     r = await client.post("/api/v2/motion-modules", json={
         "name_zh": f"UT-Cln-Src-{sfx}",
+        "category": "action",
         "scope": "global",
     })
     assert r.status_code == 201, r.text
@@ -690,6 +714,7 @@ async def test_clone_other_personal_module_blocked(client):
     sfx = uuid.uuid4().hex[:6]
     r = await client.post("/api/v2/motion-modules", json={
         "name_zh": f"UT-Cln-Block-{sfx}",
+        "category": "action",
         "scope": "personal",
     })
     assert r.status_code == 201, r.text
@@ -723,6 +748,7 @@ async def test_instantiate_module_to_worksheet_success(client):
     sfx = uuid.uuid4().hex[:6]
     r = await client.post("/api/v2/motion-modules", json={
         "name_zh": f"UT-Inst-{sfx}",
+        "category": "action",
         "scope": "global",
     })
     assert r.status_code == 201, r.text
@@ -756,6 +782,7 @@ async def test_instantiate_retired_module_rejected(client, db_session):
     sfx = uuid.uuid4().hex[:6]
     r = await client.post("/api/v2/motion-modules", json={
         "name_zh": f"UT-Inst-Ret-{sfx}",
+        "category": "action",
         "scope": "global",
     })
     assert r.status_code == 201, r.text
@@ -789,6 +816,7 @@ async def test_instantiate_to_other_worksheet_blocked(client):
     sfx = uuid.uuid4().hex[:6]
     mr = await client.post("/api/v2/motion-modules", json={
         "name_zh": f"UT-Inst-Block-{sfx}",
+        "category": "action",
         "scope": "global",
     })
     assert mr.status_code == 201, mr.text
@@ -828,6 +856,7 @@ async def test_publish_exactly_100_rows_allowed(client):
     sfx = uuid.uuid4().hex[:6]
     r = await client.post("/api/v2/motion-modules", json={
         "name_zh": f"UT-SM2-100-{sfx}",
+        "category": "action",
         "scope": "global",
     })
     assert r.status_code == 201, r.text
@@ -851,6 +880,7 @@ async def test_from_rows_over_limit_rejected(client):
     sfx = uuid.uuid4().hex[:6]
     r = await client.post("/api/v2/motion-modules", json={
         "name_zh": f"UT-SM2-FR-{sfx}",
+        "category": "action",
         "scope": "personal",
     })
     assert r.status_code == 201, r.text
@@ -884,6 +914,7 @@ async def test_update_scope_escalation_blocked(client):
     # IE 建立自己的 personal 模組（IE 有此權限）
     cr = await client.post("/api/v2/motion-modules", json={
         "name_zh": f"UT-T6-ScopeUpd-{sfx}",
+        "category": "action",
         "scope": "personal",
     }, headers=h)
     assert cr.status_code == 201, cr.text
@@ -920,6 +951,7 @@ async def test_provenance_read_back_after_instantiate(client):
     sfx = uuid.uuid4().hex[:6]
     r = await client.post("/api/v2/motion-modules", json={
         "name_zh": f"UT-Prov-{sfx}",
+        "category": "action",
         "scope": "global",
     })
     assert r.status_code == 201, r.text
@@ -1000,6 +1032,7 @@ async def test_publish_with_rule_set_code(client):
 
     r = await client.post("/api/v2/motion-modules", json={
         "name_zh": "UT-Pub-ByCode",
+        "category": "action",
         "scope": "global",
     })
     mid = r.json()["id"]
@@ -1020,6 +1053,7 @@ async def test_publish_with_unknown_rule_set_code_404(client):
     """publish 以不存在的 rule_set_code → 404。"""
     r = await client.post("/api/v2/motion-modules", json={
         "name_zh": "UT-Pub-BadCode",
+        "category": "action",
         "scope": "global",
     })
     mid = r.json()["id"]
@@ -1042,6 +1076,7 @@ async def test_publish_with_both_id_and_code_422(client):
         pytest.skip("DB 無 rule_set，略過")
     r = await client.post("/api/v2/motion-modules", json={
         "name_zh": "UT-Pub-Both",
+        "category": "action",
         "scope": "global",
     })
     mid = r.json()["id"]
@@ -1069,6 +1104,7 @@ async def test_list_status_filter_and_summary_fields(client):
     sfx = uuid.uuid4().hex[:6]
     r = await client.post("/api/v2/motion-modules", json={
         "name_zh": f"UT-Summary-{sfx}",
+        "category": "action",
         "scope": "global",
     })
     mid = r.json()["id"]
@@ -1148,6 +1184,7 @@ async def _make_simo_module(client, prefix: str) -> str:
     sfx = uuid.uuid4().hex[:6]
     r = await client.post("/api/v2/motion-modules", json={
         "name_zh": f"{prefix}-{sfx}",
+        "category": "action",
         "scope": "global",
     })
     assert r.status_code == 201, r.text
@@ -1314,6 +1351,7 @@ async def test_list_summary_none_for_unpublished(client):
     sfx = uuid.uuid4().hex[:6]
     r = await client.post("/api/v2/motion-modules", json={
         "name_zh": f"UT-NoVer-{sfx}",
+        "category": "action",
         "scope": "global",
     })
     mid = r.json()["id"]

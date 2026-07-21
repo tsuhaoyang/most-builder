@@ -17,6 +17,17 @@ from ddm_v2.schemas.v2.most import (
 )
 
 
+def dump_cycle_template(cyc: CycleIn) -> dict:
+    """範本的 cycle 快照一律不含 rule_set_code（ADR-024 §3-2）。
+
+    範本是「怎麼填七格」的樣板，不是回放快照——套用時必須解析 active rule-set
+    （ADR-023 §3.5）。既有 16 筆存的是 legacy 的 MINIMOST_FACTORY_V1，
+    P2 接上匯入後會用 V1 的值算出靜默錯誤的 TMU，故 migration v2_0022 已把它拔除；
+    此處同步排除，否則重跑 seed 會把 key（值為 null）加回去，新舊環境不一致。
+    """
+    return cyc.model_dump(mode="json", exclude={"rule_set_code"})
+
+
 def gm(reach0, g, reach3, p_base, addons=None, precision=False):
     return CycleIn(seq="GM", a0=ASlot(reach_cm=reach0), g2=GSlot(g_code=g),
                    a3=ASlot(reach_cm=reach3), p5=PSlot(p_base_code=p_base, p_addon_codes=addons or [], precision=precision))
@@ -58,7 +69,7 @@ async def main() -> None:
             if exists:
                 continue
             s.add(MotionTemplate(id=uuid.uuid4(), name_zh=name_zh, name_en=name_en, category=cat,
-                                 keywords=kws, seq_kind=seq, cycle_template=cyc.model_dump(mode="json"),
+                                 keywords=kws, seq_kind=seq, cycle_template=dump_cycle_template(cyc),
                                  status="standard", created_by="IEC141289"))
             added += 1
         await s.commit()

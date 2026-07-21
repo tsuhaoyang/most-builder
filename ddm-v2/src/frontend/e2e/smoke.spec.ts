@@ -45,9 +45,9 @@ test('sidebar navigation renders each migrated feature', async ({ page }) => {
 
   // NOTE: 匯出 tab 已收進分析案件詳情（ADR-021）；目錄 tab 已退場。
 
-  // 字典管理 tab (admin-gated; seed user IEC141289 is admin) — smoke check (H-01)
-  await page.getByRole('button', { name: /字典管理/ }).click()
-  await expect(page.getByRole('heading', { name: '字典管理' })).toBeVisible()
+  // 主數據管理 tab (admin-gated; seed user IEC141289 is admin) — smoke check (H-01)
+  await page.getByRole('button', { name: /主數據管理/ }).click()
+  await expect(page.getByRole('heading', { name: '主數據管理' })).toBeVisible()
 
   // 分析案件 tab — smoke check (G-01)
   await page.getByRole('button', { name: /分析案件/ }).click()

@@ -37,6 +37,7 @@ async def _make_published_module(client, rs_id: str) -> tuple[str, float, float]
     sfx = uuid.uuid4().hex[:6]
     r = await client.post("/api/v2/motion-modules", json={
         "name_zh": f"UT-WiSet-模組-{sfx}",
+        "category": "wi-template",
         "scope": "global",
     })
     assert r.status_code == 201, r.text
@@ -154,6 +155,7 @@ async def test_add_item_unpublished_module_zero_snapshot(client):
     sfx = uuid.uuid4().hex[:6]
     m = await client.post("/api/v2/motion-modules", json={
         "name_zh": f"UT-未發布-{sfx}",
+        "category": "wi-template",
         "scope": "global",
     })
     assert m.status_code == 201, m.text
