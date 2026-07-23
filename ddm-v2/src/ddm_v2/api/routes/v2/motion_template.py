@@ -5,7 +5,6 @@ match：以描述關鍵字比對範本（P2 匯入自動建 MOST 用），讀權
 """
 from __future__ import annotations
 
-import re
 import uuid
 
 from fastapi import APIRouter, Depends, HTTPException
@@ -24,6 +23,7 @@ from ddm_v2.schemas.v2.motion_template import (
     MotionTemplatePatchIn,
 )
 from ddm_v2.services.v2.audit_service import log_audit
+from ddm_v2.services.v2.template_matching import score_keywords as _score
 
 router = APIRouter(prefix="/api/v2", tags=["v2-motion-templates"])
 
@@ -52,23 +52,6 @@ def _can_modify(t: MotionTemplate, user: CurrentUser) -> bool:
     if t.status == "standard":
         return user.level >= 2
     return user.level >= 2 or (t.owner == user.employee_no)
-
-
-def _score(description: str, keywords: list[str]) -> tuple[float, list[str]]:
-    """關鍵字比對：命中以關鍵字長度加權（越具體越高）。中文 substring、英文 word/substring 皆可。"""
-    text = (description or "").lower()
-    tokens = set(re.findall(r"[a-z0-9]+", text))
-    hits: list[str] = []
-    score = 0.0
-    for kw in keywords or []:
-        k = str(kw).strip().lower()
-        if not k:
-            continue
-        matched = (k in text) or (k in tokens)
-        if matched:
-            hits.append(kw)
-            score += len(k)
-    return score, hits
 
 
 @router.get("/motion-templates", response_model=list[MotionTemplateOut])

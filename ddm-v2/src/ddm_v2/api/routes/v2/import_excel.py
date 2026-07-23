@@ -7,7 +7,7 @@ from __future__ import annotations
 import uuid
 
 from fastapi import APIRouter, Depends, File, HTTPException, UploadFile
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -71,10 +71,12 @@ async def map_columns(import_id: uuid.UUID, payload: MapIn, session: AsyncSessio
                                                   payload.column_map, payload.time_unit)
     rec.sheet, rec.header_row = payload.sheet, payload.header_row
     rec.column_map, rec.time_unit = payload.column_map, payload.time_unit
-    rec.staged_rows, rec.status = rows, "mapped"
+    rec.staged_rows, rec.status = rows, "mapped"   # 存乾淨列（match 不落 schema，回應時才附）
     await session.flush()
     fields = [f for f in payload.column_map]
-    return PreviewOut(import_id=import_id, fields=fields, rows=rows, n=len(rows), warnings=warnings)
+    # ADR-025 D10：逐行併入範本建議（match + 以 active 重算 TMU）；不改動已存的 staged_rows。
+    enriched = await import_service.build_row_matches(session, rows)
+    return PreviewOut(import_id=import_id, fields=fields, rows=enriched, n=len(enriched), warnings=warnings)
 
 
 @router.get("/{import_id}", response_model=PreviewOut)
@@ -84,8 +86,10 @@ async def get_import(import_id: uuid.UUID, session: AsyncSession = Depends(get_d
     if rec is None:
         raise HTTPException(status_code=404, detail="匯入批次不存在")
     rows = rec.staged_rows or []
+    # ADR-025 D10：match 以「現在」的 active 重算，不持久化 → GET 每次重新計算（避免 stale TMU）。
+    enriched = await import_service.build_row_matches(session, rows)
     return PreviewOut(import_id=import_id, fields=list((rec.column_map or {}).keys()),
-                      rows=rows, n=len(rows), warnings=[])
+                      rows=enriched, n=len(enriched), warnings=[])
 
 
 @router.get("/profiles/list", response_model=list[ProfileOut])
@@ -116,9 +120,16 @@ async def delete_profile(profile_id: uuid.UUID, session: AsyncSession = Depends(
 
 # ── Phase 2b：提交 staged rows → worksheet ──────────────────────────────────────
 
+class RowAdoption(BaseModel):
+    """ADR-025 D10：採用某暫存列的範本建議。**只收 template_id**，TMU 一律後端以 active 重算。"""
+    row_index: int
+    template_id: uuid.UUID
+
+
 class SubmitIn(BaseModel):
     worksheet_id: uuid.UUID
     rule_set_code: str | None = None
+    row_adoptions: list[RowAdoption] = Field(default_factory=list)
 
 
 class SubmitOut(BaseModel):
@@ -139,7 +150,8 @@ async def submit_import(
     """Phase 2b：staged rows → worksheet WiRow（stub MOST cycle，analyst 後補分析）。"""
     try:
         result = await import_service.submit_to_worksheet(
-            session, import_id, payload.worksheet_id, payload.rule_set_code, actor.employee_no
+            session, import_id, payload.worksheet_id, payload.rule_set_code, actor.employee_no,
+            row_adoptions=payload.row_adoptions,
         )
     except ValueError as e:
         code = str(e)
