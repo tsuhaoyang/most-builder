@@ -205,6 +205,40 @@ export const useSynonyms = (code: string) =>
     enabled: !!code,
   })
 
+export interface SynonymCreateIn {
+  parameter: string
+  option_code: string
+  synonym_raw: string
+  priority?: number
+}
+
+/**
+ * 同義詞增刪（ADR-024 §5）。
+ *
+ * ⚠️ **刻意不經 clone-on-write gate**：同義詞是 ADR-014 明定「published/certified 版本
+ * 唯一可後補的資料」。值變更（改 TMU）才需先 clone-draft；同義詞直接寫入目標版本。
+ * 呼叫端**不得**把這些 mutation 包進 OptionEditor 的 `guarded()`（那會 onRequestEdit →
+ * 撞 clone 對話框）。retired（終態）由後端回 409 RULE_SET_RETIRED，前端另在 UI 隱藏控制。
+ */
+export function useSynonymMutations(code: string) {
+  const qc = useQueryClient()
+  const done = () => {
+    void qc.invalidateQueries({ queryKey: ['rule-set-synonyms', code] })
+  }
+  return {
+    create: useMutation({
+      mutationFn: (payload: SynonymCreateIn) =>
+        apiPost<Synonym>(`/api/v2/rule-sets/${encodeURIComponent(code)}/synonyms`, payload),
+      onSuccess: done,
+    }),
+    remove: useMutation({
+      mutationFn: (synId: string) =>
+        apiDelete(`/api/v2/rule-sets/${encodeURIComponent(code)}/synonyms/${encodeURIComponent(synId)}`),
+      onSuccess: done,
+    }),
+  }
+}
+
 export function useOptionMutations(code: string, param: string, section: string) {
   const qc = useQueryClient()
   const q = sectionQuery(param, section)

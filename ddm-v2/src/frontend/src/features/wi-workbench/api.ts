@@ -75,6 +75,18 @@ export interface WsReadRow {
     number_count: number | null
   } | null
 }
-export interface WsRead { worksheet_id: string; status: string; total_tmu: number; rows: WsReadRow[] }
+/**
+ * ADR-023 §3.4-4：工序表建立時凍結的 default rule-set 快照的**現況**狀態。
+ * 純顯示層——供警示徽章判斷「本工序表是否基於已下架版本」；不進計算路徑
+ * （回放仍由各列 cycle.rule_set_id 決定）。default_rule_set_id 為 NULL → 整欄 null。
+ */
+export interface DefaultRuleSetInfo { code: string; status: 'draft' | 'published' | 'retired'; is_active: boolean }
+export interface WsRead {
+  worksheet_id: string
+  status: string
+  total_tmu: number
+  rows: WsReadRow[]
+  default_rule_set: DefaultRuleSetInfo | null
+}
 export const useWorksheet = (wsId: string) =>
   useQuery({ queryKey: ['worksheet', wsId], queryFn: () => apiGet<WsRead>(`/api/v2/worksheets/${wsId}`), refetchOnWindowFocus: false, enabled: !!wsId })

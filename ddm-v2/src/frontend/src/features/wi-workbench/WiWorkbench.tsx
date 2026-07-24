@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { useQueryClient } from '@tanstack/react-query'
-import { useRuleSetOptions, useVocab, useCalculate, useSaveWorksheet, useWorksheet } from './api'
+import { useRuleSetOptions, useVocab, useCalculate, useSaveWorksheet, useWorksheet, type DefaultRuleSetInfo } from './api'
 import { useWiStore, type Row } from './store'
 import { useMe, canEdit } from '../../shared/auth/useMe'
 import { useWorkspace } from '../../shared/workspace'
@@ -126,6 +126,26 @@ function InsertWiModal({ onClose, onInsert, inserting }: {
           </table>
         </div>
       </div>
+    </div>
+  )
+}
+
+// ── [ADR-023 §3.4-4] 使用已下架規則版本的警示徽章 ──────────────────────────────
+// 純提示：本工序表基於已下架的 rule-set 版本；值仍為原版回放（正確），只是重新分析時
+// 建議改用啟用中版本。只讀後端 status，前端不自行判斷版本新舊（守則）。
+// 非 retired（published/draft）或 default_rule_set===null → 不顯示（不誤報）。
+function RetiredRuleSetBadge({ drs }: { drs: DefaultRuleSetInfo | null | undefined }) {
+  if (!drs || drs.status !== 'retired') return null
+  return (
+    <div
+      data-testid="worksheet-retired-ruleset-badge"
+      className="rounded-lg border border-amber-300 bg-amber-50 px-3 py-2 text-sm text-amber-900 flex items-start gap-2"
+    >
+      <span aria-hidden className="mt-0.5">⚠</span>
+      <span>
+        本工序表使用已下架規則版本 <span className="font-mono">{drs.code}</span>
+        。現有數值仍為原版回放（維持正確）；重新分析時建議改用啟用中版本。
+      </span>
     </div>
   )
 }
@@ -651,6 +671,9 @@ export function WiWorkbench() {
   // ── render ─────────────────────────────────────────────────────────────────
   return (
     <div className="space-y-4">
+
+      {/* ═══ [ADR-023 §3.4-4] 下架規則版本警示（工序表情境頂部）═══ */}
+      <RetiredRuleSetBadge drs={wsData?.default_rule_set} />
 
       {/* ═══ Editor section ═══ */}
       <div className="bg-white rounded-xl border p-4 space-y-3">

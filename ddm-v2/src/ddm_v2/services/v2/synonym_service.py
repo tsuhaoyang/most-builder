@@ -40,6 +40,24 @@ class RuleSetNotFound(Exception):
     pass
 
 
+class RuleSetRetired(Exception):
+    """ADR-024 §5：retired 是終態，不可再增刪同義詞。
+
+    ⚠️ 這**不是** assert_editable。同義詞是 ADR-014 明定的例外——draft/published
+    皆可增刪（值變更才需 clone），唯獨 retired（終態）擋住。故此處**只**檢查
+    status == 'retired'，絕不併入 published/certified_import。
+    """
+
+    def __init__(self, rule_set_code: str) -> None:
+        super().__init__(f"rule_set_retired: {rule_set_code}")
+        self.rule_set_code = rule_set_code
+
+
+def _assert_not_retired(rs: RuleSet) -> None:
+    if rs.status == "retired":
+        raise RuleSetRetired(rs.code)
+
+
 class SynonymConflict(Exception):
     """UNIQUE(rule_set_id, parameter, synonym_norm) 衝突。"""
 
@@ -116,6 +134,8 @@ async def create_synonym(
     data keys: parameter, option_code, synonym_raw, priority(optional)
     """
     rs = await _get_rule_set(session, rule_set_code)
+    # ADR-024 §5：retired 終態不可增刪同義詞。只擋 retired，不擋 published（ADR-014 特例）。
+    _assert_not_retired(rs)
 
     # Fix-H1: 在 try 之前擷取所有純 Python 值，避免 rollback 後 ORM 屬性過期（MissingGreenlet）
     rs_id_val = rs.id
@@ -188,6 +208,8 @@ async def delete_synonym(
 ) -> None:
     """刪除同義詞；不存在或不屬於指定 rule-set 時 raise SynonymNotFound。"""
     rs = await _get_rule_set(session, rule_set_code)
+    # ADR-024 §5：retired 終態不可增刪同義詞。只擋 retired，不擋 published（ADR-014 特例）。
+    _assert_not_retired(rs)
     try:
         sid = uuid.UUID(synonym_id)
     except ValueError:

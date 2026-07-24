@@ -205,8 +205,16 @@ async def read_worksheet(session: AsyncSession, worksheet_id: uuid.UUID) -> dict
     normal_seconds = round(total * TMU_TO_SEC, 4)
     allowance = float(ws.allowance_percent) if ws.allowance_percent is not None else None
     standard_seconds = round(normal_seconds * (1 + allowance / 100), 4) if allowance is not None else None
+    # ADR-023 §3.4-4：帶 default_rule_set 現況狀態供警示徽章（純顯示，不進計算路徑）。
+    # 單筆 lookup（非每列）→ 不構成 N+1；default_rule_set_id 可為 NULL → 回 None。
+    default_rule_set: dict[str, Any] | None = None
+    if ws.default_rule_set_id is not None:
+        drs = await session.get(RuleSet, ws.default_rule_set_id)
+        if drs is not None:
+            default_rule_set = {"code": drs.code, "status": drs.status, "is_active": drs.is_active}
     return {"worksheet_id": worksheet_id, "status": ws.status, "rows": rows, "total_tmu": total,
-            "normal_seconds": normal_seconds, "allowance_percent": allowance, "standard_seconds": standard_seconds}
+            "normal_seconds": normal_seconds, "allowance_percent": allowance, "standard_seconds": standard_seconds,
+            "default_rule_set": default_rule_set}
 
 
 async def _version_info(session: AsyncSession, worksheet_id: uuid.UUID) -> dict[str, Any]:

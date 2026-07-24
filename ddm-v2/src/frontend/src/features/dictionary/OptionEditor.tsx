@@ -1,11 +1,12 @@
 import { useMemo, useState } from 'react'
 import { canEdit as canEditFn, useMe } from '../../shared/auth/useMe'
+import { ApiError } from '../../shared/api/client'
 import { BandEditor } from './BandEditor'
 import { OptionDialog } from './OptionDialog'
 import { PARAMS, getParam, type SectionSpec } from './paramSchema'
 import {
-  useOptionMutations, useParamOptions, useRuleSetVersions, useSynonyms,
-  type OptionRow, type RuleSetSummary,
+  useOptionMutations, useParamOptions, useRuleSetVersions, useSynonyms, useSynonymMutations,
+  type OptionRow, type RuleSetSummary, type Synonym,
 } from './api'
 
 /**
@@ -33,11 +34,87 @@ function cell(row: OptionRow, key: string | null) {
   return String(v)
 }
 
+/**
+ * 同義詞欄：可增刪的別名層（ADR-024 §5）。
+ *
+ * ⚠️ 這裡的 onAdd/onDelete **刻意不經 clone-on-write gate**——同義詞可直接後補到
+ * published/certified 版本（ADR-014 特例）。`readOnly` 只在「無編輯權 或 retired 終態」
+ * 時為 true，此時退回純顯示（與值編輯按鈕的停用條件對齊，但語意是「別名可直接寫，
+ * 唯獨終態不可」）。
+ */
+function SynonymCell({ code, syns, readOnly, onAdd, onDelete }: {
+  code: string
+  syns: Synonym[]
+  readOnly: boolean
+  onAdd: (raw: string) => Promise<boolean>
+  onDelete: (synId: string) => void
+}) {
+  const [raw, setRaw] = useState('')
+  const [busy, setBusy] = useState(false)
+  const submit = async () => {
+    const v = raw.trim()
+    if (!v || busy) return
+    setBusy(true)
+    try {
+      const ok = await onAdd(v)
+      if (ok) setRaw('')   // 失敗（409/422）保留輸入供修正
+    } finally {
+      setBusy(false)
+    }
+  }
+  return (
+    <div className="flex flex-wrap items-center gap-1" data-testid={`syn-cell-${code}`}>
+      {syns.map(s => (
+        <span
+          key={s.id}
+          data-testid={`syn-chip-${s.id}`}
+          className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded bg-slate-100 text-slate-700 text-xs"
+        >
+          {s.synonym_raw}
+          {!readOnly && (
+            <button
+              onClick={() => onDelete(s.id)}
+              aria-label={`刪除同義詞 ${s.synonym_raw}`}
+              data-testid={`syn-del-${s.id}`}
+              className="text-slate-400 hover:text-red-600 leading-none"
+            >×</button>
+          )}
+        </span>
+      ))}
+      {syns.length === 0 && readOnly && dash}
+      {!readOnly && (
+        <span className="inline-flex items-center gap-1">
+          <input
+            value={raw}
+            onChange={e => setRaw(e.target.value)}
+            onKeyDown={e => { if (e.key === 'Enter') { e.preventDefault(); void submit() } }}
+            disabled={busy}
+            placeholder="＋別名"
+            aria-label={`新增同義詞 ${code}`}
+            data-testid={`syn-input-${code}`}
+            className="border rounded px-1 py-0.5 text-xs w-16"
+          />
+          <button
+            onClick={() => void submit()}
+            disabled={busy || !raw.trim()}
+            data-testid={`syn-add-${code}`}
+            className="px-1.5 py-0.5 rounded border text-xs disabled:opacity-40"
+          >加</button>
+        </span>
+      )}
+    </div>
+  )
+}
+
 /** 選項型表格（代碼｜顯示文字｜WI 句子｜TMU｜同義詞｜啟用｜操作） */
-function OptionsTable({ section, items, synonymsFor, readOnly, onEdit, onDuplicate, onDelete, onToggle }: {
+function OptionsTable({ section, items, synonymsFor, synReadOnly, onAddSynonym, onDeleteSynonym, readOnly, onEdit, onDuplicate, onDelete, onToggle }: {
   section: SectionSpec
   items: OptionRow[]
-  synonymsFor: (code: string) => string[]
+  synonymsFor: (code: string) => Synonym[]
+  /** 同義詞控制的唯讀條件（無編輯權或 retired 終態）；與值編輯的 clone 攔截無關。 */
+  synReadOnly: boolean
+  onAddSynonym: (optionCode: string, raw: string) => Promise<boolean>
+  onDeleteSynonym: (synId: string) => void
   readOnly: boolean
   onEdit: (r: OptionRow) => void
   onDuplicate: (r: OptionRow) => void
@@ -69,7 +146,15 @@ function OptionsTable({ section, items, synonymsFor, readOnly, onEdit, onDuplica
                 <td className="p-2">{cell(r, 'sentence_text_zh')}</td>
                 {/* 各子表 TMU 欄位命名不同（base_tmu/delta_tmu/index_value/fixed_tmu）；X 無此概念 → — */}
                 <td className="p-2">{cell(r, section.tmuField)}</td>
-                <td className="p-2 text-xs text-slate-600">{syn.length ? syn.join('、') : dash}</td>
+                <td className="p-2 text-xs text-slate-600">
+                  <SynonymCell
+                    code={code}
+                    syns={syn}
+                    readOnly={synReadOnly}
+                    onAdd={raw => onAddSynonym(code, raw)}
+                    onDelete={onDeleteSynonym}
+                  />
+                </td>
                 <td className="p-2">
                   <input
                     type="checkbox" checked={!!r.is_active} disabled={readOnly}
@@ -118,6 +203,7 @@ export function OptionEditor({ code, onBack, onRequestEdit }: {
   const { data: me } = useMe()
 
   const mut = useOptionMutations(code, paramKey, section.key)
+  const synMut = useSynonymMutations(code)
 
   // retired 為終態；其餘狀態的寫入透過 clone-on-write 導向 draft，故按鈕不停用
   const readOnly = !canEditFn(me) || version?.status === 'retired'
@@ -126,15 +212,42 @@ export function OptionEditor({ code, onBack, onRequestEdit }: {
   const kindMismatch = !!data && data.kind !== section.kind
 
   const synMap = useMemo(() => {
-    const m = new Map<string, string[]>()
+    const m = new Map<string, Synonym[]>()
     for (const s of synonyms) {
       if (s.parameter !== paramKey) continue
       const list = m.get(s.option_code) ?? []
-      list.push(s.synonym_raw)
+      list.push(s)
       m.set(s.option_code, list)
     }
     return m
   }, [synonyms, paramKey])
+
+  const errText = (e: unknown) => e instanceof ApiError ? e.humanMessage : (e as Error).message
+
+  /**
+   * 同義詞新增：**直接寫入目標版本，繞過 clone-on-write gate**（ADR-024 §5 推論 2）。
+   * 不呼叫 onRequestEdit——這正是同義詞與值變更的差別。回傳 true=成功（清空輸入）。
+   * 409 SYNONYM_CONFLICT / 422 VALIDATION_ERROR → 顯示後端 message、保留輸入。
+   */
+  const addSynonym = async (optionCode: string, raw: string): Promise<boolean> => {
+    setMsg(null)
+    try {
+      await synMut.create.mutateAsync({ parameter: paramKey, option_code: optionCode, synonym_raw: raw })
+      setMsg({ tone: 'ok', text: `已新增同義詞「${raw}」` })
+      return true
+    } catch (e) {
+      setMsg({ tone: 'err', text: `新增同義詞失敗：${errText(e)}` })
+      return false
+    }
+  }
+
+  /** 同義詞刪除：同樣繞過 clone gate，直接對目標版本 DELETE。 */
+  const deleteSynonym = (synId: string) => {
+    setMsg(null)
+    void synMut.remove.mutateAsync(synId)
+      .then(() => setMsg({ tone: 'ok', text: '已刪除同義詞' }))
+      .catch(e => setMsg({ tone: 'err', text: `刪除同義詞失敗：${errText(e)}` }))
+  }
 
   const selectParam = (k: string) => {
     setParamKey(k)
@@ -248,6 +361,9 @@ export function OptionEditor({ code, onBack, onRequestEdit }: {
             items={data.items}
             readOnly={readOnly}
             synonymsFor={c => synMap.get(c) ?? []}
+            synReadOnly={readOnly}
+            onAddSynonym={addSynonym}
+            onDeleteSynonym={deleteSynonym}
             onEdit={r => void guardedOpen(() => setDialog({ row: r }))}
             onDuplicate={r => void guarded('複製', () => mut.duplicate.mutateAsync(String(r.code)))}
             onDelete={r => {
@@ -260,7 +376,8 @@ export function OptionEditor({ code, onBack, onRequestEdit }: {
             }
           />
           <p className="text-xs text-slate-400">
-            同義詞由 `/rule-sets/{'{code}'}/synonyms` 獨立管理（ADR-023 §3.3：同義詞是唯一可對已發布版本寫入的資料），此表僅顯示。
+            同義詞可直接增刪，<b>不需先建草稿</b>——它是 ADR-014／ADR-024 §5 明定唯一可對
+            已發布／認證版本後補的資料（只影響建議/搜尋，不影響工時）。僅已下架（終態）版本為唯讀。
           </p>
         </>
       )}

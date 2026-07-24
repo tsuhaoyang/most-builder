@@ -54,6 +54,11 @@ async def create_synonym(
         )
     except svc.RuleSetNotFound:
         raise HTTPException(status_code=404, detail=f"rule-set 不存在：{code}")
+    except svc.RuleSetRetired:
+        raise HTTPException(
+            status_code=409,
+            detail={"code": "RULE_SET_RETIRED", "message": f"rule-set {code} 已下架（終態），不可增刪同義詞"},
+        )
     except svc.OptionCodeNotFound as e:
         raise HTTPException(
             status_code=422,
@@ -79,6 +84,11 @@ async def delete_synonym(
         await svc.delete_synonym(session, syn_id, code)
     except svc.RuleSetNotFound:
         raise HTTPException(status_code=404, detail=f"rule-set 不存在：{code}")
+    except svc.RuleSetRetired:
+        raise HTTPException(
+            status_code=409,
+            detail={"code": "RULE_SET_RETIRED", "message": f"rule-set {code} 已下架（終態），不可增刪同義詞"},
+        )
     except svc.SynonymNotFound:
         raise HTTPException(status_code=404, detail=f"同義詞不存在：{syn_id}")
     return Response(status_code=204)

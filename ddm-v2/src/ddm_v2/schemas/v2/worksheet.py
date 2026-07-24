@@ -46,6 +46,17 @@ class WorksheetSaveIn(BaseModel):
     allowance_percent: float | None = Field(default=None, ge=0)
 
 
+class DefaultRuleSetInfo(BaseModel):
+    """工序表建立時凍結的 default rule-set 快照的**現況**狀態（ADR-023 §3.4-4 警示徽章用）。
+
+    ⚠️ 純顯示層資料：僅供前端判斷「本工序表用的是不是已下架版本」以顯示徽章。
+    不進計算路徑——cycle 的回放仍由各列快照的 rule_set_id 決定（回放鐵則）。
+    """
+    code: str
+    status: str          # draft / published / retired
+    is_active: bool
+
+
 class WorksheetReadOut(BaseModel):
     worksheet_id: uuid.UUID
     status: str
@@ -55,3 +66,6 @@ class WorksheetReadOut(BaseModel):
     normal_seconds: float
     allowance_percent: float | None = None
     standard_seconds: float | None = None
+    # ADR-023 §3.4-4：default_rule_set_id 是建立時凍結的快照；此欄帶其現況狀態供警示徽章。
+    # default_rule_set_id 可為 NULL → 此欄為 null，前端不顯示徽章。
+    default_rule_set: DefaultRuleSetInfo | None = None
