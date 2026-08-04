@@ -7,3 +7,11 @@ services:
   db:
     ports:
       - "${POSTGRES_HOST_PORT:-5432}:5432"
+
+  # 疊加 dev overlay 起服務時自動 seed demo 資料（rule-set V1/V2＋activate、demo
+  # worksheet、詞彙、16 筆動作範本；entrypoint 內 idempotent）。避免全新 db volume
+  # 起來後 rule_sets=0、/rule-sets/active 回 500 的情況。正式環境不疊此 overlay，
+  # 種子資料由 CI/部署流程另行處理（正式 compose 維持 DDM_SEED_DEMO 預設 false）。
+  ddm-v2:
+    environment:
+      DDM_SEED_DEMO: "true"
