@@ -5,7 +5,8 @@ venv/
 dev_docs/
 .cursor/
 .claude/
-# 外部系統參考副本（只可參考，不納版）
+# 外部 v3 參考/使用者資料（不納版，但含已建 WI/WI 大綱；禁止清理刪除）
+# 保護：ddm-v3/apps/api/minimost.db，由 migrate_v3_user_data.py 唯讀搬遷。
 LB/
 # Python build / runtime artifacts
 __pycache__/
