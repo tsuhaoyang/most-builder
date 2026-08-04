@@ -1,4 +1,4 @@
-"""工序表級寬放（impl-02 §3 / OQ-002）：most_worksheets.allowance_percent。
+"""工序表級寬放（data-model §2.5）：most_worksheets.allowance_percent。
 
 standard_seconds = normal_seconds × (1 + allowance_percent/100)，僅讀取/匯出投影，不落列級欄。
 與 level_entries.coefficient（列級難度係數，LB 用）語意分離。

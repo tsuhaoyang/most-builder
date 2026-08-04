@@ -74,7 +74,7 @@ async def test_export_excel_normal_standard_seconds(client):
 
 
 async def test_export_excel_no_allowance_standard_blank(client):
-    """OQ-002：allowance 未設 → 標準秒留空（不得以 normal 假充 standard）。"""
+    """allowance 未設 → 標準秒留空（不得以 normal 假充 standard）。"""
     if not await _seeded(client):
         pytest.skip("demo worksheet 未種")
     from openpyxl import load_workbook

@@ -1,6 +1,6 @@
 """v2 baseline (定點重建) — 核心聚合 + 詞彙庫 + rule_set 表頭 (2a).
 
-依據：docs/specs/data-model-and-storage-spec.md（§1.5 儲存策略、§2 階層、§3 詞彙）。
+依據：docs/architecture/data-model-and-storage-spec.md（§1.5 儲存策略、§2 階層、§3 詞彙）。
 全新 schema 基線：舊 DB 可 drop 重建（測試資料可棄）。
 2b 補 rule_set 子表（A 三分量/B 1205 值/G/P/M/X/I）；2c 補 codes/bom/audit + RBAC FK。
 

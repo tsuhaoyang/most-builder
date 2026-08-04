@@ -6,8 +6,8 @@
 - nl-draft：POST → 200，回傳 normalized_text + slots（7 個）+ F-05 GM 判型驗收
 
 對應規格：
-  F-05（docs/v3/analysis/features/F-05-nl-draft.md）驗收 §4 條目 1、3、4
-  F-06（docs/v3/analysis/features/F-06-dictionary-management.md）驗收 §4 條目 3、4
+    NL draft 驗收：ADR-015 與 docs/architecture/wi-ai-parser-system-spec.md
+    同義詞治理驗收：ADR-015、ADR-023 與 API 契約
 """
 from __future__ import annotations
 

@@ -71,6 +71,6 @@ E2E_BASE_URL=http://127.0.0.1:8099 npx playwright test  # 需 preview_server(:80
 
 ## 6. 從哪裡看
 
-- 前端：`src/frontend/`（`features/<tab>/` 各分頁；`shared/` 共用；藍本參考 `docs/html_con/`）
+- 前端：`src/frontend/`（`features/<tab>/` 各分頁；`shared/` 共用；UX 見 `docs/architecture/frontend-ux-spec.md`）
 - 後端 API：`src/ddm_v2/api/routes/v2/`、引擎 `src/ddm_v2/most_engine/`
 - 規格：`docs/core-logic/`、`docs/architecture/`；索引 `docs/DOC_REGISTRY.md`

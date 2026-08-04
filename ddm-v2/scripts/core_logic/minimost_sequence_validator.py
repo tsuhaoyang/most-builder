@@ -2,7 +2,7 @@
 """MiniMOST Sequence Model — 核心邏輯驗證器（reference implementation + self-tests）.
 
 權威依據：docs/core-logic/minimost-sequence-model-core-logic-spec.md ＋ ADR-014
-（值權威＝docs/v3/reference/minimost_ai_dictionary_v1.json，v3 IE 認證字典）。
+（值權威＝docs/v3/reference/minimost_ai_dictionary_v1.json，IE 認證字典）。
 範圍：MiniMOST only，GM(一般移動 A B G A B P A) / CM(控制移動 A B G M X I A)。
 
 設計目標：

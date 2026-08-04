@@ -98,7 +98,7 @@ async def test_list_cases_unauthenticated_returns_401(client):
 
 # ---------------------------------------------------------------------------
 # P1-A：案件級聚合（一案件一列＋歷史折疊）
-# 規格：docs/v3/v2-authoritative-model-guide.md §1 版本語意、§6 案件清單收斂
+# 規格：docs/architecture/v2-authoritative-model-guide.md §1 版本語意、§6 案件清單收斂
 # ---------------------------------------------------------------------------
 
 

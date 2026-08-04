@@ -42,7 +42,7 @@ class WiRowSaveIn(BaseModel):
 
 class WorksheetSaveIn(BaseModel):
     rows: list[WiRowSaveIn] = Field(default_factory=list)
-    # 工序表級寬放%（OQ-002）：選填；未帶＝不動既有值（加法相容），帶 null＝清除。
+    # 工序表級寬放%（data-model §2.5）：選填；未帶＝不動既有值（加法相容），帶 null＝清除。
     allowance_percent: float | None = Field(default=None, ge=0)
 
 
@@ -62,7 +62,7 @@ class WorksheetReadOut(BaseModel):
     status: str
     rows: list[dict[str, Any]]
     total_tmu: float
-    # 時間投影（impl-02 §3）：normal＝引擎輸出；standard＝normal×(1+allowance%/100)，allowance 未設時為 null（OQ-002）。
+    # 時間投影：normal＝引擎輸出；standard＝normal×(1+allowance%/100)，allowance 未設時為 null。
     normal_seconds: float
     allowance_percent: float | None = None
     standard_seconds: float | None = None

@@ -2,7 +2,7 @@
 
 v2 是「定點重建」的全新 schema 基線；用獨立的 DeclarativeBase / MetaData，
 讓 v2 的 Alembic baseline 只看見 v2 表，不與舊 0001–0017 migration 糾纏。
-依據：docs/specs/data-model-and-storage-spec.md
+依據：docs/architecture/data-model-and-storage-spec.md
 """
 from __future__ import annotations
 

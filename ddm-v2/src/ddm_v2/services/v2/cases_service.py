@@ -1,6 +1,6 @@
 """案件清單服務：案件級聚合（P1-A）。
 
-**聚合語意**（`docs/v3/v2-authoritative-model-guide.md` §1/§6）：
+**聚合語意**（`docs/architecture/v2-authoritative-model-guide.md` §1/§6）：
 v3 的「案件」是平面清單＋狀態機，不存在版本鏈；v2 保留版本鏈（稽核優勢），
 但清單不再一版一列 —— 以 `(sku_id, model_label)` 聚合成「案件」，
 呈現**代表版（最新版）** 的既有欄位＋ `version_count` ＋可展開的 `versions[]` 歷史。

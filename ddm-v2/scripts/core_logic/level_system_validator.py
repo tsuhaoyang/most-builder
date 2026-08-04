@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Level System — 核心邏輯驗證器（reference implementation + self-tests）.
 
-權威依據：docs/specs/level-system-core-logic-spec.md (v1.0)
+權威依據：docs/core-logic/level-system-core-logic-spec.md (v1.x)
          （來源＝MOST系統邏輯1205.xlsx › 工作表2「Level System 教學檔案」）
 
 職責：Level System 是 MOST 與 Line Balance 之間的邏輯層；本驗證器**只驗填寫邏輯

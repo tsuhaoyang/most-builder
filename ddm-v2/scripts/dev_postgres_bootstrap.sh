@@ -14,7 +14,7 @@
 #   POSTGRES_HOST_PORT    本機對應埠，預設 5432（與本機 Postgres 衝突時設 55432 等）
 #
 # -----------------------------------------------------------------------------
-# 短對齊（除 phase2-cross-system §13.3 暫緩項以外）
+# 開發環境 PostgreSQL bootstrap；正式 schema 一律以 Alembic migrations 為準。
 #
 # 仍須討論／排程後再實作:
 #   - 五區塊 IA、工序 topology UI、steps.group_id 與群組語意

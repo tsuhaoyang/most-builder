@@ -4,8 +4,8 @@ MOST 系統兩個核心概念的**可執行規格 + 自帶測試**。是「核�
 
 | 檔案 | 對應規格 | 內容 |
 |------|----------|------|
-| [minimost_sequence_validator.py](minimost_sequence_validator.py) | [docs/specs/minimost-sequence-model-core-logic-spec.md](../../docs/specs/minimost-sequence-model-core-logic-spec.md) | MiniMOST GM/CM 七格 TMU 計算（A/B/G/P/M/X/I）+ SIMO/頻率 |
-| [level_system_validator.py](level_system_validator.py) | [docs/specs/level-system-core-logic-spec.md](../../docs/specs/level-system-core-logic-spec.md) | Level System 填寫合法性 R1–R9（main/sub/cub/nb、深度、變動層級） |
+| [minimost_sequence_validator.py](minimost_sequence_validator.py) | [MiniMOST 核心規格](../../docs/core-logic/minimost-sequence-model-core-logic-spec.md) | MiniMOST GM/CM 七格 TMU 計算（A/B/G/P/M/X/I）+ SIMO/頻率 |
+| [level_system_validator.py](level_system_validator.py) | [Level 核心規格](../../docs/core-logic/level-system-core-logic-spec.md) | Level System 填寫合法性 R1–R9（main/sub/cub/nb、深度、變動層級） |
 
 ## 跑法
 
@@ -19,7 +19,7 @@ python3 scripts/core_logic/level_system_validator.py
 
 ## 設計原則
 
-- **權威來源＝規格**（規格來源＝`docs/html_con/` + `docs/sample_excel/`），非 legacy 程式碼。
+- **權威來源＝`docs/core-logic/`＋accepted ADR＋IE 認證字典**；`html_con/` 僅為封存 UI 原型。
 - 把 **edge case 封死**：非法選項、未勾修飾、超過 2 附加、GM↔CM 結構混用、距離/秒負值、
   歸屬不明、重複定義歸屬、nb 與 cub 矛盾、level 格式/反向範圍、order 跳號/重複… 一律明確報錯（帶錯誤碼）。
 - **黃金測試集**：Sequence＝GM 28 TMU / CM 29 TMU；Level＝教學檔案 7 個範例 + image5 三個反例。

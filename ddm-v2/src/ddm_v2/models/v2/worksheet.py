@@ -73,7 +73,7 @@ class MostWorksheet(Base, TimestampMixin):
     default_rule_set_id: Mapped[UUID | None] = mapped_column(
         PG_UUID(as_uuid=True), ForeignKey("rule_sets.id", ondelete="RESTRICT")
     )
-    allowance_percent: Mapped[float | None] = mapped_column(Numeric(6, 3))  # 工序表級寬放%（standard = normal×(1+%/100)；OQ-002）
+    allowance_percent: Mapped[float | None] = mapped_column(Numeric(6, 3))  # 工序表級寬放%（data-model §2.5）
     status: Mapped[str] = mapped_column(Text, nullable=False, server_default=text("'draft'"))
 
     process_version: Mapped[ProcessVersion] = relationship(back_populates="worksheet")

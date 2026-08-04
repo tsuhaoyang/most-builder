@@ -2,7 +2,7 @@
 
 工業工程 **MOST**（Maynard Operation Sequence Technique）工時量測平台，scope = **MiniMOST**。
 純 v2 FastAPI 後端（API 前綴 `/api/v2`）＋ **React 前端**（`src/frontend`，模組化、API 驅動）＋ PostgreSQL。
-（legacy Phase 1 程式碼已於 2026-06 移除；舊 `docs/html_con/` 僅留作 UI 藍本參考。）
+（legacy Phase 1 程式碼已於 2026-06 移除；`docs/html_con/` 僅為封存原型，不作 UI 權威。）
 
 ## 功能範圍
 
@@ -59,7 +59,7 @@ E2E_BASE_URL=http://127.0.0.1:8099 ( cd src/frontend && npx playwright test )  #
 
 ## 文件
 
-- 核心邏輯：`docs/core-logic/`（minimost-sequence / level-system / 驗證目錄 / MOST 核心算法）
-- 架構：`docs/architecture/`（system-architecture-v2 / data-model-and-storage / frontend-data-flow / rbac）
+- 核心邏輯：`docs/core-logic/`（MiniMOST sequence / Level System / 驗證目錄）
+- 架構：`docs/architecture/`（系統、資料、前端 UX/資料流、RBAC、WI AI）
 - 前端：[src/frontend/README.md](src/frontend/README.md)（模組化結構、遷移狀態、開發/e2e 指令）
 - 文件索引：`docs/DOC_REGISTRY.md`

@@ -1,8 +1,8 @@
 /**
  * UX Compliance Tests — Type A (Mocked-API)
  *
- * 對應驗收清單：docs/v3/migration-delivery-checklist.md 各節
- * 對應 UX 規格：docs/v3/analysis/UX-design-spec.md
+ * 對應決策：docs/decisions/ADR-021、ADR-022、ADR-024
+ * 對應 UX 規格：docs/architecture/frontend-ux-spec.md
  *
  * 不依賴 preview_server。全部 /api/** 請求由 page.route 攔截。
  * 需要 Vite dev server 在 5173（或 E2E_BASE_URL 指定的 port）。

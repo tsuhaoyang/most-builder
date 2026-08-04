@@ -52,7 +52,7 @@ async def save_worksheet(session: AsyncSession, worksheet_id: uuid.UUID, payload
     if pv is not None and pv.status != "draft":
         raise NotEditable(f"版本狀態為 {pv.status}，已凍結不可存（請另存新檔）")
 
-    # 工序表級寬放%（OQ-002 / impl-02 §3）：payload 有帶才更新（加法相容——舊 client 不帶不影響既有值）；帶 null＝清除。
+    # 工序表級寬放%（data-model §2.5）：payload 有帶才更新（加法相容）；帶 null＝清除。
     if "allowance_percent" in payload.model_fields_set:
         ws.allowance_percent = payload.allowance_percent
 
