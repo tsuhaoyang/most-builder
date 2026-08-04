@@ -2,7 +2,7 @@
 
 **狀態：** accepted
 **日期：** 2026-06-21
-**關聯：** [../roadmap/phase2-cross-system-data-alignment-spec.md](../roadmap/phase2-cross-system-data-alignment-spec.md)、[ADR-011-schema-evolution-and-contract-stability.md](ADR-011-schema-evolution-and-contract-stability.md)、[integration-lb-import skill]
+**關聯：** [資料模型與儲存](../architecture/data-model-and-storage-spec.md)、[Domain Evolution 與 AI Readiness](../architecture/domain-evolution-and-ai-readiness-spec.md)、[ADR-011](ADR-011-schema-evolution-and-contract-stability.md)
 
 ## 脈絡
 

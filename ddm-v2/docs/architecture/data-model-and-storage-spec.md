@@ -4,6 +4,7 @@
 **版本：** 0.1 — 草案
 **建立日期：** 2026-06-17
 **關聯：** [system-architecture-v2-spec.md](./system-architecture-v2-spec.md)（§3 單一引擎、§4 資料模型總綱）、[level-system-core-logic-spec.md](../core-logic/level-system-core-logic-spec.md)、[minimost-sequence-model-core-logic-spec.md](../core-logic/minimost-sequence-model-core-logic-spec.md)
+**演進補充：** [Domain Evolution 與 AI Readiness](domain-evolution-and-ai-readiness-spec.md)（worksheet revision、policy manifests、method context、AI/batch operational schema）
 **範圍：** 本地 PostgreSQL 儲存模型；設計時即預留「日後改由外部系統界接」與「BOM 自動產生草稿」「匯出真實 WI/Level」。
 
 ---
@@ -11,6 +12,10 @@
 ## 0. 名詞：「本地儲存模型」
 
 指**資料在自家 PostgreSQL 裡的表/欄位設計**（相對於即時向 ERP/MES/PLM 界接取得）。現階段全部存本地；但**對外的讀取一律經 Provider 介面**（見 §6），日後換成外部來源＝換 adapter，領域邏輯不動。
+
+> 本文件描述 v2 聚合與現行 schema 的基礎模型。核心仍會演進時所需的 revision、Modeling/Level
+> policy、Level validation evidence、正式 method context、AI operational store 與 durable batch row
+> 採加法補充，詳見上列 Domain Evolution 規格；該文件未 accepted 的 proposed schema 不代表已落地。
 
 ---
 
@@ -262,7 +267,7 @@ erDiagram
 **坦白說：BOM 不能直接產出「正確」的 sequence model，但可以產出「草稿骨架」讓 IE 修。**
 - BOM 告訴你**有哪些元件、結構/數量**；但 **MOST 需要的是「動作方法」**（伸手幾公分、怎麼抓、怎麼放）——這 BOM **沒有**。
 - 所以可行的是 **草稿產生器**：BOM 每個元件 → 自動產生一列 WI（如「取得元件 X → 放置到父件」的預設 GM cycle，距離/抓放給預設值），標 `provenance='bom_draft'`，**IE 再逐列補方法與距離**。
-- 全自動、零人工的「BOM→精確工時」**不可行**（缺方法資訊）。這與既有 [ADR-010 自然語言→MOST backlog](../decisions/ADR-010-nl-to-most-backlog.md) 同類，屬輔助、非取代。
+- 全自動、零人工的「BOM→精確工時」**不可行**（缺方法資訊）。其信任邊界與 [WI AI Parser 規格](wi-ai-parser-system-spec.md) 相同：只能產生草稿，須經 IE 確認與權威引擎驗證。
 
 ### 4.2 現在要預留什麼（讓日後接得上）
 | 預留 | 作法 |
@@ -339,7 +344,7 @@ Adapter       今: LocalDbProvider(PG)   ｜ 日後: MesProvider/ErpBomProvider/
 | E1 | **參照完整性 + 軟刪** | 詞彙/元件被「已發布 WI」引用後**不可硬刪**，只能 `is_active=false`+`deleted_at`；否則歷史工時單會斷鏈、無法回放 |
 | E2 | **多語名稱 (i18n)** | 各命名實體用 `name_zh`/`name_en`（呼應你「非中文對照」）；external_code 語言中立、name 多語並存 |
 | E3 | **稽核與版本歷史** | `audit_log`（誰、何時、改了什麼）+ process_version 版本鏈；IE 治理與追溯必備 |
-| E4 | **並發編輯** | 多 IE 同編一份 WI 需樂觀鎖（`updated_at`/version 欄）或編輯鎖；避免互蓋（呼應舊 OQ-004） |
+| E4 | **並發編輯** | 多 IE 同編一份 WI 需 worksheet revision 樂觀鎖；詳見 [Domain Evolution Spec](domain-evolution-and-ai-readiness-spec.md) §6。 |
 | E5 | **rule-set 完整性 gating** | 發布 rule-set 版本前檢查各表齊備；引擎遇缺表**報錯不可回 0** |
 | E6 | **單位一致性** | TMU↔秒（×0.036）只在一處換算；難度係數只在 Level 乘一次，勿在 WI 與 Level 重複乘 |
 

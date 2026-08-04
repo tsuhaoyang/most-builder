@@ -5,12 +5,11 @@
 - **刪除 image（映像檔）** 不會刪掉 PostgreSQL 裡的資料。資料在 **named volume** 裡。
 - **資料會不見** 通常是：刪了 **volume**、或執行 **`docker compose down -v`**、或 **`docker volume rm`**、或整顆磁碟被 prune 時勾到 volumes。
 
-## 本專案 `docker-compose.yml` 的兩個 volume
+## 本專案 `docker-compose.yml` 的 volume
 
 | Volume 名稱 | 用途 |
 |-------------|------|
 | `ddm-v2-pgdata` | **PostgreSQL 資料目錄**（表、列、使用者、廠區等） |
-| `ddm-v2-data` | 應用程式 `/app/data`（例如 legacy JSON `runtime-db.json`） |
 
 只要 **`ddm-v2-pgdata` 這個 volume 還在**，換新 image、重建 container，DB 資料都還在。
 
@@ -24,7 +23,7 @@
 ## 建議操作
 
 - 日常重建後端：`docker compose build ddm-v2 && docker compose up -d`（**不要**加 `-v`）。
-- 備份 DB：`docker exec ddm-v2-db pg_dump -U ddm_user ddm_v2 > backup.sql`（使用者名稱、DB 名以 `.env` 為準）。
+- 備份 DB：`docker exec ddm-v2-db pg_dump -U "$POSTGRES_USER" "$POSTGRES_DB" > backup.sql`（實際帳密/DB 名以部署環境為準）。
 
 ## 與 IE 廠區下拉空白無關
 

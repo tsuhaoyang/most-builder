@@ -5,7 +5,7 @@
 **建立日期：** 2026-06-17
 **前提：** 後端 cycle DTO 契約已鎖並有 OpenAPI（[schemas/v2/most.py](../../src/ddm_v2/api/routes/v2/calculate.py)、`POST /api/v2/minimost/calculate`）。
 **關聯：** [system-architecture-v2-spec.md](./system-architecture-v2-spec.md)（D3 後端唯一權威 / D4 React+TS）、[data-model-and-storage-spec.md](./data-model-and-storage-spec.md)、[minimost-sequence-model-core-logic-spec.md](../core-logic/minimost-sequence-model-core-logic-spec.md)
-**範圍：** 定義前端「資料怎麼流、狀態怎麼放」；**不**寫 React 元件實作（SPA 屬 P2）。UX 現況＝[v2-workbench.html](../html_con/v2-workbench.html)。
+**範圍：** 定義前端「資料怎麼流、狀態怎麼放」；**不**寫 React 元件實作。UX 權威＝[frontend-ux-spec.md](frontend-ux-spec.md)＋ADR-021/022；`html_con/` 僅為封存原型。
 
 ---
 

@@ -2,7 +2,7 @@
 
 - **狀態**：Accepted（使用者/IE 裁決於 2026-07-13）
 - **決策者**：Howard（IE）＋ 審查總召
-- **關聯**：`docs/v3/v3-to-v2-migration-audit-202607.md`（§5 走查對照）、ADR-014（值權威）
+- **關聯**：[Frontend UX Spec](../architecture/frontend-ux-spec.md)、ADR-014（值權威）、ADR-022（後續工作台修正）
 - **本文件是所有前端派工的必讀母版。任何前端 agent 動工前必須讀完本文件。**
 
 ## 背景：移植為什麼走偏了

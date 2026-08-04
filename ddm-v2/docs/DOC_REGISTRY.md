@@ -1,96 +1,87 @@
-# 文件索引（Document Registry）
+# DDM v2 文件索引
 
-> **版本：alpha** — MOST（MiniMOST）工時量測平台 v2 文件。
-> 依用途分類：核心邏輯 / 架構 / 決策 / 路線圖 / 使用者規格 / 參考 / UI。
+> **版本：** 2026-08-04
+> **範圍：** 僅列目前 ddm-v2 的核心邏輯、系統設計、功能決策、有效 roadmap 與必要參考資產。
 
-## 目錄結構
+## 權威順序
 
-```
-docs/
-├── core-logic/      核心邏輯（權威）：MOST 計算、Level System、驗證
-├── architecture/    系統架構、資料模型、前端資料流、RBAC
-├── decisions/       決策記錄（OQ / ADR）
-├── v3/              v3（IE 認證版）→ v2 整合文件庫（分析/藍圖/實作規格/權威參考）
-├── roadmap/         路線圖草案（phase2）
-├── user-spec/       使用者提供的規格草案
-├── reference/       維運/參考筆記
-├── sample_excel/    權威來源資料（1205 / 1128）
-└── html_con/        前端原型（preview_server 提供）
-```
+發生衝突時依序採用：
 
-## 狀態說明
+1. **Accepted ADR**：已核可的邊界與取捨。
+2. **核心邏輯規格**：MiniMOST、Level System 與黃金驗證。
+3. **Canonical architecture spec**：系統、資料、前端與 AI 的目標設計。
+4. **現行 API/schema/tests**：已落地行為的可執行證據。
+5. **Roadmap / reference / archive**：不得覆蓋前四層。
+
+若 accepted ADR 與核心規格出現衝突，必須先完成新決策與 regression tests，不可自行擇一。
+
+## 狀態
 
 | 符號 | 意義 |
 |------|------|
-| ✅ 完成 | 可作為實作依據 |
-| 🔄 進行中 | 仍在撰寫/待更新 |
-| 📌 參考 | 唯讀參考，不應修改 |
+| ✅ | 已核可或可作現行實作依據 |
+| 🔄 | 現行文件，仍隨程式更新 |
+| ⏳ | 完整提案，仍依賴 proposed ADR / User 核可 |
+| 📌 | 必要參考或封存資產，不是新實作權威 |
 
----
+## 核心邏輯
 
-## core-logic/（核心邏輯 — 權威）
-
-| 文件 | 主旨 | 狀態 |
+| 文件 | 用途 | 狀態 |
 |------|------|------|
-| [minimost-sequence-model-core-logic-spec.md](core-logic/minimost-sequence-model-core-logic-spec.md) | MiniMOST Sequence Model（GM/CM 七格、A/B/G/P/M/X/I 查表、TMU 口徑、敘事、SIMO） | ✅ v1.0 |
-| [level-system-core-logic-spec.md](core-logic/level-system-core-logic-spec.md) | Level System（main/sub/cub/nb、變動主序 `~`/`/`、R1–R9、巢狀 sub⊃cub、對 LB 輸出合約） | ✅ v1.x |
-| [core-logic-validation-test-catalog.md](core-logic/core-logic-validation-test-catalog.md) | 核心邏輯驗證測試目錄（黃金集＋反例＋edge case） | ✅ v1.0 |
-| [MOST-core-algorithm-spec.md](core-logic/MOST-core-algorithm-spec.md) | MOST 核心算法規格（核心參考） | 📌 參考 |
+| [MiniMOST Sequence Model](core-logic/minimost-sequence-model-core-logic-spec.md) | GM/CM 七格、A/B/G/P/M/X/I、TMU、SIMO、敘事 | ✅ |
+| [Level System](core-logic/level-system-core-logic-spec.md) | R1–R9、main/sub/cub/nb、變動層級與 LB output | ✅ |
+| [核心驗證目錄](core-logic/core-logic-validation-test-catalog.md) | 黃金值、反例與 edge cases | ✅ |
 
-## architecture/（架構）
+值資料的唯一權威是 [v3 IE 認證字典 DB](v3/reference/minimost_ai_dictionary_v1.json)；生成檔 `rule_set_seed_v2.py` 不得手改。
 
-| 文件 | 主旨 | 狀態 |
+## 系統架構
+
+| 文件 | 用途 | 狀態 |
 |------|------|------|
-| [system-architecture-v2-spec.md](architecture/system-architecture-v2-spec.md) | 目標系統架構 v2（定點重建）：單一權威引擎、rule-set 版本化、SPA、LB 輸出合約 | 🔄 v0.x |
-| [data-model-and-storage-spec.md](architecture/data-model-and-storage-spec.md) | 資料模型與儲存（廠區→產品→SKU→version→工序單→level、儲存策略、生命週期） | 🔄 v0.x |
-| [frontend-data-flow-spec.md](architecture/frontend-data-flow-spec.md) | 前端資料流（DTO/狀態、cycle 編輯迴圈、Level 同步、錯誤碼→UI） | 🔄 v0.x |
-| [rbac-spec.md](architecture/rbac-spec.md) | RBAC（聯邦認證 Traefik ForwardAuth + 本地角色 IE/manager/admin） | ✅ v1.0（已實作） |
+| [System Architecture v2](architecture/system-architecture-v2-spec.md) | 系統總覽、唯一引擎、rule-set、API 與 LB 邊界 | 🔄 |
+| [Data Model and Storage](architecture/data-model-and-storage-spec.md) | v2 聚合、JSONB/關聯式分工、回放與生命週期 | 🔄 |
+| [Domain Evolution and AI Readiness](architecture/domain-evolution-and-ai-readiness-spec.md) | Revision、policy manifests、method context、outbox、AI/batch 資料地基 | ⏳ ADR-027 |
+| [Frontend Data Flow](architecture/frontend-data-flow-spec.md) | DTO、server/client state、calculate/Level 資料流 | 🔄 |
+| [Frontend UX Spec](architecture/frontend-ux-spec.md) | 現行 v2 導覽、工作台與互動 UX 約束 | ✅ ADR-021/022/024 |
+| [RBAC](architecture/rbac-spec.md) | Gateway 身分、本地角色與端點權限 | ✅ |
+| [LB / MOST Auth](architecture/lb-most-auth.md) | 與 LB 共用登入的部署與驗證邊界 | 🔄 |
+| [v2 權威模型與反 Legacy 守則](architecture/v2-authoritative-model-guide.md) | 版本語意、兩層工作台、rule-set 回放與禁止模式 | ✅ |
+| [WI AI Parser](architecture/wi-ai-parser-system-spec.md) | 互動/批次 WI 解析、compiler、審核與 learning loop | ⏳ ADR-026/027 |
 
-## decisions/（決策記錄）
+## 架構決策
 
-OQ-001~006、ADR-010~018：見 [decisions/README.md](decisions/README.md)。（ADR-012 3D 渲染、ADR-013 Excel 匯入、**ADR-014~018＝v3 整合決策**：值權威 / NL 解析 / 檢索架構 / 組件庫 / 工作流，均 proposed）
+完整狀態與主題索引見 [decisions/README.md](decisions/README.md)。
 
-## v3/（v3 → v2 整合文件庫）
+- **Accepted：** ADR-011～015、ADR-018～025。
+- **Proposed：** ADR-016、ADR-017、ADR-026、ADR-027。
+- ADR-026/027 未 accepted 前，不得把 R1+ proposed schema 當成已授權 migration。
 
-| 文件 | 主旨 | 狀態 |
+## Roadmap
+
+| 文件 | 用途 | 狀態 |
 |------|------|------|
-| [v3/README.md](v3/README.md) | 整合文件庫索引與閱讀順序 | ✅ |
-| [v3/v2-v3-core-logic-diff-and-integration.md](v3/v2-v3-core-logic-diff-and-integration.md) | v2↔v3 核心邏輯逐格差異盤點＋裁決 C1–C10（已定案） | ✅ 定稿 |
-| [v3/v3-to-v2-refactor-blueprint.md](v3/v3-to-v2-refactor-blueprint.md) | 整合總體策略、六 Phase 實施順序 | ✅ 定稿 |
-| [v3/impl/](v3/impl/)（impl-01~06） | 各 Phase 實作細節規格（值表/引擎/檢索/組件庫/NLP/工作流） | 🔄 P0 產出 |
-| [v3/verification-code-audit.md](v3/verification-code-audit.md) | **程式碼查證報告**：docs/v3 宣稱 vs ddm-v3 實碼逐條對照、更正 C-1~C-12、三層系統補充 | ✅ 2026-07-05 |
-| [v3/analysis/](v3/analysis/README.md) | **可執行規格庫**：v3 全功能萃取——core-logic CL-01~04＋features F-01~08（AI 可直接實作）＋DISC-01~15 討論清單＋reference 證據底稿 | ✅ 2026-07-05 |
-| [v3/reference/](v3/reference/) | v3 權威來源複本（**字典 JSON＝值權威**、wi-parser-upgrade） | 📌 參考 |
-| [v3/v3-to-v2-migration-audit-202607.md](v3/v3-to-v2-migration-audit-202607.md) | **移植審查報告**：P0 白屏崩潰＋前端 34 項對等性缺口（Playwright 實測＋agent 審查）、修復優先序與派工計畫 | ✅ 2026-07-14 全部落地 |
-| [v3/v2-authoritative-model-guide.md](v3/v2-authoritative-model-guide.md) | **權威模型與反 Legacy 守則**：版本語意裁定（案件≠版本鏈）、兩層工作台、rule-set active 缺口、互動級差距、禁止清單——動 v2 前必讀 | ✅ 2026-07-19 |
+| [WI AI 與批次建模交付計畫](roadmap/wi-ai-and-batch-modeling-delivery-plan.md) | Core、Domain Readiness、AI Quality、Batch/Deployment 分期 | ⏳ |
+| [全面中英雙語](roadmap/phase5-i18n-full-bilingual-spec.md) | UI、敘事、資料標籤、匯出與錯誤 i18n | 🔄 |
 
-> ⚠️ 值權威變更（ADR-014 proposed）：`v3/reference/minimost_ai_dictionary_v1.json` 為 MiniMOST 值的唯一權威；`sample_excel/` 降為歷史參考。
+Roadmap 只定義時程與退出條件，不定義資料真相。
 
-## roadmap/（路線圖草案）
+## 品質與維運
 
-| 文件 | 主旨 | 狀態 |
+| 文件 | 用途 | 狀態 |
 |------|------|------|
-| [phase2-ui-ia-rbac-masterdata-architecture.md](roadmap/phase2-ui-ia-rbac-masterdata-architecture.md) | IA／topology／群組／手勢（部分已決） | 🔄 草案 |
-| [phase2-cross-system-data-alignment-spec.md](roadmap/phase2-cross-system-data-alignment-spec.md) | 跨系統數據對齊 | 🔄 草案 |
-| [phase5-i18n-full-bilingual-spec.md](roadmap/phase5-i18n-full-bilingual-spec.md) | Phase 5：全面多語系（中/英） | 🔄 草案 |
+| [CI Gates](CI_GATES.md) | 核心、DB、API、前端、隔離與回放的合併門檻 | ✅ |
+| [Docker 資料持久化](reference/docker-data-persistence.zh-TW.md) | PostgreSQL volume 與安全操作 | 📌 |
+| [v3 使用者資料來源](reference/v3-user-data-source.md) | v3 SQLite WI/WI 大綱來源、保護規則、checksum 與搬遷驗證 | ✅ |
 
-## user-spec/（使用者規格草案）
+## 必要資料與封存資產
 
-| 文件 | 主旨 | 狀態 |
-|------|------|------|
-| [minimost-database-schema-design.md](user-spec/minimost-database-schema-design.md) | MiniMOST 主數據與循環 ER／表結構草案 | 🔄 草案 |
-| [minimost-operational-flow-and-examples.md](user-spec/minimost-operational-flow-and-examples.md) | MiniMOST 操作流程、選項、GM/CM 教學範例 | 🔄 草案 |
-| [backstage_spec.md](user-spec/backstage_spec.md) | 後台規格 | 🔄 草案 |
-
-## reference/ + 資料 + UI
-
-| 項目 | 主旨 |
+| 路徑 | 定位 |
 |------|------|
-| [reference/docker-data-persistence.zh-TW.md](reference/docker-data-persistence.zh-TW.md) | Docker 映像 vs volume 資料持久化 |
-| [sample_excel/](sample_excel/) | 權威來源（1205.xlsx＝Level System、1128＝WI 範本） |
-| [html_con/v2-workbench.html](html_con/v2-workbench.html) | 現役單頁多分頁 workbench（preview_server `/`） |
-| [html_con/v2-wi-preview.html](html_con/v2-wi-preview.html) | 單列聚焦版（preview_server `/single`） |
+| [v3/reference/minimost_ai_dictionary_v1.json](v3/reference/minimost_ai_dictionary_v1.json) | **保留的 v3 IE 認證字典 DB**；ADR-014 值權威、converter 唯一輸入，禁止刪除 |
+| [外部 v3 使用者 SQLite DB](../../ddm-v3/apps/api/minimost.db) | **保護資產、gitignored**；含 13 筆 WI 大綱、29 筆 actions、2 份 WI templates、1 個 WI Set 專案。只允許 `migrate_v3_user_data.py` 以 read-only mode 讀取，禁止清理或寫入 |
+| [sample_excel/](sample_excel/) | 1205 Level/敘事來源、1128 WI 範本與詳解參考 |
+| [html_con/](html_con/) | 已退役 UI prototype；依 repo 守則只封存、不作新實作依據 |
 
----
+## 已清理內容
 
-*最後更新：2026-07-05（v3 analysis 可執行規格庫）*
+2026-08-04 已從工作文件移除：Phase 1 舊規格/手冊、早期 dev/user drafts、教科書算法副本、OQ 討論稿、已取代的 NL backlog ADR、舊 Phase2 roadmap，以及已由 v2 ADR/spec/tests 吸收的歷史 migration/analysis/impl 研究樹。需要追溯時使用 Git 歷史，不在 active docs 維護第二份真相。

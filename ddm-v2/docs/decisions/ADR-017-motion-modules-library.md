@@ -2,7 +2,7 @@
 
 **狀態：** proposed
 **日期：** 2026-07-04
-**關聯：** [../v3/impl/impl-04-motion-modules.md](../v3/impl/impl-04-motion-modules.md)、ADR-011、ADR-016
+**關聯：** [ADR-011](ADR-011-schema-evolution-and-contract-stability.md)、[ADR-016](ADR-016-search-infrastructure.md)、[ADR-022](ADR-022-workbench-two-layer-correction.md)
 
 ## 脈絡
 

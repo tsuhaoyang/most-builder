@@ -1,8 +1,8 @@
 # ADR-018: 審核工作流與角色收斂
 
-**狀態：** Accepted（2026-07-10）— impl-06 解凍
+**狀態：** Accepted（2026-07-10）
 **日期：** 2026-07-04
-**關聯：** [../v3/impl/impl-06-workflow-rbac.md](../v3/impl/impl-06-workflow-rbac.md)、[[rbac-hard-requirement]]、[[lb-most-auth-integration]]
+**關聯：** [RBAC 規格](../architecture/rbac-spec.md)、[LB/MOST Auth](../architecture/lb-most-auth.md)
 
 ## 已裁決項目（2026-07-10）
 

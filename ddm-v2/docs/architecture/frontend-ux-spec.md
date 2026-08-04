@@ -1,8 +1,9 @@
-# UX Design Spec — v3→v2 移植參考
+# DDM v2 Frontend UX Design Spec
 
-> **來源**：本文件從 `ddm-v3/apps/web/src/` Vue 原始碼萃取，記錄使用者親自設計的 UX 決策。  
-> **用途**：v2 前端重構的 UX 約束清單。技術實作（框架/元件庫）可換，本文件描述的互動語意與佈局邏輯不可改。  
+> **來源**：從使用者驗證過的 v3 UX 萃取，並由 ADR-021/022 收斂為 ddm-v2 的 UX 約束。
+> **用途**：v2 前端 UX 規格。技術實作（框架/元件庫）可換，本文件描述的互動語意與佈局邏輯不可任意改。
 > **維護**：更動本文件前必須有使用者確認；設計決策理由用 `▷ 原因` 標記。
+> **決策關聯**：[ADR-021](../decisions/ADR-021-ia-restructure-v3-parity.md)、[ADR-022](../decisions/ADR-022-workbench-two-layer-correction.md)、[ADR-024](../decisions/ADR-024-master-data-vs-dictionary-boundary.md)。衝突時以較新的 accepted ADR 為準。
 
 ---
 
@@ -108,7 +109,7 @@
 
 水平排列，`flex-wrap: wrap; gap: 6px`。完整欄位順序：
 
-**General Move：** 使用手 | 從哪裡 | A1 | B1 | G | 目標物 | 元件 | A2 | B2 | P | 到哪裡 | A3  
+**General Move：** 使用手 | 從哪裡 | A1 | B1 | G | 目標物 | 元件 | A2 | B2 | P | 到哪裡 | A3
 **Controlled Move：** 使用手 | 從哪裡 | A1 | B1 | G | 目標物 | 元件 | M | 到哪裡 | X | I | 哪裡 | A3
 
 **Context Block 樣式：**
