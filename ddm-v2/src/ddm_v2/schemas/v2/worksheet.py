@@ -28,7 +28,7 @@ class WiRowSaveIn(BaseModel):
     sub_activity: str | None = None
     key_parts: str | None = None
     hand: str | None = None
-    object_vocab_id: uuid.UUID
+    object_vocab_id: uuid.UUID | None = None
     from_vocab_id: uuid.UUID | None = None
     to_vocab_id: uuid.UUID | None = None
     tool_vocab_id: uuid.UUID | None = None

@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { useQueryClient } from '@tanstack/react-query'
-import { useRuleSetOptions, useVocab, useCalculate, useSaveWorksheet, useWorksheet, type DefaultRuleSetInfo } from './api'
+import { useRuleSetOptions, useVocab, useCalculate, useSaveWorksheet, type DefaultRuleSetInfo } from './api'
 import { useWiStore, type Row } from './store'
 import { useMe, canEdit } from '../../shared/auth/useMe'
 import { useWorkspace } from '../../shared/workspace'
@@ -16,7 +16,8 @@ import {
   type CycleState, type ASlot, type ABand,
 } from './cycle'
 import { useLevelStore } from '../level-system/store'
-import { derive, type LevelCell, type GroupMeta } from '../level-system/logic'
+import { derive } from '../level-system/logic'
+import { useWorksheetWorkspace } from './useWorksheetWorkspace'
 import {
   useWiTemplates, useInstantiateToWorksheet,
   type MotionModuleSummary,
@@ -229,7 +230,7 @@ export function WiWorkbench() {
   const activeWs = useWorkspace(s => s.activeWs)
   const save = useSaveWorksheet(activeWs)
   const qc = useQueryClient()
-  const { data: wsData } = useWorksheet(activeWs)
+  const { data: wsData } = useWorksheetWorkspace(activeWs)
   const { rows, addRow, delRow, setRows, totalTmu } = useWiStore()
 
   // ── existing editor state ──────────────────────────────────────────────────
@@ -288,29 +289,6 @@ export function WiWorkbench() {
       showWiToast('插入失敗：' + (e as Error).message, 'err')
     }
   }
-
-  // ── load/switch worksheet ─────────────────────────────────────────────────
-  useEffect(() => {
-    if (!wsData) return
-    setRows(wsData.rows.map(r => ({
-      id: r.wi_row_id, seq: (r.cycle?.seq_kind === 'CM' ? 'CM' : 'GM') as 'GM' | 'CM',
-      handCode: r.hand ?? 'RH', freq: r.frequency, simoGroup: r.simo_group_id ?? '',
-      nv: { obj: r.object_vocab_id ?? '', from: r.from_vocab_id ?? '', to: r.to_vocab_id ?? '' },
-      narr: r.cycle?.narrative ?? '', tmu: r.cycle?.total_tmu ?? 0, seconds: r.cycle?.total_seconds ?? 0,
-      payload: r.cycle?.slot_inputs ?? null,
-    })))
-    const lm: Record<string, LevelCell> = {}; const gm: Record<string, GroupMeta> = {}
-    wsData.rows.forEach((r, i) => {
-      const L = r.level
-      lm[r.wi_row_id] = {
-        coefficient: L?.coefficient ?? 1, number: L?.number ?? '', number_count: L?.number_count ?? '',
-        level: L?.level ?? String(i + 1), countersignature: L?.countersignature ?? '', machine_count: 1, manpower: 1,
-      }
-      const csl = (L?.countersignature ?? '').trim()
-      if (csl && !gm[csl]) gm[csl] = { type: csl.startsWith('cub') ? 'cub' : 'sub', parent: L?.parent_countersignature ?? '', seq: i }
-    })
-    useLevelStore.getState().hydrate(lm, gm, wsData.rows.length)
-  }, [wsData, setRows])
 
   // ── debounced backend calculate ───────────────────────────────────────────
   const payload = useMemo(() => (opts ? buildPayload(cur, opts.code) : null), [cur, opts])
@@ -640,13 +618,12 @@ export function WiWorkbench() {
     setSaveMsg('儲存中…')
     const lv = useLevelStore.getState()
     const d = derive(rows, lv.levelMap, lv.groupMeta)
-    const fallbackObj = vocab.find(v => v.kind === 'object')?.id
     const body = {
       rows: rows.map((r, i) => {
         const e = d[i] || {}
         return {
           id: r.id, seq_no: i + 1, hand: r.handCode,
-          object_vocab_id: r.nv.obj || fallbackObj,
+          object_vocab_id: r.nv.obj || null,
           from_vocab_id: r.nv.from || null, to_vocab_id: r.nv.to || null,
           frequency: r.freq, simo_group_id: r.simoGroup || null, narrative: r.narr, cycle: r.payload,
           level: {

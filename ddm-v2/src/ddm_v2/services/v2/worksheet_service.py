@@ -183,7 +183,7 @@ async def read_worksheet(session: AsyncSession, worksheet_id: uuid.UUID) -> dict
         rows.append({
             "wi_row_id": str(wr.id), "seq_no": wr.seq_no, "hand": wr.hand,
             "sub_activity": wr.sub_activity, "key_parts": wr.key_parts,
-            "object_vocab_id": str(wr.object_vocab_id),
+            "object_vocab_id": str(wr.object_vocab_id) if wr.object_vocab_id else None,
             "from_vocab_id": str(wr.from_vocab_id) if wr.from_vocab_id else None,
             "to_vocab_id": str(wr.to_vocab_id) if wr.to_vocab_id else None,
             "tool_vocab_id": str(wr.tool_vocab_id) if wr.tool_vocab_id else None,

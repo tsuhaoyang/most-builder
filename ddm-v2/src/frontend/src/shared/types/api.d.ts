@@ -750,7 +750,18 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /** Get Full */
+        /**
+         * Get Full
+         * @description 整份 12 張子表（值權威內容）。
+         *
+         *     RBAC＝analyst（D7b 收緊，原為 `current_user`）：IE 認證工時字典是 IE 部門的 know-how，
+         *     原本任何有帳號的員工——包含 `deps.current_user` JIT 建立、`roles=[]`、level=0 的新
+         *     使用者——都能一次拿走整份值。而且同一份內容在 `GET /diff` 已是 analyst，形成
+         *     「`/full` 拿得到的東西 `/diff` 反而拒絕」的矛盾。三支（full/export/diff）現已一致。
+         *
+         *     ⚠️ 不連坐收緊 `GET /rule-sets`（版本清單）、`/rule-sets/active`、`/rule-sets/{code}/options`：
+         *     工作台建模需要它們，且它們給的是「可選項目」而非整份值表。
+         */
         get: operations["get_full_api_v2_rule_sets__code__full_get"];
         /** Put Full */
         put: operations["put_full_api_v2_rule_sets__code__full_put"];
@@ -772,6 +783,91 @@ export interface paths {
         put?: never;
         /** Clone Draft */
         post: operations["clone_draft_api_v2_rule_sets__code__clone_draft_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v2/rule-sets/{code}/diff": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Diff Rule Set
+         * @description 本版本相對**目前 active 版本**的值差異（ADR-023 D7 / H-1）。
+         *
+         *     給覆核者看「按下 publish 之後，線上的值會從什麼變成什麼」。在此之前 publish 只回
+         *     `{"code":..., "status":"published"}`，approver 對被覆核的內容零資訊——
+         *     log 上只留他的員編，卻分不出他是改值的人還是覆核的人。
+         *
+         *     基準固定為 active（＝發布啟用後會被取代的那一版），回應以 `base_code` 標明。
+         *     差異結構：`diff.sections[<區塊>].{added,removed,changed}`（changed 逐欄帶前後值）
+         *     ＋ `diff.row_counts`（12 區塊前後列數）＋ `diff.header`（name_zh / multiplier）。
+         *
+         *     另附血緣（D7b）：`source_code`（本版 clone 自哪一版；查稽核紀錄，無紀錄＝null）與
+         *     `base_is_source`。來源不是 active 時多一個 `lineage_note`，提醒覆核者這份 diff
+         *     混了「兩條血緣的既有落差」與「作者這次的編輯」，不可全部當成本次改動。
+         *
+         *     RBAC：analyst 以上（唯讀，且與 `GET /full` 同樣是字典內容）。
+         */
+        get: operations["diff_rule_set_api_v2_rule_sets__code__diff_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v2/rule-sets/{code}/export": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Export Rule Set
+         * @description 匯出版本（ADR-023 §3.6）。形狀＝`GET /full` ＋ `schema_version/exported_at/exported_by`。
+         *
+         *     RBAC＝analyst（D7b 收緊，原為 `current_user`）：它與 `GET /full` 是同一份內容，
+         *     只多三個 metadata 欄——兩者權限必須一致，否則收緊 `/full` 只是把外流改走這條路。
+         *     去掉三個 metadata 欄後即為 `PUT /full` 的合法 body——export→離線編輯→import 閉環。
+         */
+        get: operations["export_rule_set_api_v2_rule_sets__code__export_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v2/rule-sets/import": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Import Rule Set
+         * @description 由匯出負載建立新草稿（ADR-023 §3.6）。**只建 draft + manual**。
+         *
+         *     schema_version 必填且須為 "1"；缺區塊鍵、必要子表為空、multiplier 非正數或帶界非法
+         *     → 400（不得靜默建立不完整版本）；new_code 撞既有 code → 409；缺省 code 依 clone-draft
+         *     同一套自動命名規則。
+         *
+         *     回應含 `warnings`：合法但會改變計算路徑的情況（目前唯一一項＝`m_foot` 為空 →
+         *     `foot_tmu()` 靜默回退 `ladder_tmu()`）必須在匯入當下就講出來。
+         */
+        post: operations["import_rule_set_api_v2_rule_sets_import_post"];
         delete?: never;
         options?: never;
         head?: never;
@@ -831,6 +927,152 @@ export interface paths {
          *     ⚠️ 下架不影響回放：已引用該版本的 cycle 仍可載入重算（§3.4）。
          */
         post: operations["retire_api_v2_rule_sets__code__retire_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v2/rule-sets/{code}/unretire": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Unretire
+         * @description 解除封存：retired → published（ADR-023 D3b）。
+         *
+         *     `retired` 原本是終態（只有 publish/activate/retire，無反向操作），誤按封存後無 UI 可救。
+         *     但 retired 的語意只是「不再用於新工作」，歷史 cycle 依 §3.4 鐵則照常載入——
+         *     解除封存不影響任何資料完整性。
+         *
+         *     ⚠️ `is_active` 維持 false：解除封存**不等於**啟用，要啟用請另外呼叫 `/activate`。
+         */
+        post: operations["unretire_api_v2_rule_sets__code__unretire_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v2/rule-sets/{code}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /**
+         * Delete Rule Set
+         * @description 刪除一個 draft 版本（ADR-023 D3b）。clone-on-write 的反向操作。
+         *
+         *     409 一律帶 `detail.code`，讓前端能區分五種拒絕原因（不是只看狀態碼）：
+         *
+         *     | detail.code | 原因 |
+         *     |---|---|
+         *     | `CERTIFIED_IMMUTABLE` | provenance='certified_import'（認證版本不受線上治理操作） |
+         *     | `RULE_SET_NOT_DRAFT` | status 為 published/retired |
+         *     | `RULE_SET_ACTIVE` | is_active=true |
+         *     | `RULE_SET_IN_USE` | 已被 cycle/worksheet/module 版本引用（`detail.references` 附各表引用數） |
+         *
+         *     12 張規則子表 ＋ rule_option_synonyms 由 DB CASCADE 一併刪除（回應的
+         *     `children_deleted` 為刪除前的列數快照）。
+         */
+        delete: operations["delete_rule_set_api_v2_rule_sets__code__delete"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v2/rule-sets/{code}/params/{param}/options": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Param Options
+         * @description 讀一個 (param, section) 的所有列。帶型區塊也走這裡（回應的 `kind` 區分）。
+         */
+        get: operations["list_param_options_api_v2_rule_sets__code__params__param__options_get"];
+        put?: never;
+        /** Create Param Option */
+        post: operations["create_param_option_api_v2_rule_sets__code__params__param__options_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v2/rule-sets/{code}/params/{param}/options/{option_code}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /**
+         * Delete Param Option
+         * @description 硬刪（draft 專屬，無人引用 → 不需 soft-delete）。
+         */
+        delete: operations["delete_param_option_api_v2_rule_sets__code__params__param__options__option_code__delete"];
+        options?: never;
+        head?: never;
+        /**
+         * Update Param Option
+         * @description 部分更新：未給的欄位沿用現值，但合併後仍過**完整** schema 驗證。
+         */
+        patch: operations["update_param_option_api_v2_rule_sets__code__params__param__options__option_code__patch"];
+        trace?: never;
+    };
+    "/api/v2/rule-sets/{code}/params/{param}/options/{option_code}/duplicate": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Duplicate Param Option
+         * @description 複製一筆選項；新 code 為 `{code}_copy`／`{code}_copy_2`…（保證唯一）。
+         */
+        post: operations["duplicate_param_option_api_v2_rule_sets__code__params__param__options__option_code__duplicate_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v2/rule-sets/{code}/params/{param}/bands": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /**
+         * Replace Param Bands
+         * @description 帶型區塊**整組替換**（A / M.ladder|foot|rotation|hand）。
+         *
+         *     帶界必須遞增、無重疊，open-ended（上界 null）只能在末位；
+         *     單筆增刪不提供，因為那會產生非法中間態（ADR-023 §2）。
+         */
+        put: operations["replace_param_bands_api_v2_rule_sets__code__params__param__bands_put"];
+        post?: never;
         delete?: never;
         options?: never;
         head?: never;
@@ -1199,6 +1441,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v2/wi-set-projects/{project_id}/instantiate": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Instantiate Project */
+        post: operations["instantiate_project_api_v2_wi_set_projects__project_id__instantiate_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/": {
         parameters: {
             query?: never;
@@ -1326,6 +1585,16 @@ export interface components {
             /** Repeat Count */
             repeat_count?: number | null;
             manual_override?: components["schemas"]["ManualOverride"] | null;
+        };
+        /**
+         * BandsReplaceIn
+         * @description 整組替換的 body。
+         */
+        BandsReplaceIn: {
+            /** Items */
+            items: {
+                [key: string]: unknown;
+            }[];
         };
         /** Body_upload_api_v2_imports_upload_post */
         Body_upload_api_v2_imports_upload_post: {
@@ -1485,6 +1754,21 @@ export interface components {
             simo_group_id?: string | null;
         };
         /**
+         * DefaultRuleSetInfo
+         * @description 工序表建立時凍結的 default rule-set 快照的**現況**狀態（ADR-023 §3.4-4 警示徽章用）。
+         *
+         *     ⚠️ 純顯示層資料：僅供前端判斷「本工序表用的是不是已下架版本」以顯示徽章。
+         *     不進計算路徑——cycle 的回放仍由各列快照的 rule_set_id 決定（回放鐵則）。
+         */
+        DefaultRuleSetInfo: {
+            /** Code */
+            code: string;
+            /** Status */
+            status: string;
+            /** Is Active */
+            is_active: boolean;
+        };
+        /**
          * FromModuleRequest
          * @description POST /worksheets/{wid}/rows/from-module body。
          */
@@ -1521,6 +1805,15 @@ export interface components {
             /** Repeat Count */
             repeat_count?: number | null;
             manual_override?: components["schemas"]["ManualOverride"] | null;
+        };
+        /** ImportIn */
+        ImportIn: {
+            /** New Code */
+            new_code?: string | null;
+            /** Name Zh */
+            name_zh?: string | null;
+        } & {
+            [key: string]: unknown;
         };
         /** InstantiateResponse */
         InstantiateResponse: {
@@ -1783,16 +2076,26 @@ export interface components {
          * MotionModuleCreate
          * @description POST /motion-modules body。
          *
-         *     category 規範（ADR-022 資料模型表；DB 無 CHECK，屬約定值）：
+         *     category（ADR-022 兩層判別值；**必填**，ADR-024 §4 / D9b）：
          *     - 'action'：單動作素材（恰 1 row；對應 v3 most_sequence_items）
          *     - 'wi-template'：WI 大綱項（rows = 動作快照複本；對應 v3 MI statements）
-         *     - None / 其他文字：既有範本沿用（16 筆 null category 範本不動）
+         *
+         *     ⚠️ 刻意不給預設值。category 決定模組屬於哪一層，**沒有它的模組兩層皆不屬**——
+         *     工作台濾 'action'、WI 庫濾 'wi-template'，都列不出來 → 完全隱形。
+         *     ADR-024「事後剖析」的 16 筆隱形模組就是這個形狀（當時是舊語意的中文領域分類）。
+         *     省略 category 是呼叫端錯誤，應回 422，而不是建出一個沒人看得見的模組。
+         *
+         *     也刻意不做「省略時預設 'action'」：那是靜默猜測呼叫端意圖（守則 §7 第 8 條），
+         *     WI 範本被預設成 action 會直接錯層。DB 端由 ck_motion_modules_category_valid 兜底。
          */
         MotionModuleCreate: {
             /** Name Zh */
             name_zh: string;
-            /** Category */
-            category?: string | null;
+            /**
+             * Category
+             * @enum {string}
+             */
+            category: "action" | "wi-template";
             /** Keywords */
             keywords?: string[];
             /**
@@ -1859,12 +2162,15 @@ export interface components {
          *
          *     SM-4：owner 欄位已移除，不允許呼叫方重新指派 owner；
          *     owner 在 create 時由 service 設定，之後不可更改。
+         *
+         *     category 選填（不送＝不改），但**送了就必須是合法的兩層判別值**——
+         *     否則等於用 PUT 把既有模組改成隱形（ADR-024 §4 / D9b）。
          */
         MotionModuleUpdate: {
             /** Name Zh */
             name_zh?: string | null;
             /** Category */
-            category?: string | null;
+            category?: ("action" | "wi-template") | null;
             /** Keywords */
             keywords?: string[] | null;
             /** Scope */
@@ -2114,6 +2420,19 @@ export interface components {
             rule_set_code?: string | null;
         };
         /**
+         * RowAdoption
+         * @description ADR-025 D10：採用某暫存列的範本建議。**只收 template_id**，TMU 一律後端以 active 重算。
+         */
+        RowAdoption: {
+            /** Row Index */
+            row_index: number;
+            /**
+             * Template Id
+             * Format: uuid
+             */
+            template_id: string;
+        };
+        /**
          * RowsReorderRequest
          * @description POST /motion-modules/{id}/rows/reorder body。
          *
@@ -2211,6 +2530,8 @@ export interface components {
             worksheet_id: string;
             /** Rule Set Code */
             rule_set_code?: string | null;
+            /** Row Adoptions */
+            row_adoptions?: components["schemas"]["RowAdoption"][];
         };
         /** SubmitOut */
         SubmitOut: {
@@ -2357,11 +2678,8 @@ export interface components {
             key_parts?: string | null;
             /** Hand */
             hand?: string | null;
-            /**
-             * Object Vocab Id
-             * Format: uuid
-             */
-            object_vocab_id: string;
+            /** Object Vocab Id */
+            object_vocab_id?: string | null;
             /** From Vocab Id */
             from_vocab_id?: string | null;
             /** To Vocab Id */
@@ -2381,6 +2699,41 @@ export interface components {
             narrative?: string | null;
             cycle: components["schemas"]["CycleIn"];
             level?: components["schemas"]["LevelFieldsIn"];
+        };
+        /**
+         * WiSetInstantiateIn
+         * @description 建立分析案件並依序實體化專案內 WI。
+         */
+        WiSetInstantiateIn: {
+            /**
+             * Sku Id
+             * Format: uuid
+             */
+            sku_id: string;
+            /** Model Label */
+            model_label?: string | null;
+            /** Analyst */
+            analyst?: string | null;
+        };
+        /** WiSetInstantiateOut */
+        WiSetInstantiateOut: {
+            /**
+             * Worksheet Id
+             * Format: uuid
+             */
+            worksheet_id: string;
+            /** Version No */
+            version_no: string;
+            /** Status */
+            status: string;
+            /** Imported Wi Count */
+            imported_wi_count: number;
+            /** Imported Row Count */
+            imported_row_count: number;
+            /** Tmu Drift */
+            tmu_drift?: {
+                [key: string]: unknown;
+            }[];
         };
         /**
          * WiSetItemCreate
@@ -2578,6 +2931,7 @@ export interface components {
             allowance_percent?: number | null;
             /** Standard Seconds */
             standard_seconds?: number | null;
+            default_rule_set?: components["schemas"]["DefaultRuleSetInfo"] | null;
         };
         /** WorksheetSaveIn */
         WorksheetSaveIn: {
@@ -4351,6 +4705,107 @@ export interface operations {
             };
         };
     };
+    diff_rule_set_api_v2_rule_sets__code__diff_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                code: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    export_rule_set_api_v2_rule_sets__code__export_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                code: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    import_rule_set_api_v2_rule_sets_import_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ImportIn"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     publish_api_v2_rule_sets__code__publish_post: {
         parameters: {
             query?: never;
@@ -4427,6 +4882,319 @@ export interface operations {
             cookie?: never;
         };
         requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    unretire_api_v2_rule_sets__code__unretire_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                code: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    delete_rule_set_api_v2_rule_sets__code__delete: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                code: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_param_options_api_v2_rule_sets__code__params__param__options_get: {
+        parameters: {
+            query?: {
+                /** @description P/M 的次級區塊（P: base|addon；M: verb|ladder|foot|rotation|hand）。缺省 → 400，不會靜默選一個。 */
+                section?: string | null;
+                /** @description A 的分量（reach|twist|foot）；即 A 的 section。 */
+                component?: string | null;
+                /** @description 只回啟用中的列（供下拉；編輯畫面請留 false） */
+                active_only?: boolean;
+            };
+            header?: never;
+            path: {
+                code: string;
+                param: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    create_param_option_api_v2_rule_sets__code__params__param__options_post: {
+        parameters: {
+            query?: {
+                /** @description P/M 的次級區塊（P: base|addon；M: verb|ladder|foot|rotation|hand）。缺省 → 400，不會靜默選一個。 */
+                section?: string | null;
+            };
+            header?: never;
+            path: {
+                code: string;
+                param: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    [key: string]: unknown;
+                };
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    delete_param_option_api_v2_rule_sets__code__params__param__options__option_code__delete: {
+        parameters: {
+            query?: {
+                /** @description P/M 的次級區塊（P: base|addon；M: verb|ladder|foot|rotation|hand）。缺省 → 400，不會靜默選一個。 */
+                section?: string | null;
+            };
+            header?: never;
+            path: {
+                code: string;
+                param: string;
+                option_code: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    update_param_option_api_v2_rule_sets__code__params__param__options__option_code__patch: {
+        parameters: {
+            query?: {
+                /** @description P/M 的次級區塊（P: base|addon；M: verb|ladder|foot|rotation|hand）。缺省 → 400，不會靜默選一個。 */
+                section?: string | null;
+            };
+            header?: never;
+            path: {
+                code: string;
+                param: string;
+                option_code: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    [key: string]: unknown;
+                };
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    duplicate_param_option_api_v2_rule_sets__code__params__param__options__option_code__duplicate_post: {
+        parameters: {
+            query?: {
+                /** @description P/M 的次級區塊（P: base|addon；M: verb|ladder|foot|rotation|hand）。缺省 → 400，不會靜默選一個。 */
+                section?: string | null;
+            };
+            header?: never;
+            path: {
+                code: string;
+                param: string;
+                option_code: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    replace_param_bands_api_v2_rule_sets__code__params__param__bands_put: {
+        parameters: {
+            query?: {
+                /** @description A 的分量（reach|twist|foot）；即 A 的 section。 */
+                component?: string | null;
+                /** @description P/M 的次級區塊（P: base|addon；M: verb|ladder|foot|rotation|hand）。缺省 → 400，不會靜默選一個。 */
+                section?: string | null;
+            };
+            header?: never;
+            path: {
+                code: string;
+                param: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["BandsReplaceIn"];
+            };
+        };
         responses: {
             /** @description Successful Response */
             200: {
@@ -5352,6 +6120,41 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["WiSetProjectOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    instantiate_project_api_v2_wi_set_projects__project_id__instantiate_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                project_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["WiSetInstantiateIn"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["WiSetInstantiateOut"];
                 };
             };
             /** @description Validation Error */

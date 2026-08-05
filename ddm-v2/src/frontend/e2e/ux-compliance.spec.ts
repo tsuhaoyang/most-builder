@@ -919,6 +919,142 @@ test.describe('§G-03 案件編輯情境頁 (ADR-021 Phase 3)', () => {
     await expect(dialog.getByRole('button', { name: '建立新案件（v4）' })).toBeVisible()
   })
 
+  test('G-03-2d: WI 專案建立分析案件 → 預覽與 Level 共用匯入列', async ({ page }) => {
+    const cases = { total: 0, items: [] as typeof MOCK_CASES_DRAFT.items }
+    const project = {
+      id: 'project-001',
+      project_code: 'PW-WISET-001',
+      name: 'Playwright WI 專案',
+      site: 'TAO',
+      bu: 'BU1',
+      process: 'L10_ASSY',
+      family: 'FAMILY-A',
+      model: 'PROJECT-LINE',
+      description: null,
+      status: 'draft',
+      created_by: 'IEC141289',
+      created_at: '2026-08-04T00:00:00Z',
+      updated_at: '2026-08-04T00:00:00Z',
+      items: [{
+        id: 'project-item-001',
+        project_id: 'project-001',
+        seq_no: 1,
+        wi_template_id: 'wi-template-001',
+        wi_code_snapshot: null,
+        wi_name_snapshot: '裝配主板',
+        action_count_snapshot: 1,
+        total_tmu_snapshot: 28,
+        total_seconds_snapshot: 1.008,
+        notes: null,
+        created_at: '2026-08-04T00:00:00Z',
+        updated_at: '2026-08-04T00:00:00Z',
+      }],
+    }
+    let instantiateBody: Record<string, unknown> | null = null
+
+    await setupRoutes(page, ADMIN_ME, cases)
+    await page.route('**/api/v2/wi-set-projects**', async (route) => {
+      const request = route.request()
+      const path = new URL(request.url()).pathname
+      if (request.method() === 'POST' && path.endsWith('/instantiate')) {
+        instantiateBody = request.postDataJSON() as Record<string, unknown>
+        cases.total = 1
+        cases.items = [{
+          ...MOCK_CASES_DRAFT.items[0],
+          process_version_id: 'pv-project-001',
+          worksheet_id: 'ws-project-001',
+          process_name: 'PROJECT-LINE',
+          total_tmu: 28,
+          model_label: 'PROJECT-LINE',
+          versions: [{
+            ...MOCK_CASES_DRAFT.items[0].versions[0],
+            process_version_id: 'pv-project-001',
+            worksheet_id: 'ws-project-001',
+          }],
+        }]
+        return route.fulfill({ status: 201, contentType: 'application/json', body: JSON.stringify({
+          worksheet_id: 'ws-project-001',
+          version_no: 'v1',
+          status: 'draft',
+          imported_wi_count: 1,
+          imported_row_count: 1,
+          tmu_drift: [],
+        }) })
+      }
+      return route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify(path === '/api/v2/wi-set-projects' ? [project] : project),
+      })
+    })
+    await page.route('**/api/v2/worksheets/ws-project-001**', async (route) => {
+      const path = new URL(route.request().url()).pathname
+      if (path.endsWith('/export/wi-preview')) {
+        return route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({
+          worksheet_id: 'ws-project-001', status: 'draft', total_tmu: 28, rows: [{
+            seq_no: 1, sub_activity: '裝配主板', method: '右手抓取主板並放置', tmu: 28,
+          }],
+        }) })
+      }
+      return route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({
+        worksheet_id: 'ws-project-001',
+        status: 'draft',
+        total_tmu: 28,
+        default_rule_set: null,
+        rows: [{
+          wi_row_id: 'row-project-001',
+          seq_no: 1,
+          hand: 'RH',
+          sub_activity: '裝配主板',
+          object_vocab_id: 'v1',
+          from_vocab_id: null,
+          to_vocab_id: null,
+          tool_vocab_id: null,
+          frequency: 1,
+          simo_group_id: null,
+          source_module_id: 'wi-template-001',
+          source_module_version: 1,
+          cycle: {
+            seq_kind: 'GM', total_tmu: 28, total_seconds: 1.008,
+            narrative: '裝配主板', slot_inputs: {}, rule_set_id: 'rs-1',
+          },
+          level: {
+            coefficient: 1, ascription: null, level: '1', countersignature: null,
+            parent_countersignature: null, number: null, number_count: null,
+          },
+        }],
+      }) })
+    })
+    await page.route('**/api/v2/level/validate', route => route.fulfill({
+      status: 200,
+      contentType: 'application/json',
+      body: JSON.stringify({ valid: true, issues: [] }),
+    }))
+
+    await gotoAndWait(page)
+    await clickNavAndWait(page, /WI 專案建立/)
+    await page.locator('select').first().selectOption('project-001')
+    await expect(page.getByRole('button', { name: '建立分析案件' })).toBeEnabled()
+    await page.getByRole('button', { name: '建立分析案件' }).click()
+
+    const dialog = page.getByRole('dialog', { name: '建立分析案件' })
+    await dialog.locator('select').first().selectOption('p1')
+    await dialog.locator('select').nth(1).selectOption('sk1')
+    await dialog.getByRole('button', { name: '建立並匯入 WI' }).click()
+
+    await expect(page.getByRole('heading', { name: 'PROJECT-LINE' })).toBeVisible()
+    expect(instantiateBody).toMatchObject({ sku_id: 'sk1', model_label: 'PROJECT-LINE' })
+    await page.getByRole('button', { name: 'WI 預覽' }).click()
+    await expect(page.getByText(/共 1 列/)).toBeVisible()
+    const previewRows = page.getByTestId('wi-preview-rows')
+    await expect(previewRows.getByText('裝配主板')).toBeVisible()
+    await expect(previewRows.getByText('右手抓取主板並放置')).toBeVisible()
+
+    await clickNavAndWait(page, /Level System/)
+    await expect(page.getByText('裝配主板')).toBeVisible()
+    await expect(page.getByText('✓ 群組設定正確')).toBeVisible()
+  })
+
   test('G-03-3: viewer 不顯示「新建案件」按鈕（RBAC gating）', async ({ page }) => {
     await setupRoutes(page, VIEWER_ME, MOCK_CASES_DRAFT)
     await gotoAndWait(page)

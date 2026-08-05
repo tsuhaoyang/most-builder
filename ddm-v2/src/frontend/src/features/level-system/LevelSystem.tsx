@@ -3,6 +3,7 @@ import { useWiStore } from '../wi-workbench/store'
 import { useMe, canEdit } from '../../shared/auth/useMe'
 import { useWorkspace } from '../../shared/workspace'
 import { WorksheetRequiredNotice } from '../../shared/ui/WorksheetRequiredNotice'
+import { useWorksheetWorkspace } from '../wi-workbench/useWorksheetWorkspace'
 import { useLevelStore } from './store'
 import { useValidateLevel, type LevelIssue } from './api'
 import { cs, rowsIn, subGroupsOf, firstIdx, nbList, derive } from './logic'
@@ -10,6 +11,7 @@ import { cs, rowsIn, subGroupsOf, firstIdx, nbList, derive } from './logic'
 export function LevelSystem() {
   const { data: me } = useMe()
   const activeWs = useWorkspace(s => s.activeWs)
+  const worksheet = useWorksheetWorkspace(activeWs)
   const rows = useWiStore(s => s.rows)
   const st = useLevelStore()
   const validate = useValidateLevel()
@@ -31,6 +33,12 @@ export function LevelSystem() {
 
   // ADR-021 Phase 3：worksheet 情境只能從分析案件進入（WorksheetBar 已去全域化）
   if (!activeWs) return <WorksheetRequiredNotice />
+
+  if (worksheet.isLoading)
+    return <div className="bg-white rounded-xl border p-6 text-slate-500">載入工時表…</div>
+
+  if (worksheet.error)
+    return <div className="bg-white rounded-xl border p-6 text-red-600">工時表載入失敗：{(worksheet.error as Error).message}</div>
 
   if (!rows.length)
     return <div className="bg-white rounded-xl border p-6 text-slate-500">工時表還沒有列。請先從「分析案件 → 編輯工時表」加入動作列。</div>

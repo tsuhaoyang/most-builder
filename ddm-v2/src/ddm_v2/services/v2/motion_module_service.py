@@ -1113,25 +1113,22 @@ async def instantiate_to_worksheet(
     # 展開列
     new_rows_out = []
     drift_warnings = []
-    skipped_vocab_missing = 0
     now = datetime.now(timezone.utc)
 
     for idx, row_data in enumerate(ver.rows):
         # 取 vocab refs
         vocab_refs: dict[str, Any] = row_data.get("vocab_refs") or {}
         obj_vid_raw = vocab_refs.get("object_vocab_id")
-        if obj_vid_raw is None:
-            # WiRow.object_vocab_id 為 NOT NULL FK，無法建立 WiRow。
-            # 計數並繼續（非靜默跳過）；呼叫端從 skipped_vocab_missing 得知。
-            # TODO: 未來在 publish_version 時強制驗證 vocab_refs.object_vocab_id 存在，
-            #       可在根源消除此 skip 路徑。
-            skipped_vocab_missing += 1
-            continue
-        try:
-            obj_vid = uuid.UUID(str(obj_vid_raw))
-        except ValueError:
-            skipped_vocab_missing += 1
-            continue
+        obj_vid: uuid.UUID | None = None
+        if obj_vid_raw is not None:
+            try:
+                obj_vid = uuid.UUID(str(obj_vid_raw))
+            except ValueError as error:
+                raise PublishValidationError(
+                    idx,
+                    "VOCAB_REF_INVALID",
+                    f"object_vocab_id 不是合法 UUID：{obj_vid_raw}",
+                ) from error
 
         def _optional_uuid(key: str) -> uuid.UUID | None:
             v = vocab_refs.get(key)
@@ -1139,8 +1136,12 @@ async def instantiate_to_worksheet(
                 return None
             try:
                 return uuid.UUID(str(v))
-            except ValueError:
-                return None
+            except ValueError as error:
+                raise PublishValidationError(
+                    idx,
+                    "VOCAB_REF_INVALID",
+                    f"{key} 不是合法 UUID：{v}",
+                ) from error
 
         from_vid = _optional_uuid("from_vocab_id")
         to_vid = _optional_uuid("to_vocab_id")
@@ -1259,5 +1260,5 @@ async def instantiate_to_worksheet(
     return {
         "new_rows": new_rows_out,
         "tmu_drift": drift_warnings,
-        "skipped_vocab_missing": skipped_vocab_missing,
+        "skipped_vocab_missing": 0,
     }

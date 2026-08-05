@@ -96,7 +96,7 @@ class WiRow(Base, TimestampMixin):
     sub_activity: Mapped[str | None] = mapped_column(Text)
     key_parts: Mapped[str | None] = mapped_column(Text)
     hand: Mapped[str | None] = mapped_column(Text)
-    object_vocab_id: Mapped[UUID] = mapped_column(PG_UUID(as_uuid=True), ForeignKey("work_vocab_items.id", ondelete="RESTRICT"), nullable=False)
+    object_vocab_id: Mapped[UUID | None] = mapped_column(PG_UUID(as_uuid=True), ForeignKey("work_vocab_items.id", ondelete="RESTRICT"))
     from_vocab_id: Mapped[UUID | None] = mapped_column(PG_UUID(as_uuid=True), ForeignKey("work_vocab_items.id", ondelete="RESTRICT"))
     to_vocab_id: Mapped[UUID | None] = mapped_column(PG_UUID(as_uuid=True), ForeignKey("work_vocab_items.id", ondelete="RESTRICT"))
     tool_vocab_id: Mapped[UUID | None] = mapped_column(PG_UUID(as_uuid=True), ForeignKey("work_vocab_items.id", ondelete="RESTRICT"))

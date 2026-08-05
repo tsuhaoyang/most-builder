@@ -22,8 +22,7 @@ class ModuleRowIn(BaseModel):
     frequency: int = Field(1, ge=1)
     simo_pair_index: int | None = None   # 指向 rows 陣列內的主列（0-based）；宣告者＝從屬列，貢獻 0（ADR-020）
     vocab_refs: dict[str, Any] = Field(default_factory=dict)
-    # 必含 object_vocab_id（UUID str）供實體化時填 WiRow；
-    # 其餘 from_vocab_id / to_vocab_id / tool_vocab_id 選填。
+    # object/from/to/tool vocab 都是敘述 metadata；不影響 cycle 計算，可省略。
     cycle: CycleIn
 
 
@@ -176,7 +175,7 @@ class InstantiateResponse(BaseModel):
     tmu_drift: list[dict[str, Any]] = Field(default_factory=list)
     # 每個 drift 項目：{"row_index": int, "module_tmu": float, "actual_tmu": float, "delta": float}
     skipped_vocab_missing: int = 0
-    # 因 vocab_refs.object_vocab_id 缺失而跳過的列數（WiRow.object_vocab_id NOT NULL 不可省）
+    # 向後相容欄位；object vocab 自 v2_0025 起可省略，正常資料固定為 0。
 
 
 # ── row 級操作（ADR-022 A-2：WI 微調 = Inspector 後端）────────────────
