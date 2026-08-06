@@ -24,18 +24,19 @@ export function ComboBox({ options, value, onPick, placeholder, onCreate }: {
   const canCreate = !!onCreate && !!q.trim() && !options.some(o => o.l.toLowerCase() === ql)
 
   return (
-    <span className="relative inline-block align-middle">
+    <span className="relative inline-block w-full min-w-0 align-middle">
       <input
-        className="border rounded px-1 py-0.5 text-sm" style={{ minWidth: '9rem' }}
+        className="w-full min-w-0 border rounded px-1 py-0.5 text-sm"
         value={text} placeholder={placeholder ?? '搜尋…'} autoComplete="off"
         onFocus={() => { setQ(''); setOpen(true) }}
         onChange={e => { setText(e.target.value); setQ(e.target.value); setOpen(true) }}
         onBlur={() => { blurTimer.current = setTimeout(() => setOpen(false), 150) }}
       />
       {open && (
-        <div className="absolute left-0 top-full mt-0.5 z-30 bg-white border rounded shadow max-h-52 overflow-auto text-sm" style={{ minWidth: '12rem' }}>
+        <div className="absolute left-0 top-full mt-0.5 z-30 w-full min-w-0 bg-white border rounded shadow max-h-52 overflow-auto text-sm">
           {filtered.map(o => (
-            <div key={o.v} className="px-2 py-1 hover:bg-slate-100 cursor-pointer"
+            <div key={o.v} className="px-2 py-1 hover:bg-slate-100 cursor-pointer truncate"
+              title={o.l}
               onMouseDown={e => { e.preventDefault(); onPick(o.v); setText(o.l); setOpen(false) }}>
               {o.l}
             </div>
