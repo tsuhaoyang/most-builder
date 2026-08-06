@@ -592,6 +592,400 @@ test.describe('§E-04 MOST 工作台單頁 (ADR-022 批次 B)', () => {
     await expect(page.getByText('AI 快速建模')).toBeVisible()
     await expect(page.getByPlaceholder(/輸入動作描述/)).toBeVisible()
   })
+
+  test('E-04-4: GM/CM 切換套用遷移規則，B 單選會自動關閉 modal', async ({ page }) => {
+    await page.route('**/api/v2/rule-sets/*/options', route => route.fulfill({
+      status: 200,
+      contentType: 'application/json',
+      body: JSON.stringify({
+        ...MOCK_OPTS,
+        b: [
+          { code: 'b_none', label: '無身體動作', modifier_key: null, requires_modifier: false },
+          { code: 'b_eye', label: '眼部動作', modifier_key: null, requires_modifier: false },
+          { code: 'b_bend', label: '彎腰', modifier_key: null, requires_modifier: false },
+        ],
+      }),
+    }))
+
+    await page.reload()
+    await page.waitForLoadState('networkidle')
+    await clickNavAndWait(page, /MOST 工作台/)
+
+    const flow = page.getByTestId('slot-builder-flow')
+
+    await flow.getByTitle('P 放置').click()
+    const pDialog = page.getByRole('heading', { name: 'P 放置' }).locator('..').locator('..')
+    await pDialog.locator('select').first().selectOption('p_put')
+    await pDialog.getByRole('button', { name: '確認' }).click()
+
+    await flow.getByTitle('B 身體動作 — 放置段').click()
+    await page.getByRole('heading', { name: 'B 身體動作 — 放置段' }).locator('..').locator('..').locator('select').selectOption('b_bend')
+    await expect(page.getByRole('heading', { name: 'B 身體動作 — 放置段' })).toHaveCount(0)
+    await expect(flow.getByText('彎腰')).toBeVisible()
+
+    const seqSelect = page.getByLabel('動作類型')
+    await seqSelect.selectOption('CM')
+    await expect(flow.getByText('B2', { exact: true })).toHaveCount(0)
+    await expect(flow.getByText('P', { exact: true })).toHaveCount(0)
+    await expect(flow.getByTitle('M 控制移動')).toBeVisible()
+    await expect(flow.getByTitle('X 製程時間')).toBeVisible()
+    await expect(flow.getByTitle('I 對準/檢查')).toBeVisible()
+
+    await seqSelect.selectOption('GM')
+    await expect(flow.getByTitle('B 身體動作 — 放置段')).toBeVisible()
+    await expect(flow.getByText(/眼部/)).toBeVisible()
+    await expect(flow.getByText('彎腰')).toHaveCount(0)
+    await expect(flow.getByTitle('M 控制移動')).toHaveCount(0)
+    await expect(flow.getByTitle('X 製程時間')).toHaveCount(0)
+    await expect(flow.getByTitle('I 對準/檢查')).toHaveCount(0)
+  })
+
+  test('E-04-5: G/P 動作次數會寫入 calculate payload', async ({ page }) => {
+    const payloads: Array<Record<string, any>> = [] // eslint-disable-line @typescript-eslint/no-explicit-any
+    await page.route('**/api/v2/minimost/calculate', route => {
+      payloads.push(route.request().postDataJSON() as Record<string, any>) // eslint-disable-line @typescript-eslint/no-explicit-any
+      return route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify({ seq: 'GM', total_tmu: 42, total_seconds: 1.512, tech_line: 'GM TEST' }),
+      })
+    })
+
+    const flow = page.getByTestId('slot-builder-flow')
+
+    await flow.getByTitle('G 取得').click()
+    const gDialog = page.getByRole('heading', { name: 'G 取得' }).locator('..').locator('..')
+    await gDialog.locator('select').first().selectOption('g_simple')
+    await gDialog.getByLabel('G 動作次數').fill('3')
+    await gDialog.getByRole('button', { name: '確認' }).click()
+
+    await flow.getByTitle('P 放置').click()
+    const pDialog = page.getByRole('heading', { name: 'P 放置' }).locator('..').locator('..')
+    await pDialog.locator('select').first().selectOption('p_put')
+    await pDialog.getByLabel('P 動作次數').fill('2')
+    await pDialog.getByRole('button', { name: '確認' }).click()
+
+    await expect.poll(() => payloads.at(-1)?.g2?.repeat_count).toBe(3)
+    await expect.poll(() => payloads.at(-1)?.p5?.repeat_count).toBe(2)
+    await expect(flow.getByText(/×3/)).toBeVisible()
+    await expect(flow.getByText(/×2/)).toBeVisible()
+  })
+
+  test('E-04-5b: P 附加條件會套用插入與卡合互斥', async ({ page }) => {
+    await page.route('**/api/v2/rule-sets/*/options', route => route.fulfill({
+      status: 200,
+      contentType: 'application/json',
+      body: JSON.stringify({
+        ...MOCK_OPTS,
+        p_bases: [{ code: 'p_put', label: '放置', label_en: 'Put' }],
+        p_addons: [
+          { code: 'a_insert', label: '插入', needs_precision: false },
+          { code: 'a_snap', label: '卡合', needs_precision: false },
+        ],
+      }),
+    }))
+    await page.reload()
+    await page.waitForLoadState('networkidle')
+    await clickNavAndWait(page, /MOST 工作台/)
+
+    const flow = page.getByTestId('slot-builder-flow')
+
+    await flow.getByTitle('P 放置').click()
+    const pDialog = page.getByRole('heading', { name: 'P 放置' }).locator('..').locator('..')
+    await pDialog.locator('select').first().selectOption('p_put')
+    await pDialog.locator('select').nth(1).selectOption('a_insert')
+    await expect(pDialog.getByText('插入與卡合互斥')).toBeVisible()
+    await expect(pDialog.locator('select').nth(2).locator('option[value="a_snap"]')).toHaveCount(0)
+
+    await pDialog.locator('select').nth(1).selectOption('a_snap')
+    await expect(pDialog.locator('select').nth(2).locator('option[value="a_insert"]')).toHaveCount(0)
+  })
+})
+
+test('E-04-6: 列表層 SIMO 會映射到建立 WI 的 rows pairing', async ({ page }) => {
+  const ACTION_A = 'action-a'
+  const ACTION_B = 'action-b'
+  const WI_NEW = 'wi-new'
+  let publishBody: Record<string, any> | null = null // eslint-disable-line @typescript-eslint/no-explicit-any
+
+  const rowA = {
+    hand: 'RH',
+    frequency: 1,
+    simo_pair_index: null,
+    vocab_refs: {},
+    narrative_zh: '抓取零件',
+    computed: { total_tmu: 10, total_seconds: 0.36, eff_tmu: 10, contribution_tmu: 10 },
+    cycle: {
+      seq: 'GM',
+      rule_set_code: 'MINIMOST_FACTORY_V2',
+      a0: { reach_cm: 5, twist_deg: 0, foot_cm: 0 },
+      b1: { b_code: null },
+      g2: { g_code: 'g_simple', modifiers: {}, repeat_count: 1 },
+      a3: { reach_cm: 5, twist_deg: 0, foot_cm: 0 },
+      b4: { b_code: null },
+      p5: { p_base_code: 'p_put', p_addon_codes: [], precision: false, repeat_count: 1 },
+      a6: { reach_cm: 0, twist_deg: 0, foot_cm: 0 },
+    },
+  }
+  const rowB = {
+    ...rowA,
+    narrative_zh: '放置零件',
+  }
+
+  await page.route('/api/**', route => {
+    const url = route.request().url()
+    const method = route.request().method()
+    const path = new URL(url).pathname
+
+    if (url.includes('/api/v2/me')) {
+      return route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(ADMIN_ME) })
+    }
+    if (url.includes('/api/v2/rule-sets/active')) {
+      return route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ id: 'rs-1', code: 'MINIMOST_FACTORY_V2', name_zh: 'MiniMOST 工廠規則 v2' }) })
+    }
+    if (url.includes('/api/v2/rule-sets/') && url.includes('/options')) {
+      return route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(MOCK_OPTS) })
+    }
+    if (url.includes('/api/v2/vocab')) {
+      return route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify([]) })
+    }
+    if (url.includes('/api/v2/minimost/calculate')) {
+      return route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ seq: 'GM', total_tmu: 10, total_seconds: 0.36, tech_line: 'GM TEST' }) })
+    }
+    if (url.includes('/api/v2/motion-modules') && url.includes('category=action')) {
+      return route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify([
+        { id: ACTION_A, name_zh: '動作 A', category: 'action', keywords: [], scope: 'personal', owner: 'IEC141289', status: 'standard', current_version: 1, total_tmu: 10, action_count: 1, seq_kind: 'GM', hand: 'RH', base_tmu: 10, frequency: 1, current_version_detail: null },
+        { id: ACTION_B, name_zh: '動作 B', category: 'action', keywords: [], scope: 'personal', owner: 'IEC141289', status: 'standard', current_version: 1, total_tmu: 10, action_count: 1, seq_kind: 'GM', hand: 'RH', base_tmu: 10, frequency: 1, current_version_detail: null },
+      ]) })
+    }
+    if (url.includes('/api/v2/motion-modules') && url.includes('category=wi-template')) {
+      return route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify([]) })
+    }
+    if (path === `/api/v2/motion-modules/${ACTION_A}`) {
+      return route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({
+        id: ACTION_A, name_zh: '動作 A', category: 'action', keywords: [], scope: 'personal', owner: 'IEC141289', status: 'standard', current_version: 1, total_tmu: 10, action_count: 1, seq_kind: 'GM', hand: 'RH', base_tmu: 10, frequency: 1,
+        current_version_detail: { id: 'ver-a', module_id: ACTION_A, version_no: 1, rule_set_id: 'rs-1', rows: [rowA], narrative_zh: '抓取零件', total_tmu: 10, total_seconds: 0.36, published_by: 'IEC141289', published_at: '2026-08-05T00:00:00Z' },
+      }) })
+    }
+    if (path === `/api/v2/motion-modules/${ACTION_B}`) {
+      return route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({
+        id: ACTION_B, name_zh: '動作 B', category: 'action', keywords: [], scope: 'personal', owner: 'IEC141289', status: 'standard', current_version: 1, total_tmu: 10, action_count: 1, seq_kind: 'GM', hand: 'RH', base_tmu: 10, frequency: 1,
+        current_version_detail: { id: 'ver-b', module_id: ACTION_B, version_no: 1, rule_set_id: 'rs-1', rows: [rowB], narrative_zh: '放置零件', total_tmu: 10, total_seconds: 0.36, published_by: 'IEC141289', published_at: '2026-08-05T00:00:00Z' },
+      }) })
+    }
+    if (path === '/api/v2/motion-modules' && method === 'POST') {
+      return route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({
+        id: WI_NEW, name_zh: '新 WI', category: 'wi-template', keywords: [], scope: 'personal', owner: 'IEC141289', status: 'draft', current_version: 0, total_tmu: null, action_count: null, current_version_detail: null,
+      }) })
+    }
+    if (path === `/api/v2/motion-modules/${WI_NEW}` && method === 'GET') {
+      const published = !!publishBody
+      return route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({
+        id: WI_NEW, name_zh: '新 WI', category: 'wi-template', keywords: [], scope: 'personal', owner: 'IEC141289', status: 'standard', current_version: published ? 1 : 0, total_tmu: published ? 20 : null, action_count: published ? 2 : null,
+        current_version_detail: published
+          ? { id: 'ver-wi', module_id: WI_NEW, version_no: 1, rule_set_id: 'rs-1', rows: publishBody?.rows ?? [], narrative_zh: '新 WI', total_tmu: 20, total_seconds: 0.72, published_by: 'IEC141289', published_at: '2026-08-05T00:00:00Z' }
+          : null,
+      }) })
+    }
+    if (path === `/api/v2/motion-modules/${WI_NEW}/publish` && method === 'POST') {
+      publishBody = route.request().postDataJSON() as Record<string, any> // eslint-disable-line @typescript-eslint/no-explicit-any
+      return route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ id: WI_NEW, current_version: 1 }) })
+    }
+    return route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify([]) })
+  })
+
+  await gotoAndWait(page)
+  await clickNavAndWait(page, /MOST 工作台/)
+
+  const rows = page.locator('tbody tr')
+  await rows.nth(1).getByTestId('action-row-move-up').click()
+  await expect(rows.nth(0)).toContainText('動作 B')
+  await expect(rows.nth(1)).toContainText('動作 A')
+
+  await rows.nth(0).locator('input[type="checkbox"]').check()
+  await rows.nth(1).locator('input[type="checkbox"]').check()
+  await rows.nth(0).getByTestId('action-row-simo-checkbox').check()
+  await rows.nth(0).getByTestId('action-row-simo').selectOption(ACTION_A)
+
+  await page.getByRole('button', { name: '建立 WI' }).click()
+
+  await expect.poll(() => publishBody?.rows?.[0]?.sub_activity).toBe('動作 B')
+  await expect.poll(() => publishBody?.rows?.[1]?.sub_activity).toBe('動作 A')
+  await expect.poll(() => publishBody?.rows?.[0]?.simo_pair_index).toBe(1)
+  await expect.poll(() => publishBody?.rows?.[1]?.simo_pair_index ?? null).toBe(null)
+})
+
+test('E-04-7: 再做一份會載回建立器但維持新增模式', async ({ page }) => {
+  const ACTION_ID = 'action-rework'
+  const row = {
+    hand: 'RH',
+    frequency: 1,
+    simo_pair_index: null,
+    vocab_refs: {},
+    sub_activity: '搬取零件',
+    narrative_zh: '搬取零件',
+    computed: { total_tmu: 28, total_seconds: 1.008, eff_tmu: 28, contribution_tmu: 28 },
+    cycle: {
+      seq: 'GM',
+      rule_set_code: 'MINIMOST_FACTORY_V2',
+      a0: { reach_cm: 5, twist_deg: 0, foot_cm: 0 },
+      b1: { b_code: null },
+      g2: { g_code: 'g_simple', modifiers: {}, repeat_count: 1 },
+      a3: { reach_cm: 5, twist_deg: 0, foot_cm: 0 },
+      b4: { b_code: null },
+      p5: { p_base_code: 'p_put', p_addon_codes: [], precision: false, repeat_count: 1 },
+      a6: { reach_cm: 0, twist_deg: 0, foot_cm: 0 },
+    },
+  }
+
+  await page.route('/api/**', route => {
+    const url = route.request().url()
+    const path = new URL(url).pathname
+
+    if (url.includes('/api/v2/me')) {
+      return route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(ADMIN_ME) })
+    }
+    if (url.includes('/api/v2/rule-sets/active')) {
+      return route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ id: 'rs-1', code: 'MINIMOST_FACTORY_V2', name_zh: 'MiniMOST 工廠規則 v2' }) })
+    }
+    if (url.includes('/api/v2/rule-sets/') && url.includes('/options')) {
+      return route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(MOCK_OPTS) })
+    }
+    if (url.includes('/api/v2/vocab')) {
+      return route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify([]) })
+    }
+    if (url.includes('/api/v2/minimost/calculate')) {
+      return route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ seq: 'GM', total_tmu: 28, total_seconds: 1.008, tech_line: 'GM REWORK' }) })
+    }
+    if (url.includes('/api/v2/motion-modules') && url.includes('category=action')) {
+      return route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify([
+        { id: ACTION_ID, name_zh: '既有動作', category: 'action', keywords: [], scope: 'personal', owner: 'IEC141289', status: 'standard', current_version: 1, total_tmu: 28, action_count: 1, seq_kind: 'GM', hand: 'RH', base_tmu: 28, frequency: 1, current_version_detail: null },
+      ]) })
+    }
+    if (url.includes('/api/v2/motion-modules') && url.includes('category=wi-template')) {
+      return route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify([]) })
+    }
+    if (path === `/api/v2/motion-modules/${ACTION_ID}`) {
+      return route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({
+        id: ACTION_ID, name_zh: '既有動作', category: 'action', keywords: [], scope: 'personal', owner: 'IEC141289', status: 'standard', current_version: 1, total_tmu: 28, action_count: 1, seq_kind: 'GM', hand: 'RH', base_tmu: 28, frequency: 1,
+        current_version_detail: { id: 'ver-rework', module_id: ACTION_ID, version_no: 1, rule_set_id: 'rs-1', rows: [row], narrative_zh: '搬取零件', total_tmu: 28, total_seconds: 1.008, published_by: 'IEC141289', published_at: '2026-08-05T00:00:00Z' },
+      }) })
+    }
+    return route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify([]) })
+  })
+
+  await gotoAndWait(page)
+  await clickNavAndWait(page, /MOST 工作台/)
+
+  await page.getByRole('button', { name: /再做一份/ }).click()
+
+  await expect(page.locator('input[value="既有動作"]')).toBeVisible()
+  await expect(page.getByRole('button', { name: '新增動作' })).toBeVisible()
+  await expect(page.getByText('編輯中')).toHaveCount(0)
+})
+
+test('E-04-8: WI 大綱支援本地排序（上移/下移）', async ({ page }) => {
+  await page.route('/api/**', route => {
+    const url = route.request().url()
+
+    if (url.includes('/api/v2/me')) {
+      return route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(ADMIN_ME) })
+    }
+    if (url.includes('/api/v2/rule-sets/active')) {
+      return route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ id: 'rs-1', code: 'MINIMOST_FACTORY_V2', name_zh: 'MiniMOST 工廠規則 v2' }) })
+    }
+    if (url.includes('/api/v2/rule-sets/') && url.includes('/options')) {
+      return route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(MOCK_OPTS) })
+    }
+    if (url.includes('/api/v2/vocab')) {
+      return route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify([]) })
+    }
+    if (url.includes('/api/v2/minimost/calculate')) {
+      return route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ seq: 'GM', total_tmu: 10, total_seconds: 0.36, tech_line: 'GM TEST' }) })
+    }
+    if (url.includes('/api/v2/motion-modules') && url.includes('category=action')) {
+      return route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify([]) })
+    }
+    if (url.includes('/api/v2/motion-modules') && url.includes('category=wi-template')) {
+      return route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify([
+        { id: 'wi-a', name_zh: 'WI A', category: 'wi-template', keywords: [], scope: 'personal', owner: 'IEC141289', status: 'standard', current_version: 1, total_tmu: 28, action_count: 1, seq_kind: 'GM', hand: 'RH', base_tmu: 28, frequency: 1, current_version_detail: null },
+        { id: 'wi-b', name_zh: 'WI B', category: 'wi-template', keywords: [], scope: 'personal', owner: 'IEC141289', status: 'standard', current_version: 1, total_tmu: 56, action_count: 2, seq_kind: 'GM', hand: 'RH', base_tmu: 28, frequency: 1, current_version_detail: null },
+      ]) })
+    }
+    return route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify([]) })
+  })
+
+  await gotoAndWait(page)
+  await clickNavAndWait(page, /MOST 工作台/)
+
+  const cards = page.getByTestId('wi-outline-card')
+  await expect(cards).toHaveCount(2)
+  await expect(cards.nth(0)).toContainText('WI A')
+  await expect(cards.nth(1)).toContainText('WI B')
+
+  await cards.nth(1).getByTestId('wi-outline-move-up').click()
+  await expect(cards.nth(0)).toContainText('WI B')
+  await expect(cards.nth(1)).toContainText('WI A')
+
+  await cards.nth(0).getByTestId('wi-outline-move-down').click()
+  await expect(cards.nth(0)).toContainText('WI A')
+  await expect(cards.nth(1)).toContainText('WI B')
+})
+
+test('E-04-9: draft WI 可於大綱內改名', async ({ page }) => {
+  let wiName = 'Draft WI A'
+
+  await page.route('/api/**', route => {
+    const url = route.request().url()
+    const method = route.request().method()
+    const path = new URL(url).pathname
+
+    if (url.includes('/api/v2/me')) {
+      return route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(ADMIN_ME) })
+    }
+    if (url.includes('/api/v2/rule-sets/active')) {
+      return route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ id: 'rs-1', code: 'MINIMOST_FACTORY_V2', name_zh: 'MiniMOST 工廠規則 v2' }) })
+    }
+    if (url.includes('/api/v2/rule-sets/') && url.includes('/options')) {
+      return route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(MOCK_OPTS) })
+    }
+    if (url.includes('/api/v2/vocab')) {
+      return route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify([]) })
+    }
+    if (url.includes('/api/v2/minimost/calculate')) {
+      return route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ seq: 'GM', total_tmu: 10, total_seconds: 0.36, tech_line: 'GM TEST' }) })
+    }
+    if (url.includes('/api/v2/motion-modules') && url.includes('category=action')) {
+      return route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify([]) })
+    }
+    if (url.includes('/api/v2/motion-modules') && url.includes('category=wi-template')) {
+      return route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify([
+        { id: 'wi-draft-a', name_zh: wiName, category: 'wi-template', keywords: [], scope: 'personal', owner: 'IEC141289', status: 'draft', current_version: 0, total_tmu: null, action_count: null, seq_kind: null, hand: null, base_tmu: null, frequency: null, current_version_detail: null },
+      ]) })
+    }
+    if (path === '/api/v2/motion-modules/wi-draft-a' && method === 'PUT') {
+      const body = route.request().postDataJSON() as Record<string, unknown>
+      wiName = String(body.name_zh ?? wiName)
+      return route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({
+        id: 'wi-draft-a', name_zh: wiName, category: 'wi-template', keywords: [], scope: 'personal', owner: 'IEC141289', status: 'draft', current_version: 0,
+        total_tmu: null, action_count: null, seq_kind: null, hand: null, base_tmu: null, frequency: null, current_version_detail: null,
+      }) })
+    }
+    return route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify([]) })
+  })
+
+  await gotoAndWait(page)
+  await clickNavAndWait(page, /MOST 工作台/)
+
+  const card = page.getByTestId('wi-outline-card').first()
+  await expect(card).toContainText('Draft WI A')
+
+  await card.getByTestId('wi-outline-rename').click()
+  const input = card.getByTestId('wi-outline-rename-input')
+  await input.fill('Draft WI Renamed')
+  await card.getByTestId('wi-outline-rename-save').click()
+
+  await expect(card).toContainText('Draft WI Renamed')
 })
 
 // ─── § G-01: 分析案件清單 ─────────────────────────────────────────────────────
