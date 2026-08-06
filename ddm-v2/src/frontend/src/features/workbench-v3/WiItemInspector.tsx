@@ -52,6 +52,7 @@ export function WiItemInspector({
   const [tmu, setTmu] = useState<number | null>(null)   // 後端 calculate 即時預覽
   const [tech, setTech] = useState('')
   const [errMsg, setErrMsg] = useState<string | null>(null)
+  const [subActivity, setSubActivity] = useState(row.sub_activity ?? '')
   const [savedComputed, setSavedComputed] =
     useState<{ total_tmu: number; eff_tmu: number; contribution_tmu: number } | null>(null)
   // SIMO 配對（P1-B B-3）：本列宣告「同動於第 N 列」→ 本列為從屬列、貢獻 0（ADR-020）
@@ -60,6 +61,7 @@ export function WiItemInspector({
   // 換列（moduleId/rowIndex 變）→ 重新初始化；不因 detail 刷新覆蓋編輯中內容
   useEffect(() => {
     setCur(initState(row))
+    setSubActivity(row.sub_activity ?? '')
     setSimoPair(row.simo_pair_index ?? null)
     setErrMsg(null)
     setSavedComputed(null)
@@ -125,7 +127,7 @@ export function WiItemInspector({
     setRef('to_vocab_id', cur.nv.to)
 
     const body: MotionModuleRow = {
-      sub_activity: row.sub_activity ?? null,
+      sub_activity: subActivity.trim() || null,
       hand: cur.handCode,
       frequency: cur.freq,
       simo_pair_index: simoPair,   // B-3：可編輯（ADR-020 從屬列標記）
@@ -198,6 +200,18 @@ export function WiItemInspector({
                   )}
                 </div>
               </div>
+
+              <label className="block space-y-1">
+                <span className="text-sm text-slate-500">動作語句</span>
+                <textarea
+                  className="w-full rounded border px-3 py-2 text-sm"
+                  rows={3}
+                  value={subActivity}
+                  onChange={e => setSubActivity(e.target.value)}
+                  placeholder="可覆寫此 WI 子列的動作語句"
+                  data-testid="inspector-sub-activity"
+                />
+              </label>
 
               {/* SIMO 配對（B-3；ADR-020：宣告者＝從屬列，貢獻 0，時間由主列吸收） */}
               <div className="rounded-lg border px-3 py-2 space-y-1">

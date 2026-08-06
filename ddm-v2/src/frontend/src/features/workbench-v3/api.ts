@@ -212,6 +212,7 @@ export const useUpdateModule = () => {
       apiPut<MotionModuleSummary>(`/api/v2/motion-modules/${id}`, body),
     onSuccess: (_data, { id }) => {
       invalidateModuleLists(qc)
+      qc.invalidateQueries({ queryKey: [WI_QK] })
       // 被改的那一筆若有 detail 快取 → 針對性重整（單 key，非 N+1）
       qc.invalidateQueries({ queryKey: [QK, 'detail', id] })
     },
