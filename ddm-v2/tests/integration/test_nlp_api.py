@@ -193,6 +193,7 @@ async def test_nl_draft_basic(client):
       Given「雙手抓握主板放到DIMM壓合治具」，
       Then 建議 GM（治具防護）且 normalized_text 存在。
     F-05 §4 驗收條目 3（正規化等價）的介面層確認（不跑全值，單元層已涵蓋）。
+    L0：加法欄位 ai.* / multi_action_warning 必須存在且不破壞舊欄位。
     """
     code = await _get_rs_code(client)
     payload = {
@@ -213,3 +214,46 @@ async def test_nl_draft_basic(client):
 
     # F-05 §4 條目 1：治具防護 → 建議 GM
     assert body["suggested_seq"] == "GM"
+
+    # L0 加法欄位
+    assert "ai" in body
+    assert body["ai"]["run_id"]
+    assert body["ai"]["plan"]["schema_version"] == "wi-plan-v1"
+    assert body["ai"]["routing_status"] in {"review", "abstain", "invalid", "auto"}
+    assert body["multi_action_warning"] is False
+
+
+async def test_nl_draft_idempotent_reuses_run(client, db_session):
+    """相同輸入兩次 → 第二次 provenance.cached=true 且 run_id 相同；DB 僅一列且 error IS NULL。"""
+    from sqlalchemy import func, select
+
+    from ddm_v2.models.v2.ai_ops import AiParseRun
+
+    code = await _get_rs_code(client)
+    payload = {
+        "text": f"冪等測試治具{uuid.uuid4().hex[:8]}",
+        "rule_set_code": code,
+    }
+    first = await client.post("/api/v2/worksheets/nl-draft", json=payload)
+    assert first.status_code == 200, first.text
+    body1 = first.json()
+    run1 = body1["ai"]["run_id"]
+
+    second = await client.post("/api/v2/worksheets/nl-draft", json=payload)
+    assert second.status_code == 200, second.text
+    body2 = second.json()
+    assert body2["ai"]["run_id"] == run1
+    assert body2["ai"]["provenance"]["cached"] is True
+
+    run_row = await db_session.get(AiParseRun, uuid.UUID(run1))
+    assert run_row is not None
+    assert run_row.error is None
+    total_same_hash = await db_session.scalar(
+        select(func.count())
+        .select_from(AiParseRun)
+        .where(
+            AiParseRun.input_hash == run_row.input_hash,
+            AiParseRun.bundle_id == run_row.bundle_id,
+        )
+    )
+    assert total_same_hash == 1

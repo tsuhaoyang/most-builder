@@ -7,11 +7,13 @@ from __future__ import annotations
 import logging
 import re
 import unicodedata
+from difflib import SequenceMatcher
 
 logger = logging.getLogger(__name__)
 
 try:
     import opencc as _opencc_mod
+
     _converter = _opencc_mod.OpenCC("s2twp")
 except Exception as exc:
     # opencc-python-reimplemented is a declared runtime dependency; fail loudly
@@ -33,3 +35,49 @@ def normalize(text: str) -> str:
     text = _converter.convert(text)
     text = re.sub(r"[^\S\n]+", " ", text).strip().lower()
     return text
+
+
+def normalize_with_map(text: str) -> tuple[str, list[int]]:
+    """回傳 (normalized_text, offset_map)。
+
+    offset_map[i] = normalized 第 i 個字元對應的 raw text index。
+    正規化字串與 ``normalize()`` 位元級相等；map 長度等於 normalized 長度且單調非遞減。
+    """
+    norm = normalize(text)
+    if not norm:
+        return "", []
+    if not text:
+        # normalize("") == ""；上面已處理。理論不可達但防守。
+        return norm, [0] * len(norm)
+
+    offset_map: list[int] = []
+    sm = SequenceMatcher(a=text, b=norm, autojunk=False)
+    for tag, i1, i2, j1, j2 in sm.get_opcodes():
+        if tag == "equal":
+            for k in range(j2 - j1):
+                offset_map.append(i1 + k)
+        elif tag == "replace":
+            src_span = max(i2 - i1, 1)
+            for k in range(j2 - j1):
+                offset_map.append(i1 + min(k, src_span - 1))
+        elif tag == "insert":
+            src = min(i1, len(text) - 1) if text else 0
+            for _ in range(j2 - j1):
+                offset_map.append(src)
+        # delete: raw 字元被丟掉，不產生 map 項目
+
+    if len(offset_map) != len(norm):
+        logger.error(
+            "normalize_with_map alignment failed: raw_len=%s norm_len=%s map_len=%s",
+            len(text),
+            len(norm),
+            len(offset_map),
+        )
+        raise RuntimeError("normalize_with_map alignment failed")
+
+    # 強制單調非遞減（UI highlight 安全）
+    for i in range(1, len(offset_map)):
+        if offset_map[i] < offset_map[i - 1]:
+            offset_map[i] = offset_map[i - 1]
+
+    return norm, offset_map

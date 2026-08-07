@@ -1,8 +1,9 @@
 # WI AI Parser 實作規格（Implementation Spec）
 
 **文件類型：** 實作規格（implementation-level；從屬於 architecture spec 與 ADR）
-**版本：** 1.0 — 可派工草案
+**版本：** 1.1 — 可派工（修訂紀錄見 §20.5）
 **建立日期：** 2026-08-06
+**進度追蹤：** [wi-ai-parser-worklog.md](wi-ai-parser-worklog.md)（phase 狀態、卡點、實作級決策）
 **上游權威：**
 [WI AI Parser 系統規格](../architecture/wi-ai-parser-system-spec.md)（行為權威）、
 [ADR-026](../decisions/ADR-026-wi-ai-parser-pipeline-boundary.md)（proposed）、
@@ -971,3 +972,195 @@ L3-3  gold plans 目錄與 eval script 骨架
 | 5 | auto-accept 開啟 | flag 硬關閉 | gold baseline＋校準後另審 |
 | 6 | `ai_*` 表是否入獨立 PostgreSQL schema | 先同 schema、加 `ai_` 前綴 | R0（roadmap §20.6） |
 | 7 | worksheet revision 綁定 | run 記 worksheet_id 弱參照，不做 stale 阻擋（人工採用時人是防線） | R1 落地後補 `source_revision` 欄位（加法） |
+
+---
+
+## 20. 文件與追蹤 workflow（本功能交付期間的紀錄義務）
+
+本章定義「實作過程中什麼事寫進哪份文件」。目的：任何人（或 agent）中途接手時，
+能從文件重建（a）做到哪（b）為什麼這樣做（c）卡過什麼、怎麼解的。
+
+### 20.1 文件分層與職責
+
+| 文件 | 職責 | 更新時機 |
+|------|------|----------|
+| `docs/decisions/ADR-*.md` | 架構級決策（邊界、權威、資料 ownership、部署形態） | 遇到 D1 級決策（§20.2）時新開；沿用現有編號序 |
+| `docs/architecture/wi-ai-parser-system-spec.md` | 行為語意權威 | 行為語意變更時先改它，再同步本文件 |
+| 本文件（implementation spec） | 怎麼寫 code；契約/schema/演算法/測試 | 規格級決策（D2）；改動需升版本號＋修訂紀錄（§20.5） |
+| [`wi-ai-parser-worklog.md`](wi-ai-parser-worklog.md) | **單一追蹤入口**：phase 狀態、卡點（blocker）、實作級決策（D3）、checkpoint 紀錄 | 每個工作段落結束時；卡點發生當下 |
+| `docs/llm/eval-reports/` | versioned 評測輸出（gold regression、baseline 比較） | L3 起每次 eval 跑完 |
+| `docs/DOC_REGISTRY.md` | 全 repo 文件索引 | 新增文件時 |
+
+### 20.2 決策分級（判斷「要不要開 ADR」的規則）
+
+| 級別 | 定義 | 紀錄位置 | 例子 |
+|------|------|----------|------|
+| **D1 架構級** | 改變權威邊界、資料 ownership、部署形態、跨 bounded context 契約方向 | **必開 ADR**（proposed → user 核可 → accepted） | 允許雲端 LLM、AI 抽離獨立服務、改 ADR-025 submit 語意、開啟 auto-accept |
+| **D2 規格級** | 不動架構邊界，但改契約欄位、演算法、API shape、DB schema | 修訂本 spec（版本號 +0.1、§20.5 修訂紀錄一行）；worklog 記 pointer | 新增 `wi-plan-v1` 欄位、改 routing 規則、加一張 ai_* 表欄位 |
+| **D3 實作級** | 規格已定，實作細節二選一 | worklog 的 Decision Log 一行（背景/選項/選擇/理由） | trgm 門檻從 0.35 調 0.4、retry backoff 秒數、元件拆檔方式 |
+
+判斷不確定時**從嚴**（往上一級記）。§19 未決事項表中的任何一項被觸發＝至少 D2，
+其中第 4（雲端 LLM）、5（auto-accept）、6（獨立 schema）為 D1。
+
+### 20.3 卡點（Blocker）紀錄流程
+
+實作中遇到「規格沒寫、或規格與現實衝突」時：
+
+```text
+1. 停下該項工作（不得自行猜測繞過——尤其 §19 清單內的事項）
+2. 在 worklog「Blocker Log」新增一列：
+   編號 BLK-NNN｜日期｜phase｜現象｜影響範圍｜暫時處置（若有）
+3. 依 §20.2 分級：
+   - D3 → 自行決定並在 Decision Log 記錄，blocker 標 resolved
+   - D2 → 提修訂提案給 user；核可後改 spec、blocker 標 resolved（附 spec 章節 pointer）
+   - D1 → 起草 ADR（proposed）；ADR accepted 前該工作項保持暫停
+4. 解決方式必須寫「為什麼這樣解」，不是只寫「解了」
+```
+
+Blocker 不刪除、不改寫歷史列；重開同一問題＝新編號＋reference 舊編號。
+
+### 20.4 Phase 執行 workflow（每個 L0–L3 phase 一輪）
+
+```text
+開工：worklog phase 狀態 → in_progress；確認 §18 該段 checklist 與 §19 未決事項
+實作：依 checklist 逐項；每完成一項在 worklog 打勾（含 commit/PR pointer）
+段落結束：
+  1. 跑該 phase 測試閘門（§14 對應列 + ruff/mypy；觸及 MOST 路徑加跑 run_all.py）
+  2. 執行 /dev-team:checkpoint（code review + 資安席位——主對話不得自行取代）
+  3. worklog 記 checkpoint 結果（日期、審查者/席位、發現、處置）
+  4. phase 退出條件逐條核對（§4 表），全過 → 狀態 completed
+驗收：L3 結束後依 §0.1 五條逐條向 user 演示，結果記入 worklog
+```
+
+Commit 規範依 repo 慣例（CLAUDE.md）；只在 user 要求或 checkpoint 通過後 commit。
+
+### 20.5 本文件修訂紀錄
+
+| 版本 | 日期 | 變更 |
+|------|------|------|
+| 1.0 | 2026-08-06 | 初版（L0–L4 全章節） |
+| 1.1 | 2026-08-07 | 新增附錄 A（七項實作決策，含引擎空 slot 語意查證）、§20 文件與追蹤 workflow；§9.3 completeness 判準由附錄 A5 精確化 |
+
+---
+
+## 附錄 A：實作決策補充（2026-08-07 定案）
+
+以下七項在 v1.0 中屬「會讓 agent 自行猜測」的軟點，現以 codebase 查證結果定案。
+與正文衝突時**以本附錄為準**（正文對應處：A1→§15、A2→§9.1、A3→§11.1、A4→§7.1、
+A5→§9.3、A6→§15、A7→§7.4）。
+
+### A0. 前提查證：引擎的「空 slot」語意（影響 A2/A5）
+
+`most_engine/calculate.py` 實際行為（2026-08-07 讀碼確認）：
+
+- `g_code`/`p_base_code`/`x_code`/`i_code` 為空 → **合法，計 0 TMU**（非錯誤）。
+- `b_code` 為空 → 自動採 `rs.b_default`。
+- 推論一：「拿起 DIMM」（只取得、無放置）→ P5 留空即為**合法完整 GM cycle**，不是 partial。
+- 推論二（風險）：缺語意核心 slot 的 cycle 也能通過引擎並算出**假低 TMU**（例如 process
+  沒選 X）。因此 completeness 不能以「引擎不報錯」判定，必須用 A5 的核心 slot 規則。
+
+### A1. 多 action 採用 UX（L3）
+
+- v1 採**逐 action 採用**：`AiDraftPanel` 每張 action 卡一個「採用」鈕 → 該 draft 的
+  `cycle` 經現有 `payloadToState` 路徑（`features/wi-workbench/cycle.ts`）載入單 cycle
+  編輯器 → IE 微調 → 按既有「加入列」（`useWiStore.addRow`）。
+- 「全部採用」（一鍵逐 draft `addRow`）**延後**到 L3 驗收通過後另評，不在 v1 範圍。
+- 既有 NL 輸入框由新面板**取代**（同一端點、response 為超集）；`wi_ai_enabled=false`
+  或 fallback 時，面板退化顯示單 cycle 建議（等同今日行為）。
+- 已載入編輯器的 draft，若使用者再解析新文本 → 面板標 stale，編輯器內容不動。
+
+### A2. Role → parameter linking 決策表（L2；補 §9.1）
+
+每個 action 只對「本表指定的池」發出查詢；查詢文字＝role text ＋ 該 action 的動詞片段
+（evidence span 覆蓋的原文）。
+
+| action_type | 核心 slot（A5 用） | 查詢 → 池 | 數值直填 |
+|-------------|--------------------|-----------|----------|
+| `acquire` | G | object/tool text＋動詞 → **G 池** | from 距離 → `a0.reach_cm` |
+| `move_place` | P | 放/組/插/卡動詞＋destination → **P base 池**；「插入」「卡合」關鍵詞 → `p_addon_codes`（a_insert/a_snap；互斥由引擎 `P_ADDON_CONFLICT` 擋） | 移動距離 → `a3.reach_cm` |
+| `controlled_move` | M | 推/拉/旋轉/刷動詞 → **M verb 池** | distance/angle/revolutions/diameter → `m_components` |
+| `process` | X | process_kind text → **X 池**（例「鎖附」→ `X_SCREW_FIX`）；v1 不自動配 M | 原文秒數 → `x_seconds` |
+| `inspect` | I | 檢查/確認/對準/對齊 → **I 池**；視線範圍原文未明 → 取 `*_NORMAL` 變體＋`review_reason="i_range_assumed"` | — |
+| `release_return` | G/P 依語意 | 「放開」→ P 池（P_THROW/P_HOLD 等）；「歸位」→ 完整 move_place 處理 | 歸位距離 → `a3.reach_cm` |
+
+- B 池：蹲/彎/起身等身體動作詞才查詢；無命中一律留空（引擎套 `b_default`）。
+- **G「已持有」表示法＝g_code 留空（0 TMU）**，不需特殊 option code；`G_REGRASP`/
+  `G_TRANSFER_HAND` 只在原文明講「重抓」「換手」時作候選。move_place 承接前
+  acquire（`tool_held_for`/`same_object` dependency 存在）時，G 留空且 role status=`inferred`。
+
+### A3. Legacy `NLDraftResult` 相容 mapping（L0；補 §11.1）
+
+查證：legacy `slots[]` 永遠是 GM-shaped 七格（`rule_based.py` `_SLOT_PARAMS`），且前端
+`nlDraftPatch()` 只消費 `g_code`/`b_code`/`b_code2`/`p_base_code`；CM 時 legacy slots 本來就
+大多為空。因此 adapter 規則：
+
+1. 取 `drafts[0]`（**不限 GM**；無 draft 時全空、`suggested_seq=None`）。
+2. `suggested_seq` = drafts[0] 的 seq。
+3. 欄位對應：`g2.g_code→slots[2](g_code)`、`b1.b_code→slots[1](b_code)`、
+   `b4.b_code→slots[4](b_code2)`、`p5.p_base_code→slots[5](p_base_code)`；
+   A 三格維持現行「不反填」行為。CM draft → 以上 GM 欄位自然為空（與今日一致）。
+4. `overall_confidence` 沿用舊公式（filled/7，以 legacy slots 計），避免舊 UI 數字跳動；
+   新 `ai.*` 區塊內不使用此數字。
+5. 相容驗收＝golden JSON 逐欄 diff（§14.2 `test_nl_draft_compat.py`）。
+
+### A4. Structured output 能力階梯（L1；補 §7.1）
+
+不逐請求探測；能力宣告在 bundle `config.response_format_mode`：
+
+| mode | 適用 | 行為 |
+|------|------|------|
+| `json_schema` | vLLM、OpenAI-compat 完整實作 | `response_format={"type":"json_schema","strict":true}` |
+| `json_object` | Ollama 等僅支援 JSON mode | `response_format={"type":"json_object"}`＋schema 全文附進 system prompt 尾段＋回應後本地 Pydantic 驗證 |
+| `none` | 皆不支援 | 純 prompt 約束＋本地驗證（僅開發用，不得進 production bundle） |
+
+任一 mode 下本地驗證失敗 → retry 一次（附 error 摘要）→ 仍失敗 → rule fallback。
+實際使用的 mode 記入 provenance。
+
+### A5. Compiler completeness 判準（L2；**取代** §9.3 步驟 2 的「候選缺漏」段）
+
+- `complete=True` ⇔ 該 action 的**核心 slot**（A2 表第二欄）有 chosen 候選。
+- 核心 slot 缺 → `complete=False`（partial draft）、**不呼叫 engine**（防 A0 推論二的假低
+  TMU）、`review_reason="missing_core_<param>"`。
+- 非核心 slot 缺 → 留空放行（引擎語意：0 TMU 或 b_default），不算 partial。
+- acquire 無 destination（如「拿起 DIMM」）→ complete、P5 留空、合法計算；
+  `unresolved` 保留 `next_operation` 提示。
+- 引擎錯誤碼直接作 fixture 斷言集：`X_SECONDS_REQUIRED`、`M_DISTANCE_RANGE`、
+  `P_ADDON_CONFLICT`、`P_ADDON_NO_BASE`、`REPEAT_INVALID`、`SLOT_CROSS_MODEL`。
+- L2 進場前建立 **5 筆端到端 fixture**（`tests/integration/fixtures/e2e_plans/`）：
+  (1) 拿起DIMM（acquire-only）(2) 電動起子+鎖附兩顆（GM+CM、frequency=2）
+  (3) 推治具30cm（controlled_move ladder）(4) 掃碼＋確認（process+inspect 兩 cycle）
+  (5) composite_unknown（不編譯）。每筆含 mock plan JSON、期望 CycleIn、期望 TMU
+  （由引擎手跑一次取得後鎖定）。
+
+### A6. 信心顯示三檔（L3；補 §15）
+
+對齊既有分數慣例（exact=0.95、longest_match=0.8、default=0.3）：
+
+| 檔位 | 條件 |
+|------|------|
+| 高 | chosen.score ≥ 0.9 且無 review_reason |
+| 中 | 0.6 ≤ score < 0.9 |
+| 低 | score < 0.6，或帶 `engines_disagree`/`no_candidate` |
+
+門檻常數放 `contracts.py`（`CONFIDENCE_BANDS`），前後端同源（OpenAPI 輸出檔位字串，
+前端不重算）。校準器上線後（Q3+）此表由 calibrator 版本取代。
+
+### A7. 開發環境 quickstart（補 §7.4）
+
+```bash
+# 純 rule fallback（預設；不需任何 LLM）
+unset DDM_WI_AI_ENABLED   # 或 =0
+
+# 接地端 Ollama
+ollama pull qwen2.5:32b-instruct && ollama serve
+export DDM_WI_AI_ENABLED=1
+export DDM_LLM_BASE_URL=http://127.0.0.1:11434
+export DDM_LLM_MODEL=qwen2.5:32b-instruct
+# bundle config.response_format_mode='json_object'（A4）
+
+# 接 vLLM（GPU 機）
+export DDM_LLM_BASE_URL=http://<host>:8000
+# bundle config.response_format_mode='json_schema'
+
+# 測試一律 mock（respx 攔 /v1/chat/completions）；CI 不打真模型（§14.2）
+```

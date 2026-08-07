@@ -7,6 +7,12 @@ import 此模組即註冊所有 v2 表到 v2 Base.metadata，供 Alembic baselin
 """
 from __future__ import annotations
 
+from ddm_v2.models.v2.ai_ops import (
+    AiDeploymentBundle,
+    AiFeedbackCandidate,
+    AiParseRun,
+    AiReviewEvent,
+)
 from ddm_v2.models.v2.audit import WorkflowAuditLog
 from ddm_v2.models.v2.auth import AppUser
 from ddm_v2.models.v2.base import Base, TimestampMixin
@@ -80,4 +86,8 @@ __all__ = [
     "RuleOptionSynonym",
     "WiSetProject",
     "WiSetItem",
+    "AiDeploymentBundle",
+    "AiParseRun",
+    "AiReviewEvent",
+    "AiFeedbackCandidate",
 ]
