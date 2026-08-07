@@ -1,6 +1,6 @@
-"""WI AI Parser orchestrator（L0 rule + L1 LLM planner／fallback）。
+"""WI AI Parser orchestrator（L0–L2：plan → link → compile → engine gate）。
 
-Spec §10；L0/L1 不做 linking/compiler/engine（drafts=[]）。
+Spec §10；drafts 由 most_compiler + engine 產生，禁止在本層算 TMU。
 """
 from __future__ import annotations
 
@@ -19,6 +19,10 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from ddm_v2.models.v2.ai_ops import AiDeploymentBundle, AiParseRun
 from ddm_v2.models.v2.rule_set import RuleSet
+from ddm_v2.most_compiler.compile import allow_lists_from_rule_set, compile_plan
+from ddm_v2.most_compiler.engine_gate import apply_engine_gate
+from ddm_v2.most_engine import load_rule_set_from_db
+from ddm_v2.most_engine.providers import load_options_from_db
 from ddm_v2.nlp.contracts import (
     CycleDraft,
     ParseContext,
@@ -28,11 +32,13 @@ from ddm_v2.nlp.contracts import (
     SourceRef,
     WorkInstructionPlan,
 )
+from ddm_v2.nlp.linking import SlotLinker
 from ddm_v2.nlp.llm_client import OpenAICompatClient
 from ddm_v2.nlp.llm_planner import LLMPlannerAdapter
 from ddm_v2.nlp.normalization import normalize_with_map
 from ddm_v2.nlp.planner_ports import LLMRawResponse, PlannerError
 from ddm_v2.nlp.prompts import plan_v1
+from ddm_v2.nlp.routing import compute_routing
 from ddm_v2.nlp.rule_based import RuleBasedParser
 from ddm_v2.nlp.rule_plan_adapter import (
     legacy_from_parse_run,
@@ -109,18 +115,6 @@ def _result_from_run(run: AiParseRun, *, cached: bool, bundle_code: str) -> Pars
     )
 
 
-def _compute_routing(plan: WorkInstructionPlan) -> tuple[str, list[str]]:
-    """§10.3 L0/L1：全 composite_unknown → abstain；其餘 review（auto 硬關閉）。"""
-    reasons: list[str] = []
-    if not plan.actions or all(a.action_type == "composite_unknown" for a in plan.actions):
-        if "composite_unknown" not in (plan.unresolved or []):
-            reasons.append("composite_unknown")
-        reasons.extend(plan.unresolved)
-        return "abstain", reasons
-    reasons.extend(plan.unresolved)
-    return "review", reasons
-
-
 def _plan_from_planner_output(
     *,
     raw_text: str,
@@ -157,6 +151,27 @@ async def _try_llm_plan(
 ) -> tuple[PlannerOutput, LLMRawResponse]:
     planner = LLMPlannerAdapter(_build_llm_client(), timeout_s=timeout_s)
     return await planner.plan(normalized_text, context)
+
+
+def _option_labels(opts: dict[str, Any]) -> dict[str, dict[str, Any]]:
+    def _lmap(rows_: list[dict[str, Any]]) -> dict[str, dict[str, Any]]:
+        return {
+            o["code"]: {
+                "label": o.get("label"),
+                "sentence": o.get("sentence"),
+                "display_rule": o.get("display_rule"),
+            }
+            for o in rows_
+        }
+
+    return {
+        "g": _lmap(opts.get("g") or []),
+        "p_base": _lmap(opts.get("p_bases") or []),
+        "p_addon": _lmap(opts.get("p_addons") or []),
+        "m_verb": _lmap(opts.get("m_verbs") or []),
+        "x": _lmap(opts.get("x") or []),
+        "i": _lmap(opts.get("i") or []),
+    }
 
 
 async def parse_interactive(
@@ -207,7 +222,7 @@ async def parse_interactive(
         import_id=None,
         import_row_index=None,
     )
-    rule_plan, candidates = plan_from_rule_result(rule_result, source_ref=source_ref)
+    rule_plan, rule_candidates = plan_from_rule_result(rule_result, source_ref=source_ref)
 
     settings = get_settings()
     llm_raw: LLMRawResponse | None = None
@@ -235,14 +250,22 @@ async def parse_interactive(
             planner_name = "llm"
             prompt_version = plan_v1.PROMPT_VERSION
             model_name = llm_raw.model
-            # baseline disagreement：action 數或粗 seq 不一致
             if len(plan.actions) != len(rule_plan.actions) or (
                 plan.actions
                 and rule_plan.actions
                 and plan.actions[0].action_type != rule_plan.actions[0].action_type
             ):
                 routing_extra.append("baseline_disagreement")
-        except (PlannerError, httpx.HTTPError, httpx.TimeoutException, OSError, ValueError, KeyError, IndexError, TypeError) as exc:
+        except (
+            PlannerError,
+            httpx.HTTPError,
+            httpx.TimeoutException,
+            OSError,
+            ValueError,
+            KeyError,
+            IndexError,
+            TypeError,
+        ) as exc:
             logger.warning("LLM planner failed; falling back to rule_based: %s", exc)
             used_fallback = True
             routing_extra.append("fallback_rule_based")
@@ -253,21 +276,50 @@ async def parse_interactive(
         routing_extra.append("fallback_rule_based")
 
     t_plan = time.perf_counter()
-    routing_status, routing_reasons = _compute_routing(plan)
-    for r in routing_extra:
-        if r not in routing_reasons:
-            routing_reasons.insert(0, r)
 
-    # L1：LLM 成功時 candidates 仍是 rule baseline；明確清空避免誤解（L2 linking 再填）
-    if not used_fallback:
-        candidates = []
+    # L2：linking（rule fallback 可沿用 rule_candidates；LLM plan 一律重 link）
+    linker = SlotLinker(synonyms)
+    if used_fallback and rule_candidates:
+        # rule plan 無 roles：仍跑 linker 補齊；與 rule slots merge（linker 優先）
+        linked = await linker.link(plan, session=session, rule_set_id=rs.id)
+        if linked:
+            candidates = linked
+        else:
+            candidates = rule_candidates
+    else:
+        candidates = await linker.link(plan, session=session, rule_set_id=rs.id)
+
+    t_link = time.perf_counter()
+
+    rsdata = await load_rule_set_from_db(session, rule_set_code)
+    rsdata.validate_complete()
+    allow = allow_lists_from_rule_set(rsdata)
+    drafts = compile_plan(
+        plan,
+        candidates,
+        rule_set_code=rule_set_code,
+        allow_lists=allow,
+    )
+    t_compile = time.perf_counter()
+
+    opts = await load_options_from_db(session, rule_set_code)
+    drafts = apply_engine_gate(drafts, rsdata, labels=_option_labels(opts))
+    t_engine = time.perf_counter()
+
+    routing_status, routing_reasons = compute_routing(
+        plan,
+        candidates,
+        drafts,
+        extra_reasons=routing_extra,
+        auto_enabled=settings.wi_ai_auto_enabled,
+    )
 
     latency = {
         "normalize": round((t_norm - t0) * 1000, 2),
         "plan": round((t_plan - t_norm) * 1000, 2),
-        "link": 0.0,
-        "compile": 0.0,
-        "engine": 0.0,
+        "link": round((t_link - t_plan) * 1000, 2),
+        "compile": round((t_compile - t_link) * 1000, 2),
+        "engine": round((t_engine - t_compile) * 1000, 2),
     }
     if llm_raw is not None:
         latency["llm"] = llm_raw.latency_ms
@@ -288,7 +340,7 @@ async def parse_interactive(
         bundle_id=bundle.id,
         plan=plan.model_dump(),
         slot_candidates=[c.model_dump() for c in candidates],
-        drafts=[],
+        drafts=[d.model_dump() for d in drafts],
         llm_raw_response=(
             {
                 "content": llm_raw.content,
@@ -312,7 +364,6 @@ async def parse_interactive(
             session.add(run)
             await session.flush()
     except IntegrityError:
-        # 競態：另一請求已插入同一 (input_hash, bundle_id)
         raced = await _find_cached_run(session, input_hash=input_hash, bundle_id=bundle.id)
         if raced is None:
             raise
@@ -328,7 +379,7 @@ async def parse_interactive(
         run_id=str(run_id),
         plan=plan,
         slot_candidates=candidates,
-        drafts=[],
+        drafts=drafts,
         routing_status=routing_status,  # type: ignore[arg-type]
         routing_reasons=routing_reasons,
         provenance={
@@ -344,6 +395,7 @@ async def parse_interactive(
             ),
         },
     )
+    # 相容：仍回 rule_based 的 GM-shaped slots（舊前端）；ai.drafts 是權威草稿
     legacy = legacy_from_parse_run(
         raw_text=rule_result.raw_text,
         normalized_text=rule_result.normalized_text,

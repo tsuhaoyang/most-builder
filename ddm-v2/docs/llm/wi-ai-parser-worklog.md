@@ -18,7 +18,7 @@
 |-------|------|------|------|------|------------|
 | L0 | 契約 + AI 表 migration + rule parser 包進新契約 + run 落庫 | `completed` | 2026-08-07 | 2026-08-07 | code-review APPROVE_WITH_NITS |
 | L1 | LLM planner adapter（structured output、cache、fallback） | `completed` | 2026-08-07 | 2026-08-07 | code-review APPROVE |
-| L2 | Slot linking + deterministic compiler + engine gate | `not_started` | — | — | — |
+| L2 | Slot linking + deterministic compiler + engine gate | `completed` | 2026-08-07 | 2026-08-07 | code-review APPROVE_WITH_NITS |
 | L3 | 審核 UI + review events + feedback candidates | `not_started` | — | — | — |
 | L4 | 批次 parse job（**需 ADR-026/027 accepted**） | `blocked_on_adr` | — | — | — |
 
@@ -45,11 +45,13 @@
   - 備註：minimal 骨架；prompt few-shot 可後調；drafts 仍空（L2）；security 延後。
 
 ### L2
-- [ ] L2-0 端到端 fixture 5 筆（spec 附錄 A5）
-- [ ] L2-1 `linking.py`（L0/L1/L2 層；embedding 可後補）
-- [ ] L2-2 `most_compiler/` + 決策表矩陣測試
-- [ ] L2-3 engine gate + routing + multi_action 整合測試 + golden 全跑
-- [ ] L2 checkpoint
+- [x] L2-0 端到端 fixture 5 筆（spec 附錄 A5）
+- [x] L2-1 `linking.py`（L0/L1/L2 層；embedding 可後補）
+- [x] L2-2 `most_compiler/` + 決策表矩陣測試
+- [x] L2-3 engine gate + routing + multi_action 整合測試 + golden 全跑
+- [x] L2 checkpoint
+  - 驗證：A5 fixtures + engine_gate unit；integration NLP/fallback/L2 13 passed；golden 全綠；review → REQUEST_CHANGES 後修 P1 → **APPROVE_WITH_NITS**（[L2 re-check](8b77587a-1da0-46e8-9b51-62c6f70d4ccf)）。
+  - 備註：L3 embedding 未做；A5 其餘 reject code 可後補；security 延後。
 
 ### L3
 - [ ] L3-1 `ai_review.py` + `ai_review_service`（events + candidates）+ 測試
@@ -81,6 +83,7 @@
 |------|-------|-------------|------|------|
 | 2026-08-07 | L0 | code-reviewer agent | P1：`error` 欄誤用；P2：缺 UNIQUE／abstain／active bundle／legacy 漂移／§7.5 | 全部必修項已修；**APPROVE_WITH_NITS**（optional 測試檔可後補）。資安延後。 |
 | 2026-08-07 | L1 | code-reviewer agent | P1：malformed envelope／sanitize 硬失敗／cache provenance／缺 unreachable test | 全修；**APPROVE**。資安延後。 |
+| 2026-08-07 | L2 | code-reviewer agent | P1：L0 stub／auto 忽略 quantity_policy／缺 engine_gate 覆蓋 | 全修；**APPROVE_WITH_NITS**。資安延後。 |
 
 ## 6. 驗收紀錄（spec §0.1）
 

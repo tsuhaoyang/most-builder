@@ -44,21 +44,21 @@ def test_synonym_candidate_source_mapped():
 
 
 def test_compute_routing_abstain_for_composite():
-    from ddm_v2.services.v2.wi_ai_service import _compute_routing
+    from ddm_v2.nlp.routing import compute_routing
 
     result = RuleBasedParser([]).parse("拿起零件放到位置上")
     plan, _ = plan_from_rule_result(result)
-    status, reasons = _compute_routing(plan)
+    status, reasons = compute_routing(plan, [], [], auto_enabled=False)
     assert status == "abstain"
     assert "composite_unknown" in reasons
 
 
 def test_compute_routing_review_for_gm():
-    from ddm_v2.services.v2.wi_ai_service import _compute_routing
+    from ddm_v2.nlp.routing import compute_routing
 
     result = RuleBasedParser([]).parse("將零件放到壓合治具上")
     plan, _ = plan_from_rule_result(result)
-    status, reasons = _compute_routing(plan)
+    status, reasons = compute_routing(plan, [], [], auto_enabled=False)
     assert status == "review"
-    # fallback_rule_based 由 orchestrator 附加，不在 _compute_routing 內
+    # fallback_rule_based 由 orchestrator 附加，不在 compute_routing 內
     assert "composite_unknown" not in reasons
