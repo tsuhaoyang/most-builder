@@ -15,6 +15,7 @@ import {
   defaultCycle, buildPayload, aBandOpts, shortNarr, payloadToState,
   type CycleState, type ASlot, type ABand,
 } from './cycle'
+import { AiDraftPanel } from './AiDraftPanel'
 import { useLevelStore } from '../level-system/store'
 import { derive } from '../level-system/logic'
 import { useWorksheetWorkspace } from './useWorksheetWorkspace'
@@ -26,17 +27,6 @@ import {
 // ─── Local types ───────────────────────────────────────────────────────────────
 interface WiGroup { id: string; name: string; rowIds: string[] }
 type SlotKey = 'a0' | 'b1' | 'g' | 'a3' | 'b4' | 'p' | 'm' | 'x' | 'i' | 'a6'
-
-interface NlDraftSlot {
-  slot_index: number
-  field: string
-  chosen: { option_code: string; score: number; source: string } | null
-}
-interface NlDraftRes {
-  suggested_seq?: string | null
-  slots?: NlDraftSlot[]
-  overall_confidence?: number
-}
 
 const HANDS = [{ v: 'RH', l: '右手' }, { v: 'LH', l: '左手' }, { v: 'BH', l: '雙手' }]
 
@@ -199,26 +189,6 @@ function aIsFilled(slot: ASlot): boolean {
   return slot.reach > 0 || slot.twist > 0 || slot.foot > 0
 }
 
-// ─── NL draft → CycleState patch ──────────────────────────────────────────────
-function nlDraftPatch(res: NlDraftRes): Partial<CycleState> {
-  const patch: Partial<CycleState> = {}
-  if (res.suggested_seq === 'GM' || res.suggested_seq === 'CM') {
-    patch.seq = res.suggested_seq as 'GM' | 'CM'
-  }
-  for (const slot of (res.slots ?? [])) {
-    if (!slot.chosen) continue
-    const code = slot.chosen.option_code
-    switch (slot.field) {
-      case 'g_code': patch.g = code; break
-      case 'b_code': patch.b1 = code; break
-      case 'b_code2': patch.b4 = code; break
-      case 'p_base_code': patch.p_base = code; break
-      // A-slot reverse-mapping skipped (distance→ASlot requires lexicon lookup)
-    }
-  }
-  return patch
-}
-
 // ─── Main component ────────────────────────────────────────────────────────────
 export function WiWorkbench() {
   const { data: me } = useMe()
@@ -239,11 +209,6 @@ export function WiWorkbench() {
   const [tech, setTech] = useState('')
   const [saveMsg, setSaveMsg] = useState('')
   const editable = canEdit(me)
-
-  // ── [F] NL draft state ─────────────────────────────────────────────────────
-  const [nlText, setNlText] = useState('')
-  const [nlLoading, setNlLoading] = useState(false)
-  const [nlError, setNlError] = useState('')
 
   // ── [D] drag state ──────────────────────────────────────────────────────────
   const [dragIdx, setDragIdx] = useState<number | null>(null)
@@ -564,33 +529,6 @@ export function WiWorkbench() {
       .reduce((sum, r) => sum + (r.tmu * (r.freq || 1)), 0)
   }
 
-  // ── [F] NL draft ───────────────────────────────────────────────────────────
-  async function runNlDraft() {
-    const text = nlText.trim()
-    if (!text) return
-    setNlLoading(true)
-    setNlError('')
-    try {
-      const res = await apiPost<NlDraftRes>('/api/v2/worksheets/nl-draft', {
-        text,
-        rule_set_code: opts?.code,
-      })
-      const patch = nlDraftPatch(res)
-      if (Object.keys(patch).length > 0) {
-        setCur(c => ({ ...c, ...patch }))
-      }
-    } catch (e) {
-      const msg = (e as Error).message
-      if (msg.includes('501') || msg.includes('Not Implemented') || msg.includes('404')) {
-        setNlError('NL Draft 功能需要後端支援')
-      } else {
-        setNlError('預填失敗：' + msg)
-      }
-    } finally {
-      setNlLoading(false)
-    }
-  }
-
   // ── existing add/save functions ────────────────────────────────────────────
   function add() {
     if (tmu == null) return
@@ -655,27 +593,20 @@ export function WiWorkbench() {
       {/* ═══ Editor section ═══ */}
       <div className="bg-white rounded-xl border p-4 space-y-3">
 
-        {/* [F] NL Draft bar */}
-        <div className="flex flex-wrap items-start gap-2 pb-2 border-b border-slate-100">
-          <span className="text-xs font-semibold text-slate-500 mt-2 shrink-0">AI 預填</span>
-          <textarea
-            rows={1}
-            className="flex-1 min-w-0 border rounded px-2 py-1.5 text-sm resize-none focus:outline-none focus:ring-1 focus:ring-blue-400"
-            placeholder="輸入口語描述，AI 自動填入動作參數…"
-            value={nlText}
-            onChange={e => setNlText(e.target.value)}
-            onKeyDown={e => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); if (!nlLoading) runNlDraft() } }}
-            disabled={nlLoading}
-          />
-          <button
-            onClick={runNlDraft}
-            disabled={nlLoading || !nlText.trim()}
-            className="px-3 py-1.5 bg-indigo-600 text-white text-sm rounded disabled:opacity-40 shrink-0"
-          >
-            {nlLoading ? '分析中…' : '填入'}
-          </button>
-          {nlError && <span className="text-xs text-red-500 w-full mt-0.5">{nlError}</span>}
-        </div>
+        {/* [F] AI Draft panel（取代舊 NL 預填） */}
+        <AiDraftPanel
+          ruleSetCode={opts?.code}
+          worksheetId={activeWs || null}
+          canWriteReviews={editable}
+          onAdoptCycle={(cycle) => {
+            setCur((c) => {
+              const next = payloadToState(cycle)
+              // 保留手別／語彙情境，不整頁清空
+              return { ...next, handCode: c.handCode || next.handCode, nv: { ...c.nv } }
+            })
+          }}
+          onLegacyFill={(patch) => setCur((c) => ({ ...c, ...patch }))}
+        />
 
         {/* Sequence type + hand */}
         <div className="flex flex-wrap items-center gap-3">

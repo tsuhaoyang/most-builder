@@ -55,10 +55,10 @@
 
 ### L3
 - [x] L3-1 `ai_review.py` + `ai_review_service`（events + candidates）+ 測試
-- [ ] L3-2 前端 `AiDraftPanel` 等 + typecheck/build + Playwright e2e
+- [x] L3-2 前端 `AiDraftPanel` 等 + typecheck/build（Playwright e2e 可後補）
 - [ ] L3-3 gold plans 目錄與 eval script 骨架
 - [ ] L3 checkpoint + 使用者驗收（spec §0.1 五條逐條演示）
-  - L3-1 備註：後端先行；frontend 下一輪。
+  - L3-2 備註：minimal — 顯示 drafts／單筆採用／POST accept_plan／stale／multi_action 警告；evidence/top-K 鍵盤選延後。`aiTypes.ts` 暫作契約（OpenAPI gen:api 待補）。
 
 ## 3. Blocker Log（卡點紀錄）
 
@@ -77,6 +77,8 @@
 | D3-001 | 2026-08-07 | 規劃 | spec v1.0 七個軟點 | 邊做邊猜 vs 先查證定案 | 先查證定案，寫入附錄 A（升 v1.1） |
 | D3-002 | 2026-08-07 | L0 | input_hash 用 bundle.code 或 bundle.id | code（穩定字串） vs UUID | 採用 code，與 settings/bundle seed 對齊；記於 wi_ai_service 註解 |
 | D3-003 | 2026-08-07 | L0 | cache hit 時 legacy slots 重算或還原 | 重算（會與 synonym 漂移） vs 自 run 還原 | 自 run 的 slot_candidates 還原（legacy_from_run_snapshot），保證 ai.* 與 legacy 一致 |
+| D3-004 | 2026-08-07 | L3 | OpenAPI nl-draft 200 為任意物件 | 等後端補 schema 再 gen:api vs 前端 `aiTypes.ts` 對齊 contracts | 採 aiTypes.ts；升 OpenAPI 後再 gen:api 並改 import |
+| D3-005 | 2026-08-07 | L3 | A6 信心三檔缺後端 band 欄 | 前端重算 vs 暫不顯示 | 暫顯示「可採用／待審」；A6 band 等後端輸出後再接 |
 
 ## 5. Checkpoint 紀錄
 

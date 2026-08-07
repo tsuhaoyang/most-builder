@@ -1,6 +1,9 @@
 import { useQuery, useMutation } from '@tanstack/react-query'
 import { apiGet, apiPost, apiPut } from '../../shared/api/client'
 import type { ABand } from './cycle'
+import type { NlDraftResponse, ReviewBatchIn, ReviewBatchOut } from './aiTypes'
+
+export type { NlDraftResponse, ReviewBatchIn, ReviewBatchOut }
 
 export interface RuleOption { code: string; label: string; label_en?: string }
 export interface GOption extends RuleOption { modifier_key: string | null; requires_modifier: boolean }
@@ -90,3 +93,24 @@ export interface WsRead {
 }
 export const useWorksheet = (wsId: string) =>
   useQuery({ queryKey: ['worksheet', wsId], queryFn: () => apiGet<WsRead>(`/api/v2/worksheets/${wsId}`), refetchOnWindowFocus: false, enabled: !!wsId })
+
+// ── WI AI（L3）────────────────────────────────────────────────────────────────
+export const useNlDraft = () =>
+  useMutation({
+    mutationFn: (body: {
+      text: string
+      rule_set_code: string
+      worksheet_id?: string | null
+      context?: {
+        station_hint?: string | null
+        available_tools?: string[]
+        available_locations?: string[]
+      }
+    }) => apiPost<NlDraftResponse>('/api/v2/worksheets/nl-draft', body),
+  })
+
+export const usePostReviews = () =>
+  useMutation({
+    mutationFn: ({ runId, body }: { runId: string; body: ReviewBatchIn }) =>
+      apiPost<ReviewBatchOut>(`/api/v2/nl-drafts/${runId}/reviews`, body),
+  })

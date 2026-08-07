@@ -106,6 +106,9 @@ export function payloadToState(p: Record<string, any>): CycleState { // eslint-d
     s.m = { verb: m.verb_code || '', distance: m.distance_cm || 30, angle: m.angle_deg || 90, rev: m.revolutions || 1, dia: m.diameter_cm || 10 }
     s.x = p.x4?.x_code || 'x_none'; s.x_sec = p.x4?.x_seconds || 0; s.i = p.i5?.i_code || 'i_none'
   }
+  if (typeof p.frequency === 'number' && p.frequency > 0) {
+    s.freq = p.frequency
+  }
   return s
 }
 
