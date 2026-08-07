@@ -31,6 +31,7 @@ from ddm_v2.api.routes.v2.import_excel import router as v2_import_router
 from ddm_v2.api.routes.v2.motion_module import router as v2_motion_module_router
 from ddm_v2.api.routes.v2.motion_template import router as v2_motion_template_router
 from ddm_v2.api.routes.v2.nl_draft import router as v2_nl_draft_router
+from ddm_v2.api.routes.v2.ai_review import router as v2_ai_review_router
 from ddm_v2.api.routes.v2.rule_set import router as v2_ruleset_router
 from ddm_v2.api.routes.v2.search import router as v2_search_router
 from ddm_v2.api.routes.v2.synonyms import router as v2_synonyms_router
@@ -165,6 +166,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     app.include_router(v2_search_router)
     app.include_router(v2_synonyms_router)
     app.include_router(v2_nl_draft_router)
+    app.include_router(v2_ai_review_router)
     app.include_router(v2_audit_log_router)
     app.include_router(v2_cases_router)
     app.include_router(v2_wi_set_router)

@@ -19,7 +19,7 @@
 | L0 | 契約 + AI 表 migration + rule parser 包進新契約 + run 落庫 | `completed` | 2026-08-07 | 2026-08-07 | code-review APPROVE_WITH_NITS |
 | L1 | LLM planner adapter（structured output、cache、fallback） | `completed` | 2026-08-07 | 2026-08-07 | code-review APPROVE |
 | L2 | Slot linking + deterministic compiler + engine gate | `completed` | 2026-08-07 | 2026-08-07 | code-review APPROVE_WITH_NITS |
-| L3 | 審核 UI + review events + feedback candidates | `not_started` | — | — | — |
+| L3 | 審核 UI + review events + feedback candidates | `in_progress` | 2026-08-07 | — | — |
 | L4 | 批次 parse job（**需 ADR-026/027 accepted**） | `blocked_on_adr` | — | — | — |
 
 狀態值：`not_started / in_progress / blocked / completed / blocked_on_adr`
@@ -54,10 +54,11 @@
   - 備註：L3 embedding 未做；A5 其餘 reject code 可後補；security 延後。
 
 ### L3
-- [ ] L3-1 `ai_review.py` + `ai_review_service`（events + candidates）+ 測試
+- [x] L3-1 `ai_review.py` + `ai_review_service`（events + candidates）+ 測試
 - [ ] L3-2 前端 `AiDraftPanel` 等 + typecheck/build + Playwright e2e
 - [ ] L3-3 gold plans 目錄與 eval script 骨架
 - [ ] L3 checkpoint + 使用者驗收（spec §0.1 五條逐條演示）
+  - L3-1 備註：後端先行；frontend 下一輪。
 
 ## 3. Blocker Log（卡點紀錄）
 
