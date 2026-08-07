@@ -127,6 +127,8 @@ def test_action_type_enum_rejects_unknown():
 
 
 def test_no_invented_action_without_evidence():
+    from ddm_v2.nlp.contracts import sanitize_planner_output
+
     out = PlannerOutput(
         language="zh",
         actions=[
@@ -138,32 +140,15 @@ def test_no_invented_action_without_evidence():
             )
         ],
     )
-    errs = validate_planner_output(out, normalized_text="拿起DIMM")
-    assert any(e.startswith("planner_invented_action") for e in errs)
+    sanitized, reasons = sanitize_planner_output(out)
+    assert any(r.startswith("planner_invented_action") for r in reasons)
+    assert sanitized.actions == []
 
 
-def test_tool_state_must_point_to_prior_acquire():
-    norm = "拿起起子鎖附"
-    out = PlannerOutput(
-        language="zh",
-        actions=[
-            PlannedAction(
-                action_id="a1",
-                action_type="acquire",
-                sequence_order=1,
-                evidence=[EvidenceSpan(start=0, end=4, text="拿起起子")],
-            ),
-            PlannedAction(
-                action_id="a2",
-                action_type="process",
-                sequence_order=2,
-                roles={"tool_ref": RoleValue(status="inferred", action_ref="a1")},
-                evidence=[EvidenceSpan(start=4, end=6, text="鎖附")],
-            ),
-        ],
-    )
-    assert validate_planner_output(out, normalized_text=norm) == []
+def test_tool_state_downgrades_bad_ref():
+    from ddm_v2.nlp.contracts import sanitize_planner_output
 
+    norm = "鎖附鎖附"
     bad = PlannerOutput(
         language="zh",
         actions=[
@@ -178,8 +163,11 @@ def test_tool_state_must_point_to_prior_acquire():
                 action_type="process",
                 sequence_order=2,
                 roles={"tool_ref": RoleValue(status="inferred", action_ref="a1")},
-                evidence=[EvidenceSpan(start=0, end=2, text="鎖附")],
+                evidence=[EvidenceSpan(start=2, end=4, text="鎖附")],
             ),
         ],
     )
-    assert any("tool_state_violation" in e for e in validate_planner_output(bad, normalized_text="鎖附"))
+    sanitized, reasons = sanitize_planner_output(bad)
+    assert any("tool_state_violation" in r for r in reasons)
+    assert sanitized.actions[1].roles["tool_ref"].status == "missing"
+    assert validate_planner_output(sanitized, normalized_text=norm) == []

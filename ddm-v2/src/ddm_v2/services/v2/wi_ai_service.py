@@ -1,16 +1,18 @@
-"""WI AI Parser orchestrator（L0：rule 路徑 + run 落庫 + 冪等）。
+"""WI AI Parser orchestrator（L0 rule + L1 LLM planner／fallback）。
 
-Spec §10；L0 不做 linking/compiler/engine（drafts=[]）。
+Spec §10；L0/L1 不做 linking/compiler/engine（drafts=[]）。
 """
 from __future__ import annotations
 
 import hashlib
 import json
+import logging
 import time
 import uuid
 from typing import Any
 from uuid import UUID
 
+import httpx
 from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -21,11 +23,16 @@ from ddm_v2.nlp.contracts import (
     CycleDraft,
     ParseContext,
     ParseRunResult,
+    PlannerOutput,
     SlotCandidateSet,
     SourceRef,
     WorkInstructionPlan,
 )
+from ddm_v2.nlp.llm_client import OpenAICompatClient
+from ddm_v2.nlp.llm_planner import LLMPlannerAdapter
 from ddm_v2.nlp.normalization import normalize_with_map
+from ddm_v2.nlp.planner_ports import LLMRawResponse, PlannerError
+from ddm_v2.nlp.prompts import plan_v1
 from ddm_v2.nlp.rule_based import RuleBasedParser
 from ddm_v2.nlp.rule_plan_adapter import (
     legacy_from_parse_run,
@@ -34,6 +41,8 @@ from ddm_v2.nlp.rule_plan_adapter import (
 )
 from ddm_v2.services.v2 import synonym_service as syn_svc
 from ddm_v2.settings import get_settings
+
+logger = logging.getLogger(__name__)
 
 DEFAULT_BUNDLE_CODE = "wi-ai-dev-000"
 
@@ -76,14 +85,17 @@ async def _get_rule_set(session: AsyncSession, code: str) -> RuleSet:
 
 
 def _result_from_run(run: AiParseRun, *, cached: bool, bundle_code: str) -> ParseRunResult:
+    llm = run.llm_raw_response if isinstance(run.llm_raw_response, dict) else {}
+    planner = "rule_based_v1" if run.fallback or not llm else "llm"
     provenance = {
         "deployment_bundle_code": bundle_code,
-        "planner": "rule_based_v1",
-        "model": None,
-        "prompt_version": None,
+        "planner": planner,
+        "model": llm.get("model"),
+        "prompt_version": None if run.fallback else plan_v1.PROMPT_VERSION,
         "fallback": bool(run.fallback),
         "cached": cached,
         "latency_ms": run.latency or {},
+        "response_format_mode": llm.get("response_format_mode"),
     }
     drafts = [CycleDraft.model_validate(d) for d in (run.drafts or [])]
     return ParseRunResult(
@@ -98,15 +110,53 @@ def _result_from_run(run: AiParseRun, *, cached: bool, bundle_code: str) -> Pars
 
 
 def _compute_routing(plan: WorkInstructionPlan) -> tuple[str, list[str]]:
-    """§10.3 L0：全 composite_unknown → abstain；其餘 review（auto 硬關閉）。"""
-    reasons = ["fallback_rule_based"]
-    if plan.unresolved:
-        reasons.extend(plan.unresolved)
+    """§10.3 L0/L1：全 composite_unknown → abstain；其餘 review（auto 硬關閉）。"""
+    reasons: list[str] = []
     if not plan.actions or all(a.action_type == "composite_unknown" for a in plan.actions):
-        if "composite_unknown" not in reasons:
+        if "composite_unknown" not in (plan.unresolved or []):
             reasons.append("composite_unknown")
+        reasons.extend(plan.unresolved)
         return "abstain", reasons
+    reasons.extend(plan.unresolved)
     return "review", reasons
+
+
+def _plan_from_planner_output(
+    *,
+    raw_text: str,
+    normalized_text: str,
+    source_ref: SourceRef,
+    output: PlannerOutput,
+) -> WorkInstructionPlan:
+    return WorkInstructionPlan(
+        source_text=raw_text,
+        normalized_text=normalized_text,
+        language=output.language,
+        source_ref=source_ref,
+        actions=output.actions,
+        dependencies=output.dependencies,
+        unresolved=list(output.unresolved),
+    )
+
+
+def _build_llm_client() -> OpenAICompatClient:
+    s = get_settings()
+    return OpenAICompatClient(
+        base_url=s.llm_base_url,
+        model=s.llm_model,
+        api_key=s.llm_api_key,
+        response_format_mode="json_object",
+    )
+
+
+async def _try_llm_plan(
+    *,
+    normalized_text: str,
+    context: ParseContext,
+    timeout_s: float,
+) -> tuple[PlannerOutput, LLMRawResponse]:
+    planner = LLMPlannerAdapter(_build_llm_client(), timeout_s=timeout_s)
+    return await planner.plan(normalized_text, context)
 
 
 async def parse_interactive(
@@ -150,7 +200,6 @@ async def parse_interactive(
     synonyms = await syn_svc.list_synonyms(session, rule_set_code)
     parser = RuleBasedParser(synonyms)
     rule_result = parser.parse(text, rule_set_code=rule_set_code)
-    t_plan = time.perf_counter()
 
     source_ref = SourceRef(
         kind="interactive",
@@ -158,8 +207,60 @@ async def parse_interactive(
         import_id=None,
         import_row_index=None,
     )
-    plan, candidates = plan_from_rule_result(rule_result, source_ref=source_ref)
+    rule_plan, candidates = plan_from_rule_result(rule_result, source_ref=source_ref)
+
+    settings = get_settings()
+    llm_raw: LLMRawResponse | None = None
+    used_fallback = True
+    planner_name = "rule_based_v1"
+    prompt_version: str | None = None
+    model_name: str | None = None
+    plan = rule_plan
+    routing_extra: list[str] = []
+
+    if settings.wi_ai_enabled:
+        try:
+            planner_out, llm_raw = await _try_llm_plan(
+                normalized_text=norm,
+                context=ctx,
+                timeout_s=settings.llm_timeout_s,
+            )
+            plan = _plan_from_planner_output(
+                raw_text=text,
+                normalized_text=norm,
+                source_ref=source_ref,
+                output=planner_out,
+            )
+            used_fallback = False
+            planner_name = "llm"
+            prompt_version = plan_v1.PROMPT_VERSION
+            model_name = llm_raw.model
+            # baseline disagreement：action 數或粗 seq 不一致
+            if len(plan.actions) != len(rule_plan.actions) or (
+                plan.actions
+                and rule_plan.actions
+                and plan.actions[0].action_type != rule_plan.actions[0].action_type
+            ):
+                routing_extra.append("baseline_disagreement")
+        except (PlannerError, httpx.HTTPError, httpx.TimeoutException, OSError, ValueError, KeyError, IndexError, TypeError) as exc:
+            logger.warning("LLM planner failed; falling back to rule_based: %s", exc)
+            used_fallback = True
+            routing_extra.append("fallback_rule_based")
+            plan = rule_plan
+            if isinstance(exc, PlannerError) and exc.raw is not None:
+                llm_raw = exc.raw
+    else:
+        routing_extra.append("fallback_rule_based")
+
+    t_plan = time.perf_counter()
     routing_status, routing_reasons = _compute_routing(plan)
+    for r in routing_extra:
+        if r not in routing_reasons:
+            routing_reasons.insert(0, r)
+
+    # L1：LLM 成功時 candidates 仍是 rule baseline；明確清空避免誤解（L2 linking 再填）
+    if not used_fallback:
+        candidates = []
 
     latency = {
         "normalize": round((t_norm - t0) * 1000, 2),
@@ -168,6 +269,8 @@ async def parse_interactive(
         "compile": 0.0,
         "engine": 0.0,
     }
+    if llm_raw is not None:
+        latency["llm"] = llm_raw.latency_ms
 
     run_id = uuid.uuid4()
     run = AiParseRun(
@@ -186,10 +289,19 @@ async def parse_interactive(
         plan=plan.model_dump(),
         slot_candidates=[c.model_dump() for c in candidates],
         drafts=[],
-        llm_raw_response=None,
+        llm_raw_response=(
+            {
+                "content": llm_raw.content,
+                "model": llm_raw.model,
+                "usage": llm_raw.usage,
+                "response_format_mode": llm_raw.response_format_mode,
+            }
+            if llm_raw is not None
+            else None
+        ),
         routing_status=routing_status,
         routing_reasons=routing_reasons,
-        fallback=True,  # L0 全程 rule；L1 起僅 LLM 失敗時為 true
+        fallback=used_fallback,
         cached=False,
         latency=latency,
         error=None,
@@ -221,12 +333,15 @@ async def parse_interactive(
         routing_reasons=routing_reasons,
         provenance={
             "deployment_bundle_code": bundle.code,
-            "planner": "rule_based_v1",
-            "model": None,
-            "prompt_version": None,
-            "fallback": True,
+            "planner": planner_name,
+            "model": model_name,
+            "prompt_version": prompt_version,
+            "fallback": used_fallback,
             "cached": False,
             "latency_ms": latency,
+            "response_format_mode": (
+                llm_raw.response_format_mode if llm_raw is not None else None
+            ),
         },
     )
     legacy = legacy_from_parse_run(

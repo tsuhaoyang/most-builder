@@ -178,7 +178,11 @@ def validate_planner_output(
     *,
     normalized_text: str,
 ) -> list[str]:
-    """回傳 errors；空列表＝通過（§5.1 + §7.5）。"""
+    """回傳 errors；空列表＝通過（§5.1 結構規則）。
+
+    §7.5 語意防線由 ``sanitize_planner_output`` 先處理（剔除／降級），
+    不應再以整筆失敗迫使 rule fallback。
+    """
     errors: list[str] = []
     ids = [a.action_id for a in output.actions]
     if len(ids) != len(set(ids)):
@@ -214,24 +218,74 @@ def validate_planner_output(
                 errors.append(f"inferred_without_ref:{action.action_id}:{role_key}")
             if role.action_ref and role.action_ref not in id_set:
                 errors.append(f"action_ref_unknown:{action.action_id}:{role_key}")
-
-        # §7.5 no-invented-step：無 evidence 且非 composite_unknown → 無效
-        if action.action_type != "composite_unknown" and not action.evidence:
-            errors.append(f"planner_invented_action:{action.action_id}")
-
-        # §7.5 tool-state：tool_ref 必須指向排序在前的 acquire
-        tool_ref = action.roles.get("tool_ref")
-        if tool_ref is not None and tool_ref.action_ref:
-            ref_id = tool_ref.action_ref
-            ref_action = next((a for a in output.actions if a.action_id == ref_id), None)
-            if ref_action is None:
-                errors.append(f"tool_state_violation:{action.action_id}")
-            elif ref_action.action_type != "acquire":
-                errors.append(f"tool_state_violation:{action.action_id}")
-            elif ref_action.sequence_order >= action.sequence_order:
-                errors.append(f"tool_state_violation:{action.action_id}")
-
     return errors
+
+
+def sanitize_planner_output(output: PlannerOutput) -> tuple[PlannerOutput, list[str]]:
+    """§7.5：invented action 剔除；非法 tool_ref 降為 missing。回傳 (sanitized, reasons)。"""
+    reasons: list[str] = []
+    kept: list[PlannedAction] = []
+    for action in output.actions:
+        if action.action_type != "composite_unknown" and not action.evidence:
+            reasons.append(f"planner_invented_action:{action.action_id}")
+            continue
+        roles = dict(action.roles)
+        tool_ref = roles.get("tool_ref")
+        if tool_ref is not None and tool_ref.action_ref:
+            ref = next((a for a in output.actions if a.action_id == tool_ref.action_ref), None)
+            ok = (
+                ref is not None
+                and ref.action_type == "acquire"
+                and ref.sequence_order < action.sequence_order
+            )
+            if not ok:
+                reasons.append(f"tool_state_violation:{action.action_id}")
+                roles["tool_ref"] = RoleValue(status="missing")
+        kept.append(action.model_copy(update={"roles": roles}))
+
+    # resequence after drops
+    renumbered: list[PlannedAction] = []
+    id_map: dict[str, str] = {}
+    for i, action in enumerate(kept, start=1):
+        new_id = f"a{i}"
+        id_map[action.action_id] = new_id
+        roles = {}
+        for k, v in action.roles.items():
+            if v.action_ref and v.action_ref in id_map:
+                roles[k] = v.model_copy(update={"action_ref": id_map[v.action_ref]})
+            elif v.action_ref and v.action_ref not in id_map:
+                # pointed at dropped action
+                roles[k] = RoleValue(status="missing") if k == "tool_ref" else v
+            else:
+                roles[k] = v
+        renumbered.append(
+            action.model_copy(update={"action_id": new_id, "sequence_order": i, "roles": roles})
+        )
+
+    deps = []
+    for d in output.dependencies:
+        if d.from_action in id_map and d.to_action in id_map:
+            deps.append(
+                ActionDependency(
+                    from_action=id_map[d.from_action],
+                    to_action=id_map[d.to_action],
+                    type=d.type,
+                )
+            )
+
+    unresolved = list(output.unresolved)
+    for r in reasons:
+        key = r.split(":", 1)[0]
+        if key not in unresolved:
+            unresolved.append(key)
+
+    sanitized = PlannerOutput(
+        language=output.language,
+        actions=renumbered,
+        dependencies=deps,
+        unresolved=unresolved,
+    )
+    return sanitized, reasons
 
 
 def _role_covered_by_evidence(text: str, evidence: list[EvidenceSpan]) -> bool:

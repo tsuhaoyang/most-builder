@@ -60,4 +60,5 @@ def test_compute_routing_review_for_gm():
     plan, _ = plan_from_rule_result(result)
     status, reasons = _compute_routing(plan)
     assert status == "review"
-    assert "fallback_rule_based" in reasons
+    # fallback_rule_based 由 orchestrator 附加，不在 _compute_routing 內
+    assert "composite_unknown" not in reasons

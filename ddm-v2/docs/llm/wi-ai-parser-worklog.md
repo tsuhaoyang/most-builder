@@ -17,7 +17,7 @@
 | Phase | 內容 | 狀態 | 開工 | 完成 | Checkpoint |
 |-------|------|------|------|------|------------|
 | L0 | 契約 + AI 表 migration + rule parser 包進新契約 + run 落庫 | `completed` | 2026-08-07 | 2026-08-07 | code-review APPROVE_WITH_NITS |
-| L1 | LLM planner adapter（structured output、cache、fallback） | `not_started` | — | — | — |
+| L1 | LLM planner adapter（structured output、cache、fallback） | `completed` | 2026-08-07 | 2026-08-07 | code-review APPROVE |
 | L2 | Slot linking + deterministic compiler + engine gate | `not_started` | — | — | — |
 | L3 | 審核 UI + review events + feedback candidates | `not_started` | — | — | — |
 | L4 | 批次 parse job（**需 ADR-026/027 accepted**） | `blocked_on_adr` | — | — | — |
@@ -37,10 +37,12 @@
   - 資安完整席位：延後（功能優先）。
 
 ### L1
-- [ ] L1-1 `llm_client.py` + settings 欄位 + `prompts/plan_v1.py`
-- [ ] L1-2 `llm_planner.py` + `validate_planner_output` + fallback 接線
-- [ ] L1-3 injection / dimm / fallback 測試 + mock LLM fixtures
-- [ ] L1 checkpoint
+- [x] L1-1 `llm_client.py` + settings 欄位 + `prompts/plan_v1.py`
+- [x] L1-2 `llm_planner.py` + `validate_planner_output` + fallback 接線（`wi_ai_enabled`）
+- [x] L1-3 injection / dimm / fallback 測試 + FakeLLMClient（minimal：無真模型）
+- [x] L1 checkpoint
+  - 驗證：unit + L1 FakeLLM/unreachable integration 綠；review → REQUEST_CHANGES 後修 P0/P1 → **APPROVE**（[L1 re-check](38db58c0-df15-4693-8e3d-5105d37d3618)）。
+  - 備註：minimal 骨架；prompt few-shot 可後調；drafts 仍空（L2）；security 延後。
 
 ### L2
 - [ ] L2-0 端到端 fixture 5 筆（spec 附錄 A5）
@@ -78,6 +80,7 @@
 | 日期 | Phase | 席位/審查者 | 發現 | 處置 |
 |------|-------|-------------|------|------|
 | 2026-08-07 | L0 | code-reviewer agent | P1：`error` 欄誤用；P2：缺 UNIQUE／abstain／active bundle／legacy 漂移／§7.5 | 全部必修項已修；**APPROVE_WITH_NITS**（optional 測試檔可後補）。資安延後。 |
+| 2026-08-07 | L1 | code-reviewer agent | P1：malformed envelope／sanitize 硬失敗／cache provenance／缺 unreachable test | 全修；**APPROVE**。資安延後。 |
 
 ## 6. 驗收紀錄（spec §0.1）
 
