@@ -1,6 +1,6 @@
 # ADR-027: Domain Evolution 版本軸與 AI Readiness 資料地基
 
-**狀態：** proposed（待 User/架構核可）
+**狀態：** accepted（2026-08-10，User 核可）
 **日期：** 2026-07-31
 **關聯：** [ADR-011](ADR-011-schema-evolution-and-contract-stability.md)（加法演進）、
 [ADR-013](ADR-013-excel-import-architecture.md)（staging）、
@@ -128,5 +128,5 @@ Domain 不可能一次完整預測，會阻塞真實資料與 gold baseline。�
 6. ADR-025 stub submit 的退役時間。
 7. AI bundle/policy 的最終核准角色。
 
-上述項目在實作對應 phase 前另行核可。本 ADR 未 accepted 前，本文所有 proposed schema 均不得被
-視為已定案的 production migration。
+上述項目在實作對應 phase 前另行核可。本 ADR 已於 2026-08-10 accepted；實作仍須依 phase
+切片（L4 先 jobs／import_rows；worksheet revision／policy manifests／outbox 依 roadmap 分批）。

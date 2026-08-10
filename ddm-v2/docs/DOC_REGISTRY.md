@@ -40,14 +40,14 @@
 |------|------|------|
 | [System Architecture v2](architecture/system-architecture-v2-spec.md) | 系統總覽、唯一引擎、rule-set、API 與 LB 邊界 | 🔄 |
 | [Data Model and Storage](architecture/data-model-and-storage-spec.md) | v2 聚合、JSONB/關聯式分工、回放與生命週期 | 🔄 |
-| [Domain Evolution and AI Readiness](architecture/domain-evolution-and-ai-readiness-spec.md) | Revision、policy manifests、method context、outbox、AI/batch 資料地基 | ⏳ ADR-027 |
+| [Domain Evolution and AI Readiness](architecture/domain-evolution-and-ai-readiness-spec.md) | Revision、policy manifests、method context、outbox、AI/batch 資料地基 | 🔄 ADR-027 accepted；分批落地 |
 | [Frontend Data Flow](architecture/frontend-data-flow-spec.md) | DTO、server/client state、calculate/Level 資料流 | 🔄 |
 | [Frontend UX Spec](architecture/frontend-ux-spec.md) | 現行 v2 導覽、工作台與互動 UX 約束 | ✅ ADR-021/022/024 |
 | [RBAC](architecture/rbac-spec.md) | Gateway 身分、本地角色與端點權限 | ✅ |
 | [LB / MOST Auth](architecture/lb-most-auth.md) | 與 LB 共用登入的部署與驗證邊界 | 🔄 |
 | [v2 權威模型與反 Legacy 守則](architecture/v2-authoritative-model-guide.md) | 版本語意、兩層工作台、rule-set 回放與禁止模式 | ✅ |
-| [WI AI Parser](architecture/wi-ai-parser-system-spec.md) | 互動/批次 WI 解析、compiler、審核與 learning loop | ⏳ ADR-026/027 |
-| [WI AI Parser 實作規格](llm/wi-ai-parser-implementation-spec.md) | 實作層：契約、模組、DB、prompt、測試與 L0–L4 分期 | ⏳ 從屬上列 spec |
+| [WI AI Parser](architecture/wi-ai-parser-system-spec.md) | 互動/批次 WI 解析、compiler、審核與 learning loop | 🔄 ADR-026 accepted |
+| [WI AI Parser 實作規格](llm/wi-ai-parser-implementation-spec.md) | 實作層：契約、模組、DB、prompt、測試與 L0–L4 分期 | 🔄 |
 | [WI AI Parser 交付追蹤](llm/wi-ai-parser-worklog.md) | Phase 狀態、卡點、D3 決策、checkpoint 與驗收紀錄 | 🔄 交付期間持續更新 |
 | [WI AI Eval Reports](llm/eval-reports/README.md) | gold plan 評測輸出（`wi_ai_eval.py`） | 🔄 L3+ |
 
@@ -55,9 +55,9 @@
 
 完整狀態與主題索引見 [decisions/README.md](decisions/README.md)。
 
-- **Accepted：** ADR-011～015、ADR-018～025。
-- **Proposed：** ADR-016、ADR-017、ADR-026、ADR-027。
-- ADR-026/027 未 accepted 前，不得把 R1+ proposed schema 當成已授權 migration。
+- **Accepted：** ADR-011～015、ADR-018～027。
+- **Proposed：** ADR-016、ADR-017。
+- ADR-026/027 已於 2026-08-10 accepted；實作仍依 roadmap 分批（L4 jobs 先於 worksheet revision／outbox）。
 
 ## Roadmap
 

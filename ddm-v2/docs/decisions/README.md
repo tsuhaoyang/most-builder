@@ -27,8 +27,8 @@
 | [ADR-023-dictionary-governance-unification.md](ADR-023-dictionary-governance-unification.md) | MOST 字典 active、clone-on-write、認證血緣與回放 | 🟢 accepted |
 | [ADR-024-master-data-vs-dictionary-boundary.md](ADR-024-master-data-vs-dictionary-boundary.md) | 主數據、MOST 字典與業務產出的責任分界 | 🟢 accepted |
 | [ADR-025-import-template-matching-p2.md](ADR-025-import-template-matching-p2.md) | 匯入預覽接 template match，IE 核對後以 active rule-set 重算 | 🟢 accepted |
-| [ADR-026-wi-ai-parser-pipeline-boundary.md](ADR-026-wi-ai-parser-pipeline-boundary.md) | WI AI Parser 獨立 bounded context、DDM deterministic compiler 與 MOST 權威邊界 | 🟡 proposed |
-| [ADR-027-domain-evolution-versioning-and-ai-readiness.md](ADR-027-domain-evolution-versioning-and-ai-readiness.md) | Worksheet revision、Modeling/Level policy、outbox、row-level batch 與 AI readiness | 🟡 proposed |
+| [ADR-026-wi-ai-parser-pipeline-boundary.md](ADR-026-wi-ai-parser-pipeline-boundary.md) | WI AI Parser 獨立 bounded context、DDM deterministic compiler 與 MOST 權威邊界 | 🟢 accepted |
+| [ADR-027-domain-evolution-versioning-and-ai-readiness.md](ADR-027-domain-evolution-versioning-and-ai-readiness.md) | Worksheet revision、Modeling/Level policy、outbox、row-level batch 與 AI readiness | 🟢 accepted |
 
 ## 狀態說明
 

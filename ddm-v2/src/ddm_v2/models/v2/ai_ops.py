@@ -177,3 +177,98 @@ class AiFeedbackCandidate(Base):
             name="status",
         ),
     )
+
+
+class AiParseJob(Base):
+    """批次 parse job（ADR-027 §12.4）。"""
+
+    __tablename__ = "ai_parse_jobs"
+
+    id: Mapped[UUID] = uuid_pk()
+    idempotency_key: Mapped[str] = mapped_column(Text, nullable=False)
+    import_id: Mapped[UUID] = mapped_column(
+        PG_UUID(as_uuid=True),
+        ForeignKey("excel_imports.id", ondelete="CASCADE"),
+        nullable=False,
+    )
+    deployment_bundle_id: Mapped[UUID] = mapped_column(
+        PG_UUID(as_uuid=True),
+        ForeignKey("ai_deployment_bundles.id", ondelete="RESTRICT"),
+        nullable=False,
+    )
+    rule_set_id: Mapped[UUID] = mapped_column(
+        PG_UUID(as_uuid=True),
+        ForeignKey("rule_sets.id", ondelete="RESTRICT"),
+        nullable=False,
+    )
+    projection_hash: Mapped[str | None] = mapped_column(Text)
+    # D3-007：policy manifest 未落地前可 NULL
+    modeling_policy_version_id: Mapped[UUID | None] = mapped_column(PG_UUID(as_uuid=True))
+    status: Mapped[str] = mapped_column(Text, nullable=False, server_default=text("'queued'"))
+    total: Mapped[int] = mapped_column(Integer, nullable=False, server_default=text("0"))
+    processed: Mapped[int] = mapped_column(Integer, nullable=False, server_default=text("0"))
+    succeeded: Mapped[int] = mapped_column(Integer, nullable=False, server_default=text("0"))
+    review_count: Mapped[int] = mapped_column(Integer, nullable=False, server_default=text("0"))
+    failed: Mapped[int] = mapped_column(Integer, nullable=False, server_default=text("0"))
+    requested_by: Mapped[str] = mapped_column(Text, nullable=False)
+    cancel_requested_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    started_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    completed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=text("NOW()")
+    )
+
+    __table_args__ = (
+        UniqueConstraint("idempotency_key", name="uq_ai_parse_jobs_idempotency_key"),
+        CheckConstraint(
+            "status IN ('queued','running','partial','completed','failed','cancelled')",
+            name="status",
+        ),
+        sa.Index("ix_ai_parse_jobs_import_id", "import_id"),
+    )
+
+
+class AiParseJobItem(Base):
+    """Job 內單列 work item（lease／retry）。"""
+
+    __tablename__ = "ai_parse_job_items"
+
+    id: Mapped[UUID] = uuid_pk()
+    job_id: Mapped[UUID] = mapped_column(
+        PG_UUID(as_uuid=True),
+        ForeignKey("ai_parse_jobs.id", ondelete="CASCADE"),
+        nullable=False,
+    )
+    import_row_id: Mapped[UUID] = mapped_column(
+        PG_UUID(as_uuid=True),
+        ForeignKey("import_rows.id", ondelete="CASCADE"),
+        nullable=False,
+    )
+    ai_parse_run_id: Mapped[UUID | None] = mapped_column(
+        PG_UUID(as_uuid=True),
+        ForeignKey("ai_parse_runs.id", ondelete="SET NULL"),
+    )
+    status: Mapped[str] = mapped_column(Text, nullable=False, server_default=text("'queued'"))
+    attempt_count: Mapped[int] = mapped_column(Integer, nullable=False, server_default=text("0"))
+    available_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=text("NOW()")
+    )
+    lease_owner: Mapped[str | None] = mapped_column(Text)
+    lease_expires_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    last_error: Mapped[dict | None] = mapped_column(JSONB)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=text("NOW()")
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=text("NOW()")
+    )
+
+    __table_args__ = (
+        UniqueConstraint("job_id", "import_row_id", name="uq_ai_parse_job_items_job_row"),
+        CheckConstraint(
+            "status IN ("
+            "'queued','leased','running','review','ready','failed','cancelled')",
+            name="status",
+        ),
+        sa.Index("ix_ai_parse_job_items_claim", "status", "available_at"),
+    )

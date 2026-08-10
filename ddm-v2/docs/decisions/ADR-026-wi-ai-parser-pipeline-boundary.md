@@ -1,6 +1,6 @@
 # ADR-026: WI AI Parser 獨立管線與 MOST 權威邊界
 
-**狀態：** proposed（待 User/架構核可）
+**狀態：** accepted（2026-08-10，User 核可）
 **日期：** 2026-07-30
 **關聯：** [ADR-013](ADR-013-excel-import-architecture.md)（批次 staging）、
 [ADR-014](ADR-014-v3-dictionary-as-value-authority.md)（值權威）、

@@ -20,7 +20,7 @@
 | L1 | LLM planner adapter（structured output、cache、fallback） | `completed` | 2026-08-07 | 2026-08-07 | code-review APPROVE |
 | L2 | Slot linking + deterministic compiler + engine gate | `completed` | 2026-08-07 | 2026-08-07 | code-review APPROVE_WITH_NITS |
 | L3 | 審核 UI + review events + feedback candidates | `completed` | 2026-08-07 | 2026-08-10 | impl checkpoint；§0.1 現場 demo 待人 |
-| L4 | 批次 parse job（**需 ADR-026/027 accepted**） | `blocked_on_adr` | — | — | — |
+| L4 | 批次 parse job（**需 ADR-026/027 accepted**） | `completed` | 2026-08-10 | 2026-08-10 | code-review APPROVE |
 
 狀態值：`not_started / in_progress / blocked / completed / blocked_on_adr`
 
@@ -63,6 +63,17 @@
   - L3-2 備註：minimal — drafts／採用／accept_plan／stale／multi_action。
   - L3-3 備註：`tests/gold/wi_plans/` seed + `scripts/wi_ai_eval.py` + `docs/llm/eval-reports/`。
 
+### L4（D3-007 jobs-first）
+- [x] L4-0 ADR-026／027 → accepted；worklog／registry
+- [x] L4-1 `ImportRow` + `AiParseJob`／`AiParseJobItem` + migration `v2_0028`
+- [x] L4-2 `parse_job_service`（materialize／create／claim SKIP LOCKED／tick／cancel）+ `parse_interactive(source_kind=import_row)`
+- [x] L4-3 API：`POST/GET .../parse-jobs`、`.../tick`、`.../cancel`（analyst+；不改 map/submit）
+- [x] L4-4 unit：`test_parse_job_service`；integration：`test_parse_jobs_api`
+- [x] L4-5 `alembic upgrade head` + integration 綠 + checkpoint review
+  - 驗證：`v2_0027→v2_0028`；unit+integration **9 passed**；review [L4 WI AI code review](77df24e2-19a1-47cb-836a-6b1c174d2f79) → REQUEST_CHANGES 後修 P1 → **APPROVE**。
+  - R1 revision／policy／outbox 另工（D3-007）；資安延後。
+  - agent shell 無 host docker/network（BLK-003 resolved via 使用者終端）。
+
 ## 3. Blocker Log（卡點紀錄）
 
 > 格式：現象寫「發生了什麼」，處置寫「為什麼這樣解」。重開同一問題＝新編號＋引用舊編號。
@@ -70,6 +81,8 @@
 | 編號 | 日期 | Phase | 現象 | 影響範圍 | 分級 | 處置與理由 | 狀態 |
 |------|------|-------|------|----------|------|------------|------|
 | BLK-001 | 2026-08-07 | L0 | 本機 Docker daemon 未啟動，無法跑 `alembic upgrade`／integration（需 DATABASE_URL） | L0 退出條件中的 migration/integration 驗收 | D3 | 啟動 docker compose db 後：`alembic upgrade head`（v2_0025→v2_0026）成功；`pytest tests/integration/test_nlp_api.py` → 9 passed。 | resolved |
+| BLK-002 | 2026-08-10 | L4 | ADR-026／027 仍為 **proposed**；L4 硬條件含 accepted＋worksheet revision（R1）＋`import_rows`／`ai_parse_jobs` proposed schema | 不得開 L4 migration／worker／改 ADR-025 submit | D1 | 2026-08-10 User 核可兩 ADR → accepted。R1 revision／policy manifest／outbox 仍分批；L4 先 jobs 最小切片（D3-007）。 | resolved |
+| BLK-003 | 2026-08-10 | L4 | Docker／DB：agent shell 無 sock／連不到 5432；使用者一般 WSL 可連 | L4-5 曾無法在 agent 內驗收 | D3 | 使用者終端：`alembic upgrade` v2_0028 + pytest 7 passed。agent 與 host 網路隔離保留為環境限制。 | resolved |
 
 ## 4. Decision Log（D3 實作級決策）
 
@@ -83,6 +96,7 @@
 | D3-004 | 2026-08-07 | L3 | OpenAPI nl-draft 200 為任意物件 | 等後端補 schema 再 gen:api vs 前端 `aiTypes.ts` 對齊 contracts | 採 aiTypes.ts；升 OpenAPI 後再 gen:api 並改 import |
 | D3-005 | 2026-08-07 | L3 | A6 信心三檔缺後端 band 欄 | 前端重算 vs 暫不顯示 | 暫顯示「可採用／待審」；A6 band 等後端輸出後再接 |
 | D3-006 | 2026-08-10 | L3 | gold 案例尚無 IE 正式核准 | 空目錄等 IE vs A5 fixture 作 `approved_by=seed` | 先 seed 3 筆跑通 eval；IE 核准後改標籤不改 TMU 鎖點（除非 rule-set 變更） |
+| D3-007 | 2026-08-10 | L4 | L4 全量含 R1 revision／policy／outbox | 一次做完 vs jobs-first | User 選 jobs-first：`import_rows`+`ai_parse_jobs/items`+API+tick worker；`modeling_policy_version_id` 可 NULL；不改 ADR-025 submit；R1 另工 |
 
 ## 5. Checkpoint 紀錄
 
@@ -93,6 +107,7 @@
 | 2026-08-07 | L2 | code-reviewer agent | P1：L0 stub／auto 忽略 quantity_policy／缺 engine_gate 覆蓋 | 全修；**APPROVE_WITH_NITS**。資安延後。 |
 | 2026-08-07 | L3-2 | code-reviewer agent | P0 stale 被 setResponse 清掉；P1 前端假 A6 檔位 | 全修；**APPROVE**。 |
 | 2026-08-10 | L3 | coordinator | L3-1～L3-3 實作出口彙整 | **impl checkpoint**：自動化證據齊；§0.1 現場 demo／Playwright／資安仍 open。 |
+| 2026-08-10 | L4 | code-reviewer agent | P1：bundle pin 未用於 tick／計數非原子／缺 lease reclaim | 全修；**APPROVE**（[L4 review](77df24e2-19a1-47cb-836a-6b1c174d2f79)）。資安延後。 |
 
 ## 6. 驗收紀錄（spec §0.1）
 

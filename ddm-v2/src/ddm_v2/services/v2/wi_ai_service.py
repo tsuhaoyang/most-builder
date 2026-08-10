@@ -183,8 +183,16 @@ async def parse_interactive(
     context: ParseContext | None = None,
     worksheet_id: UUID | None = None,
     bundle_code: str | None = None,
+    source_kind: str = "interactive",
+    import_id: UUID | None = None,
+    import_row_index: int | None = None,
 ) -> tuple[ParseRunResult, dict]:
-    """回傳 (ParseRunResult, legacy_nl_draft_dict)。"""
+    """回傳 (ParseRunResult, legacy_nl_draft_dict)。
+
+    ``source_kind='import_row'`` 時寫入 import_id／import_row_index（L4）。
+    """
+    if source_kind not in {"interactive", "import_row"}:
+        raise ValueError(f"invalid source_kind: {source_kind}")
     t0 = time.perf_counter()
     resolved_bundle = _resolve_bundle_code(bundle_code)
     ctx = context or ParseContext(rule_set_code=rule_set_code)
@@ -200,7 +208,7 @@ async def parse_interactive(
     context_snapshot = ctx.model_dump()
     context_hash = _sha256(_canonical_json(context_snapshot))
     # D3：hash 使用 bundle.code（穩定字串）而非 UUID；與 settings/bundle seed 對齊。
-    input_hash = _sha256("|".join([norm, context_hash, bundle.code, rule_set_code]))
+    input_hash = _sha256("|".join([norm, context_hash, bundle.code, rule_set_code, source_kind]))
 
     existing = await _find_cached_run(session, input_hash=input_hash, bundle_id=bundle.id)
     if existing is not None:
@@ -217,10 +225,10 @@ async def parse_interactive(
     rule_result = parser.parse(text, rule_set_code=rule_set_code)
 
     source_ref = SourceRef(
-        kind="interactive",
+        kind="import_row" if source_kind == "import_row" else "interactive",
         worksheet_id=str(worksheet_id) if worksheet_id else None,
-        import_id=None,
-        import_row_index=None,
+        import_id=str(import_id) if import_id else None,
+        import_row_index=import_row_index,
     )
     rule_plan, rule_candidates = plan_from_rule_result(rule_result, source_ref=source_ref)
 
@@ -327,10 +335,10 @@ async def parse_interactive(
     run_id = uuid.uuid4()
     run = AiParseRun(
         id=run_id,
-        source_kind="interactive",
+        source_kind=source_kind,
         worksheet_id=worksheet_id,
-        import_id=None,
-        import_row_index=None,
+        import_id=import_id,
+        import_row_index=import_row_index,
         raw_text=text,
         normalized_text=norm,
         input_hash=input_hash,
