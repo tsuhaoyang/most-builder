@@ -49,6 +49,7 @@
 | [WI AI Parser](architecture/wi-ai-parser-system-spec.md) | 互動/批次 WI 解析、compiler、審核與 learning loop | ⏳ ADR-026/027 |
 | [WI AI Parser 實作規格](llm/wi-ai-parser-implementation-spec.md) | 實作層：契約、模組、DB、prompt、測試與 L0–L4 分期 | ⏳ 從屬上列 spec |
 | [WI AI Parser 交付追蹤](llm/wi-ai-parser-worklog.md) | Phase 狀態、卡點、D3 決策、checkpoint 與驗收紀錄 | 🔄 交付期間持續更新 |
+| [WI AI Eval Reports](llm/eval-reports/README.md) | gold plan 評測輸出（`wi_ai_eval.py`） | 🔄 L3+ |
 
 ## 架構決策
 

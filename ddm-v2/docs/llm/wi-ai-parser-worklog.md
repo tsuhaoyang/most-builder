@@ -19,7 +19,7 @@
 | L0 | 契約 + AI 表 migration + rule parser 包進新契約 + run 落庫 | `completed` | 2026-08-07 | 2026-08-07 | code-review APPROVE_WITH_NITS |
 | L1 | LLM planner adapter（structured output、cache、fallback） | `completed` | 2026-08-07 | 2026-08-07 | code-review APPROVE |
 | L2 | Slot linking + deterministic compiler + engine gate | `completed` | 2026-08-07 | 2026-08-07 | code-review APPROVE_WITH_NITS |
-| L3 | 審核 UI + review events + feedback candidates | `in_progress` | 2026-08-07 | — | — |
+| L3 | 審核 UI + review events + feedback candidates | `completed` | 2026-08-07 | 2026-08-10 | impl checkpoint；§0.1 現場 demo 待人 |
 | L4 | 批次 parse job（**需 ADR-026/027 accepted**） | `blocked_on_adr` | — | — | — |
 
 狀態值：`not_started / in_progress / blocked / completed / blocked_on_adr`
@@ -56,9 +56,12 @@
 ### L3
 - [x] L3-1 `ai_review.py` + `ai_review_service`（events + candidates）+ 測試
 - [x] L3-2 前端 `AiDraftPanel` 等 + typecheck/build（Playwright e2e 可後補）
-- [ ] L3-3 gold plans 目錄與 eval script 骨架
-- [ ] L3 checkpoint + 使用者驗收（spec §0.1 五條逐條演示）
-  - L3-2 備註：minimal — 顯示 drafts／單筆採用／POST accept_plan／stale／multi_action 警告；evidence/top-K 鍵盤選延後。`aiTypes.ts` 暫作契約（OpenAPI gen:api 待補）。
+- [x] L3-3 gold plans 目錄與 eval script 骨架
+- [x] L3 checkpoint（實作出口；§0.1 現場五條待人確認）
+  - 驗證：L3-1 review API；L3-2 typecheck/build＋APPROVE；L3-3 `test_gold_plans` 4 passed、`wi_ai_eval` 3/3、core_logic golden 全綠。
+  - 缺口：Playwright e2e／A6 band／正式 IE gold 核准／資安席位／OpenAPI gen:api。
+  - L3-2 備註：minimal — drafts／採用／accept_plan／stale／multi_action。
+  - L3-3 備註：`tests/gold/wi_plans/` seed + `scripts/wi_ai_eval.py` + `docs/llm/eval-reports/`。
 
 ## 3. Blocker Log（卡點紀錄）
 
@@ -79,6 +82,7 @@
 | D3-003 | 2026-08-07 | L0 | cache hit 時 legacy slots 重算或還原 | 重算（會與 synonym 漂移） vs 自 run 還原 | 自 run 的 slot_candidates 還原（legacy_from_run_snapshot），保證 ai.* 與 legacy 一致 |
 | D3-004 | 2026-08-07 | L3 | OpenAPI nl-draft 200 為任意物件 | 等後端補 schema 再 gen:api vs 前端 `aiTypes.ts` 對齊 contracts | 採 aiTypes.ts；升 OpenAPI 後再 gen:api 並改 import |
 | D3-005 | 2026-08-07 | L3 | A6 信心三檔缺後端 band 欄 | 前端重算 vs 暫不顯示 | 暫顯示「可採用／待審」；A6 band 等後端輸出後再接 |
+| D3-006 | 2026-08-10 | L3 | gold 案例尚無 IE 正式核准 | 空目錄等 IE vs A5 fixture 作 `approved_by=seed` | 先 seed 3 筆跑通 eval；IE 核准後改標籤不改 TMU 鎖點（除非 rule-set 變更） |
 
 ## 5. Checkpoint 紀錄
 
@@ -87,16 +91,18 @@
 | 2026-08-07 | L0 | code-reviewer agent | P1：`error` 欄誤用；P2：缺 UNIQUE／abstain／active bundle／legacy 漂移／§7.5 | 全部必修項已修；**APPROVE_WITH_NITS**（optional 測試檔可後補）。資安延後。 |
 | 2026-08-07 | L1 | code-reviewer agent | P1：malformed envelope／sanitize 硬失敗／cache provenance／缺 unreachable test | 全修；**APPROVE**。資安延後。 |
 | 2026-08-07 | L2 | code-reviewer agent | P1：L0 stub／auto 忽略 quantity_policy／缺 engine_gate 覆蓋 | 全修；**APPROVE_WITH_NITS**。資安延後。 |
+| 2026-08-07 | L3-2 | code-reviewer agent | P0 stale 被 setResponse 清掉；P1 前端假 A6 檔位 | 全修；**APPROVE**。 |
+| 2026-08-10 | L3 | coordinator | L3-1～L3-3 實作出口彙整 | **impl checkpoint**：自動化證據齊；§0.1 現場 demo／Playwright／資安仍 open。 |
 
 ## 6. 驗收紀錄（spec §0.1）
 
 | # | 判準 | 演示日期 | 結果 | 備註 |
 |---|------|----------|------|------|
-| 1 | 多 action 拆解＋top-K＋TMU 來自引擎 | — | — | — |
-| 2 | 「拿起 DIMM」不補步驟、missing、review | — | — | — |
-| 3 | replace_candidate review event 可查 | — | — | — |
-| 4 | LLM 關機 fallback 無損核心 | — | — | — |
-| 5 | 黃金錨點全綠（GM=28、CM=29） | — | — | — |
+| 1 | 多 action 拆解＋top-K＋TMU 來自引擎 | 2026-08-10 | partial | 自動：gold g02＋L2 multi_action（TMU 引擎）；top-K UI 延後 |
+| 2 | 「拿起 DIMM」不補步驟、missing、review | 2026-08-10 | pass* | 自動：gold g01 boundary＋routing review（*缺現場 UI 演示） |
+| 3 | replace_candidate review event 可查 | 2026-08-10 | pass* | 自動：`test_ai_review_api` synonym candidate（*缺現場 UI） |
+| 4 | LLM 關機 fallback 無損核心 | 2026-08-07 | pass | integration unreachable／disabled |
+| 5 | 黃金錨點全綠（GM=28、CM=29） | 2026-08-10 | pass | `scripts/core_logic/run_all.py` 全綠 |
 
 ## 7. 待決事項狀態（鏡射 spec §19，裁決後更新）
 

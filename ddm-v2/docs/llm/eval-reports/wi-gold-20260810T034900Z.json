@@ -1,0 +1,91 @@
+{
+  "report_kind": "wi-gold-eval",
+  "gold_schema_version": "wi-gold-v1",
+  "generated_at": "2026-08-10T03:49:00.605129+00:00",
+  "gold_dir": "/home/howard/wsl_workspace/mini-most/most-builder/ddm-v2/tests/gold/wi_plans",
+  "summary": {
+    "total": 3,
+    "passed": 3,
+    "failed": 0
+  },
+  "cases": [
+    {
+      "case_id": "g01_acquire_dimm",
+      "ok": true,
+      "action_count": 1,
+      "routing_status": "review",
+      "routing_reasons": [
+        "next_operation"
+      ],
+      "cycle_checks": [
+        {
+          "action_id": "a1",
+          "ok": true,
+          "errors": []
+        }
+      ],
+      "errors": [],
+      "metrics": {
+        "action_count": 1,
+        "complete_drafts": 1,
+        "engine_ok": 1,
+        "routing_status": "review",
+        "boundary": "acquire_only_no_invented_steps"
+      }
+    },
+    {
+      "case_id": "g02_screwdriver_screw_x2",
+      "ok": true,
+      "action_count": 2,
+      "routing_status": "review",
+      "routing_reasons": [
+        "next_operation",
+        "quantity_policy_review"
+      ],
+      "cycle_checks": [
+        {
+          "action_id": "a1",
+          "ok": true,
+          "errors": []
+        },
+        {
+          "action_id": "a2",
+          "ok": true,
+          "errors": []
+        }
+      ],
+      "errors": [],
+      "metrics": {
+        "action_count": 2,
+        "complete_drafts": 2,
+        "engine_ok": 2,
+        "routing_status": "review",
+        "boundary": "multi_action_gm_cm"
+      }
+    },
+    {
+      "case_id": "g05_composite_unknown",
+      "ok": true,
+      "action_count": 1,
+      "routing_status": "abstain",
+      "routing_reasons": [
+        "composite_unknown"
+      ],
+      "cycle_checks": [
+        {
+          "action_id": "a1",
+          "ok": true,
+          "errors": []
+        }
+      ],
+      "errors": [],
+      "metrics": {
+        "action_count": 1,
+        "complete_drafts": 0,
+        "engine_ok": 0,
+        "routing_status": "abstain",
+        "boundary": "composite_unknown_abstain"
+      }
+    }
+  ]
+}

@@ -1,0 +1,55 @@
+{
+  "id": "g05_composite_unknown",
+  "source_text": "依照SOP完成其餘作業",
+  "notes": "composite_unknown → abstain、不編譯（種子）",
+  "plan": {
+    "schema_version": "wi-plan-v1",
+    "source_text": "依照SOP完成其餘作業",
+    "normalized_text": "依照sop完成其餘作業",
+    "language": "zh",
+    "source_ref": {
+      "kind": "interactive",
+      "worksheet_id": null,
+      "import_id": null,
+      "import_row_index": null
+    },
+    "actions": [
+      {
+        "action_id": "a1",
+        "action_type": "composite_unknown",
+        "sequence_order": 1,
+        "roles": {},
+        "evidence": [
+          {
+            "start": 0,
+            "end": 12,
+            "text": "依照sop完成其餘作業"
+          }
+        ],
+        "notes": null
+      }
+    ],
+    "dependencies": [],
+    "unresolved": [
+      "composite_unknown"
+    ]
+  },
+  "synthetic_synonyms": [],
+  "expected_cycles": [
+    {
+      "action_id": "a1",
+      "complete": false,
+      "cycle": null,
+      "issues_contain": [
+        "composite_unknown"
+      ]
+    }
+  ],
+  "gold_schema_version": "wi-gold-v1",
+  "approved_by": "seed",
+  "boundary": "composite_unknown_abstain",
+  "expected": {
+    "action_count": 1,
+    "routing_status": "abstain"
+  }
+}
