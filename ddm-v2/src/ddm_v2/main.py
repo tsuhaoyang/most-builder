@@ -52,6 +52,7 @@ from ddm_v2.exceptions import (
     ValidationError,
 )
 from ddm_v2.schemas.common import ErrorDetail, ErrorResponse
+from ddm_v2.services.v2.policy_service import NoDefaultPolicy
 from ddm_v2.services.v2.rule_set_service import NoActiveRuleSet
 from ddm_v2.settings import Settings, get_settings
 
@@ -240,6 +241,14 @@ def _register_exception_handlers(app: FastAPI) -> None:
         return JSONResponse(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             content=ErrorResponse(error=ErrorDetail(code="NO_ACTIVE_RULE_SET", message=str(exc))).model_dump(),
+        )
+
+    @app.exception_handler(NoDefaultPolicy)
+    async def no_default_policy_handler(request: Request, exc: NoDefaultPolicy) -> JSONResponse:
+        """R2a：缺 factory default published policy＝設定錯誤 → 500，不得靜默 NULL。"""
+        return JSONResponse(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            content=ErrorResponse(error=ErrorDetail(code="NO_DEFAULT_POLICY", message=str(exc))).model_dump(),
         )
 
     @app.exception_handler(IntegrityError)

@@ -13,8 +13,10 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 
 import ddm_v2.models.v2 as M
+from ddm_v2.seed.v2.policy_seed import seed_policy_factory_v1
 from ddm_v2.seed.v2.rule_set_seed import seed_rule_set_factory_v1
 from ddm_v2.seed.v2.rule_set_seed_v2 import seed_rule_set_factory_v2
+from ddm_v2.services.v2.policy_service import LEVEL_FACTORY_V1_ID, MODELING_FACTORY_V1_ID
 from ddm_v2.services.v2.rule_set_service import activate as activate_rule_set
 
 # 固定 UUID（demo 可引用）
@@ -67,6 +69,11 @@ async def main() -> None:
         else:
             print("active rule_set exists:", existing_active.code)
 
+        # R2a：factory policy V1（migration 通常已種；此處 idempotent）
+        mp, lp = seed_policy_factory_v1(s)
+        await s.flush()
+        print("policy manifests:", mp.name, lp.name)
+
         async def ensure(model, pk, **kw):
             obj = await s.get(model, pk)
             if obj is None:
@@ -79,7 +86,16 @@ async def main() -> None:
         await ensure(M.Product, PRODUCT, site_id=SITE, external_code="PRD0001", name_zh="示範產品")
         await ensure(M.Sku, SKU, product_id=PRODUCT, sku_code="HDL5X_DEMO", name_zh="示範機種")
         await ensure(M.ProcessVersion, VERSION, sku_id=SKU, version_no="v1", status="draft")
-        await ensure(M.MostWorksheet, WORKSHEET, process_version_id=VERSION, model_label="HDL5X_DEMO", analyst="demo", default_rule_set_id=rs.id)
+        await ensure(
+            M.MostWorksheet,
+            WORKSHEET,
+            process_version_id=VERSION,
+            model_label="HDL5X_DEMO",
+            analyst="demo",
+            default_rule_set_id=rs.id,
+            modeling_policy_version_id=MODELING_FACTORY_V1_ID,
+            level_policy_version_id=LEVEL_FACTORY_V1_ID,
+        )
         await ensure(M.WorkVocabItem, V_OBJ, external_code="CMP0001", kind="component", name_zh="DIMM 內存")
         await ensure(M.WorkVocabItem, V_FROM, external_code="LOC0001", kind="from", name_zh="料架")
         await ensure(M.WorkVocabItem, V_TO, external_code="LOC0002", kind="to", name_zh="工作台")

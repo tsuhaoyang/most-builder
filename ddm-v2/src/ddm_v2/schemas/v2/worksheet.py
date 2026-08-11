@@ -59,6 +59,18 @@ class DefaultRuleSetInfo(BaseModel):
     is_active: bool
 
 
+class PolicyVersionInfo(BaseModel):
+    """Worksheet 建立／clone 時 snapshot 的 policy 現況（R2a；顯示／追溯，不進 MOST 計算）。"""
+
+    id: uuid.UUID
+    code: str
+    version_no: int
+    name: str
+    status: str  # draft / published / retired
+    validator_revision: str | None = None
+    output_contract_version: str | None = None
+
+
 class WorksheetReadOut(BaseModel):
     worksheet_id: uuid.UUID
     status: str
@@ -71,6 +83,9 @@ class WorksheetReadOut(BaseModel):
     # ADR-023 §3.4-4：default_rule_set_id 是建立時凍結的快照；此欄帶其現況狀態供警示徽章。
     # default_rule_set_id 可為 NULL → 此欄為 null，前端不顯示徽章。
     default_rule_set: DefaultRuleSetInfo | None = None
+    # R2a：policy snapshot（遷移前可能 null）
+    modeling_policy: PolicyVersionInfo | None = None
+    level_policy: PolicyVersionInfo | None = None
     # R1 / ADR-027
     revision_no: int = 1
     content_hash: str | None = None

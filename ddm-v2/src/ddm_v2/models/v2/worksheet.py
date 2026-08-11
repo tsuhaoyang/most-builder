@@ -74,6 +74,13 @@ class MostWorksheet(Base, TimestampMixin):
     default_rule_set_id: Mapped[UUID | None] = mapped_column(
         PG_UUID(as_uuid=True), ForeignKey("rule_sets.id", ondelete="RESTRICT")
     )
+    # R2a / ADR-027：policy snapshot（nullable 過渡；新建應立即綁定 factory default）
+    modeling_policy_version_id: Mapped[UUID | None] = mapped_column(
+        PG_UUID(as_uuid=True), ForeignKey("modeling_policy_versions.id", ondelete="RESTRICT")
+    )
+    level_policy_version_id: Mapped[UUID | None] = mapped_column(
+        PG_UUID(as_uuid=True), ForeignKey("level_policy_versions.id", ondelete="RESTRICT")
+    )
     allowance_percent: Mapped[float | None] = mapped_column(Numeric(6, 3))  # 工序表級寬放%（data-model §2.5）
     status: Mapped[str] = mapped_column(Text, nullable=False, server_default=text("'draft'"))
     # R1 / ADR-027：內容 revision 樂觀鎖

@@ -15,6 +15,7 @@ from typing import Any
 from sqlalchemy import delete, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from ddm_v2.models.v2.policy import LevelPolicyVersion, ModelingPolicyVersion
 from ddm_v2.models.v2.rule_set import RuleSet
 from ddm_v2.models.v2.vocab import WorkVocabItem
 from ddm_v2.models.v2.worksheet import LevelEntry, MostCycle, MostWorksheet, ProcessVersion, WiRow
@@ -25,6 +26,7 @@ from ddm_v2.most_engine.rule_set_data import TMU_TO_SEC
 from ddm_v2.schemas.v2.most import cycle_in_to_engine, resolve_cycle_rule_set
 from ddm_v2.schemas.v2.worksheet import WorksheetSaveIn
 from ddm_v2.services.v2.audit_service import log_audit
+from ddm_v2.services.v2.policy_service import level_summary, modeling_summary
 from ddm_v2.services.v2.rule_set_service import get_active_rule_set_code
 from ddm_v2.services.v2.worksheet_revision import (
     bump_worksheet_revision,
@@ -240,9 +242,19 @@ async def read_worksheet(session: AsyncSession, worksheet_id: uuid.UUID) -> dict
         drs = await session.get(RuleSet, ws.default_rule_set_id)
         if drs is not None:
             default_rule_set = {"code": drs.code, "status": drs.status, "is_active": drs.is_active}
+    modeling_policy = None
+    if ws.modeling_policy_version_id is not None:
+        mp = await session.get(ModelingPolicyVersion, ws.modeling_policy_version_id)
+        modeling_policy = modeling_summary(mp)
+    level_policy = None
+    if ws.level_policy_version_id is not None:
+        lp = await session.get(LevelPolicyVersion, ws.level_policy_version_id)
+        level_policy = level_summary(lp)
     return {"worksheet_id": worksheet_id, "status": ws.status, "rows": rows, "total_tmu": total,
             "normal_seconds": normal_seconds, "allowance_percent": allowance, "standard_seconds": standard_seconds,
             "default_rule_set": default_rule_set,
+            "modeling_policy": modeling_policy,
+            "level_policy": level_policy,
             "revision_no": int(ws.revision_no or 1),
             "content_hash": ws.content_hash,
             "last_edited_by": ws.last_edited_by,
@@ -301,6 +313,8 @@ async def clone_worksheet(session: AsyncSession, worksheet_id: uuid.UUID, actor:
                             status="draft", source_version_id=pv.id, created_by=actor)
     new_ws = MostWorksheet(id=uuid.uuid4(), process_version_id=new_pv.id, model_label=ws.model_label,
                            analyst=ws.analyst, study_date=ws.study_date, default_rule_set_id=ws.default_rule_set_id,
+                           modeling_policy_version_id=ws.modeling_policy_version_id,
+                           level_policy_version_id=ws.level_policy_version_id,
                            allowance_percent=ws.allowance_percent, status="draft",
                            revision_no=1, content_hash=None,
                            last_edited_by=actor, last_edited_at=datetime.now(timezone.utc))

@@ -78,3 +78,6 @@ class WorksheetCreateOut(BaseModel):
     worksheet_id: uuid.UUID
     version_no: str
     status: str
+    revision_no: int = 1
+    modeling_policy_version_id: uuid.UUID | None = None
+    level_policy_version_id: uuid.UUID | None = None

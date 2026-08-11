@@ -24,6 +24,7 @@ from ddm_v2.models.v2.import_staging import ExcelImport, ImportProfile, ImportRo
 from ddm_v2.models.v2.motion_module import MotionModule, MotionModuleVersion
 from ddm_v2.models.v2.motion_template import MotionTemplate
 from ddm_v2.models.v2.org import Product, Site, Sku
+from ddm_v2.models.v2.policy import LevelPolicyVersion, ModelingPolicyVersion
 from ddm_v2.models.v2.rule_set import RuleSet
 from ddm_v2.models.v2.rule_set_tables import (
     RuleABand,
@@ -95,4 +96,6 @@ __all__ = [
     "AiFeedbackCandidate",
     "AiParseJob",
     "AiParseJobItem",
+    "ModelingPolicyVersion",
+    "LevelPolicyVersion",
 ]

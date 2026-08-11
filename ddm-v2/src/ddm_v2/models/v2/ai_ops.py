@@ -205,8 +205,11 @@ class AiParseJob(Base):
         nullable=False,
     )
     projection_hash: Mapped[str | None] = mapped_column(Text)
-    # D3-007：policy manifest 未落地前可 NULL
-    modeling_policy_version_id: Mapped[UUID | None] = mapped_column(PG_UUID(as_uuid=True))
+    # R2a：可 NULL（job 未 pin）；有值則 RESTRICT 回放
+    modeling_policy_version_id: Mapped[UUID | None] = mapped_column(
+        PG_UUID(as_uuid=True),
+        ForeignKey("modeling_policy_versions.id", ondelete="RESTRICT"),
+    )
     status: Mapped[str] = mapped_column(Text, nullable=False, server_default=text("'queued'"))
     total: Mapped[int] = mapped_column(Integer, nullable=False, server_default=text("0"))
     processed: Mapped[int] = mapped_column(Integer, nullable=False, server_default=text("0"))

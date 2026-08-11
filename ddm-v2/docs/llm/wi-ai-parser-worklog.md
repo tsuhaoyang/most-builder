@@ -22,6 +22,7 @@
 | L3 | 審核 UI + review events + feedback candidates | `completed` | 2026-08-07 | 2026-08-10 | impl checkpoint；§0.1 現場 demo 待人 |
 | L4 | 批次 parse job（**需 ADR-026/027 accepted**） | `completed` | 2026-08-10 | 2026-08-10 | code-review APPROVE |
 | R1 | Worksheet revision 樂觀鎖（ADR-027 §2） | `completed` | 2026-08-11 | 2026-08-11 | code-review APPROVE_WITH_NITS |
+| R2a | Policy manifests（modeling／Level）+ worksheet FK（ADR-027 §3） | `completed` | 2026-08-11 | 2026-08-11 | code-review APPROVE_WITH_NITS |
 
 狀態值：`not_started / in_progress / blocked / completed / blocked_on_adr`
 
@@ -85,6 +86,15 @@
   - P0/P1 後修：AI cache key 含 ws:rev；Import/from-module `base_revision`；legacy adopt stale gate；`source_revision` BigInteger。
   - checkpoint：[R1 review](ca934a12-62e5-4670-a022-29c7602c86a7) → **APPROVE_WITH_NITS**（nit：legacy null revision；import/CAS／cache bust 測試可後補）。資安延後。
 
+### R2a（policy manifests）
+- [x] R2a-1 migration `v2_0030`：`modeling_policy_versions`／`level_policy_versions`；worksheet nullable FKs；seed＋backfill factory V1；`ai_parse_jobs` FK
+- [x] R2a-2 resolver：`(MODELING_FACTORY|LEVEL_FACTORY, version_no=1, published)`；缺則 `NoDefaultPolicy`；create／clone／read 接線
+- [x] R2a-3 unit `test_policy_manifest`＋integration `test_policy_manifest_api`
+- [x] R2a-4 `alembic upgrade` + pytest + checkpoint（待使用者終端）
+  - 驗證：`v2_0029→v2_0030`；unit+policy_api+worksheet **17 passed**。
+  - checkpoint：[R2a review](52d1b490-4ada-41e8-815d-691c7fd124ed) → **APPROVE_WITH_NITS**（ORM index 已補；fail-closed 測試可後補）。資安延後。
+  - **非本切片**：R2b `level_validation_runs`／publish gate／Level validate 讀 policy。
+
 ## 3. Blocker Log（卡點紀錄）
 
 > 格式：現象寫「發生了什麼」，處置寫「為什麼這樣解」。重開同一問題＝新編號＋引用舊編號。
@@ -120,6 +130,7 @@
 | 2026-08-10 | L3 | coordinator | L3-1～L3-3 實作出口彙整 | **impl checkpoint**：自動化證據齊；§0.1 現場 demo／Playwright／資安仍 open。 |
 | 2026-08-10 | L4 | code-reviewer agent | P1：bundle pin 未用於 tick／計數非原子／缺 lease reclaim | 全修；**APPROVE**（[L4 review](77df24e2-19a1-47cb-836a-6b1c174d2f79)）。資安延後。 |
 | 2026-08-11 | R1 | code-reviewer agent | P0 AI cache 未含 revision；P1 Import/from-module 無 CAS／legacy bypass／Integer vs BigInt | 全修；**APPROVE_WITH_NITS**（[R1 review](ca934a12-62e5-4670-a022-29c7602c86a7)）。資安延後。 |
+| 2026-08-11 | R2a | code-reviewer agent | P2：ORM index／fail-closed 測試／CreateOut nullable | ORM index 已補；**APPROVE_WITH_NITS**（[R2a review](52d1b490-4ada-41e8-815d-691c7fd124ed)）。 |
 
 ## 6. 驗收紀錄（spec §0.1）
 
