@@ -203,9 +203,10 @@ def _register_exception_handlers(app: FastAPI) -> None:
 
     @app.exception_handler(ValidationError)
     async def validation_error_handler(request: Request, exc: ValidationError) -> JSONResponse:
+        error_code = (exc.detail or {}).get("code") or "VALIDATION_ERROR"
         return JSONResponse(
             status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
-            content=ErrorResponse(error=ErrorDetail(code="VALIDATION_ERROR", message=exc.message, detail=exc.detail)).model_dump(),
+            content=ErrorResponse(error=ErrorDetail(code=error_code, message=exc.message, detail=exc.detail)).model_dump(),
         )
 
     @app.exception_handler(ConflictError)

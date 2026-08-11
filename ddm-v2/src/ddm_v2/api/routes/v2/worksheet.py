@@ -59,6 +59,24 @@ async def worksheet_versions(worksheet_id: uuid.UUID, session: AsyncSession = De
         raise HTTPException(status_code=404, detail=f"worksheet 不存在：{worksheet_id}")
 
 
+@router.post("/worksheets/{worksheet_id}/level/validate")
+async def validate_worksheet_level(
+    worksheet_id: uuid.UUID,
+    session: AsyncSession = Depends(get_db_session, scope="function"),
+    user: CurrentUser = Depends(require_role("analyst")),
+) -> dict:
+    """R2b：對目前 worksheet revision 做 Level 驗證並 append validation run。"""
+    from ddm_v2.services.v2.level_validation_service import validate_and_persist
+
+    try:
+        return await validate_and_persist(
+            session, worksheet_id, trigger="interactive", actor=user.employee_no
+        )
+    except svc.WorksheetNotFound:
+        raise HTTPException(status_code=404, detail=f"worksheet 不存在：{worksheet_id}")
+    # ConflictError → main.py（LEVEL_POLICY_MISMATCH 等）
+
+
 @router.post("/worksheets/{worksheet_id}/publish")
 async def publish_worksheet(worksheet_id: uuid.UUID, session: AsyncSession = Depends(get_db_session, scope="function"),
                             user: CurrentUser = Depends(require_role("approver"))) -> dict:
@@ -68,6 +86,7 @@ async def publish_worksheet(worksheet_id: uuid.UUID, session: AsyncSession = Dep
         raise HTTPException(status_code=404, detail=f"worksheet 不存在：{worksheet_id}")
     except svc.NotEditable as e:
         raise HTTPException(status_code=409, detail=str(e))
+    # ConflictError / ValidationError → main.py（LEVEL_VALIDATION_* / LEVEL_POLICY_MISMATCH）
 
 
 @router.post("/worksheets/{worksheet_id}/clone")

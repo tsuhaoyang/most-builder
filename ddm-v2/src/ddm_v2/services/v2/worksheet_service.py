@@ -26,6 +26,7 @@ from ddm_v2.most_engine.rule_set_data import TMU_TO_SEC
 from ddm_v2.schemas.v2.most import cycle_in_to_engine, resolve_cycle_rule_set
 from ddm_v2.schemas.v2.worksheet import WorksheetSaveIn
 from ddm_v2.services.v2.audit_service import log_audit
+from ddm_v2.services.v2.level_validation_service import assert_publishable, validate_and_persist
 from ddm_v2.services.v2.policy_service import level_summary, modeling_summary
 from ddm_v2.services.v2.rule_set_service import get_active_rule_set_code
 from ddm_v2.services.v2.worksheet_revision import (
@@ -194,6 +195,11 @@ async def save_worksheet(
     await set_content_hash(session, worksheet_id=worksheet_id, content_hash=ch)
     await session.flush()
     out["content_hash"] = ch
+    # R2b：save 後 append validation run（含 invalid）；不阻擋存檔
+    if ws.level_policy_version_id is not None:
+        await validate_and_persist(
+            session, worksheet_id, trigger="save", actor=edited_by or "unknown"
+        )
     return out
 
 
@@ -284,6 +290,8 @@ async def publish_worksheet(session: AsyncSession, worksheet_id: uuid.UUID, acto
     pv = await session.get(ProcessVersion, ws.process_version_id)
     if pv.status != "draft":
         raise NotEditable(f"版本狀態為 {pv.status}，無法核准")
+    # R2b §9.5：publish 前查現有 valid run；不得在此新建證據
+    await assert_publishable(session, worksheet_id)
     pv.status = "approved"
     pv.published_at = datetime.now(timezone.utc)
     pv.published_by = actor
@@ -351,6 +359,11 @@ async def clone_worksheet(session: AsyncSession, worksheet_id: uuid.UUID, actor:
     ch = content_hash_from_read(out_src)
     await set_content_hash(session, worksheet_id=new_ws.id, content_hash=ch)
     await session.flush()
+    # R2b：clone 後對 revision=1 建立 validation 證據，使後續 publish 可過 gate
+    if new_ws.level_policy_version_id is not None:
+        await validate_and_persist(
+            session, new_ws.id, trigger="revalidate", actor=actor or "unknown"
+        )
     return {
         "new_worksheet_id": str(new_ws.id),
         "version_no": new_pv.version_no,

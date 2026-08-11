@@ -21,6 +21,7 @@ from ddm_v2.models.v2.base import Base, TimestampMixin
 from ddm_v2.models.v2.bom import BomImport, BomItem
 from ddm_v2.models.v2.codes import CodePrefixRegistry
 from ddm_v2.models.v2.import_staging import ExcelImport, ImportProfile, ImportRow
+from ddm_v2.models.v2.level_validation import LevelValidationRun
 from ddm_v2.models.v2.motion_module import MotionModule, MotionModuleVersion
 from ddm_v2.models.v2.motion_template import MotionTemplate
 from ddm_v2.models.v2.org import Product, Site, Sku
@@ -87,6 +88,7 @@ __all__ = [
     "ExcelImport",
     "ImportProfile",
     "ImportRow",
+    "LevelValidationRun",
     "RuleOptionSynonym",
     "WiSetProject",
     "WiSetItem",

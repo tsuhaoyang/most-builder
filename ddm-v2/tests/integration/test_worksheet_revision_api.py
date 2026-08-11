@@ -36,6 +36,7 @@ def _gm_row(row_id: str, rule_set_code: str) -> dict:
 async def _seed_ws(db_session, *, revision_no: int = 1):
     from ddm_v2.models.v2.org import Product, Site, Sku
     from ddm_v2.models.v2.worksheet import MostWorksheet, ProcessVersion
+    from ddm_v2.services.v2.policy_service import LEVEL_FACTORY_V1_ID, MODELING_FACTORY_V1_ID
     from ddm_v2.services.v2.rule_set_service import get_active_rule_set
 
     site = Site(id=uuid.uuid4(), external_code=f"R1-{uuid.uuid4().hex[:6]}", name_zh="R1")
@@ -65,6 +66,8 @@ async def _seed_ws(db_session, *, revision_no: int = 1):
         process_version_id=pv.id,
         status="draft",
         default_rule_set_id=rs.id,
+        modeling_policy_version_id=MODELING_FACTORY_V1_ID,
+        level_policy_version_id=LEVEL_FACTORY_V1_ID,
         revision_no=revision_no,
     )
     db_session.add(pv)
@@ -124,6 +127,9 @@ async def test_clone_resets_revision_to_1(client, db_session):
 @pytest.mark.asyncio
 async def test_publish_does_not_bump_revision(client, db_session):
     ws, _rs = await _seed_ws(db_session, revision_no=3)
+    v = await client.post(f"/api/v2/worksheets/{ws.id}/level/validate")
+    assert v.status_code == 200, v.text
+    assert v.json()["valid"] is True
     p = await client.post(f"/api/v2/worksheets/{ws.id}/publish")
     assert p.status_code == 200, p.text
     await db_session.refresh(ws)

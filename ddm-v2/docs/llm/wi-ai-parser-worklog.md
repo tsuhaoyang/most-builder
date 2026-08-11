@@ -23,6 +23,7 @@
 | L4 | 批次 parse job（**需 ADR-026/027 accepted**） | `completed` | 2026-08-10 | 2026-08-10 | code-review APPROVE |
 | R1 | Worksheet revision 樂觀鎖（ADR-027 §2） | `completed` | 2026-08-11 | 2026-08-11 | code-review APPROVE_WITH_NITS |
 | R2a | Policy manifests（modeling／Level）+ worksheet FK（ADR-027 §3） | `completed` | 2026-08-11 | 2026-08-11 | code-review APPROVE_WITH_NITS |
+| R2b | Level validation runs + publish gate（ADR-027 §9） | `completed` | 2026-08-11 | 2026-08-11 | code-review APPROVE_WITH_NITS |
 
 狀態值：`not_started / in_progress / blocked / completed / blocked_on_adr`
 
@@ -95,6 +96,14 @@
   - checkpoint：[R2a review](52d1b490-4ada-41e8-815d-691c7fd124ed) → **APPROVE_WITH_NITS**（ORM index 已補；fail-closed 測試可後補）。資安延後。
   - **非本切片**：R2b `level_validation_runs`／publish gate／Level validate 讀 policy。
 
+### R2b（level validation runs）
+- [x] R2b-1 migration `v2_0031`：`level_validation_runs` + unique (ws, rev, policy, input_hash)
+- [x] R2b-2 `level_validation_service`：validate_and_persist／assert_publishable；save／clone 寫 run；publish gate
+- [x] R2b-3 `POST .../level/validate`；409/422 `LEVEL_VALIDATION_*`
+- [x] R2b-4 alembic + pytest + checkpoint（待使用者終端）
+  - 驗證：`v2_0030→v2_0031`；unit+level_validation_api+worksheet+revision+policy **23 passed**。
+  - checkpoint：[R2b review](9b4a4c82-95cd-4bc1-a864-e1f74a03010a) → **APPROVE_WITH_NITS**（nit：policy mismatch／舊 rev 測試可後補）。資安延後。
+
 ## 3. Blocker Log（卡點紀錄）
 
 > 格式：現象寫「發生了什麼」，處置寫「為什麼這樣解」。重開同一問題＝新編號＋引用舊編號。
@@ -131,6 +140,7 @@
 | 2026-08-10 | L4 | code-reviewer agent | P1：bundle pin 未用於 tick／計數非原子／缺 lease reclaim | 全修；**APPROVE**（[L4 review](77df24e2-19a1-47cb-836a-6b1c174d2f79)）。資安延後。 |
 | 2026-08-11 | R1 | code-reviewer agent | P0 AI cache 未含 revision；P1 Import/from-module 無 CAS／legacy bypass／Integer vs BigInt | 全修；**APPROVE_WITH_NITS**（[R1 review](ca934a12-62e5-4670-a022-29c7602c86a7)）。資安延後。 |
 | 2026-08-11 | R2a | code-reviewer agent | P2：ORM index／fail-closed 測試／CreateOut nullable | ORM index 已補；**APPROVE_WITH_NITS**（[R2a review](52d1b490-4ada-41e8-815d-691c7fd124ed)）。 |
+| 2026-08-11 | R2b | code-reviewer agent | P2：policy mismatch／舊 rev 測試缺口；issues JSON string | **APPROVE_WITH_NITS**（[R2b review](9b4a4c82-95cd-4bc1-a864-e1f74a03010a)）。 |
 
 ## 6. 驗收紀錄（spec §0.1）
 
