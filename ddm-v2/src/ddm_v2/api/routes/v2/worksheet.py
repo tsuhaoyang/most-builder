@@ -20,7 +20,9 @@ router = APIRouter(prefix="/api/v2", tags=["v2-worksheet"])
 async def save_worksheet(worksheet_id: uuid.UUID, payload: WorksheetSaveIn, session: AsyncSession = Depends(get_db_session, scope="function"),
                          user: CurrentUser = Depends(require_role("analyst"))) -> WorksheetReadOut:
     try:
-        result = await svc.save_worksheet(session, worksheet_id, payload)
+        result = await svc.save_worksheet(
+            session, worksheet_id, payload, edited_by=user.employee_no
+        )
     except svc.WorksheetNotFound:
         raise HTTPException(status_code=404, detail=f"worksheet 不存在：{worksheet_id}")
     except svc.RuleSetNotFound as e:

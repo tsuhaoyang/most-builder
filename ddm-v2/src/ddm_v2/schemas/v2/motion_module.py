@@ -66,6 +66,8 @@ class FromModuleRequest(BaseModel):
 
     module_id: uuid.UUID
     version_no: int | None = None    # None → 使用 current_version
+    # R1：樂觀鎖（過渡期可省略）
+    base_revision: int | None = Field(default=None, ge=1)
 
 
 # ── 模組建立 / 更新 ──────────────────────────────────────────────────
@@ -176,6 +178,8 @@ class InstantiateResponse(BaseModel):
     # 每個 drift 項目：{"row_index": int, "module_tmu": float, "actual_tmu": float, "delta": float}
     skipped_vocab_missing: int = 0
     # 向後相容欄位；object vocab 自 v2_0025 起可省略，正常資料固定為 0。
+    revision_no: int | None = None
+    content_hash: str | None = None
 
 
 # ── row 級操作（ADR-022 A-2：WI 微調 = Inspector 後端）────────────────

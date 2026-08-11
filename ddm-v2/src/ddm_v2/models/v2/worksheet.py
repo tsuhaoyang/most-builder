@@ -11,6 +11,7 @@ from datetime import date, datetime
 from uuid import UUID
 
 from sqlalchemy import (
+    BigInteger,
     CheckConstraint,
     Computed,
     Date,
@@ -75,6 +76,13 @@ class MostWorksheet(Base, TimestampMixin):
     )
     allowance_percent: Mapped[float | None] = mapped_column(Numeric(6, 3))  # 工序表級寬放%（data-model §2.5）
     status: Mapped[str] = mapped_column(Text, nullable=False, server_default=text("'draft'"))
+    # R1 / ADR-027：內容 revision 樂觀鎖
+    revision_no: Mapped[int] = mapped_column(
+        BigInteger, nullable=False, server_default=text("1")
+    )
+    content_hash: Mapped[str | None] = mapped_column(Text)
+    last_edited_by: Mapped[str | None] = mapped_column(Text)
+    last_edited_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
 
     process_version: Mapped[ProcessVersion] = relationship(back_populates="worksheet")
     rows: Mapped[list[WiRow]] = relationship(back_populates="worksheet", order_by="WiRow.seq_no")

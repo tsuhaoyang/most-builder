@@ -51,6 +51,7 @@ export interface SubmitIn {
   worksheet_id: string
   rule_set_code?: string | null
   row_adoptions?: RowAdoption[]
+  base_revision?: number | null
 }
 export interface SubmitOut {
   worksheet_id: string
@@ -58,6 +59,8 @@ export interface SubmitOut {
   n_with_analysis: number
   n_need_review: number
   warnings: string[]
+  revision_no?: number | null
+  content_hash?: string | null
 }
 
 export const useSubmitImport = () =>

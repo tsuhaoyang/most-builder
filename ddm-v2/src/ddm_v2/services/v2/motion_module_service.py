@@ -1031,6 +1031,17 @@ async def instantiate_to_worksheet(
         and pv_check.created_by != current_user_no
     ):
         raise WorksheetPermissionError("無權操作此工序表")
+
+    # R1：append 前 CAS（失敗則不寫列）
+    from ddm_v2.services.v2.worksheet_revision import bump_worksheet_revision
+
+    await bump_worksheet_revision(
+        session,
+        worksheet_id=worksheet_id,
+        base_revision=data.base_revision,
+        edited_by=current_user_no,
+    )
+
     if ws.default_rule_set_id is None:
         raise RuleSetNotFound("工序表未設定 default_rule_set_id")
 
@@ -1257,8 +1268,18 @@ async def instantiate_to_worksheet(
         })
 
     await session.flush()
+    # R1：append 後更新 content_hash（不另 bump；bump 已在前置做完）
+    from ddm_v2.services.v2 import worksheet_service as ws_svc
+    from ddm_v2.services.v2.worksheet_revision import content_hash_from_read, set_content_hash
+
+    snap = await ws_svc.read_worksheet(session, worksheet_id)
+    ch = content_hash_from_read(snap)
+    await set_content_hash(session, worksheet_id=worksheet_id, content_hash=ch)
+    await session.flush()
     return {
         "new_rows": new_rows_out,
         "tmu_drift": drift_warnings,
         "skipped_vocab_missing": 0,
+        "revision_no": int(snap["revision_no"]),
+        "content_hash": ch,
     }

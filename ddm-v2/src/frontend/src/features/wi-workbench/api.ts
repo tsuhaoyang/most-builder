@@ -39,7 +39,14 @@ export const useTemplates = () =>
 export const useCalculate = () =>
   useMutation({ mutationFn: (cycle: unknown) => apiPost<CalcResult>('/api/v2/minimost/calculate', cycle) })
 
-export interface SaveResult { worksheet_id: string; status: string; total_tmu: number; rows: unknown[] }
+export interface SaveResult {
+  worksheet_id: string
+  status: string
+  total_tmu: number
+  rows: unknown[]
+  revision_no?: number
+  content_hash?: string | null
+}
 export const useSaveWorksheet = (wsId: string) =>
   useMutation({ mutationFn: (body: unknown) => apiPut<SaveResult>(`/api/v2/worksheets/${wsId}`, body) })
 
@@ -90,6 +97,8 @@ export interface WsRead {
   total_tmu: number
   rows: WsReadRow[]
   default_rule_set: DefaultRuleSetInfo | null
+  revision_no?: number
+  content_hash?: string | null
 }
 export const useWorksheet = (wsId: string) =>
   useQuery({ queryKey: ['worksheet', wsId], queryFn: () => apiGet<WsRead>(`/api/v2/worksheets/${wsId}`), refetchOnWindowFocus: false, enabled: !!wsId })

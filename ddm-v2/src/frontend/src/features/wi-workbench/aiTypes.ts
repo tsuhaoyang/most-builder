@@ -48,6 +48,8 @@ export interface AiParseBlock {
     model?: string | null
     [k: string]: unknown
   }
+  /** R1：綁 worksheet 時的來源 revision */
+  source_revision?: number | null
 }
 
 export interface NlDraftLegacySlot {

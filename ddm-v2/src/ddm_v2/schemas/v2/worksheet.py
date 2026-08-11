@@ -44,6 +44,8 @@ class WorksheetSaveIn(BaseModel):
     rows: list[WiRowSaveIn] = Field(default_factory=list)
     # 工序表級寬放%（data-model §2.5）：選填；未帶＝不動既有值（加法相容），帶 null＝清除。
     allowance_percent: float | None = Field(default=None, ge=0)
+    # R1：樂觀鎖；過渡期可省略（legacy），前端應一律送。
+    base_revision: int | None = Field(default=None, ge=1)
 
 
 class DefaultRuleSetInfo(BaseModel):
@@ -69,3 +71,8 @@ class WorksheetReadOut(BaseModel):
     # ADR-023 §3.4-4：default_rule_set_id 是建立時凍結的快照；此欄帶其現況狀態供警示徽章。
     # default_rule_set_id 可為 NULL → 此欄為 null，前端不顯示徽章。
     default_rule_set: DefaultRuleSetInfo | None = None
+    # R1 / ADR-027
+    revision_no: int = 1
+    content_hash: str | None = None
+    last_edited_by: str | None = None
+    last_edited_at: str | None = None

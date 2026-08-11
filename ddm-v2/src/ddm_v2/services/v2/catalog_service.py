@@ -129,8 +129,14 @@ async def create_worksheet(session: AsyncSession, sku_id: uuid.UUID, payload, ac
     rs = await get_active_rule_set(session)
     pv = ProcessVersion(id=uuid.uuid4(), sku_id=sku_id, version_no=f"v{count + 1}", status="draft", created_by=actor)
     ws = MostWorksheet(id=uuid.uuid4(), process_version_id=pv.id, model_label=payload.model_label,
-                       analyst=payload.analyst, default_rule_set_id=rs.id, status="draft")
+                       analyst=payload.analyst, default_rule_set_id=rs.id, status="draft",
+                       revision_no=1)
     session.add(pv)
     session.add(ws)
     await session.flush()
-    return {"worksheet_id": ws.id, "version_no": pv.version_no, "status": "draft"}
+    return {
+        "worksheet_id": ws.id,
+        "version_no": pv.version_no,
+        "status": "draft",
+        "revision_no": 1,
+    }

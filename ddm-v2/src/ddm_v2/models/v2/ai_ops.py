@@ -9,6 +9,7 @@ from uuid import UUID
 
 import sqlalchemy as sa
 from sqlalchemy import (
+    BigInteger,
     Boolean,
     CheckConstraint,
     DateTime,
@@ -93,6 +94,8 @@ class AiParseRun(Base):
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), nullable=False, server_default=text("NOW()")
     )
+    # R1：綁 worksheet 時的來源 revision（未綁則 NULL）；與 migration BigInteger 對齊
+    source_revision: Mapped[int | None] = mapped_column(BigInteger)
 
     __table_args__ = (
         CheckConstraint(

@@ -143,6 +143,8 @@ class ParseRunResult(BaseModel):
     routing_status: RoutingStatus
     routing_reasons: list[str]
     provenance: dict
+    # R1：綁 worksheet 時的來源 revision（未綁為 null）
+    source_revision: int | None = None
 
 
 class PlannerOutput(BaseModel):

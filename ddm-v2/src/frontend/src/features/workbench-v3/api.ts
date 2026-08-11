@@ -18,7 +18,10 @@ export interface InstantiatedRowOut {
 
 export interface InstantiateResponse {
   new_rows: InstantiatedRowOut[]
-  tmu_drift: Array<{ row_index: number; module_tmu: number; actual_tmu: number; delta: number }>
+  tmu_drift?: { row_index?: number; module_tmu?: number; actual_tmu?: number; delta?: number }[]
+  skipped_vocab_missing?: number
+  revision_no?: number | null
+  content_hash?: string | null
 }
 
 // ── Domain types ───────────────────────────────────────────────────────────────
@@ -369,10 +372,21 @@ export const useDeleteWiTemplate = () => {
 export const useInstantiateToWorksheet = () => {
   const qc = useQueryClient()
   return useMutation({
-    mutationFn: ({ worksheetId, moduleId }: { worksheetId: string; moduleId: string }) =>
+    mutationFn: ({
+      worksheetId,
+      moduleId,
+      baseRevision,
+    }: {
+      worksheetId: string
+      moduleId: string
+      baseRevision?: number | null
+    }) =>
       apiPost<InstantiateResponse>(
         `/api/v2/worksheets/${worksheetId}/rows/from-module`,
-        { module_id: moduleId },
+        {
+          module_id: moduleId,
+          ...(baseRevision != null ? { base_revision: baseRevision } : {}),
+        },
       ),
     onSuccess: (_data, { worksheetId }) => {
       qc.invalidateQueries({ queryKey: ['worksheet', worksheetId] })

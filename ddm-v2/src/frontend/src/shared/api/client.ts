@@ -17,10 +17,11 @@ export class ApiError extends Error {
     this.name = 'ApiError'
   }
 
-  /** 後端結構化錯誤碼（`{code, message}` 形狀時才有）。 */
+  /** 後端結構化錯誤碼（`{code, message}` 或 DomainError `{error:{code}}`）。 */
   get code(): string | null {
     const d = this.detail as any
-    return d && typeof d === 'object' && typeof d.code === 'string' ? d.code : null
+    if (d && typeof d === 'object' && typeof d.code === 'string') return d.code
+    return null
   }
 
   /** 給人看的訊息：結構化錯誤取 message，不吐原始 JSON。 */
@@ -35,8 +36,8 @@ export class ApiError extends Error {
 async function toError(r: Response): Promise<Error> {
   let d: any = null
   try { d = await r.json() } catch { /* ignore */ }
-  const detail = d?.detail ?? null
-  // 訊息格式維持 `${status} ${detail}`；物件型 detail 優先取 message（人話）而非整包 JSON。
+  // DomainError 信封：{ error: { code, message, detail } }；HTTPException：{ detail }
+  const detail = d?.error ?? d?.detail ?? null
   const text = detail === null
     ? r.statusText
     : typeof detail === 'string'

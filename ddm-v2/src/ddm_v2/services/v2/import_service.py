@@ -219,6 +219,7 @@ async def submit_to_worksheet(
     rule_set_code: str | None,
     actor_no: str,
     row_adoptions: list | None = None,
+    base_revision: int | None = None,
 ) -> dict:
     """Phase 2b：staged rows → WiRow + MostCycle(stub) + LevelEntry。"""
     from sqlalchemy import func, select
@@ -227,6 +228,7 @@ async def submit_to_worksheet(
     from ddm_v2.models.v2.worksheet import LevelEntry, MostCycle, MostWorksheet, WiRow
     from ddm_v2.nlp.rule_based import RuleBasedParser
     from ddm_v2.schemas.v2.most import CycleIn
+    from ddm_v2.services.v2.worksheet_revision import bump_worksheet_revision
 
     # ── 1. 載入 ExcelImport ──
     rec = await session.get(ExcelImport, import_id)
@@ -248,6 +250,14 @@ async def submit_to_worksheet(
     # Fix-H3：只允許提交到 draft 工序表（published/retired 拒收）
     if ws.status != "draft":
         raise ValueError("worksheet_not_draft")
+
+    # R1：內容 append 前 CAS revision
+    await bump_worksheet_revision(
+        session,
+        worksheet_id=worksheet_id,
+        base_revision=base_revision,
+        edited_by=actor_no,
+    )
 
     # ── 3. 決定 rule_set ──
     if rule_set_code:
@@ -405,12 +415,22 @@ async def submit_to_worksheet(
     rec.submitted_worksheet_id = worksheet_id
     await session.flush()
 
+    from ddm_v2.services.v2 import worksheet_service as ws_svc
+    from ddm_v2.services.v2.worksheet_revision import content_hash_from_read, set_content_hash
+
+    snap = await ws_svc.read_worksheet(session, worksheet_id)
+    ch = content_hash_from_read(snap)
+    await set_content_hash(session, worksheet_id=worksheet_id, content_hash=ch)
+    await session.flush()
+
     return {
         "worksheet_id": str(worksheet_id),
         "n_rows": len(staged),
         "n_with_analysis": n_with_analysis,
         "n_need_review": n_need_review,
         "warnings": warnings,
+        "revision_no": int(snap["revision_no"]),
+        "content_hash": ch,
     }
 
 

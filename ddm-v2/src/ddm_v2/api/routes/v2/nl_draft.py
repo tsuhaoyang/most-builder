@@ -83,6 +83,7 @@ async def nl_draft(
             "routing_status": result.routing_status,
             "routing_reasons": result.routing_reasons,
             "provenance": result.provenance,
+            "source_revision": result.source_revision,
         },
         "multi_action_warning": multi_action,
     }

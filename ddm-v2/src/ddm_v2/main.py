@@ -209,11 +209,12 @@ def _register_exception_handlers(app: FastAPI) -> None:
 
     @app.exception_handler(ConflictError)
     async def conflict_error_handler(request: Request, exc: ConflictError) -> JSONResponse:
-        error_code = "CONFLICT"
-        if "published" in exc.message.lower():
-            error_code = "VERSION_PUBLISHED"
-        elif "time_source" in exc.message.lower():
-            error_code = "TIME_SOURCE_IMMUTABLE"
+        error_code = (exc.detail or {}).get("code") or "CONFLICT"
+        if error_code == "CONFLICT":
+            if "published" in exc.message.lower():
+                error_code = "VERSION_PUBLISHED"
+            elif "time_source" in exc.message.lower():
+                error_code = "TIME_SOURCE_IMMUTABLE"
         return JSONResponse(
             status_code=status.HTTP_409_CONFLICT,
             content=ErrorResponse(error=ErrorDetail(code=error_code, message=exc.message, detail=exc.detail)).model_dump(),

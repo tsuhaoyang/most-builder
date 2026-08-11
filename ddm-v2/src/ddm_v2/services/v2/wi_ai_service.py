@@ -19,6 +19,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from ddm_v2.models.v2.ai_ops import AiDeploymentBundle, AiParseRun
 from ddm_v2.models.v2.rule_set import RuleSet
+from ddm_v2.models.v2.worksheet import MostWorksheet
 from ddm_v2.most_compiler.compile import allow_lists_from_rule_set, compile_plan
 from ddm_v2.most_compiler.engine_gate import apply_engine_gate
 from ddm_v2.most_engine import load_rule_set_from_db
@@ -112,6 +113,7 @@ def _result_from_run(run: AiParseRun, *, cached: bool, bundle_code: str) -> Pars
         routing_status=run.routing_status,  # type: ignore[arg-type]
         routing_reasons=list(run.routing_reasons or []),
         provenance=provenance,
+        source_revision=int(run.source_revision) if run.source_revision is not None else None,
     )
 
 
@@ -205,10 +207,23 @@ async def parse_interactive(
     rs = await _get_rule_set(session, rule_set_code)
     bundle = await _get_active_bundle(session, code=resolved_bundle)
 
+    source_revision: int | None = None
+    worksheet_key = ""
+    if worksheet_id is not None:
+        ws_for_rev = await session.get(MostWorksheet, worksheet_id)
+        if ws_for_rev is not None:
+            source_revision = int(ws_for_rev.revision_no)
+            # 納入 hash：revision 變了必須重新 parse（否則「重新解析」仍命中舊 source_revision）
+            worksheet_key = f"{worksheet_id}:{source_revision}"
+        else:
+            worksheet_key = str(worksheet_id)
+
     context_snapshot = ctx.model_dump()
     context_hash = _sha256(_canonical_json(context_snapshot))
     # D3：hash 使用 bundle.code（穩定字串）而非 UUID；與 settings/bundle seed 對齊。
-    input_hash = _sha256("|".join([norm, context_hash, bundle.code, rule_set_code, source_kind]))
+    input_hash = _sha256(
+        "|".join([norm, context_hash, bundle.code, rule_set_code, source_kind, worksheet_key])
+    )
 
     existing = await _find_cached_run(session, input_hash=input_hash, bundle_id=bundle.id)
     if existing is not None:
@@ -366,6 +381,7 @@ async def parse_interactive(
         latency=latency,
         error=None,
         created_by=created_by,
+        source_revision=source_revision,
     )
     try:
         async with session.begin_nested():

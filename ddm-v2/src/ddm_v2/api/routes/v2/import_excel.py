@@ -130,6 +130,8 @@ class SubmitIn(BaseModel):
     worksheet_id: uuid.UUID
     rule_set_code: str | None = None
     row_adoptions: list[RowAdoption] = Field(default_factory=list)
+    # R1：樂觀鎖（過渡期可省略）
+    base_revision: int | None = Field(default=None, ge=1)
 
 
 class SubmitOut(BaseModel):
@@ -138,6 +140,8 @@ class SubmitOut(BaseModel):
     n_with_analysis: int
     n_need_review: int
     warnings: list[str]
+    revision_no: int | None = None
+    content_hash: str | None = None
 
 
 @router.post("/{import_id}/submit", response_model=SubmitOut)
@@ -152,6 +156,7 @@ async def submit_import(
         result = await import_service.submit_to_worksheet(
             session, import_id, payload.worksheet_id, payload.rule_set_code, actor.employee_no,
             row_adoptions=payload.row_adoptions,
+            base_revision=payload.base_revision,
         )
     except ValueError as e:
         code = str(e)

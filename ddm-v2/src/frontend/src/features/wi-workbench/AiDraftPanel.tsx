@@ -1,5 +1,6 @@
 import { useNlDraft, usePostReviews } from './api'
 import { useAiDraftStore } from './aiDraft.store'
+import { useWiStore } from './store'
 import { ActionCard } from './ActionCard'
 import type { CycleState } from './cycle'
 import type { NlDraftLegacySlot, NlDraftResponse } from './aiTypes'
@@ -72,9 +73,27 @@ export function AiDraftPanel({
     }
   }
 
+  function revisionStaleBlocked(): boolean {
+    const srcRev = ai?.source_revision
+    const curRev = useWiStore.getState().revisionNo
+    if (
+      worksheetId
+      && srcRev != null
+      && curRev != null
+      && Number(srcRev) !== Number(curRev)
+    ) {
+      window.alert(
+        `AI 草稿已過期（source rev ${srcRev} ≠ 目前 rev ${curRev}）。請重新解析後再採用。`,
+      )
+      return true
+    }
+    return false
+  }
+
   async function adoptDraft(actionId: string) {
     const draft = drafts.find((d) => d.action_id === actionId)
     if (!draft?.cycle) return
+    if (revisionStaleBlocked()) return
     onAdoptCycle(draft.cycle)
     markAdopted(actionId)
     if (canWriteReviews && ai?.run_id) {
@@ -100,6 +119,7 @@ export function AiDraftPanel({
 
   function applyLegacy() {
     if (!lastResponse) return
+    if (revisionStaleBlocked()) return
     const patch = legacyPatch(lastResponse)
     if (Object.keys(patch).length) onLegacyFill(patch)
   }

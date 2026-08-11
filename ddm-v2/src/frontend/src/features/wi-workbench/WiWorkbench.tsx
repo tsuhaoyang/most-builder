@@ -243,7 +243,17 @@ export function WiWorkbench() {
       // 既有實體化端點：POST /api/v2/worksheets/{wid}/rows/from-module（body: module_id）。
       // hook onSuccess 會 invalidate ['worksheet', wid] → wsData refetch → 上方 effect
       // setRows 重灌工時表（後端已算好每列 TMU，前端不自算）。
-      const result = await instantiate.mutateAsync({ worksheetId: activeWs, moduleId: mod.id })
+      const result = await instantiate.mutateAsync({
+        worksheetId: activeWs,
+        moduleId: mod.id,
+        baseRevision: useWiStore.getState().revisionNo,
+      })
+      if (typeof result.revision_no === 'number') {
+        useWiStore.getState().setRevisionMeta({
+          revisionNo: result.revision_no,
+          contentHash: result.content_hash ?? null,
+        })
+      }
       setInsertWiOpen(false)
       showWiToast(`已插入「${mod.name_zh}」：${result.new_rows.length} 列`, 'ok')
       // TMU 漂移警告（沿 ProcessWorkspace 既有機制：instantiate 回應內 tmu_drift）
@@ -251,7 +261,13 @@ export function WiWorkbench() {
         setTimeout(() => showWiToast('部分列 TMU 因規則集不同已重算調整', 'warn'), 1500)
       }
     } catch (e) {
-      showWiToast('插入失敗：' + (e as Error).message, 'err')
+      const err = e as Error & { code?: string | null; humanMessage?: string; status?: number }
+      if (err.status === 409 && err.code === 'WORKSHEET_REVISION_CONFLICT') {
+        showWiToast('插入衝突：工序表已被更新，請重新載入後再插入', 'err')
+        qc.invalidateQueries({ queryKey: ['worksheet', activeWs] })
+      } else {
+        showWiToast('插入失敗：' + (err.humanMessage || err.message), 'err')
+      }
     }
   }
 
@@ -556,7 +572,9 @@ export function WiWorkbench() {
     setSaveMsg('儲存中…')
     const lv = useLevelStore.getState()
     const d = derive(rows, lv.levelMap, lv.groupMeta)
+    const baseRevision = useWiStore.getState().revisionNo
     const body = {
+      base_revision: baseRevision ?? undefined,
       rows: rows.map((r, i) => {
         const e = d[i] || {}
         return {
@@ -575,10 +593,25 @@ export function WiWorkbench() {
     }
     try {
       const res = await save.mutateAsync(body)
+      if (typeof res.revision_no === 'number') {
+        useWiStore.getState().setRevisionMeta({
+          revisionNo: res.revision_no,
+          contentHash: res.content_hash ?? null,
+        })
+      }
       qc.invalidateQueries({ queryKey: ['wi-preview'] })
       qc.invalidateQueries({ queryKey: ['versions'] })
-      setSaveMsg(`✓ 已儲存：${res.rows.length} 列，合計 ${res.total_tmu} TMU（≈ ${(res.total_tmu * TMU_SEC).toFixed(2)} 秒）`)
-    } catch (e) { setSaveMsg('⚠️ 儲存失敗：' + (e as Error).message) }
+      qc.invalidateQueries({ queryKey: ['worksheet', activeWs] })
+      setSaveMsg(`✓ 已儲存：${res.rows.length} 列，合計 ${res.total_tmu} TMU（≈ ${(res.total_tmu * TMU_SEC).toFixed(2)} 秒）· rev ${res.revision_no ?? '?'}`)
+    } catch (e) {
+      const err = e as Error & { code?: string | null; humanMessage?: string; status?: number }
+      if (err.status === 409 && err.code === 'WORKSHEET_REVISION_CONFLICT') {
+        setSaveMsg('⚠️ 儲存衝突：工序表已被其他人更新。請重新載入後再存（不會靜默覆寫）。')
+        qc.invalidateQueries({ queryKey: ['worksheet', activeWs] })
+      } else {
+        setSaveMsg('⚠️ 儲存失敗：' + (err.humanMessage || err.message))
+      }
+    }
   }
 
   const total = totalTmu()

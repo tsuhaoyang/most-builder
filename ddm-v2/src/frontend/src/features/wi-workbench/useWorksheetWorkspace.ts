@@ -7,11 +7,13 @@ import { useWiStore } from './store'
 export function useWorksheetWorkspace(worksheetId: string) {
   const query = useWorksheet(worksheetId)
   const setRows = useWiStore((state) => state.setRows)
+  const setRevisionMeta = useWiStore((state) => state.setRevisionMeta)
 
   useEffect(() => {
     const worksheet = query.data
     if (!worksheet || worksheet.worksheet_id !== worksheetId) {
       setRows([])
+      setRevisionMeta({ revisionNo: null, contentHash: null })
       useLevelStore.getState().hydrate({}, {}, 0)
       return
     }
@@ -32,6 +34,10 @@ export function useWorksheetWorkspace(worksheetId: string) {
       seconds: row.cycle?.total_seconds ?? 0,
       payload: row.cycle?.slot_inputs ?? null,
     })))
+    setRevisionMeta({
+      revisionNo: worksheet.revision_no ?? 1,
+      contentHash: worksheet.content_hash ?? null,
+    })
 
     const levelMap: Record<string, LevelCell> = {}
     const groupMeta: Record<string, GroupMeta> = {}
@@ -56,7 +62,7 @@ export function useWorksheetWorkspace(worksheetId: string) {
       }
     })
     useLevelStore.getState().hydrate(levelMap, groupMeta, worksheet.rows.length)
-  }, [query.data, setRows, worksheetId])
+  }, [query.data, setRows, setRevisionMeta, worksheetId])
 
   return query
 }

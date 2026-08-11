@@ -21,6 +21,7 @@
 | L2 | Slot linking + deterministic compiler + engine gate | `completed` | 2026-08-07 | 2026-08-07 | code-review APPROVE_WITH_NITS |
 | L3 | 審核 UI + review events + feedback candidates | `completed` | 2026-08-07 | 2026-08-10 | impl checkpoint；§0.1 現場 demo 待人 |
 | L4 | 批次 parse job（**需 ADR-026/027 accepted**） | `completed` | 2026-08-10 | 2026-08-10 | code-review APPROVE |
+| R1 | Worksheet revision 樂觀鎖（ADR-027 §2） | `completed` | 2026-08-11 | 2026-08-11 | code-review APPROVE_WITH_NITS |
 
 狀態值：`not_started / in_progress / blocked / completed / blocked_on_adr`
 
@@ -74,6 +75,16 @@
   - R1 revision／policy／outbox 另工（D3-007）；資安延後。
   - agent shell 無 host docker/network（BLK-003 resolved via 使用者終端）。
 
+### R1（worksheet revision）
+- [x] R1-1 migration `v2_0029`：`revision_no`／`content_hash`／`last_edited_*`；`ai_parse_runs.source_revision`
+- [x] R1-2 `worksheet_revision.bump` CAS + save／from-module／submit 接線；clone／create 重置為 1；publish 不 bump
+- [x] R1-3 FE：store revision、save `base_revision`、409 UX；AI adopt 擋 stale source_revision
+- [x] R1-4 `alembic upgrade` + integration + typecheck + checkpoint
+  - 驗證：`v2_0028→v2_0029`；unit+revision_api+worksheet **16 passed**；typecheck 綠。
+  - ORM expire fix：bump 後必須清 session 快取，避免舊 revision 被 flush 蓋回。
+  - P0/P1 後修：AI cache key 含 ws:rev；Import/from-module `base_revision`；legacy adopt stale gate；`source_revision` BigInteger。
+  - checkpoint：[R1 review](ca934a12-62e5-4670-a022-29c7602c86a7) → **APPROVE_WITH_NITS**（nit：legacy null revision；import/CAS／cache bust 測試可後補）。資安延後。
+
 ## 3. Blocker Log（卡點紀錄）
 
 > 格式：現象寫「發生了什麼」，處置寫「為什麼這樣解」。重開同一問題＝新編號＋引用舊編號。
@@ -108,6 +119,7 @@
 | 2026-08-07 | L3-2 | code-reviewer agent | P0 stale 被 setResponse 清掉；P1 前端假 A6 檔位 | 全修；**APPROVE**。 |
 | 2026-08-10 | L3 | coordinator | L3-1～L3-3 實作出口彙整 | **impl checkpoint**：自動化證據齊；§0.1 現場 demo／Playwright／資安仍 open。 |
 | 2026-08-10 | L4 | code-reviewer agent | P1：bundle pin 未用於 tick／計數非原子／缺 lease reclaim | 全修；**APPROVE**（[L4 review](77df24e2-19a1-47cb-836a-6b1c174d2f79)）。資安延後。 |
+| 2026-08-11 | R1 | code-reviewer agent | P0 AI cache 未含 revision；P1 Import/from-module 無 CAS／legacy bypass／Integer vs BigInt | 全修；**APPROVE_WITH_NITS**（[R1 review](ca934a12-62e5-4670-a022-29c7602c86a7)）。資安延後。 |
 
 ## 6. 驗收紀錄（spec §0.1）
 
