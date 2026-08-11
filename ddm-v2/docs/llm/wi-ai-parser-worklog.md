@@ -25,6 +25,7 @@
 | R2a | Policy manifests（modeling／Level）+ worksheet FK（ADR-027 §3） | `completed` | 2026-08-11 | 2026-08-11 | code-review APPROVE_WITH_NITS |
 | R2b | Level validation runs + publish gate（ADR-027 §9） | `completed` | 2026-08-11 | 2026-08-11 | code-review APPROVE_WITH_NITS |
 | R3b | Transactional outbox（review／save 同交易）（ADR-027 §5） | `completed` | 2026-08-11 | 2026-08-11 | code-review APPROVE_WITH_NITS |
+| R3a | Method context `wi_row_contexts`（ADR-027 §4） | `completed` | 2026-08-11 | 2026-08-11 | code-review APPROVE_WITH_NITS |
 
 狀態值：`not_started / in_progress / blocked / completed / blocked_on_adr`
 
@@ -114,6 +115,15 @@
   - checkpoint：[R3b review](19d777d6-6a9a-49d5-bfc9-5b19dc078d20) → P1 UNIQUE 已補 → **APPROVE_WITH_NITS**。資安延後。
   - **非本切片**：R3a `wi_row_contexts`；publisher worker／AI DB role／完整 R0 retry policy。
 
+### R3a（wi_row_contexts）
+- [x] R3a-1 migration `v2_0034`：`wi_row_contexts`（UNIQUE wi_row_id CASCADE）
+- [x] R3a-2 `wi-context-v1` Pydantic 校驗＋hash；GET/PUT/DELETE `/wi-rows/{id}/context`
+- [x] R3a-3 unit + integration
+- [x] R3a-4 alembic + pytest + checkpoint（待使用者終端）
+  - 驗證：`v2_0033→v2_0034`；unit+integration **8 passed**（含 publish freeze）。
+  - checkpoint：[R3a review](3325fa79-8b6a-4f87-9e0b-0b7386f6a27c) → P1 凍結測試已補 → **APPROVE_WITH_NITS**。資安延後。
+  - **非本切片**：FE 編輯 UI；與 worksheet save 嵌套寫入；AI parse context 升正式欄。
+
 ## 3. Blocker Log（卡點紀錄）
 
 > 格式：現象寫「發生了什麼」，處置寫「為什麼這樣解」。重開同一問題＝新編號＋引用舊編號。
@@ -152,6 +162,7 @@
 | 2026-08-11 | R2a | code-reviewer agent | P2：ORM index／fail-closed 測試／CreateOut nullable | ORM index 已補；**APPROVE_WITH_NITS**（[R2a review](52d1b490-4ada-41e8-815d-691c7fd124ed)）。 |
 | 2026-08-11 | R2b | code-reviewer agent | P2：policy mismatch／舊 rev 測試缺口；issues JSON string | **APPROVE_WITH_NITS**（[R2b review](9b4a4c82-95cd-4bc1-a864-e1f74a03010a)）。 |
 | 2026-08-11 | R3b | code-reviewer agent | P1：缺 UNIQUE(aggregate,event_no)；P2 測試薄 | UNIQUE 以 v2_0033 補；**APPROVE_WITH_NITS**（[R3b review](19d777d6-6a9a-49d5-bfc9-5b19dc078d20)）。 |
+| 2026-08-11 | R3a | code-reviewer agent | P1：缺 publish freeze IT；P2 ORM index／standalone revision | freeze IT＋index 已補；**APPROVE_WITH_NITS**（[R3a review](3325fa79-8b6a-4f87-9e0b-0b7386f6a27c)）。 |
 
 ## 6. 驗收紀錄（spec §0.1）
 

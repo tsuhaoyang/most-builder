@@ -36,6 +36,7 @@ from ddm_v2.api.routes.v2.rule_set import router as v2_ruleset_router
 from ddm_v2.api.routes.v2.search import router as v2_search_router
 from ddm_v2.api.routes.v2.synonyms import router as v2_synonyms_router
 from ddm_v2.api.routes.v2.vocab import router as v2_vocab_router
+from ddm_v2.api.routes.v2.wi_context import router as v2_wi_context_router
 from ddm_v2.api.routes.v2.wi_set import router as v2_wi_set_router
 from ddm_v2.api.routes.v2.worksheet import router as v2_worksheet_router
 from ddm_v2.auth.startup_checks import (  # noqa: F401  （TRUSTED_GATEWAY_ENV 對外沿用舊匯入路徑）
@@ -173,6 +174,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     app.include_router(v2_audit_log_router)
     app.include_router(v2_cases_router)
     app.include_router(v2_wi_set_router)
+    app.include_router(v2_wi_context_router)
 
     _register_exception_handlers(app)
 
