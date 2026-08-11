@@ -99,7 +99,9 @@ STEPS: list[tuple[str, str, CycleIn]] = [
     ("下壓 CPU 拉桿鎖定", "CPU 拉桿", cm(20, "g_grasp", "m_pull", 6, "x_none", 0, "i_check", angle=90)),
     ("按下電源測試按鈕", "測試鈕", cm(25, "g_touch", "m_btn", 2, "x_none", 0, "i_none")),
     ("撕除螢幕保護膜", "保護膜", cm(20, "g_pick_sel", "m_teartape", 15, "x_none", 0, "i_none")),
-    ("掃描條碼建檔", "條碼", cm(25, "g_touch", "m_hand", 0, "x_scan", 1.5, "i_check")),
+    # X 用 `x_scan_bar`（刷條形碼）：舊碼 `x_scan` 不在 V2 認證字典裡，會被引擎擋成
+    # X_UNKNOWN 讓整份 seed 掛掉。此碼 mode='fixed'，秒數取自字典，故這裡傳 0。
+    ("掃描條碼建檔", "條碼", cm(25, "g_touch", "m_hand", 0, "x_scan_bar", 0, "i_check")),
     ("熱壓導熱膠固化", "導熱膠", cm(15, "g_touch", "m_push", 3, "x_heat", 3.0, "i_none")),
     ("按壓功能測試治具", "測試治具", cm(30, "g_grasp", "m_push", 5, "x_press", 2.0, "i_check")),
     ("旋緊天線接頭", "天線", cm(15, "g_grasp", "m_rotate", 0, "x_none", 0, "i_align1", rev=3, dia=1)),

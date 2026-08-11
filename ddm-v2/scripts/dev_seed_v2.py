@@ -70,7 +70,7 @@ async def main() -> None:
             print("active rule_set exists:", existing_active.code)
 
         # R2a：factory policy V1（migration 通常已種；此處 idempotent）
-        mp, lp = seed_policy_factory_v1(s)
+        mp, lp = await seed_policy_factory_v1(s)
         await s.flush()
         print("policy manifests:", mp.name, lp.name)
 

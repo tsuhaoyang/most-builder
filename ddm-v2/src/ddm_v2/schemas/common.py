@@ -2,23 +2,11 @@
 
 from __future__ import annotations
 
-from enum import Enum
 from typing import Any, Generic, TypeVar
 
 from pydantic import BaseModel, Field
 
 T = TypeVar("T")
-
-
-class AuditAction(str, Enum):
-    """Audit log action types (used by legacy JSON-store routes)."""
-
-    create = "CREATE"
-    update = "UPDATE"
-    delete = "DELETE"
-    review = "REVIEW"
-    publish = "PUBLISH"
-    reset = "RESET"
 
 
 class ErrorDetail(BaseModel):

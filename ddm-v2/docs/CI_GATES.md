@@ -51,13 +51,16 @@
 | **NLP 同義詞 + nl-draft（impl-05）** | synonyms list(200)/create IE(201)/duplicate(409+SYNONYM_CONFLICT)/viewer(403)/delete(204)；**option_code 不存在→422 OPTION_CODE_NOT_FOUND（Fix-T1）**；**全形空白 normalize 後空→422 VALIDATION_ERROR（Fix-T3）**；nl-draft GM 治具防護(F-05 §4.1)；v3 治具全套單元（壓合站/壓合位置/治具→GM；執行/進行/**機台（CM 觸發詞，Fix-T2）**→CM）；normalize OR 兜底消除（Fix-Low-T：測试机器→測試機器；機台機臺→機臺機臺） | `tests/unit/test_nlp.py`、`tests/integration/test_nlp_api.py` |
 | 前端（全分頁） | 載入/身分/分頁渲染/匯入精靈 | `src/frontend/e2e/smoke.spec.ts` |
 | **前端 UX 合規（v3 規格）** | §A-01/02/03 Sidebar 結構/背景色/折疊/角色可見性；§B-01/B-02/B-03 workbench-v3 NlDraft+Slot Strip；§C-01 MiCompositionTable gap 文件化；§E-04/05/06 WI Pool 三層 Tab；§G-01/G-02 分析案件+RBAC gating；§H-01 字典管理頁；§I-01 viewer RBAC；§L-03/04 退役確認（33 條，Type A mocked-API，無需 preview_server） | `src/frontend/e2e/ux-compliance.spec.ts` |
-| **字典治理：刪除／解除封存（ADR-023 D3b）** | DELETE 僅 draft（published／retired／certified_import／is_active 各自 409，**斷言 `detail.code` 不只狀態碼**）；**被 `most_cycles`／`most_worksheets`／`motion_module_versions` 引用的 draft 不可刪** → 409 `RULE_SET_IN_USE`＋筆數（回放鐵則的另一面）；刪除連帶 13 張子表歸零；audit 先寫後刪且自帶 `code`/`provenance`/`children_deleted`（實體消失後它是唯一紀錄）；unretire 後 `is_active` **仍為 false**；引用方清單以 `pg_catalog` 比對常數，新增第四個引用表會先紅 | `tests/integration/test_rule_set_delete_unretire.py` |
+| **字典治理：刪除／解除封存（ADR-023 D3b）** | DELETE 僅 draft（published／retired／certified_import／is_active 各自 409，**斷言 `detail.code` 不只狀態碼**）；**被引用的 draft 不可刪**（現為五個 RESTRICT 引用方：`most_cycles`／`most_worksheets`／`motion_module_versions`／`ai_parse_runs`／`ai_parse_jobs`）→ 409 `RULE_SET_IN_USE`＋筆數（回放鐵則的另一面）；刪除連帶 13 張子表歸零；audit 先寫後刪且自帶 `code`/`provenance`/`children_deleted`（實體消失後它是唯一紀錄）；unretire 後 `is_active` **仍為 false**；引用方清單以 `pg_catalog` 比對常數（張數不寫死），新增引用表卻沒同步常數會先紅 | `tests/integration/test_rule_set_delete_unretire.py` |
 | **前端字典管理（ADR-023 D4）** | L1 版本清單（狀態徽章＋啟用中＋血緣中文）→ L2 七參數分頁（A 三分量／M 四分量次級 tab）；**對認證版的任何寫入動作攔截跳 clone-on-write**；帶界違規顯示後端人話錯誤而非原始 JSON；**無硬編碼 rule-set code**（一律經 `useActiveRuleSet`） | `src/frontend/e2e/dictionary.spec.ts`（Type A mocked-API） |
 | 依賴完整性 | `create_app()` 乾淨 import；端點測試抓 lazy import | CI「乾淨 import」step + 上列各端點測試 |
 
 ## CI jobs（`.github/workflows/ci.yml`）
 
-- **backend**：postgres service → 裝宣告依賴 → 乾淨 import → migrate+seed → core_logic → `pytest`
+- **backend**：postgres service → 裝宣告依賴 → 乾淨 import → migrate+seed → core_logic → `pytest tests/unit` → `pytest tests/integration`
+  - ⚠️ **兩段式不可合併回 `pytest -q`**：`tests/unit` 與 `tests/integration` 有同名檔案（`test_search.py`）
+    且兩個目錄都不是 package，單一 `pytest -q` 會 import file mismatch → collection error →
+    **整批中斷、一條測試都不算數**（守衛型測試因此可能長期沒真的跑過）。
 - **frontend**：`npm ci` → typecheck → build
 - **e2e（smoke）**：full stack（seed + build + preview_server :8099）→ `smoke.spec.ts`
 - **e2e（ux-compliance）**：Type A mocked-API；只需 Vite dev server 或 preview_server 提供靜態資源 → `ux-compliance.spec.ts`（33 條，E2E_BASE_URL=`http://localhost:5173`）
@@ -70,6 +73,7 @@ pip install -e ".[dev]"
 DATABASE_URL=... PYTHONPATH=src alembic upgrade head
 DATABASE_URL=... PYTHONPATH=src python scripts/dev_seed_v2.py
 DATABASE_URL=... PYTHONPATH=src python scripts/core_logic/run_all.py
-DATABASE_URL=... PYTHONPATH=src pytest -q
+PYTHONPATH=src pytest tests/unit -q                       # 免 DB
+DATABASE_URL=... PYTHONPATH=src pytest tests/integration -q
 ( cd src/frontend && npm run typecheck && npm run build )
 ```

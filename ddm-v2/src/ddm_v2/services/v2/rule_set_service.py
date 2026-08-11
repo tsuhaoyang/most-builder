@@ -811,8 +811,8 @@ class RuleSetInUse(Exception):
 
     刪掉一個被 cycle/module 版本引用的 rule-set，會讓那些歷史資料再也載不到規則版本
     （`load_rule_set_from_db` 依鐵則不做治理狀態過濾，它只會找不到列）。
-    DB 三條 RESTRICT FK 是最後防線；這一層先攔下來，才能回可讀的 409＋引用數，
-    而不是 IntegrityError 500。
+    DB 的 RESTRICT FK（清單見 `_RESTRICT_REFERRERS`）是最後防線；這一層先攔下來，
+    才能回可讀的 409＋引用數，而不是 IntegrityError 500。
     """
 
     def __init__(self, code: str, refs: dict[str, int]) -> None:
@@ -825,13 +825,29 @@ class RuleSetInUse(Exception):
         )
 
 
-# 對 rule_sets 具 ondelete='RESTRICT' 的引用方（與 DB 一致；見 v2_0001/v2_0011 migration）。
-# 這三張表任一有列指向本版本，刪除都必須先被擋下。CASCADE 的 12 張規則子表 ＋
+# 對 rule_sets 具 ondelete='RESTRICT' 的引用方（與 DB 一致；見 v2_0001/v2_0011/v2_0026/v2_0028 migration）。
+# 這些表任一有列指向本版本，刪除都必須先被擋下。CASCADE 的 12 張規則子表 ＋
 # rule_option_synonyms 屬於「版本自身的內容」，由 DB 級聯清掉，不算引用。
+#
+# ⚠️ 新增任何指向 rule_sets 的 RESTRICT FK 時，**必須同步這份清單**——
+# 漏加的後果不是「少數一張表」而已：`count_references` 少報 → 服務層放行 →
+# DB 的 RESTRICT 在 flush 時拋 IntegrityError，原本設計好的 409＋引用數變成 500。
+# 這件事已經發生過一次：v2_0026（ai_parse_runs）／v2_0028（ai_parse_jobs）加了 FK
+# 卻沒同步清單。
+#
+# 守門者：`tests/integration/test_rule_set_delete_unretire.py::
+# test_count_references_covers_every_restrict_referrer`（以 pg_catalog 反查實際的
+# RESTRICT FK 與本常數對照）。它**只在 `pytest tests/integration` 這一段跑得到**——
+# 上述 v2_0026/v2_0028 的漂移之所以能存活，正是因為當時 CI 用單一 `pytest -q`，
+# 而 tests/unit 與 tests/integration 有同名檔案 → collection error → 整批中斷。
+# CI 已改為兩段式（見 `.github/workflows/ci.yml` 與 `docs/CI_GATES.md`）；
+# 若有人把它合回一行，這條守衛就再次形同不存在。
 _RESTRICT_REFERRERS: tuple[tuple[str, str], ...] = (
     ("most_cycles", "rule_set_id"),
     ("most_worksheets", "default_rule_set_id"),
     ("motion_module_versions", "rule_set_id"),
+    ("ai_parse_runs", "rule_set_id"),       # v2_0026
+    ("ai_parse_jobs", "rule_set_id"),       # v2_0028
 )
 
 # 由 rule_sets 級聯刪除的子表（12 張規則表 ＋ 同義詞表）。刪除後逐張確認歸零。

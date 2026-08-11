@@ -16,9 +16,6 @@ const PRIMARY_NAV: NavItem[] = [
   { id: 'ruleset',      label: 'MOST 字典',           shortLabel: '字', minRole: 'admin' },
 ]
 
-/** Legacy v2 tabs (L-04: SOP retired; kept as empty array for future use). */
-const SECONDARY_NAV: NavItem[] = []
-
 const SIDEBAR_BG = '#304156'
 
 // ─── Inner nav button ─────────────────────────────────────────────────────────

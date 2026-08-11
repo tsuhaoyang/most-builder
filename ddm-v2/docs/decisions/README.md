@@ -29,6 +29,7 @@
 | [ADR-025-import-template-matching-p2.md](ADR-025-import-template-matching-p2.md) | 匯入預覽接 template match，IE 核對後以 active rule-set 重算 | 🟢 accepted |
 | [ADR-026-wi-ai-parser-pipeline-boundary.md](ADR-026-wi-ai-parser-pipeline-boundary.md) | WI AI Parser 獨立 bounded context、DDM deterministic compiler 與 MOST 權威邊界 | 🟢 accepted |
 | [ADR-027-domain-evolution-versioning-and-ai-readiness.md](ADR-027-domain-evolution-versioning-and-ai-readiness.md) | Worksheet revision、Modeling/Level policy、outbox、row-level batch 與 AI readiness | 🟢 accepted |
+| [ADR-028-most-engine-boundary-validation-and-single-authority.md](ADR-028-most-engine-boundary-validation-and-single-authority.md) | most_engine 邊界驗證加嚴（三層權威、無 strict 旗標）與刪除重複計算實作 | 🟡 proposed |
 
 ## 狀態說明
 

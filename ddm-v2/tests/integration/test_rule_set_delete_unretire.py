@@ -174,10 +174,17 @@ async def test_delete_referenced_draft_returns_409_with_reference_count(client, 
 
 
 async def test_count_references_covers_every_restrict_referrer(db_session, draft):
-    """三條 RESTRICT FK 都要被數到——漏一條就是一條 500 的路。
+    """**每一條** RESTRICT FK 都要被數到——漏一條就是一條 500 的路。
 
     以 DB 的 pg_catalog 為準對照模組常數（model 與 migration 兩邊之外的第三方見證），
-    這樣未來新增第四張引用表時，這個測試會先變紅。
+    所以新增引用表卻沒同步 `_RESTRICT_REFERRERS` 時，這個測試會先變紅。
+    刻意不把張數寫死在斷言裡（寫死只會跟著漂）——期望值一律現查 pg_catalog；
+    撰寫當下實際為五張：most_cycles／most_worksheets／motion_module_versions／
+    ai_parse_runs（v2_0026）／ai_parse_jobs（v2_0028）。
+
+    ⚠️ 這條守衛只在 `pytest tests/integration` 跑得到。CI 曾用單一 `pytest -q`，
+    因 tests/unit 與 tests/integration 有同名檔案而 collection error 整批中斷，
+    v2_0026／v2_0028 的漂移就是那時溜過去的。
     """
     rs_id = (await _row(db_session, draft)).id
     actual = set((await svc.count_references(db_session, rs_id)).keys())

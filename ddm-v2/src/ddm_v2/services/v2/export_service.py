@@ -15,7 +15,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from ddm_v2.models.v2.audit import WorkflowAuditLog
 from ddm_v2.models.v2.org import Product, Site, Sku
-from ddm_v2.models.v2.worksheet import MostWorksheet, ProcessVersion, WiRow
+from ddm_v2.models.v2.worksheet import MostWorksheet, ProcessVersion
 from ddm_v2.most_engine import level as level_engine
 from ddm_v2.most_engine.rule_set_data import TMU_TO_SEC
 from ddm_v2.services.v2.worksheet_service import WorksheetNotFound, read_worksheet

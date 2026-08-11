@@ -45,8 +45,15 @@ jobs:
           python scripts/dev_seed_templates.py
       - name: 核心邏輯黃金/反例（GM=28 / CM=29 / Level R1–R9）
         run: python scripts/core_logic/run_all.py
-      - name: pytest（unit + integration）
-        run: pytest -q
+      # ⚠️ 必須分兩段跑（與 CLAUDE.md「unit 與 integration 必須分開跑」一致）：
+      # tests/unit 與 tests/integration 有同名檔案（test_search.py）且兩個目錄都不是 package，
+      # 單一 `pytest -q` 會 import file mismatch → collection error → **整批中斷、一條測試都不算數**。
+      # 這曾讓守衛型測試（如 test_count_references_covers_every_restrict_referrer）長期沒真的跑過。
+      # 不要為了「精簡」合回一行。
+      - name: pytest（unit）
+        run: pytest tests/unit -q
+      - name: pytest（integration）
+        run: pytest tests/integration -q
 
   frontend:
     name: 前端（typecheck + build）

@@ -26,6 +26,4 @@ export interface NavItem {
   shortLabel: string
   /** Minimum role required to see this item. 'analyst' = level ≥ 1; 'admin' = level ≥ 3 */
   minRole?: 'analyst' | 'admin'
-  /** Secondary items are shown below a divider (legacy v2 tabs kept for access) */
-  secondary?: boolean
 }

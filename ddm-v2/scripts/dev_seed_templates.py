@@ -49,7 +49,12 @@ TEMPLATES = [
     ("鎖附螺絲", "screw", "鎖附", "CM", ["screw", "lock", "tighten", "fasten", "鎖", "螺絲"], cm(18, "g_grasp", "m_screw", i="i_check")),
     ("撕開/移除", "open/remove", "拆解", "CM", ["open", "remove", "unpack", "tear", "pulltab", "pull tab", "撕", "拆", "移除"], cm(20, "g_pick_sel", "m_tearopen", dist=15)),
     ("按壓/按鈕", "press", "操作", "CM", ["press", "push", "button", "按", "壓"], cm(20, "g_touch", "m_push", dist=4)),
-    ("掃描/檢查", "scan/check", "檢測", "CM", ["scan", "check", "test", "inspect", "掃", "檢查", "測"], cm(25, "g_touch", "m_hand", x="x_scan", x_sec=1.5, i="i_check")),
+    # X 用 `x_scan_bar`（刷條形碼）：V1 的 `x_scan`（刷條碼(固定)）在 V2 認證字典裡改名分家為
+    # x_scan_bar / x_scan_ppid / x_scan_wo，舊碼不存在 → 引擎擋成 X_UNKNOWN。三者同為
+    # mode='fixed' 0.216 秒（TMU 相同），本範本是通用「掃描」故取條碼版；PPID／工單二維碼
+    # 是特定標籤，語意較窄。fixed 模式的秒數由字典提供、x_seconds 不參與計算，故傳 0
+    # （與 dev_seed_30rows.py 一致；留著非零值只會誤導讀者）。
+    ("掃描/檢查", "scan/check", "檢測", "CM", ["scan", "check", "test", "inspect", "掃", "檢查", "測"], cm(25, "g_touch", "m_hand", x="x_scan_bar", x_sec=0, i="i_check")),
     ("插接線材", "plug cable", "組裝", "CM", ["plug", "connect", "cable", "接線", "插接"], cm(20, "g_grasp", "m_push", dist=6, i="i_align1")),
     # ── 成品化常見 pattern（含距離分級/精度，降低冷啟動）──
     ("小範圍拿取(≤50cm)", "take short reach", "取放", "GM", ["take short", "近距", "小範圍", "拿近件"], gm(30, "g_grasp", 30, "p_place_single")),

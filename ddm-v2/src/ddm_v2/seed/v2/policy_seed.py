@@ -1,9 +1,20 @@
-"""Seed MODELING_FACTORY / LEVEL_FACTORY v1（R2a）。idempotent by (code, version_no)。"""
+"""Seed MODELING_FACTORY / LEVEL_FACTORY v1（R2a）。idempotent by (code, version_no)。
+
+定位＝**補種**：migration `v2_0030` 在建表時已 INSERT 這兩列（`ON CONFLICT DO NOTHING`），
+所以正常環境跑到這裡都是「已存在 → 原樣取回」。真正會走建列分支的是
+「表存在但列被清掉」或以 `Base.metadata.create_all` 起的測試庫。
+
+⚠️ 這三個函式**必須是 async**：`session` 是 `AsyncSession`，`AsyncSession.get()` 回 coroutine。
+曾經宣告成同步 `def` 而直接用 `session.get(...)` 的結果是——coroutine 恆為真 →
+`existing is not None` 永遠成立 → **從不建列、回傳的是 coroutine 而非 ORM 物件**，
+呼叫端一取 `.name` 就 `AttributeError`（CI 的「Migrate + seed」步驟因此長期紅燈）。
+"""
 from __future__ import annotations
 
 from datetime import datetime, timezone
-from typing import Any
 from uuid import UUID
+
+from sqlalchemy.ext.asyncio import AsyncSession
 
 from ddm_v2.models.v2.policy import LevelPolicyVersion, ModelingPolicyVersion
 from ddm_v2.services.v2.policy_service import (
@@ -24,8 +35,8 @@ from ddm_v2.services.v2.policy_service import (
 )
 
 
-def seed_modeling_policy_factory_v1(session: Any) -> ModelingPolicyVersion:
-    existing = session.get(ModelingPolicyVersion, MODELING_FACTORY_V1_ID)
+async def seed_modeling_policy_factory_v1(session: AsyncSession) -> ModelingPolicyVersion:
+    existing = await session.get(ModelingPolicyVersion, MODELING_FACTORY_V1_ID)
     if existing is not None:
         return existing
     now = datetime.now(timezone.utc)
@@ -49,8 +60,8 @@ def seed_modeling_policy_factory_v1(session: Any) -> ModelingPolicyVersion:
     return row
 
 
-def seed_level_policy_factory_v1(session: Any) -> LevelPolicyVersion:
-    existing = session.get(LevelPolicyVersion, LEVEL_FACTORY_V1_ID)
+async def seed_level_policy_factory_v1(session: AsyncSession) -> LevelPolicyVersion:
+    existing = await session.get(LevelPolicyVersion, LEVEL_FACTORY_V1_ID)
     if existing is not None:
         return existing
     now = datetime.now(timezone.utc)
@@ -73,8 +84,14 @@ def seed_level_policy_factory_v1(session: Any) -> LevelPolicyVersion:
     return row
 
 
-def seed_policy_factory_v1(session: Any) -> tuple[ModelingPolicyVersion, LevelPolicyVersion]:
-    return seed_modeling_policy_factory_v1(session), seed_level_policy_factory_v1(session)
+async def seed_policy_factory_v1(
+    session: AsyncSession,
+) -> tuple[ModelingPolicyVersion, LevelPolicyVersion]:
+    """兩份 manifest 一起補種。順序執行（同一條連線，不得 gather）。"""
+    return (
+        await seed_modeling_policy_factory_v1(session),
+        await seed_level_policy_factory_v1(session),
+    )
 
 
 # 供測試／診斷：固定 id

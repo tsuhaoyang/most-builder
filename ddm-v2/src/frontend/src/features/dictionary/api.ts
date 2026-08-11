@@ -107,11 +107,27 @@ export function useVersionMutations() {
   }
 }
 
-/** 各引用表的中文名（`RULE_SET_IN_USE` 的 `detail.references` 鍵）。 */
+/**
+ * 各引用表的中文名（`RULE_SET_IN_USE` 的 `detail.references` 鍵）。
+ *
+ * ⚠️ 這份對照表必須與後端 `src/ddm_v2/services/v2/rule_set_service.py` 的
+ * `_RESTRICT_REFERRERS` 保持同步。後端新增一張指向 rule_sets 的 RESTRICT FK 時，
+ * **一定要回來這裡補中文名**——後端那份清單有 pg_catalog 反查測試守著
+ * （`test_count_references_covers_every_restrict_referrer`），前端這份沒有測試會擋，
+ * 漏加不會壞掉、只會靜靜降級：`describeInUse` 的 fallback 是原始表名，
+ * 使用者看到的是「此草稿已被 3 筆ai_parse_runs引用，無法刪除。」這種中英夾雜的句子。
+ * 這件事已經發生過一次：v2_0026（ai_parse_runs）／v2_0028（ai_parse_jobs）加了 FK，
+ * 後端清單與這裡都漏補。
+ *
+ * 命名原則：用 IE 使用者看得懂的業務名詞（不是表名直譯），讓人一眼知道
+ * 「這個規則版本被什麼東西用著、所以不能刪」。
+ */
 const REFERRER_ZH: Record<string, string> = {
   most_cycles: '動作循環',
   most_worksheets: '工時表',
   motion_module_versions: '動作模組版本',
+  ai_parse_runs: '語句解析紀錄',      // v2_0026：一次語句解析的執行紀錄（互動式／匯入逐列共用）
+  ai_parse_jobs: '批次解析作業',      // v2_0028：Excel 匯入的批次解析作業
 }
 
 /**

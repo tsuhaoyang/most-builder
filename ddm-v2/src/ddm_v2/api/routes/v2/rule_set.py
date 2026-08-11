@@ -256,7 +256,7 @@ async def delete_rule_set(code: str, session: AsyncSession = Depends(get_db_sess
     | `CERTIFIED_IMMUTABLE` | provenance='certified_import'（認證版本不受線上治理操作） |
     | `RULE_SET_NOT_DRAFT` | status 為 published/retired |
     | `RULE_SET_ACTIVE` | is_active=true |
-    | `RULE_SET_IN_USE` | 已被 cycle/worksheet/module 版本引用（`detail.references` 附各表引用數） |
+    | `RULE_SET_IN_USE` | 已被歷史資料引用（`detail.references` 附各表引用數；引用方清單見 `_RESTRICT_REFERRERS`） |
 
     12 張規則子表 ＋ rule_option_synonyms 由 DB CASCADE 一併刪除（回應的
     `children_deleted` 為刪除前的列數快照）。

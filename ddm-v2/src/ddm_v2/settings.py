@@ -56,7 +56,6 @@ class Settings:
     app_version: str
     secret_key: str
     access_token_expire_hours: int
-    tmu_factor: float
     cors_allow_origins: list[str]
     cors_allow_credentials: bool
     cors_allow_methods: list[str]
@@ -83,7 +82,6 @@ def get_settings() -> Settings:
         app_version=os.getenv("DDM_APP_VERSION", "2.0.0-rc1"),
         secret_key=os.getenv("DDM_SECRET_KEY", "ddm-v2-release-candidate-202603-rc1-secure-key"),
         access_token_expire_hours=int(os.getenv("DDM_ACCESS_TOKEN_EXPIRE_HOURS", "8")),
-        tmu_factor=float(os.getenv("DDM_TMU_FACTOR", "0.036")),
         cors_allow_origins=_parse_csv(os.getenv("DDM_CORS_ALLOW_ORIGINS"), list(DEFAULT_CORS_ORIGINS)),
         cors_allow_credentials=_parse_bool(os.getenv("DDM_CORS_ALLOW_CREDENTIALS"), True),
         cors_allow_methods=_parse_csv(os.getenv("DDM_CORS_ALLOW_METHODS"), list(DEFAULT_CORS_METHODS)),
@@ -105,7 +103,12 @@ DATA_DIR = get_settings().data_dir
 
 SECRET_KEY = get_settings().secret_key
 ACCESS_TOKEN_EXPIRE_HOURS = get_settings().access_token_expire_hours
-TMU_FACTOR = get_settings().tmu_factor
+
+# ⚠️ 不要在這裡加 TMU→秒 的換算設定。
+# 這裡曾有 `tmu_factor` / `DDM_TMU_FACTOR`（預設 0.036），但 `most_engine/` 從未讀它——
+# 設了完全沒作用，卻看起來像能改換算基準，是會騙人的設定。權威常數是
+# `most_engine/rule_set_data.py` 的 `TMU_TO_SEC`（值屬核心邏輯，改動要走 ADR ＋
+# scripts/core_logic/run_all.py 的黃金值驗證）。
 
 APP_NAME = get_settings().app_name
 APP_VERSION = get_settings().app_version
