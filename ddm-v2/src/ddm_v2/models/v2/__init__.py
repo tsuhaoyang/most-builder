@@ -25,6 +25,7 @@ from ddm_v2.models.v2.level_validation import LevelValidationRun
 from ddm_v2.models.v2.motion_module import MotionModule, MotionModuleVersion
 from ddm_v2.models.v2.motion_template import MotionTemplate
 from ddm_v2.models.v2.org import Product, Site, Sku
+from ddm_v2.models.v2.outbox import OutboxEvent
 from ddm_v2.models.v2.policy import LevelPolicyVersion, ModelingPolicyVersion
 from ddm_v2.models.v2.rule_set import RuleSet
 from ddm_v2.models.v2.rule_set_tables import (
@@ -100,4 +101,5 @@ __all__ = [
     "AiParseJobItem",
     "ModelingPolicyVersion",
     "LevelPolicyVersion",
+    "OutboxEvent",
 ]

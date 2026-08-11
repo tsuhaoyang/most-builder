@@ -27,6 +27,7 @@ from ddm_v2.schemas.v2.most import cycle_in_to_engine, resolve_cycle_rule_set
 from ddm_v2.schemas.v2.worksheet import WorksheetSaveIn
 from ddm_v2.services.v2.audit_service import log_audit
 from ddm_v2.services.v2.level_validation_service import assert_publishable, validate_and_persist
+from ddm_v2.services.v2.outbox_service import enqueue_worksheet_saved
 from ddm_v2.services.v2.policy_service import level_summary, modeling_summary
 from ddm_v2.services.v2.rule_set_service import get_active_rule_set_code
 from ddm_v2.services.v2.worksheet_revision import (
@@ -200,6 +201,14 @@ async def save_worksheet(
         await validate_and_persist(
             session, worksheet_id, trigger="save", actor=edited_by or "unknown"
         )
+    # R3b：同交易寫 outbox（reference only）
+    await enqueue_worksheet_saved(
+        session,
+        worksheet_id=worksheet_id,
+        revision_no=int(ws.revision_no or 1),
+        content_hash=ch,
+        edited_by=edited_by,
+    )
     return out
 
 

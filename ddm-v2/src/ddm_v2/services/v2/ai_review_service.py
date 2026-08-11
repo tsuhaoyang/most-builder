@@ -198,6 +198,16 @@ async def record_reviews(
             candidate_ids.append(str(cid))
 
     await session.flush()
+    from ddm_v2.services.v2.outbox_service import enqueue_review_recorded
+
+    await enqueue_review_recorded(
+        session,
+        run_id=run_id,
+        review_event_ids=event_ids,
+        review_event_types=[e.get("event_type") for e in events if e.get("event_type")],
+        worksheet_id=run.worksheet_id,
+        worksheet_revision=int(run.source_revision) if run.source_revision is not None else None,
+    )
     return {
         "run_id": str(run_id),
         "event_ids": event_ids,
