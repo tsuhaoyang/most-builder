@@ -1,6 +1,6 @@
 """測試隔離迴歸保險絲（CI_GATES 3b：integration 測試永不落真實 DB）。
 
-背景：`docs/v3/v2-authoritative-model-guide.md` §1「版本爆量事後剖析」——
+背景：`docs/architecture/v2-authoritative-model-guide.md` §1「版本爆量事後剖析」——
 隔離改造（17661cc）之前，integration 的 clone 直接落盤，demo SKU 累積到 279 版
 （268 筆具測試簽名）。本檔是防止再犯的保險絲：只要 conftest 的
 「外層 transaction + savepoint + teardown rollback」被改壞，這裡立刻紅燈。

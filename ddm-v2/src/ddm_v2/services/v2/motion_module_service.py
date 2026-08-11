@@ -1031,6 +1031,17 @@ async def instantiate_to_worksheet(
         and pv_check.created_by != current_user_no
     ):
         raise WorksheetPermissionError("無權操作此工序表")
+
+    # R1：append 前 CAS（失敗則不寫列）
+    from ddm_v2.services.v2.worksheet_revision import bump_worksheet_revision
+
+    await bump_worksheet_revision(
+        session,
+        worksheet_id=worksheet_id,
+        base_revision=data.base_revision,
+        edited_by=current_user_no,
+    )
+
     if ws.default_rule_set_id is None:
         raise RuleSetNotFound("工序表未設定 default_rule_set_id")
 
@@ -1113,25 +1124,22 @@ async def instantiate_to_worksheet(
     # 展開列
     new_rows_out = []
     drift_warnings = []
-    skipped_vocab_missing = 0
     now = datetime.now(timezone.utc)
 
     for idx, row_data in enumerate(ver.rows):
         # 取 vocab refs
         vocab_refs: dict[str, Any] = row_data.get("vocab_refs") or {}
         obj_vid_raw = vocab_refs.get("object_vocab_id")
-        if obj_vid_raw is None:
-            # WiRow.object_vocab_id 為 NOT NULL FK，無法建立 WiRow。
-            # 計數並繼續（非靜默跳過）；呼叫端從 skipped_vocab_missing 得知。
-            # TODO: 未來在 publish_version 時強制驗證 vocab_refs.object_vocab_id 存在，
-            #       可在根源消除此 skip 路徑。
-            skipped_vocab_missing += 1
-            continue
-        try:
-            obj_vid = uuid.UUID(str(obj_vid_raw))
-        except ValueError:
-            skipped_vocab_missing += 1
-            continue
+        obj_vid: uuid.UUID | None = None
+        if obj_vid_raw is not None:
+            try:
+                obj_vid = uuid.UUID(str(obj_vid_raw))
+            except ValueError as error:
+                raise PublishValidationError(
+                    idx,
+                    "VOCAB_REF_INVALID",
+                    f"object_vocab_id 不是合法 UUID：{obj_vid_raw}",
+                ) from error
 
         def _optional_uuid(key: str) -> uuid.UUID | None:
             v = vocab_refs.get(key)
@@ -1139,8 +1147,12 @@ async def instantiate_to_worksheet(
                 return None
             try:
                 return uuid.UUID(str(v))
-            except ValueError:
-                return None
+            except ValueError as error:
+                raise PublishValidationError(
+                    idx,
+                    "VOCAB_REF_INVALID",
+                    f"{key} 不是合法 UUID：{v}",
+                ) from error
 
         from_vid = _optional_uuid("from_vocab_id")
         to_vid = _optional_uuid("to_vocab_id")
@@ -1256,8 +1268,18 @@ async def instantiate_to_worksheet(
         })
 
     await session.flush()
+    # R1：append 後更新 content_hash（不另 bump；bump 已在前置做完）
+    from ddm_v2.services.v2 import worksheet_service as ws_svc
+    from ddm_v2.services.v2.worksheet_revision import content_hash_from_read, set_content_hash
+
+    snap = await ws_svc.read_worksheet(session, worksheet_id)
+    ch = content_hash_from_read(snap)
+    await set_content_hash(session, worksheet_id=worksheet_id, content_hash=ch)
+    await session.flush()
     return {
         "new_rows": new_rows_out,
         "tmu_drift": drift_warnings,
-        "skipped_vocab_missing": skipped_vocab_missing,
+        "skipped_vocab_missing": 0,
+        "revision_no": int(snap["revision_no"]),
+        "content_hash": ch,
     }

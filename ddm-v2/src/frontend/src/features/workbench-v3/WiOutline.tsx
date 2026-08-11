@@ -4,11 +4,12 @@
 //   展開子列：narrative/sub_activity、hand、freq、computed.total_tmu/eff_tmu、SIMO 標記
 //   子列操作：點列開 WiItemInspector（父層）、上移/下移（reorder）、刪除（DELETE row）
 // 所有數字來自後端持久化 computed（ADR-022 A-1）；前端不算 TMU。
-import { useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { TMU_SEC } from '../../shared/config'
 import {
   useWiTemplates,
   useMotionModuleDetail,
+  useUpdateModule,
   useDeleteWiTemplate,
   useReorderModuleRows,
   useDeleteModuleRow,
@@ -27,8 +28,32 @@ export interface WiOutlineSectionProps {
 
 export function WiOutlineSection({ onInspect, showToast, activeTarget }: WiOutlineSectionProps) {
   const { data: wis = [], isLoading } = useWiTemplates()
+  const updateModule = useUpdateModule()
   const deleteWi = useDeleteWiTemplate()
   const [expandedIds, setExpandedIds] = useState<Set<string>>(new Set())
+  const [orderedWiIds, setOrderedWiIds] = useState<string[]>([])
+  const [renamingId, setRenamingId] = useState<string | null>(null)
+  const [renameDraft, setRenameDraft] = useState('')
+
+  useEffect(() => {
+    setOrderedWiIds(prev => {
+      const ids = wis.map(w => w.id)
+      const known = prev.filter(id => ids.includes(id))
+      const appended = ids.filter(id => !known.includes(id))
+      return [...known, ...appended]
+    })
+  }, [wis])
+
+  const orderedWis = useMemo(() => {
+    if (wis.length === 0) return [] as MotionModuleSummary[]
+    const byId = new Map(wis.map(w => [w.id, w] as const))
+    const ordered: MotionModuleSummary[] = []
+    orderedWiIds.forEach(id => {
+      const wi = byId.get(id)
+      if (wi) ordered.push(wi)
+    })
+    return ordered
+  }, [wis, orderedWiIds])
 
   function toggleExpand(id: string) {
     setExpandedIds(s => {
@@ -48,32 +73,89 @@ export function WiOutlineSection({ onInspect, showToast, activeTarget }: WiOutli
     }
   }
 
-  const totalActions = wis.reduce((s, w) => s + (w.action_count ?? 0), 0)
+  function beginRename(wi: MotionModuleSummary) {
+    if (wi.status !== 'draft') {
+      showToast('目前後端僅允許 draft WI 改名', 'err')
+      return
+    }
+    setRenamingId(wi.id)
+    setRenameDraft(wi.name_zh)
+  }
+
+  function cancelRename() {
+    setRenamingId(null)
+    setRenameDraft('')
+  }
+
+  async function saveRename(wi: MotionModuleSummary) {
+    const name = renameDraft.trim().slice(0, 200)
+    if (!name) {
+      showToast('WI 名稱不可為空', 'err')
+      return
+    }
+    if (name === wi.name_zh) {
+      cancelRename()
+      return
+    }
+    try {
+      await updateModule.mutateAsync({ id: wi.id, body: { name_zh: name } })
+      showToast(`已改名 WI：${name}`, 'ok')
+      cancelRename()
+    } catch (err) {
+      showToast('改名失敗：' + (err as Error).message, 'err')
+    }
+  }
+
+  function shiftOutlineWi(wiId: string, direction: -1 | 1) {
+    setOrderedWiIds(prev => {
+      const from = prev.indexOf(wiId)
+      if (from < 0) return prev
+      const to = from + direction
+      if (to < 0 || to >= prev.length) return prev
+      const next = [...prev]
+      const [item] = next.splice(from, 1)
+      next.splice(to, 0, item)
+      return next
+    })
+  }
+
+  const totalActions = orderedWis.reduce((s, w) => s + (w.action_count ?? 0), 0)
 
   return (
     <div className="bg-white rounded-xl border p-4 space-y-3" data-testid="wi-outline">
       <div className="flex items-baseline gap-2">
         <h2 className="font-semibold text-base">WI 大綱</h2>
         <span className="text-xs text-slate-400">
-          {wis.length} 筆 WI · {totalActions} 筆動作
+          {orderedWis.length} 筆 WI · {totalActions} 筆動作
         </span>
       </div>
 
       {isLoading && <p className="text-sm text-slate-400 text-center py-4">載入中…</p>}
-      {!isLoading && wis.length === 0 && (
+      {!isLoading && orderedWis.length === 0 && (
         <p className="text-sm text-slate-400 text-center py-4">
           尚無 WI，請在上方動作清單勾選動作後建立 WI。
         </p>
       )}
 
-      <div className="space-y-1.5">
-        {wis.map(wi => (
+      <div className="space-y-1.5 max-h-[42vh] overflow-y-auto pr-1">
+        {orderedWis.map((wi, idx) => (
           <WiOutlineCard
             key={wi.id}
             wi={wi}
+            index={idx}
+            total={orderedWis.length}
+            renaming={renamingId === wi.id}
+            renameDraft={renameDraft}
             expanded={expandedIds.has(wi.id)}
             onToggle={() => toggleExpand(wi.id)}
             onDelete={() => handleDeleteWi(wi.id, wi.name_zh)}
+            onMoveUp={() => shiftOutlineWi(wi.id, -1)}
+            onMoveDown={() => shiftOutlineWi(wi.id, 1)}
+            onStartRename={() => beginRename(wi)}
+            onRenameDraftChange={setRenameDraft}
+            onRenameCancel={cancelRename}
+            onRenameSave={() => saveRename(wi)}
+            renameBusy={updateModule.isPending}
             deleteDisabled={deleteWi.isPending}
             onInspect={onInspect}
             showToast={showToast}
@@ -88,9 +170,20 @@ export function WiOutlineSection({ onInspect, showToast, activeTarget }: WiOutli
 // ── 單一 WI 卡（展開時 lazy fetch detail） ─────────────────────────────────────
 interface WiOutlineCardProps {
   wi: MotionModuleSummary
+  index: number
+  total: number
+  renaming: boolean
+  renameDraft: string
   expanded: boolean
   onToggle: () => void
   onDelete: () => void
+  onMoveUp: () => void
+  onMoveDown: () => void
+  onStartRename: () => void
+  onRenameDraftChange: (value: string) => void
+  onRenameCancel: () => void
+  onRenameSave: () => void
+  renameBusy: boolean
   deleteDisabled: boolean
   onInspect: WiOutlineSectionProps['onInspect']
   showToast: WiOutlineSectionProps['showToast']
@@ -98,7 +191,9 @@ interface WiOutlineCardProps {
 }
 
 function WiOutlineCard({
-  wi, expanded, onToggle, onDelete, deleteDisabled, onInspect, showToast, activeTarget,
+  wi, index, total, renaming, renameDraft, expanded, onToggle, onDelete, onMoveUp, onMoveDown,
+  onStartRename, onRenameDraftChange, onRenameCancel, onRenameSave, renameBusy,
+  deleteDisabled, onInspect, showToast, activeTarget,
 }: WiOutlineCardProps) {
   const { data: detail, isLoading } = useMotionModuleDetail(wi.id, expanded)
   const reorderRows = useReorderModuleRows()
@@ -138,16 +233,33 @@ function WiOutlineCard({
   const rowOpsPending = reorderRows.isPending || deleteRow.isPending
 
   return (
-    <div className="border rounded-lg bg-white">
+    <div className="border rounded-lg bg-white" data-testid="wi-outline-card">
       {/* WI header 列 */}
       <div
         className="flex items-center gap-2 px-3 py-2 cursor-pointer hover:bg-slate-50 select-none"
         onClick={onToggle}
       >
+        <span className="text-slate-300 text-xs w-5 text-right">{index + 1}</span>
         <span className={`text-slate-400 text-xs transition-transform ${expanded ? 'rotate-90' : ''}`}>▶</span>
-        <span className="flex-1 min-w-0 text-sm font-medium text-slate-700 truncate" title={wi.name_zh}>
-          {wi.name_zh}
-        </span>
+        {renaming ? (
+          <input
+            className="flex-1 min-w-0 border rounded px-2 py-1 text-sm"
+            value={renameDraft}
+            maxLength={200}
+            onClick={e => e.stopPropagation()}
+            onChange={e => onRenameDraftChange(e.target.value)}
+            onKeyDown={e => {
+              if (e.key === 'Enter') onRenameSave()
+              if (e.key === 'Escape') onRenameCancel()
+            }}
+            autoFocus
+            data-testid="wi-outline-rename-input"
+          />
+        ) : (
+          <span className="flex-1 min-w-0 text-sm font-medium text-slate-700 truncate" title={wi.name_zh}>
+            {wi.name_zh}
+          </span>
+        )}
         <span className="text-xs text-slate-500 whitespace-nowrap">
           {totalTmu != null
             ? <><b style={{ color: '#1a73e8' }}>{totalTmu}</b> TMU · <b className="text-red-600">{totalSec}</b>s</>
@@ -160,6 +272,46 @@ function WiOutlineCard({
             title="此 WI 已微調（發布過新版本），與原始動作快照不同"
           >已微調</span>
         )}
+        <span className="flex items-center gap-0.5" onClick={e => e.stopPropagation()}>
+          {renaming ? (
+            <>
+              <button
+                onClick={onRenameSave}
+                disabled={renameBusy}
+                className="text-xs px-1.5 py-0.5 border rounded border-emerald-300 text-emerald-700 hover:bg-emerald-50 disabled:opacity-40"
+                data-testid="wi-outline-rename-save"
+              >存</button>
+              <button
+                onClick={onRenameCancel}
+                disabled={renameBusy}
+                className="text-xs px-1.5 py-0.5 border rounded hover:bg-slate-50 disabled:opacity-40"
+                data-testid="wi-outline-rename-cancel"
+              >取消</button>
+            </>
+          ) : (
+            <button
+              onClick={onStartRename}
+              className="text-slate-400 hover:text-slate-600 px-0.5 disabled:opacity-30"
+              title={wi.status === 'draft' ? '重新命名 WI' : '僅 draft 可改名'}
+              disabled={wi.status !== 'draft'}
+              data-testid="wi-outline-rename"
+            >✎</button>
+          )}
+          <button
+            onClick={onMoveUp}
+            disabled={index === 0 || renaming}
+            className="text-slate-400 hover:text-slate-600 disabled:opacity-20 px-0.5"
+            title="上移 WI"
+            data-testid="wi-outline-move-up"
+          >↑</button>
+          <button
+            onClick={onMoveDown}
+            disabled={index === total - 1 || renaming}
+            className="text-slate-400 hover:text-slate-600 disabled:opacity-20 px-0.5"
+            title="下移 WI"
+            data-testid="wi-outline-move-down"
+          >↓</button>
+        </span>
         <button
           onClick={e => { e.stopPropagation(); onDelete() }}
           disabled={deleteDisabled}
@@ -221,6 +373,13 @@ function WiOutlineCard({
                     title={`SIMO 從屬（主列 #${(row.simo_pair_index ?? 0) + 1}），貢獻 0`}>SIMO</span>
                 )}
                 <span className="flex items-center gap-0.5 shrink-0" onClick={e => e.stopPropagation()}>
+                  <button
+                    onClick={() => onInspect(wi, i, row)}
+                    disabled={rowOpsPending}
+                    className="text-sky-500 hover:text-sky-700 disabled:opacity-20 px-0.5"
+                    title="調整此列（含 SIMO / 次數）"
+                    data-testid="wi-outline-open-inspector"
+                  >✎</button>
                   <button
                     onClick={() => move(i, -1)}
                     disabled={i === 0 || rowOpsPending}

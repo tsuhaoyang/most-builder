@@ -59,7 +59,7 @@ async def test_allowance_roundtrip_standard_seconds(client):
 
 
 async def test_allowance_null_means_no_standard(client):
-    """OQ-002：allowance 未設（null）→ standard_seconds 為 null（不得以 normal 假充 standard）。"""
+    """allowance 未設（null）→ standard_seconds 為 null（不得以 normal 假充 standard）。"""
     if not await _seeded(client):
         pytest.skip("demo worksheet 未種")
     new = (await client.post(f"/api/v2/worksheets/{WS}/clone")).json()["new_worksheet_id"]

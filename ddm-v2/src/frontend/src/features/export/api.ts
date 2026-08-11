@@ -1,7 +1,20 @@
 import { useQuery, useMutation } from '@tanstack/react-query'
 import { apiGet, apiPost } from '../../shared/api/client'
 
-export interface WiPreview { worksheet_id: string; status: string; total_tmu: number; rows: unknown[] }
+export interface WiPreviewRow {
+  seq_no?: number
+  sub_activity?: string
+  method?: string
+  hand?: string
+  freq?: number
+  tmu?: number | null
+}
+export interface WiPreview {
+  worksheet_id: string
+  status: string
+  total_tmu: number
+  rows: WiPreviewRow[]
+}
 export interface LbApiResult { status: string; note: string; worksheet_id: string; payload: unknown }
 
 export const useWiPreview = (wsId: string) =>

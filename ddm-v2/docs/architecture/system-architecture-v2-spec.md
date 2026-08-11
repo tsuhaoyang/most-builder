@@ -5,6 +5,7 @@
 **建立日期：** 2026-06-17
 **作者：** 架構師（20y SWE + IE 視角）
 **前提：** 核心邏輯已確認並以 89 個測試護住（見 [sequence](../core-logic/minimost-sequence-model-core-logic-spec.md) / [level](../core-logic/level-system-core-logic-spec.md) / [test-catalog](../core-logic/core-logic-validation-test-catalog.md)）。本文件談「如何把核心邏輯做成可信的系統」。
+**演進補充：** [Domain Evolution 與 AI Readiness](domain-evolution-and-ai-readiness-spec.md)、[WI AI Parser 系統規格](wi-ai-parser-system-spec.md)
 
 ---
 
@@ -85,6 +86,10 @@
 ## 4. 資料模型（目標，重點表）
 
 > 沿用既有 `minimost_*`、`work_vocab_items`、`users/sites`、`public_entity_codes`；**重建** level 模型；**移除** simulation 表。
+>
+> 本節只提供高階骨幹；欄位級現況見 [data-model-and-storage-spec.md](data-model-and-storage-spec.md)，
+> worksheet revision、policy version、AI operational data 與批次 row/job 的演進提案見
+> [domain-evolution-and-ai-readiness-spec.md](domain-evolution-and-ai-readiness-spec.md)。
 
 | 領域 | 表（沿用 ✅ / 重建 🔁 / 新增 ➕ / 移除 ❌） | 重點 |
 |------|------|------|
@@ -118,7 +123,7 @@
 
 ## 6. 前端架構（React + TS）
 
-- UX 現況＝[v2-workbench.html](../html_con/v2-workbench.html)（多分頁 SPA：WI 編制 / Level System / 主數據 / Rule-set / SOP / 匯出）。
+- UX 權威＝[frontend-ux-spec.md](frontend-ux-spec.md)＋ADR-021/022；`html_con/` 僅為封存原型，不作新實作依據。
 - 型別安全：openapi-typescript 由後端 OpenAPI 產生 client。
 - 結構：`features/wi-workbench`、`features/level-system`、`features/rule-set`、`features/vocab`、`features/sop`、`shared/api`、`shared/most-types`。
 - 計算：呼叫 `/minimost/calculate` 取權威 TMU（debounce）；句子敘事在前端組裝（規則來自 API 的 rule-set 資料）。

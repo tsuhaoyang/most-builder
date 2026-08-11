@@ -1,6 +1,9 @@
 import { useState, useEffect } from 'react'
+import { useQueryClient } from '@tanstack/react-query'
 import { useUploadImport, useMapColumns, useCreateProfile, useSubmitImport, type UploadOut, type PreviewOut, type PreviewRow, type ProfileOut, type SubmitOut, type MatchOption, type RowMatch } from './api'
 import { useWorkspace } from '../../shared/workspace'
+import { useWiStore } from '../wi-workbench/store'
+import { ApiError } from '../../shared/api/client'
 
 // ── ADR-025 D10：範本命中的採用判定（前端只渲染後端算好的值，絕不自算 TMU）──────────
 // 一列可採用 ⇔ 目前選中的範本選項有後端重算出的 TMU 且無 error。
@@ -24,6 +27,7 @@ const STEP_LABELS = ['上傳', '對應欄位', '預覽', '提交'] as const
 const STEP_KEYS = ['upload', 'map', 'preview', 'done'] as const
 
 export function ImportModal({ onClose }: { onClose: () => void }) {
+  const qc = useQueryClient()
   const upload = useUploadImport()
   const mapCols = useMapColumns()
   const createProfile = useCreateProfile()
@@ -124,11 +128,36 @@ export function ImportModal({ onClose }: { onClose: () => void }) {
       const tid = selected[i]
       return adopted[i] && tid ? [{ row_index: i, template_id: tid }] : []
     })
+    const baseRevision = useWiStore.getState().revisionNo
     submit.mutate(
-      { importId: up.import_id, body: { worksheet_id: wsId, row_adoptions: rowAdoptions } },
       {
-        onSuccess: (d) => { setSubmitted(d); setMsg('') },
-        onError: (e) => fail(e),
+        importId: up.import_id,
+        body: {
+          worksheet_id: wsId,
+          row_adoptions: rowAdoptions,
+          ...(baseRevision != null ? { base_revision: baseRevision } : {}),
+        },
+      },
+      {
+        onSuccess: (d) => {
+          setSubmitted(d)
+          setMsg('')
+          if (typeof d.revision_no === 'number') {
+            useWiStore.getState().setRevisionMeta({
+              revisionNo: d.revision_no,
+              contentHash: d.content_hash ?? null,
+            })
+          }
+          void qc.invalidateQueries({ queryKey: ['worksheet', wsId] })
+        },
+        onError: (e) => {
+          if (e instanceof ApiError && e.status === 409 && e.code === 'WORKSHEET_REVISION_CONFLICT') {
+            setMsg('⚠️ 提交衝突：工序表已被更新。請重新載入工時表後再提交。')
+            void qc.invalidateQueries({ queryKey: ['worksheet', wsId] })
+            return
+          }
+          fail(e)
+        },
       }
     )
   }

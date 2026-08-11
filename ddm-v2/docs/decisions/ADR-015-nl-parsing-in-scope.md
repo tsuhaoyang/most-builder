@@ -1,12 +1,12 @@
 # ADR-015: NL 解析納入 scope（DraftParserPort，建議層隔離）
 
-**狀態：** accepted（2026-07-05，User 核可；**supersedes ADR-010**）
+**狀態：** accepted（2026-07-05，User 核可；取代早期 NL backlog 決策）
 **日期：** 2026-07-04
-**關聯：** [ADR-010-nl-to-most-backlog.md](ADR-010-nl-to-most-backlog.md)、[../v3/impl/impl-05-nlp-and-synonyms.md](../v3/impl/impl-05-nlp-and-synonyms.md)、[../v3/reference/wi-parser-upgrade/](../v3/reference/wi-parser-upgrade/)、ADR-014
+**關聯：** [WI AI Parser 系統規格](../architecture/wi-ai-parser-system-spec.md)、[ADR-014](ADR-014-v3-dictionary-as-value-authority.md)
 
 ## 脈絡
 
-ADR-010 曾裁決 NL→MOST 暫緩。情勢變更：IE 已在 ddm-v3 自行開發規則式 NL 解析並認證其使用方式（口語 WI → slot 預填建議），且留下完整升級路線圖（wi-parser-upgrade 01–09）。整合 v3 時此功能為 IE 明確要求。
+早期曾裁決 NL→MOST 暫緩。情勢變更：IE 已驗證規則式 NL 解析的使用方式（口語 WI → slot 預填建議），此功能因此納入 v2 scope。
 
 ## 決策
 
@@ -21,5 +21,5 @@ NL 解析納入 v2 scope，以 hexagonal `DraftParserPort` 接入（`src/ddm_v2/
 ## 後果
 
 - 好處：IE 錄入效率；v3 治具防護測試全數移植為驗收案例；升級不換合約。
-- 代價：新增 `opencc` 依賴；同義詞治理成本（由 impl-05 的 UNIQUE 約束與衝突報告吸收）。
+- 代價：新增 `opencc` 依賴；同義詞治理成本由 DB UNIQUE 約束與衝突報告吸收。
 - 邊界（核心）：`most_engine` 不 import `nlp`；nl-draft API 無副作用；建議值進 save 流程時仍過引擎全套驗證——AI 層任何失效都不影響工時正確性。

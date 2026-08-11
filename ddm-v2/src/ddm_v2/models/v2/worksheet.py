@@ -11,6 +11,7 @@ from datetime import date, datetime
 from uuid import UUID
 
 from sqlalchemy import (
+    BigInteger,
     CheckConstraint,
     Computed,
     Date,
@@ -73,8 +74,22 @@ class MostWorksheet(Base, TimestampMixin):
     default_rule_set_id: Mapped[UUID | None] = mapped_column(
         PG_UUID(as_uuid=True), ForeignKey("rule_sets.id", ondelete="RESTRICT")
     )
-    allowance_percent: Mapped[float | None] = mapped_column(Numeric(6, 3))  # 工序表級寬放%（standard = normal×(1+%/100)；OQ-002）
+    # R2a / ADR-027：policy snapshot（nullable 過渡；新建應立即綁定 factory default）
+    modeling_policy_version_id: Mapped[UUID | None] = mapped_column(
+        PG_UUID(as_uuid=True), ForeignKey("modeling_policy_versions.id", ondelete="RESTRICT")
+    )
+    level_policy_version_id: Mapped[UUID | None] = mapped_column(
+        PG_UUID(as_uuid=True), ForeignKey("level_policy_versions.id", ondelete="RESTRICT")
+    )
+    allowance_percent: Mapped[float | None] = mapped_column(Numeric(6, 3))  # 工序表級寬放%（data-model §2.5）
     status: Mapped[str] = mapped_column(Text, nullable=False, server_default=text("'draft'"))
+    # R1 / ADR-027：內容 revision 樂觀鎖
+    revision_no: Mapped[int] = mapped_column(
+        BigInteger, nullable=False, server_default=text("1")
+    )
+    content_hash: Mapped[str | None] = mapped_column(Text)
+    last_edited_by: Mapped[str | None] = mapped_column(Text)
+    last_edited_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
 
     process_version: Mapped[ProcessVersion] = relationship(back_populates="worksheet")
     rows: Mapped[list[WiRow]] = relationship(back_populates="worksheet", order_by="WiRow.seq_no")
@@ -96,7 +111,7 @@ class WiRow(Base, TimestampMixin):
     sub_activity: Mapped[str | None] = mapped_column(Text)
     key_parts: Mapped[str | None] = mapped_column(Text)
     hand: Mapped[str | None] = mapped_column(Text)
-    object_vocab_id: Mapped[UUID] = mapped_column(PG_UUID(as_uuid=True), ForeignKey("work_vocab_items.id", ondelete="RESTRICT"), nullable=False)
+    object_vocab_id: Mapped[UUID | None] = mapped_column(PG_UUID(as_uuid=True), ForeignKey("work_vocab_items.id", ondelete="RESTRICT"))
     from_vocab_id: Mapped[UUID | None] = mapped_column(PG_UUID(as_uuid=True), ForeignKey("work_vocab_items.id", ondelete="RESTRICT"))
     to_vocab_id: Mapped[UUID | None] = mapped_column(PG_UUID(as_uuid=True), ForeignKey("work_vocab_items.id", ondelete="RESTRICT"))
     tool_vocab_id: Mapped[UUID | None] = mapped_column(PG_UUID(as_uuid=True), ForeignKey("work_vocab_items.id", ondelete="RESTRICT"))

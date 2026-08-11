@@ -1,0 +1,136 @@
+{
+  "id": "g02_screwdriver_screw_x2",
+  "source_text": "拿取電動起子，依圖示鎖附兩顆螺絲",
+  "notes": "§0.1-1 多 action GM+CM frequency=2（種子）",
+  "plan": {
+    "schema_version": "wi-plan-v1",
+    "source_text": "拿取電動起子，依圖示鎖附兩顆螺絲",
+    "normalized_text": "拿取電動起子,依圖示鎖附兩顆螺絲",
+    "language": "zh",
+    "source_ref": {
+      "kind": "interactive",
+      "worksheet_id": null,
+      "import_id": null,
+      "import_row_index": null
+    },
+    "actions": [
+      {
+        "action_id": "a1",
+        "action_type": "acquire",
+        "sequence_order": 1,
+        "roles": {
+          "tool": {
+            "text": "電動起子",
+            "value": null,
+            "unit": null,
+            "status": "explicit",
+            "action_ref": null
+          }
+        },
+        "evidence": [
+          {
+            "start": 0,
+            "end": 6,
+            "text": "拿取電動起子"
+          }
+        ],
+        "notes": null
+      },
+      {
+        "action_id": "a2",
+        "action_type": "process",
+        "sequence_order": 2,
+        "roles": {
+          "process_kind": {
+            "text": "鎖附",
+            "value": null,
+            "unit": null,
+            "status": "explicit",
+            "action_ref": null
+          },
+          "quantity": {
+            "text": "兩顆",
+            "value": 2,
+            "unit": "顆",
+            "status": "explicit",
+            "action_ref": null
+          },
+          "tool_ref": {
+            "text": null,
+            "value": null,
+            "unit": null,
+            "status": "inferred",
+            "action_ref": "a1"
+          }
+        },
+        "evidence": [
+          {
+            "start": 10,
+            "end": 16,
+            "text": "鎖附兩顆螺絲"
+          }
+        ],
+        "notes": null
+      }
+    ],
+    "dependencies": [
+      {
+        "from_action": "a1",
+        "to_action": "a2",
+        "type": "tool_held_for"
+      }
+    ],
+    "unresolved": []
+  },
+  "synthetic_synonyms": [
+    {
+      "parameter": "G",
+      "option_code": "g_grasp",
+      "synonym_norm": "拿取",
+      "priority": 10
+    },
+    {
+      "parameter": "G",
+      "option_code": "g_grasp",
+      "synonym_norm": "電動起子",
+      "priority": 8
+    },
+    {
+      "parameter": "X",
+      "option_code": "x_screw_fix",
+      "synonym_norm": "鎖附",
+      "priority": 10
+    }
+  ],
+  "expected_cycles": [
+    {
+      "action_id": "a1",
+      "complete": true,
+      "seq": "GM",
+      "g_code": "g_grasp",
+      "p_base_code": null,
+      "frequency": 1,
+      "total_tmu": 6.0,
+      "tech_line": "A0 B0 G6 A0 B0 P0 A0"
+    },
+    {
+      "action_id": "a2",
+      "complete": true,
+      "seq": "CM",
+      "x_code": "x_screw_fix",
+      "frequency": 2,
+      "total_tmu": 6.0,
+      "tech_line": "A0 B0 G0 M0 X6 I0 A0",
+      "issues_contain": [
+        "quantity_policy_review"
+      ]
+    }
+  ],
+  "gold_schema_version": "wi-gold-v1",
+  "approved_by": "seed",
+  "boundary": "multi_action_gm_cm",
+  "expected": {
+    "action_count": 2,
+    "routing_status": "review"
+  }
+}

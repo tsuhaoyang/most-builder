@@ -3,10 +3,13 @@ import { test, expect } from '@playwright/test'
 // 對單一伺服器預覽（preview_server :8099，含真實 DB）跑端對端冒煙。
 test('app loads, identity + dashboard cards (ADR-021 default tab)', async ({ page }) => {
   await page.goto('/')
+  await expect(page.locator('script[src*="cdn.tailwindcss.com"]')).toHaveCount(0)
+  await expect(page.locator('link[rel="stylesheet"][href*="/assets/"]')).toHaveCount(1)
   // App title rendered as <h1> inside the AppLayout header
   await expect(page.getByRole('heading', { name: 'MOST Workbench' })).toBeVisible()
   await expect(page.getByText(/IEC141289/)).toBeVisible()               // 身分（/api/v2/me）
   // Sidebar nav button for MOST 工作台 (workbench-v3, ADR-021)
+  await expect(page.getByRole('button', { name: /MOST 工作台/ })).toHaveCount(1)
   await expect(page.getByRole('button', { name: /MOST 工作台/ })).toBeVisible()
   // 預設 tab = 儀表板：三張卡（資料來自真實 DB 種子）
   await expect(page.getByText('MOST 字典總覽')).toBeVisible()
@@ -62,6 +65,58 @@ test('import wizard opens from header button', async ({ page }) => {
   await page.getByRole('button', { name: /匯入 Excel/ }).click()
   await expect(page.getByRole('heading', { name: /匯入 Excel/ })).toBeVisible()
   await expect(page.getByText(/選擇 .xlsx 檔/)).toBeVisible()
+})
+
+test('MOST 工作台可試算、建立並發布一筆動作', async ({ page }) => {
+  let moduleId: string | null = null
+
+  try {
+    await page.goto('/')
+    await page.getByRole('button', { name: /MOST 工作台/ }).click()
+    await page.waitForLoadState('networkidle')
+
+    await page.getByTitle('G 取得').click()
+    const modal = page.getByRole('heading', { name: 'G 取得' }).locator('..').locator('..')
+    const calculated = page.waitForResponse(response =>
+      response.request().method() === 'POST'
+      && response.url().endsWith('/api/v2/minimost/calculate')
+      && response.status() === 200,
+    )
+    await modal.locator('select').first().selectOption('g_grasp')
+    await calculated
+    await modal.getByRole('button', { name: '確認' }).click()
+
+    const name = `PW-ACTION-${Date.now()}`
+    await page.getByText('WI 語句', { exact: true }).locator('..').locator('input').fill(name)
+
+    const addButton = page.getByRole('button', { name: '新增動作' })
+    await expect(addButton).toBeEnabled()
+
+    const created = page.waitForResponse(response => {
+      const url = new URL(response.url())
+      return response.request().method() === 'POST'
+        && url.pathname === '/api/v2/motion-modules'
+        && response.status() === 201
+    })
+    const published = page.waitForResponse(response =>
+      response.request().method() === 'POST'
+      && /\/api\/v2\/motion-modules\/[^/]+\/publish$/.test(new URL(response.url()).pathname)
+      && response.status() === 201,
+    )
+
+    await addButton.click()
+    const createResponse = await created
+    moduleId = ((await createResponse.json()) as { id: string }).id
+    await published
+    await expect(page.getByText(`已新增動作：${name}`)).toBeVisible()
+  } finally {
+    if (moduleId) {
+      const response = await page.request.delete(`/api/v2/motion-modules/${moduleId}`, {
+        headers: { 'X-Username': 'IEC141289' },
+      })
+      expect(response.status()).toBe(204)
+    }
+  }
 })
 
 // ── MOST 工作台單頁（ADR-022 批次 B）──────────────────────────────────────────

@@ -7,15 +7,26 @@ import 此模組即註冊所有 v2 表到 v2 Base.metadata，供 Alembic baselin
 """
 from __future__ import annotations
 
+from ddm_v2.models.v2.ai_ops import (
+    AiDeploymentBundle,
+    AiFeedbackCandidate,
+    AiParseJob,
+    AiParseJobItem,
+    AiParseRun,
+    AiReviewEvent,
+)
 from ddm_v2.models.v2.audit import WorkflowAuditLog
 from ddm_v2.models.v2.auth import AppUser
 from ddm_v2.models.v2.base import Base, TimestampMixin
 from ddm_v2.models.v2.bom import BomImport, BomItem
 from ddm_v2.models.v2.codes import CodePrefixRegistry
-from ddm_v2.models.v2.import_staging import ExcelImport, ImportProfile
+from ddm_v2.models.v2.import_staging import ExcelImport, ImportProfile, ImportRow
+from ddm_v2.models.v2.level_validation import LevelValidationRun
 from ddm_v2.models.v2.motion_module import MotionModule, MotionModuleVersion
 from ddm_v2.models.v2.motion_template import MotionTemplate
 from ddm_v2.models.v2.org import Product, Site, Sku
+from ddm_v2.models.v2.outbox import OutboxEvent
+from ddm_v2.models.v2.policy import LevelPolicyVersion, ModelingPolicyVersion
 from ddm_v2.models.v2.rule_set import RuleSet
 from ddm_v2.models.v2.rule_set_tables import (
     RuleABand,
@@ -33,6 +44,7 @@ from ddm_v2.models.v2.rule_set_tables import (
 )
 from ddm_v2.models.v2.synonym import RuleOptionSynonym
 from ddm_v2.models.v2.vocab import WorkVocabItem
+from ddm_v2.models.v2.wi_context import WiRowContext
 from ddm_v2.models.v2.wi_set import WiSetItem, WiSetProject
 from ddm_v2.models.v2.worksheet import (
     LevelEntry,
@@ -77,7 +89,19 @@ __all__ = [
     "MotionTemplate",
     "ExcelImport",
     "ImportProfile",
+    "ImportRow",
+    "LevelValidationRun",
     "RuleOptionSynonym",
     "WiSetProject",
     "WiSetItem",
+    "WiRowContext",
+    "AiDeploymentBundle",
+    "AiParseRun",
+    "AiReviewEvent",
+    "AiFeedbackCandidate",
+    "AiParseJob",
+    "AiParseJobItem",
+    "ModelingPolicyVersion",
+    "LevelPolicyVersion",
+    "OutboxEvent",
 ]

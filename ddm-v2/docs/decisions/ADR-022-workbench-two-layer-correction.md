@@ -47,6 +47,28 @@ ADR-021 把 v2 的「MOST 工作台」定義為三層組裝工作台（來自 v3
 
 庫只列 `category='wi-template'`；展開子表補每列 Base TMU/頻率/Eff TMU/SIMO（吃 rows.computed）。
 
+### WI 專案 → 分析案件（2026-08-04 補充裁決）
+
+`wi_set_projects` 是排序後的 WI 範本集合，`process_versions + most_worksheets` 才是
+Level System、WI 預覽與匯出的分析案件資料來源。兩者不得靠名稱或 `site/model` 文字欄位
+隱式配對；WI 專案目前沒有 `sku_id`，儲存專案也不得偷偷在任意 SKU 下建立空案件。
+
+採以下顯式轉換契約：
+
+1. WI 專案儲存後提供「建立分析案件」，使用者必須選擇 Product / SKU，機種/線別名稱預填
+	專案 `model → process → name`，仍可修改。
+2. `POST /api/v2/wi-set-projects/{project_id}/instantiate` 在單一 transaction 內建立 worksheet，
+	再依 `wi_set_items.seq_no` 呼叫既有 `motion_module_service.instantiate_to_worksheet()`；每列仍由
+	worksheet 的 rule-set 與 `most_engine` 重算，前端不組 rows、不計 TMU。
+3. 空專案、手動條目、缺失/未發布/退役 WI 或非法 vocab UUID / SIMO 均整筆失敗並 rollback，
+	不得在分析案件留下空殼或部分匯入結果。`object_vocab_id` 是敘述 metadata，不是
+	`most_engine` 計算輸入；合法 WI row 可不含 object（`v2_0025` 改為 nullable），不得因此跳列，
+	也不得由前端偷填第一個 object 當假預設。
+4. 成功後前端 invalidate `cases` / `sku-worksheets` / `worksheet`，設定同一個 `activeWs` 並切到
+	分析案件；案件詳情的 WI 預覽與 Level System 都直接讀該 worksheet rows。
+5. Level System 必須依 `activeWs` 自行載入並 hydrate worksheet，不能依賴使用者曾先開過
+	WiWorkbench 的記憶體副作用。
+
 ### 教學型格位介面（全域共用，工作台/Inspector/案件編輯同套）
 
 - A 格 modal：移植 ADistanceSelector（SVG 工位伸手範圍圖，點圖選檔）＋距離對照表＋實際距離 cm 輸入＋手度/腳步

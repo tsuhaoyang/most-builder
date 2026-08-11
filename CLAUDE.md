@@ -19,7 +19,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 Monorepo with four top-level directories:
 
 - **`ddm-v2/`** — Active development. MiniMOST work-measurement platform (FastAPI + React). All new work goes here.
-- **`ddm-v3/`** — Reference only. Source of `minimost_ai_dictionary_v1.json` (IE-certified value authority per ADR-014). Do not develop here.
+- **`ddm-v3/`** — Protected external v3 user-data source (gitignored). `apps/api/minimost.db` contains the saved WI/MI statements, actions, templates, and WI Set project consumed read-only by `ddm-v2/scripts/migrate_v3_user_data.py`. **Never delete, clean, or write this DB.** The separate IE-certified value dictionary remains at `ddm-v2/docs/v3/reference/minimost_ai_dictionary_v1.json` per ADR-014.
 - **`ddm-legacy/`** — Archived Phase 1 code (single HTML + Python). Do not modify.
 - **`LB/`** — LineBalance auth service + Traefik config (shared login infrastructure).
 
@@ -164,6 +164,6 @@ Feature tabs follow the v3-parity IA (7 primary + admin extras) defined in **ADR
 | Data model + storage | `docs/architecture/data-model-and-storage-spec.md` |
 | RBAC spec | `docs/architecture/rbac-spec.md` |
 | CI verification gates | `docs/CI_GATES.md` |
-| v2↔v3 integration analysis + ADR-014 ruling | `docs/v3/v2-v3-core-logic-diff-and-integration.md` |
+| v2 authority and anti-legacy guide | `docs/architecture/v2-authoritative-model-guide.md` |
 | All docs index | `docs/DOC_REGISTRY.md` |
 | All ADRs | `docs/decisions/` |

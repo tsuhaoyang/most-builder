@@ -13,7 +13,7 @@
 - 詞彙 `work_vocab_items.name_zh` / `name_en`（已有欄）。
 - rule-set 選項表（B/G/P/M/X/I…）有 `label_zh` / `label_en`（已有欄）。
 - 敘事(`narrative`) 目前**只中文**（`most_engine/narrative.py`）。
-- 前端字串**硬編中文**於 `v2-workbench.html`。
+- 前端 React 元件仍有中文硬編字串，尚未導入統一 i18n catalog。
 - 錯誤訊息：domain 例外 message 中英混。
 
 ## 範圍（要做的）

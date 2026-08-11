@@ -2,7 +2,7 @@
 
 **狀態：** proposed
 **日期：** 2026-07-04
-**關聯：** [../v3/impl/impl-03-search-infrastructure.md](../v3/impl/impl-03-search-infrastructure.md)、ADR-015、ADR-017、[[deploy]]
+**關聯：** [ADR-015](ADR-015-nl-parsing-in-scope.md)、[ADR-017](ADR-017-motion-modules-library.md)、[WI AI Parser 系統規格](../architecture/wi-ai-parser-system-spec.md)
 
 ## 脈絡
 

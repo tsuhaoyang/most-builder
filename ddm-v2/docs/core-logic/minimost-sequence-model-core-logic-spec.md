@@ -2,7 +2,7 @@
 
 > ## ⚖️ V2 修訂（ADR-014，2026-07-05 起生效——本節為權威，與下文衝突時以本節為準）
 >
-> **值權威**＝`docs/v3/reference/minimost_ai_dictionary_v1.json`（v3 IE 認證字典）；rule-set **`MINIMOST_FACTORY_V2`**（由 `scripts/import_v3_dictionary.py` 程式轉換產生，禁手抄）。V1 僅供既有 cycle 快照回放。已實作並由黃金測試鎖定（pytest 57／validators 82+26+54 全綠）。與下文 V1 敘述的差異：
+> **值權威**＝`docs/v3/reference/minimost_ai_dictionary_v1.json`（IE 認證字典）；rule-set **`MINIMOST_FACTORY_V2`**（由 `scripts/import_v3_dictionary.py` 程式轉換產生，禁手抄）。V1 僅供既有 cycle 快照回放。已實作並由黃金測試鎖定（pytest 57／validators 82+26+54 全綠）。與下文 V1 敘述的差異：
 >
 > | # | 變更 | V1（下文舊敘述） | **V2（現行權威）** |
 > |---|---|---|---|
@@ -18,9 +18,9 @@
 > | E4 | slot repeat | 無 | G/P/X/I 整格 ×repeat（1..99）；**M 僅乘動詞分量再 max**；A/B 禁用 |
 > | E7 | 人工覆寫 | 無 | slot `manual_override{tmu,reason,by}`：值取代＋留痕＋tech_line 標 `*` |
 > | E5 | SIMO 輸入 | 顯式 simo_group_id | ＋`simo_with_row_id` 配對輸入（僅從屬列標記，主列不標記）；**ADR-020：標記列貢獻 0**（舊「群組取 max」廢止） |
-> | — | 寬放 | 無 | worksheet 級 `allowance_percent`（standard=normal×(1+%/100)；OQ-002） |
+> | — | 寬放 | 無 | worksheet 級 `allowance_percent`（standard=normal×(1+%/100)；見 data-model §2.5） |
 >
-> 實作規格＝[docs/v3/impl/impl-01](../v3/impl/impl-01-rule-set-factory-v2.md)（值表）＋[impl-02](../v3/impl/impl-02-engine-changes.md)（引擎 E1–E9＋黃金過帳）。可執行規格＝`scripts/core_logic/minimost_sequence_validator.py`（已重錨 V2）。
+> 實作權威＝本規格＋[ADR-014](../decisions/ADR-014-v3-dictionary-as-value-authority.md)＋IE 認證字典；可執行規格＝`src/ddm_v2/most_engine/`、`tests/unit/test_most_engine.py` 與 `scripts/core_logic/minimost_sequence_validator.py`。
 
 
 **文件類型：** 核心邏輯規格（Core Logic / Function Spec）
@@ -43,14 +43,14 @@
 | 代號 | 來源 | 角色 | 路徑 |
 |------|------|------|------|
 | **引擎** | `most_engine/` | **v2 權威計算引擎**（讀 rule-set 資料，非硬編） | [src/ddm_v2/most_engine/](../../src/ddm_v2/most_engine/) |
-| **SEED** | `rule_set_seed.py` | **rule-set 種子值**（rule set + 各參數表） | [src/ddm_v2/seed/v2/rule_set_seed.py](../../src/ddm_v2/seed/v2/rule_set_seed.py) |
+| **SEED** | `rule_set_seed_v2.py` | **由 IE 認證字典產生的 rule-set 種子值** | [src/ddm_v2/seed/v2/rule_set_seed_v2.py](../../src/ddm_v2/seed/v2/rule_set_seed_v2.py) |
 | **1205** | `MOST系統邏輯1205.xlsx` → 工作表「MOST 系统逻辑」 | **完整 IE 主表**（最詳盡的階梯、進階放置、處理時間、詞彙庫、長敘事範例） | [docs/sample_excel/](../sample_excel/) |
 | **詳解版** | `MOST邏輯詳解版.xlsx` | **WI 顯示導向的精簡教學表**（G/P/M/X/I 選項與顯示字樣規則） | [docs/sample_excel/](../sample_excel/) |
 | **1128** | `MiniMOST1128.xlsx` → 工作表「1126」 | **WI 表（工時表）範例**：一列＝一個方法步，含 SUB/Key Parts/HAND/METHOD/SEQUENCE/Freq/SIMO/TMU 欄 | [docs/sample_excel/](../sample_excel/) |
 
-> ⚠️ **與 `MOST-core-algorithm-spec.md`（教科書）的關係：** 該文件是 Zandin《MOST 4th Edition》教科書的標準算法。**本專案的 MiniMOST 是工廠客製化的表（來自上述 Excel），其 G/P/I 等索引值與教科書 MiniMOST 並不相同**（見 [§8.1](#81-本專案-minimost-vs-教科書-minimost重大)）。本規格以**工廠 Excel／運作中程式碼**為事實基準，並把與教科書的落差明確標出，交由 User 裁示哪一份為準。
+> ⚠️ **與標準教科書 MOST 的關係：** 本專案的 MiniMOST 是工廠客製化表，其 G/P/I 等索引值與教科書 MiniMOST 不同（見 [§8.1](#81-本專案-minimost-vs-教科書-minimost重大)）。依 ADR-014，本規格與 IE 認證字典是本系統權威；教科書只作歷史比較，不可覆蓋工廠值。
 
-**本規格暫定的事實基準（待確認）：** 以 **JS + SEED**（運作中）為「目前實際計算」基準，以 **1205** 為「應對齊的完整目標」，差異全部列入 [§8](#8-三來源差異對照待嚴格確認) 與 [§10](#10-待確認問題-open-questions)。
+**事實基準：** 以 ADR-014 的 IE 認證字典、`MINIMOST_FACTORY_V2` 與唯一引擎為準；1205/詳解版/1128 是驗證與敘事參考。歷史差異保留於 §8 供查核。
 
 ---
 
@@ -103,7 +103,7 @@ cycle_total_seconds = cycle_total_tmu × 0.036
 - `system_tmu_multiplier`：來自 rule set，教學範例＝**1**（SEED：`minimost_rule_sets.system_tmu_multiplier = 1`）。
 - **多列 WI（1128）整表合計：** `Σ ( cycle_total_tmu × frequency )`（僅計未帶 SIMO 標記的列；SIMO 標記列貢獻 0，見 [§6](#6-simo-與-frequency)／ADR-020）。
 
-> ⚠️ **與教科書差異：** `MOST-core-algorithm-spec.md` 的通式為 `(Σ index) × 10`。本專案 Excel／JS 的合計**不乘 10**，改乘 `system_tmu_multiplier`（教學＝1），且**各格的 index 值本身即為 TMU 貢獻**（例：A6＝6 TMU、G 抓握＝6 TMU）。此為本專案與教科書最根本的計算口徑差異，**必須由 User 確認何者為準**（見 [§10 Q1](#10-待確認問題-open-questions)）。
+> ⚠️ **與教科書差異：** 標準教科書通式常以 `(Σ index) × 10` 表達。本專案依 ADR-014 **不乘 10**，改乘版本化 `system_tmu_multiplier`（目前＝1），且各格值本身即為 TMU 貢獻。此裁決已由黃金測試鎖定。
 
 ---
 
@@ -347,7 +347,7 @@ CM：  從 + "從哪裡" + (A+B) + G + 對象/目標物 + M + X + I + A + "到�
 
 ### 8.1 本專案 MiniMOST vs. 教科書 MiniMOST（重大）
 
-| 參數 | 教科書（`MOST-core-algorithm-spec`） | 本專案（Excel/JS/SEED） |
+| 參數 | 標準教科書 MOST（歷史比較） | 本專案（IE 認證字典／V2 引擎） |
 |------|------|------|
 | 合計式 | `(Σ index) × 10` | `(Σ index) × system_tmu_multiplier`（＝1），**不乘 10** |
 | G | 0, 1, 3, 6 | 3, 6, 10, 16, 24 |

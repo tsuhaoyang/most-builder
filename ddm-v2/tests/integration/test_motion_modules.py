@@ -772,6 +772,43 @@ async def test_instantiate_module_to_worksheet_success(client):
     assert "tmu_drift" in body
 
 
+async def test_instantiate_module_without_object_vocab_keeps_row(client):
+    """object vocab 是敘述 metadata；省略時仍須完整實體化，不可靜默跳列。"""
+    ws_id = await _clone_demo_ws(client)
+    rs_id = await _get_rule_set_id(client)
+    if rs_id is None:
+        pytest.skip("DB 無 rule_set，略過")
+
+    suffix = uuid.uuid4().hex[:6]
+    module = await client.post("/api/v2/motion-modules", json={
+        "name_zh": f"UT-Inst-NoObject-{suffix}",
+        "category": "wi-template",
+        "scope": "global",
+    })
+    assert module.status_code == 201, module.text
+    module_id = module.json()["id"]
+    published = await client.post(f"/api/v2/motion-modules/{module_id}/publish", json={
+        "rule_set_id": rs_id,
+        "rows": [_gm_row_pub(vocab_refs={})],
+    })
+    assert published.status_code == 201, published.text
+
+    instantiated = await client.post(
+        f"/api/v2/worksheets/{ws_id}/rows/from-module",
+        json={"module_id": module_id},
+    )
+    assert instantiated.status_code == 201, instantiated.text
+    assert len(instantiated.json()["new_rows"]) == 1
+    assert instantiated.json()["skipped_vocab_missing"] == 0
+
+    worksheet = await client.get(f"/api/v2/worksheets/{ws_id}")
+    imported = next(
+        row for row in worksheet.json()["rows"]
+        if row["source_module_id"] == module_id
+    )
+    assert imported["object_vocab_id"] is None
+
+
 async def test_instantiate_retired_module_rejected(client, db_session):
     """T-3b：retired 模組不可實體化 → 409；detail 欄位存在。"""
     ws_id = await _clone_demo_ws(client)

@@ -17,14 +17,42 @@ type NvKey = 'obj' | 'from' | 'to' | 'component' | 'where'
 const HANDS = [{ v: 'RH', l: '右手' }, { v: 'LH', l: '左手' }, { v: 'BH', l: '雙手' }]
 
 // slot 色塊配色（與 WiWorkbench 相同的 param → 色彩對映）
-const SLOT_COLORS: Record<string, { filled: string; empty: string }> = {
-  A: { filled: 'bg-blue-600 text-white border-blue-600', empty: 'bg-blue-50 text-blue-500 border-blue-300 border-dashed' },
-  B: { filled: 'bg-slate-500 text-white border-slate-500', empty: 'bg-slate-50 text-slate-400 border-slate-300 border-dashed' },
-  G: { filled: 'bg-green-600 text-white border-green-600', empty: 'bg-green-50 text-green-500 border-green-300 border-dashed' },
-  P: { filled: 'bg-amber-500 text-white border-amber-500', empty: 'bg-amber-50 text-amber-500 border-amber-300 border-dashed' },
-  M: { filled: 'bg-amber-500 text-white border-amber-500', empty: 'bg-amber-50 text-amber-500 border-amber-300 border-dashed' },
-  X: { filled: 'bg-purple-600 text-white border-purple-600', empty: 'bg-purple-50 text-purple-400 border-purple-300 border-dashed' },
-  I: { filled: 'bg-teal-600 text-white border-teal-600', empty: 'bg-teal-50 text-teal-500 border-teal-300 border-dashed' },
+const SLOT_COLORS: Record<string, { strip: string; filled: string; empty: string }> = {
+  A: {
+    strip: 'bg-[#4a9fd5] text-white',
+    filled: 'bg-[#e8f4fd] text-[#2c6b9e] border-[#4a9fd5]',
+    empty: 'bg-[#e8f4fd] text-[#2c6b9e] border-[#4a9fd5] border-dashed',
+  },
+  B: {
+    strip: 'bg-[#999999] text-white',
+    filled: 'bg-[#f0f0f0] text-[#555555] border-[#999999]',
+    empty: 'bg-[#f0f0f0] text-[#555555] border-[#999999] border-dashed',
+  },
+  G: {
+    strip: 'bg-[#4aaf4a] text-white',
+    filled: 'bg-[#e8fbe8] text-[#2d7a2d] border-[#4aaf4a]',
+    empty: 'bg-[#e8fbe8] text-[#2d7a2d] border-[#4aaf4a] border-dashed',
+  },
+  P: {
+    strip: 'bg-[#f5a623] text-white',
+    filled: 'bg-[#fff3e0] text-[#b87314] border-[#f5a623]',
+    empty: 'bg-[#fff3e0] text-[#b87314] border-[#f5a623] border-dashed',
+  },
+  M: {
+    strip: 'bg-[#9c27b0] text-white',
+    filled: 'bg-[#f3e5f5] text-[#6a1b7a] border-[#9c27b0]',
+    empty: 'bg-[#f3e5f5] text-[#6a1b7a] border-[#9c27b0] border-dashed',
+  },
+  X: {
+    strip: 'bg-[#e53935] text-white',
+    filled: 'bg-[#fce4ec] text-[#b71c1c] border-[#e53935]',
+    empty: 'bg-[#fce4ec] text-[#b71c1c] border-[#e53935] border-dashed',
+  },
+  I: {
+    strip: 'bg-[#009688] text-white',
+    filled: 'bg-[#e0f2f1] text-[#00695c] border-[#009688]',
+    empty: 'bg-[#e0f2f1] text-[#00695c] border-[#009688] border-dashed',
+  },
 }
 
 // ── small select（琥珀底＝可調整數值格） ────────────────────────────────────────
@@ -39,6 +67,49 @@ function Sel({ value, onChange, opts, cls }: {
     >
       {opts.map(o => <option key={o.v} value={o.v}>{o.l}</option>)}
     </select>
+  )
+}
+
+function RepeatStepper({
+  label,
+  value,
+  onChange,
+  ariaLabel,
+}: {
+  label: string
+  value: number
+  onChange: (next: number) => void
+  ariaLabel: string
+}) {
+  return (
+    <div className="space-y-2 border-t border-dashed border-slate-200 pt-4">
+      <div className="flex flex-wrap items-center gap-4">
+        <span className="min-w-[72px] text-sm text-slate-700">{label}</span>
+        <div className="inline-flex items-center overflow-hidden rounded-md border border-slate-300 bg-white shadow-sm">
+          <button
+            type="button"
+            className="h-9 w-10 border-r border-slate-200 text-lg text-slate-500 hover:bg-slate-50"
+            onClick={() => onChange(Math.max(1, value - 1))}
+            aria-label={`${label}減少`}
+          >−</button>
+          <input
+            type="number"
+            min={1}
+            className="h-9 w-24 border-0 text-center text-base text-slate-700 focus:outline-none"
+            value={value}
+            onChange={e => onChange(Math.max(1, parseInt(e.target.value, 10) || 1))}
+            aria-label={ariaLabel}
+          />
+          <button
+            type="button"
+            className="h-9 w-10 border-l border-slate-200 text-lg text-slate-500 hover:bg-slate-50"
+            onClick={() => onChange(value + 1)}
+            aria-label={`${label}增加`}
+          >+</button>
+        </div>
+        <span className="text-sm text-slate-400">此動作重複次數（不影響其他欄位）</span>
+      </div>
+    </div>
   )
 }
 
@@ -131,6 +202,10 @@ const SLOT_FORMULA: Record<SlotKey, string> = {
 
 // A 格 modal 用寬版（左範圍圖＋右對照表，照 v3 820px）
 const A_SLOTS: ReadonlySet<SlotKey> = new Set(['a0', 'a3', 'a6'])
+const P_ADDON_MUTEX: Readonly<Record<string, string[]>> = {
+  a_insert: ['a_snap'],
+  a_snap: ['a_insert'],
+}
 
 // ── AI badge（F-05 四態）樣式 ──────────────────────────────────────────────────
 function badgeCls(text: string): string {
@@ -168,14 +243,30 @@ export function SlotBuilder({
   const vopts = (kind: string) =>
     vocab.filter(v => v.kind === kind).map(v => ({ v: v.id, l: v.name_zh }))
 
+  function clearSlot(slotKey: SlotKey) {
+    switch (slotKey) {
+      case 'a0': set({ a0: { reach: 0, twist: 0, foot: 0 } }); break
+      case 'b1': set({ b1: null }); break
+      case 'g': set({ g: '', gMod: {}, gRepeat: 1 }); break
+      case 'a3': set({ a3: { reach: 0, twist: 0, foot: 0 } }); break
+      case 'b4': set({ b4: null }); break
+      case 'p': set({ p_base: '', p_addons: [], precision: false, pRepeat: 1 }); break
+      case 'm': set({ m: { verb: '', distance: 30, angle: 90, rev: 1, dia: 10 } }); break
+      case 'x': set({ x: 'x_none', x_sec: 0 }); break
+      case 'i': set({ i: 'i_none' }); break
+      case 'a6': set({ a6: { reach: 0, twist: 0, foot: 0 } }); break
+    }
+  }
+
   // ── context 米黃格（詞彙 ComboBox） ─────────────────────────────────────────
   const contextBlock = (item: ContextItem) => (
     <div
       key={item.key}
-      className="flex flex-col rounded-md border px-1.5 pt-1 pb-1.5"
-      style={{ background: '#fdf8e8', borderColor: '#e0d8c0', minWidth: '7.5rem' }}
+      className="flex w-[110px] min-w-[110px] flex-col rounded-md border px-1.5 pt-1 pb-1.5"
+      style={{ background: '#fdf8e8', borderColor: '#e0d8c0' }}
     >
       <span className="text-[10px] text-slate-500 text-center mb-0.5">{item.label}</span>
+      <div className="w-full min-w-0">
       <ComboBox
         options={vopts(item.kind!)}
         value={cur.nv[item.nvKey!]}
@@ -185,6 +276,7 @@ export function SlotBuilder({
           ? name => onCreateVocab(item.kind!, name, id => set({ nv: { ...cur.nv, [item.nvKey!]: id } }))
           : undefined}
       />
+      </div>
     </div>
   )
 
@@ -193,7 +285,7 @@ export function SlotBuilder({
     <div
       key="hand"
       className="flex flex-col rounded-md border px-1.5 pt-1 pb-1.5"
-      style={{ background: '#f0e6ff', borderColor: '#c4a8e8', minWidth: '6rem' }}
+      style={{ background: '#f0e6ff', borderColor: '#c4a8e8', minWidth: '80px', maxWidth: '110px' }}
     >
       <span className="text-[10px] text-slate-500 text-center mb-0.5">使用手</span>
       <Sel
@@ -221,8 +313,14 @@ export function SlotBuilder({
       case 'a6': return { filled: aIsFilled(cur.a6), abbrev: aAbbrev(cur.a6, opts.a_bands) }
       case 'b1': return { filled: !!cur.b1, abbrev: cur.b1 ? (opts.b.find(b => b.code === cur.b1)?.label.slice(0, 4) ?? 'B?') : '—' }
       case 'b4': return { filled: !!cur.b4, abbrev: cur.b4 ? (opts.b.find(b => b.code === cur.b4)?.label.slice(0, 4) ?? 'B?') : '—' }
-      case 'g': return { filled: !!cur.g, abbrev: cur.g ? (opts.g.find(g => g.code === cur.g)?.label.slice(0, 4) ?? 'G?') : '—' }
-      case 'p': return { filled: !!cur.p_base, abbrev: cur.p_base ? (opts.p_bases.find(p => p.code === cur.p_base)?.label.slice(0, 4) ?? 'P?') : '—' }
+      case 'g': {
+        const base = cur.g ? (opts.g.find(g => g.code === cur.g)?.label.slice(0, 4) ?? 'G?') : '—'
+        return { filled: !!cur.g, abbrev: cur.gRepeat > 1 && cur.g ? `${base}×${cur.gRepeat}` : base }
+      }
+      case 'p': {
+        const base = cur.p_base ? (opts.p_bases.find(p => p.code === cur.p_base)?.label.slice(0, 4) ?? 'P?') : '—'
+        return { filled: !!cur.p_base, abbrev: cur.pRepeat > 1 && cur.p_base ? `${base}×${cur.pRepeat}` : base }
+      }
       case 'm': return { filled: !!cur.m.verb, abbrev: cur.m.verb ? (opts.m_verbs.find(m => m.code === cur.m.verb)?.label.slice(0, 4) ?? 'M?') : '—' }
       case 'x': return { filled: cur.x !== 'x_none', abbrev: cur.x !== 'x_none' ? (opts.x.find(x => x.code === cur.x)?.label.slice(0, 4) ?? 'X?') : '—' }
       case 'i': return { filled: cur.i !== 'i_none', abbrev: cur.i !== 'i_none' ? (opts.i.find(i => i.code === cur.i)?.label.slice(0, 4) ?? 'I?') : '—' }
@@ -236,15 +334,33 @@ export function SlotBuilder({
     return (
       <div key={item.key} className="relative flex">
         <button
-          className={`flex flex-col items-center justify-center min-w-[84px] px-2 py-1.5 rounded-lg border-2
-            cursor-pointer transition-all select-none hover:opacity-80 active:scale-95
+          className={`relative flex min-h-[82px] min-w-[84px] max-w-[120px] flex-col overflow-hidden rounded-md border-2
+            cursor-pointer select-none text-left shadow-sm transition-all hover:-translate-y-0.5 hover:shadow-md active:scale-95
             ${st.filled ? clr.filled : clr.empty}`}
           onClick={() => setActiveSlot(item.slotKey)}
           title={SLOT_MODAL_LABELS[item.slotKey]}
         >
-          <span className="text-[10px] font-semibold opacity-80 leading-none mb-1">{item.key}</span>
-          <span className="font-bold text-sm leading-none">{st.abbrev}</span>
-          <span className="text-[9px] opacity-70 leading-none mt-1 whitespace-nowrap">{item.caption}</span>
+          <span className={`flex items-center justify-between px-2 py-1 text-[10px] font-semibold leading-none ${clr.strip}`}>
+            <span>{item.param} · {item.key}</span>
+            {st.filled && (
+              <span
+                role="button"
+                aria-label={`清除 ${item.key}`}
+                className="rounded px-1 text-[10px] leading-none text-white/90 hover:bg-black/10"
+                onClick={(event) => {
+                  event.preventDefault()
+                  event.stopPropagation()
+                  clearSlot(item.slotKey)
+                }}
+              >
+                ✕
+              </span>
+            )}
+          </span>
+          <span className="flex flex-1 flex-col justify-center px-2 py-2">
+            <span className="font-bold text-sm leading-none">{st.abbrev}</span>
+            <span className="mt-1 text-[9px] leading-tight opacity-80">{item.caption}</span>
+          </span>
         </button>
         {badge && (
           <span className={`absolute -bottom-1.5 left-1/2 -translate-x-1/2 text-[9px] leading-none px-1 py-0.5 rounded border whitespace-nowrap z-10 ${badgeCls(badge)}`}>
@@ -283,40 +399,104 @@ export function SlotBuilder({
   const bBlock = (key: 'b1' | 'b4') => (
     <span className="inline-flex items-center align-middle">
       <Hint tip="B 身體動作：彎腰/起身/站坐等輔助動作（無=0）。" />
-      <Sel value={cur[key] ?? ''} onChange={v => set({ [key]: v || null } as Partial<CycleState>)}
+      <Sel value={cur[key] ?? ''} onChange={v => {
+        set({ [key]: v || null } as Partial<CycleState>)
+        setActiveSlot(null)
+      }}
         opts={[{ v: '', l: '身體:無' }, ...opts.b.filter(b => b.code !== 'b_none').map(b => ({ v: b.code, l: b.label }))]} />
     </span>
   )
   const gBlock = () => {
     const g = opts.g.find(x => x.code === cur.g)
     return (
-      <span className="inline-flex flex-wrap items-center gap-1 align-middle">
-        <Hint tip="G 取得：抓握/接觸/拿取等方式；部分方式需勾修飾子，否則計 0。" />
-        <Sel value={cur.g} onChange={v => set({ g: v, gMod: {} })}
-          opts={[{ v: '', l: '—取得方式—' }, ...opts.g.map(o => ({ v: o.code, l: o.label }))]} />
+      <div className="space-y-4">
+        <div className="space-y-2">
+          <div className="flex items-center gap-2 text-sm text-slate-700">
+            <span>取得控制(G)</span>
+            <Hint tip="G 取得：抓握/接觸/拿取等方式；部分方式需勾修飾子，否則計 0。" />
+          </div>
+          <Sel value={cur.g} onChange={v => set({ g: v, gMod: {} })}
+            opts={[{ v: '', l: '請選擇' }, ...opts.g.map(o => ({ v: o.code, l: o.label }))]}
+            cls="w-full border border-slate-300 rounded-md px-3 py-2 text-sm bg-white"
+          />
+        </div>
+        <RepeatStepper
+          label="動作次數"
+          value={cur.gRepeat}
+          onChange={next => set({ gRepeat: next })}
+          ariaLabel="G 動作次數"
+        />
         {g?.requires_modifier && g.modifier_key && (
-          <Sel value={cur.gMod[g.modifier_key] ? '1' : '0'}
-            onChange={v => set({ gMod: { ...cur.gMod, [g.modifier_key!]: v === '1' } })}
-            opts={[{ v: '0', l: `—${g.modifier_key} 未勾—` }, { v: '1', l: `✓ ${g.modifier_key}` }]} />
+          <div className="space-y-2 border-t border-dashed border-slate-200 pt-4">
+            <div className="text-sm text-slate-700">修飾條件</div>
+            <Sel value={cur.gMod[g.modifier_key] ? '1' : '0'}
+              onChange={v => set({ gMod: { ...cur.gMod, [g.modifier_key!]: v === '1' } })}
+              opts={[{ v: '0', l: `—${g.modifier_key} 未勾—` }, { v: '1', l: `✓ ${g.modifier_key}` }]}
+              cls="w-full border border-slate-300 rounded-md px-3 py-2 text-sm bg-white"
+            />
+          </div>
         )}
-      </span>
+      </div>
     )
   }
   const pBlock = () => (
-    <span className="inline-flex flex-wrap items-center gap-1 align-middle">
-      <Hint tip="P 放置：放/組/保持等 + 最多 2 個附加（對準、插入、壓合…）。選「對準」須再勾精度(<4mm)。" />
-      <Sel value={cur.p_base} onChange={v => set({ p_base: v })}
-        opts={[{ v: '', l: '—放置—' }, ...opts.p_bases.map(o => ({ v: o.code, l: o.label }))]} />
-      {[0, 1].map(i => (
-        <Sel key={i} value={cur.p_addons[i] ?? ''}
-          onChange={v => { const a = cur.p_addons.filter((_, j) => j !== i); if (v) a.splice(i, 0, v); set({ p_addons: a.slice(0, 2) }) }}
-          opts={[{ v: '', l: '—附加—' }, ...opts.p_addons.map(o => ({ v: o.code, l: o.label }))]} />
-      ))}
+    <div className="space-y-4">
+      <div className="space-y-2">
+        <div className="flex items-center gap-2 text-sm text-slate-700">
+          <span>P 放置</span>
+          <Hint tip="P 放置：放/組/保持等 + 最多 2 個附加（對準、插入、壓合…）。選「對準」須再勾精度(<4mm)。" />
+        </div>
+        <Sel value={cur.p_base} onChange={v => set({ p_base: v })}
+          opts={[{ v: '', l: '請選擇' }, ...opts.p_bases.map(o => ({ v: o.code, l: o.label }))]}
+          cls="w-full border border-slate-300 rounded-md px-3 py-2 text-sm bg-white"
+        />
+      </div>
+      <div className="grid gap-2 md:grid-cols-2">
+        {[0, 1].map(i => (
+          <Sel key={i} value={cur.p_addons[i] ?? ''}
+          onChange={v => {
+            const next = cur.p_addons.filter((_, j) => j !== i)
+            if (v) {
+              const blocked = new Set(P_ADDON_MUTEX[v] ?? [])
+              const filtered = next.filter(code => !blocked.has(code))
+              filtered.splice(i, 0, v)
+              set({ p_addons: filtered.slice(0, 2) })
+              return
+            }
+            set({ p_addons: next.slice(0, 2) })
+          }}
+          opts={[
+            { v: '', l: '—附加條件—' },
+            ...opts.p_addons
+              .filter(option => {
+                const other = cur.p_addons.find((_, idx) => idx !== i) ?? ''
+                return !other || !(P_ADDON_MUTEX[other] ?? []).includes(option.code)
+              })
+              .map(o => ({ v: o.code, l: o.label })),
+          ]}
+          cls="w-full border border-slate-300 rounded-md px-3 py-2 text-sm bg-white"
+          />
+        ))}
+      </div>
+      <RepeatStepper
+        label="動作次數"
+        value={cur.pRepeat}
+        onChange={next => set({ pRepeat: next })}
+        ariaLabel="P 動作次數"
+      />
       {cur.p_addons.some(c => opts.p_addons.find(a => a.code === c)?.needs_precision) && (
-        <Sel value={cur.precision ? '1' : '0'} onChange={v => set({ precision: v === '1' })}
-          opts={[{ v: '0', l: '精度未勾' }, { v: '1', l: '精度<4mm' }]} />
+        <div className="space-y-2 border-t border-dashed border-slate-200 pt-4">
+          <div className="text-sm text-slate-700">精度條件</div>
+          <Sel value={cur.precision ? '1' : '0'} onChange={v => set({ precision: v === '1' })}
+            opts={[{ v: '0', l: '精度未勾' }, { v: '1', l: '精度<4mm' }]}
+            cls="w-full border border-slate-300 rounded-md px-3 py-2 text-sm bg-white"
+          />
+        </div>
       )}
-    </span>
+      {cur.p_addons.some(code => (P_ADDON_MUTEX[code] ?? []).length > 0) && (
+        <span className="text-[10px] text-amber-700">插入與卡合互斥</span>
+      )}
+    </div>
   )
   const mVerbBlock = () => {
     const mv = opts.m_verbs.find(x => x.code === cur.m.verb)

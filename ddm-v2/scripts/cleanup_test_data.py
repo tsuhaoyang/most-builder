@@ -2,7 +2,7 @@
 
 背景：conftest 隔離改造（transaction rollback fixture）之前，integration 測試直接
 commit 到真實 DB，累積了大量 `UT-*` 等命名的殘留（審查報告
-docs/v3/v3-to-v2-migration-audit-202607.md §0.2）。本腳本按 tests/integration
+docs/architecture/v2-authoritative-model-guide.md §1）。本腳本按 tests/integration
 的命名慣例清除可安全識別的殘留。
 
 用法：

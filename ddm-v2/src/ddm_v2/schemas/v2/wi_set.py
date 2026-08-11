@@ -6,9 +6,9 @@ from __future__ import annotations
 
 import uuid
 from datetime import datetime
+from typing import Any
 
 from pydantic import BaseModel, Field, model_validator
-
 
 # ── 專案建立 / 更新 ──────────────────────────────────────────────────
 
@@ -105,6 +105,23 @@ class WiSetProjectOut(BaseModel):
     updated_at: datetime
 
     model_config = {"from_attributes": True}
+
+
+class WiSetInstantiateIn(BaseModel):
+    """建立分析案件並依序實體化專案內 WI。"""
+
+    sku_id: uuid.UUID
+    model_label: str | None = Field(None, max_length=200)
+    analyst: str | None = Field(None, max_length=50)
+
+
+class WiSetInstantiateOut(BaseModel):
+    worksheet_id: uuid.UUID
+    version_no: str
+    status: str
+    imported_wi_count: int
+    imported_row_count: int
+    tmu_drift: list[dict[str, Any]] = Field(default_factory=list)
 
 
 # ── 排序請求 ─────────────────────────────────────────────────────────

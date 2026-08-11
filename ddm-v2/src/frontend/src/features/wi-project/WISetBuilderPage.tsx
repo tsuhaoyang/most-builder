@@ -18,6 +18,8 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { apiGet, apiPost, apiPut, apiDelete } from '../../shared/api/client'
 import { TMU_SEC } from '../../shared/config'
 import { useMe, canEdit } from '../../shared/auth/useMe'
+import { useWorkspace } from '../../shared/workspace'
+import { useProducts, useSkus, type Product, type Sku } from '../catalog/api'
 
 // ─── Domain types ──────────────────────────────────────────────────────────────
 
@@ -289,6 +291,38 @@ function useDuplicateProject() {
     mutationFn: (id) =>
       apiPost<WiSetProjectOut>(`/api/v2/wi-set-projects/${id}/duplicate`),
     onSuccess: () => qc.invalidateQueries({ queryKey: [QK_PROJECTS] }),
+  })
+}
+
+interface InstantiateProjectResult {
+  worksheet_id: string
+  version_no: string
+  status: string
+  imported_wi_count: number
+  imported_row_count: number
+  tmu_drift: Record<string, unknown>[]
+}
+
+function useInstantiateProject() {
+  const qc = useQueryClient()
+  return useMutation<
+    InstantiateProjectResult,
+    Error,
+    { projectId: string; skuId: string; modelLabel: string; analyst: string }
+  >({
+    mutationFn: ({ projectId, skuId, modelLabel, analyst }) =>
+      apiPost<InstantiateProjectResult>(`/api/v2/wi-set-projects/${projectId}/instantiate`, {
+        sku_id: skuId,
+        model_label: modelLabel.trim() || null,
+        analyst: analyst.trim() || null,
+      }),
+    onSuccess: async (result, variables) => {
+      await Promise.all([
+        qc.invalidateQueries({ queryKey: ['cases'] }),
+        qc.invalidateQueries({ queryKey: ['sku-worksheets', variables.skuId] }),
+        qc.invalidateQueries({ queryKey: ['worksheet', result.worksheet_id] }),
+      ])
+    },
   })
 }
 
@@ -1007,11 +1041,137 @@ function WISetSummary({ items }: { items: WiSetItemOut[] }) {
   )
 }
 
+interface CreateAnalysisCaseModalProps {
+  project: WiSetProjectOut
+  employeeNo: string
+  onClose: () => void
+  onCreated: (
+    result: InstantiateProjectResult,
+    product: Product,
+    sku: Sku,
+    modelLabel: string,
+  ) => void
+}
+
+function CreateAnalysisCaseModal({
+  project,
+  employeeNo,
+  onClose,
+  onCreated,
+}: CreateAnalysisCaseModalProps) {
+  const { data: products = [] } = useProducts()
+  const [productId, setProductId] = useState('')
+  const { data: skus = [] } = useSkus(productId || undefined)
+  const [skuId, setSkuId] = useState('')
+  const [modelLabel, setModelLabel] = useState(project.model || project.process || project.name)
+  const [analyst, setAnalyst] = useState(employeeNo)
+  const instantiate = useInstantiateProject()
+  const product = products.find((candidate) => candidate.id === productId)
+  const sku = skus.find((candidate) => candidate.id === skuId)
+
+  const submit = async () => {
+    if (!product || !sku) return
+    try {
+      const result = await instantiate.mutateAsync({
+        projectId: project.id,
+        skuId: sku.id,
+        modelLabel,
+        analyst,
+      })
+      onCreated(result, product, sku, modelLabel.trim())
+    } catch {
+      return
+    }
+  }
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4" onClick={onClose}>
+      <div
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="create-analysis-case-title"
+        className="w-full max-w-md space-y-4 rounded-lg bg-white p-5 shadow-xl"
+        onClick={(event) => event.stopPropagation()}
+      >
+        <div>
+          <h2 id="create-analysis-case-title" className="font-semibold text-slate-800">建立分析案件</h2>
+          <p className="mt-1 text-xs text-slate-500">
+            將依專案順序匯入 {project.items.length} 筆 WI。任一筆失敗時不會留下空案件。
+          </p>
+        </div>
+
+        <label className="block text-sm text-slate-600">
+          產品
+          <select
+            className="mt-1 w-full rounded border bg-white px-2 py-1.5"
+            value={productId}
+            onChange={(event) => { setProductId(event.target.value); setSkuId('') }}
+          >
+            <option value="">請選擇產品…</option>
+            {products.map((item) => <option key={item.id} value={item.id}>{item.name_zh}</option>)}
+          </select>
+        </label>
+
+        <label className="block text-sm text-slate-600">
+          SKU / 機種
+          <select
+            className="mt-1 w-full rounded border bg-white px-2 py-1.5"
+            value={skuId}
+            disabled={!productId}
+            onChange={(event) => setSkuId(event.target.value)}
+          >
+            <option value="">{productId ? '請選擇 SKU…' : '請先選擇產品'}</option>
+            {skus.map((item) => (
+              <option key={item.id} value={item.id}>
+                {item.sku_code}{item.name_zh ? `（${item.name_zh}）` : ''}
+              </option>
+            ))}
+          </select>
+        </label>
+
+        <label className="block text-sm text-slate-600">
+          機種/線別名稱
+          <input
+            className="mt-1 w-full rounded border px-2 py-1.5"
+            value={modelLabel}
+            onChange={(event) => setModelLabel(event.target.value)}
+          />
+        </label>
+
+        <label className="block text-sm text-slate-600">
+          負責人（員編）
+          <input
+            className="mt-1 w-full rounded border px-2 py-1.5"
+            value={analyst}
+            onChange={(event) => setAnalyst(event.target.value)}
+          />
+        </label>
+
+        {instantiate.isError && (
+          <p className="text-sm text-red-600">建立失敗：{instantiate.error.message}</p>
+        )}
+
+        <div className="flex justify-end gap-2">
+          <button className="rounded border px-3 py-1.5 text-sm" onClick={onClose}>取消</button>
+          <button
+            className="rounded bg-blue-600 px-3 py-1.5 text-sm text-white disabled:opacity-40"
+            disabled={!skuId || instantiate.isPending}
+            onClick={submit}
+          >
+            {instantiate.isPending ? '建立並匯入中…' : '建立並匯入 WI'}
+          </button>
+        </div>
+      </div>
+    </div>
+  )
+}
+
 // ─── Page ─────────────────────────────────────────────────────────────────────
 
 export function WISetBuilderPage() {
   const { data: me } = useMe()
   const editable = canEdit(me)
+  const setActiveCase = useWorkspace((state) => state.setActiveCase)
 
   // ── page-level state ───────────────────────────────────────────────────────
   const [projectId, setProjectId] = useState<string | null>(null)
@@ -1019,6 +1179,7 @@ export function WISetBuilderPage() {
   const [errorMsg, setErrorMsg] = useState<string | null>(null)
   const [successMsg, setSuccessMsg] = useState<string | null>(null)
   const [adding, setAdding] = useState(false)
+  const [showCreateCase, setShowCreateCase] = useState(false)
 
   // ── queries ────────────────────────────────────────────────────────────────
   const { data: projectList = [] } = useProjectList()
@@ -1182,6 +1343,23 @@ export function WISetBuilderPage() {
     }
   }
 
+  const handleCaseCreated = (
+    result: InstantiateProjectResult,
+    product: Product,
+    sku: Sku,
+    modelLabel: string,
+  ) => {
+    setShowCreateCase(false)
+    setActiveCase(result.worksheet_id, {
+      processName: modelLabel || projectData?.name || form.name,
+      productName: product.name_zh,
+      skuName: sku.name_zh ? `${sku.sku_code}（${sku.name_zh}）` : sku.sku_code,
+      versionNo: result.version_no,
+      status: result.status,
+    })
+    window.dispatchEvent(new CustomEvent('ddm:switch-tab', { detail: 'case' }))
+  }
+
   // ── derived ────────────────────────────────────────────────────────────────
 
   const items = projectData?.items ?? []
@@ -1196,6 +1374,14 @@ export function WISetBuilderPage() {
 
   return (
     <div className="flex flex-col gap-4 overflow-y-auto pb-6">
+      {showCreateCase && projectData && (
+        <CreateAnalysisCaseModal
+          project={projectData}
+          employeeNo={me?.employee_no ?? ''}
+          onClose={() => setShowCreateCase(false)}
+          onCreated={handleCaseCreated}
+        />
+      )}
       {/* ── Page header ── */}
       <div className="bg-white rounded-xl border px-5 py-3 flex items-center justify-between gap-4 flex-wrap">
         <div>
@@ -1295,6 +1481,14 @@ export function WISetBuilderPage() {
               className="px-4 py-1.5 text-sm border rounded hover:bg-slate-50 disabled:opacity-40"
             >
               複製專案
+            </button>
+
+            <button
+              disabled={!projectId || items.length === 0 || isBusy}
+              onClick={() => setShowCreateCase(true)}
+              className="px-4 py-1.5 text-sm border border-blue-300 text-blue-700 rounded hover:bg-blue-50 disabled:opacity-40"
+            >
+              建立分析案件
             </button>
 
             {/* Delete — only draft */}

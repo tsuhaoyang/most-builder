@@ -1,6 +1,6 @@
 # DDM v2 Frontend (React + TypeScript)
 
-模組化前端（取代 `docs/html_con/` 參考原型）。依 `frontend-workbench` skill 規範：**MVC 分離、邏輯後端權威、features 結構、typed API、Playwright e2e**。
+模組化前端。依 v2 UX spec 與 ADR-021/022：**MVC 分離、邏輯後端權威、features 結構、typed API、Playwright e2e**。
 
 ## 技術棧
 
@@ -43,22 +43,22 @@ npm run dev            # http://localhost:5173
   （先 `cd ddm-v2 && PYTHONPATH=src python -c "import json;from ddm_v2.main import create_app;open('src/frontend/openapi.json','w').write(json.dumps(create_app().openapi()))"`）
 - `npm run test:e2e` — Playwright（需 dev server + 後端在跑）
 
-## 遷移狀態（完成）
+## 現行功能區
 
-藍本＝`docs/html_con/v2-workbench.html`（**保留為參考，不刪**）。七大分頁 + 匯入精靈已全數遷移：
+UX 權威＝`docs/architecture/frontend-ux-spec.md`＋ADR-021/022；`docs/html_con/` 僅封存。現行功能：
 
-| 區塊 | 內容 |
-|---|---|
-| ① WI | ⚡快速範本 + 🔧精確七格(A/B/G/P/M/X/I, GM/CM)；後端權威計算；存整表 + 依 activeWs 載入(還原 WI+Level) |
-| ② Level System | 巢狀群組盒（sub⊃cub 拖放）+ ~// 變動度 + nb；derive 由分組推導 |
-| ③ 主數據 | 詞彙 CRUD（invalidate 連動 WI/Level） |
-| ④ Rule-set | 規則表唯讀檢視（11 區塊；TMU 計算依據） |
-| ⑤ SOP 版本 | 版本清單 + 發布(manager)/另存新檔(IE)/切換版本 |
-| ⑥ 匯出 | Excel / LB CSV / LB API(dry-run)；讀 activeWs |
-| ⑦ 使用者 | 角色管理(admin)：IE/manager/admin + 啟用切換 |
-| 📥 匯入 | 三步精靈：上傳→對應→預覽(+存 Profile)；提交工時表=2b |
+| 功能 | 實作位置 |
+|------|----------|
+| 儀表板 | `features/dashboard/` |
+| MOST 工作台（動作→WI 大綱） | `features/workbench-v3/` |
+| WI 專案建立 | `features/wi-project/` |
+| Level System | `features/level-system/` |
+| 分析案件＋工時表編輯＋匯出 | `features/cases/`、`features/wi-workbench/`、`features/export/` |
+| 主數據／MOST 字典 | `features/dictionaries/`、`features/dictionary/` |
+| 使用者與 RBAC | `features/users/` |
+| Excel 匯入 | `features/import/` |
 
-**跨切片狀態**：`shared/workspace.ts`(activeWs，WI/匯出/SOP 共用) · Level store 讀 WI rows · Query invalidation 維持快取一致。**後續**：WI 精確編輯的 A 變動度(~//) UI、匯入 2b 提交工時表、Phase 5 i18n、Playwright e2e 實跑。
+角色以後端 `/api/v2/me` 為準：`viewer < analyst < approver < admin`。TMU、Level 驗證與正式敘事一律使用後端權威結果。
 
 ## 部署
 

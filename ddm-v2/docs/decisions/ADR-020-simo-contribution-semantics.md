@@ -2,7 +2,7 @@
 
 - **狀態**：Accepted（使用者/IE 裁決於 2026-07-13）
 - **決策者**：Howard（IE）＋ 審查總召
-- **關聯**：ADR-014（值權威）、`docs/v3/v3-to-v2-migration-audit-202607.md` §7.1（發現來源）
+- **關聯**：ADR-014（值權威）、[MiniMOST 核心規格](../core-logic/minimost-sequence-model-core-logic-spec.md) §6
 
 ## 背景
 

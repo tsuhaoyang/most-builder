@@ -1,14 +1,16 @@
 // 精確編輯的 cycle 狀態 + 轉 CycleIn payload + 敘述（移植 html_con 的 payload()/shortNarr）
 export interface ASlot { reach: number; twist: number; foot: number }
+export type CycleSeq = 'GM' | 'CM'
+
 export interface CycleState {
-  seq: 'GM' | 'CM'
+  seq: CycleSeq
   handCode: string
   freq: number
   simoGroup: string
   /** component / where 僅供敘述與顯示（交錯句型的情境欄）；buildPayload 不讀取 nv */
   nv: { obj: string; from: string; to: string; component: string; where: string }
-  a0: ASlot; b1: string | null; g: string; gMod: Record<string, boolean>
-  a3: ASlot; b4: string | null; p_base: string; p_addons: string[]; precision: boolean
+  a0: ASlot; b1: string | null; g: string; gMod: Record<string, boolean>; gRepeat: number
+  a3: ASlot; b4: string | null; p_base: string; p_addons: string[]; precision: boolean; pRepeat: number
   m: { verb: string; distance: number; angle: number; rev: number; dia: number }
   x: string; x_sec: number; i: string
   a6: ASlot
@@ -17,11 +19,46 @@ export interface CycleState {
 export const defaultCycle = (): CycleState => ({
   seq: 'GM', handCode: 'RH', freq: 1, simoGroup: '',
   nv: { obj: '', from: '', to: '', component: '', where: '' },
-  a0: { reach: 0, twist: 0, foot: 0 }, b1: null, g: '', gMod: {},
-  a3: { reach: 0, twist: 0, foot: 0 }, b4: null, p_base: '', p_addons: [], precision: false,
+  a0: { reach: 0, twist: 0, foot: 0 }, b1: null, g: '', gMod: {}, gRepeat: 1,
+  a3: { reach: 0, twist: 0, foot: 0 }, b4: null, p_base: '', p_addons: [], precision: false, pRepeat: 1,
   m: { verb: '', distance: 30, angle: 90, rev: 1, dia: 10 }, x: 'x_none', x_sec: 0, i: 'i_none',
   a6: { reach: 0, twist: 0, foot: 0 },
 })
+
+const DEFAULT_B_MOVE_CODE = 'b_eye'
+const DEFAULT_P_BASE_CODE = 'p_place_none'
+
+export function migrateSeqState(current: CycleState, nextSeq: CycleSeq): CycleState {
+  if (current.seq === nextSeq) return current
+
+  if (nextSeq === 'GM') {
+    return {
+      ...current,
+      seq: 'GM',
+      nv: { ...current.nv, where: '' },
+      b4: current.b4 ?? DEFAULT_B_MOVE_CODE,
+      p_base: current.p_base || (current.nv.to ? DEFAULT_P_BASE_CODE : ''),
+      p_addons: [],
+      precision: false,
+      pRepeat: 1,
+      m: { ...defaultCycle().m },
+      x: 'x_none',
+      x_sec: 0,
+      i: 'i_none',
+    }
+  }
+
+  return {
+    ...current,
+    seq: 'CM',
+    a3: { ...defaultCycle().a3 },
+    b4: null,
+    p_base: '',
+    p_addons: [],
+    precision: false,
+    pRepeat: 1,
+  }
+}
 
 export interface ABand { max_value: number | null; index: number }
 export function aBandOpts(bands: ABand[], comp: 'reach' | 'twist' | 'foot') {
@@ -41,11 +78,11 @@ export function buildPayload(c: CycleState, ruleSetCode: string): Record<string,
   const gm = c.seq === 'GM'
   const p: Record<string, unknown> = {
     seq: c.seq, rule_set_code: ruleSetCode,
-    a0: A(c.a0), b1: { b_code: c.b1 }, g2: { g_code: c.g || null, modifiers: c.gMod || {} }, a6: A(c.a6),
+    a0: A(c.a0), b1: { b_code: c.b1 }, g2: { g_code: c.g || null, modifiers: c.gMod || {}, repeat_count: c.gRepeat }, a6: A(c.a6),
   }
   if (gm) {
     p.a3 = A(c.a3); p.b4 = { b_code: c.b4 }
-    p.p5 = { p_base_code: c.p_base || null, p_addon_codes: c.p_addons || [], precision: !!c.precision }
+    p.p5 = { p_base_code: c.p_base || null, p_addon_codes: c.p_addons || [], precision: !!c.precision, repeat_count: c.pRepeat }
   } else {
     p.m3 = { m_components: c.m.verb ? [{ verb_code: c.m.verb, distance_cm: c.m.distance, angle_deg: c.m.angle, revolutions: c.m.rev, diameter_cm: c.m.dia }] : [] }
     p.x4 = { x_code: c.x || 'x_none', x_seconds: c.x_sec || 0 }
@@ -60,14 +97,17 @@ export function payloadToState(p: Record<string, any>): CycleState { // eslint-d
   s.seq = p.seq === 'CM' ? 'CM' : 'GM'
   const toA = (o: any): ASlot => ({ reach: o?.reach_cm || 0, twist: o?.twist_deg || 0, foot: o?.foot_cm || 0 }) // eslint-disable-line @typescript-eslint/no-explicit-any
   s.a0 = toA(p.a0); s.a6 = toA(p.a6)
-  s.g = p.g2?.g_code || ''; s.gMod = p.g2?.modifiers || {}; s.b1 = p.b1?.b_code ?? null
+  s.g = p.g2?.g_code || ''; s.gMod = p.g2?.modifiers || {}; s.gRepeat = p.g2?.repeat_count || 1; s.b1 = p.b1?.b_code ?? null
   if (s.seq === 'GM') {
     s.a3 = toA(p.a3); s.b4 = p.b4?.b_code ?? null
-    s.p_base = p.p5?.p_base_code || ''; s.p_addons = p.p5?.p_addon_codes || []; s.precision = !!p.p5?.precision
+    s.p_base = p.p5?.p_base_code || ''; s.p_addons = p.p5?.p_addon_codes || []; s.precision = !!p.p5?.precision; s.pRepeat = p.p5?.repeat_count || 1
   } else {
     const m = (p.m3?.m_components || [])[0] || {}
     s.m = { verb: m.verb_code || '', distance: m.distance_cm || 30, angle: m.angle_deg || 90, rev: m.revolutions || 1, dia: m.diameter_cm || 10 }
     s.x = p.x4?.x_code || 'x_none'; s.x_sec = p.x4?.x_seconds || 0; s.i = p.i5?.i_code || 'i_none'
+  }
+  if (typeof p.frequency === 'number' && p.frequency > 0) {
+    s.freq = p.frequency
   }
   return s
 }

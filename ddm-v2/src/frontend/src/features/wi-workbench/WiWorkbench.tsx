@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { useQueryClient } from '@tanstack/react-query'
-import { useRuleSetOptions, useVocab, useCalculate, useSaveWorksheet, useWorksheet, type DefaultRuleSetInfo } from './api'
+import { useRuleSetOptions, useVocab, useCalculate, useSaveWorksheet, type DefaultRuleSetInfo } from './api'
 import { useWiStore, type Row } from './store'
 import { useMe, canEdit } from '../../shared/auth/useMe'
 import { useWorkspace } from '../../shared/workspace'
@@ -15,8 +15,10 @@ import {
   defaultCycle, buildPayload, aBandOpts, shortNarr, payloadToState,
   type CycleState, type ASlot, type ABand,
 } from './cycle'
+import { AiDraftPanel } from './AiDraftPanel'
 import { useLevelStore } from '../level-system/store'
-import { derive, type LevelCell, type GroupMeta } from '../level-system/logic'
+import { derive } from '../level-system/logic'
+import { useWorksheetWorkspace } from './useWorksheetWorkspace'
 import {
   useWiTemplates, useInstantiateToWorksheet,
   type MotionModuleSummary,
@@ -25,17 +27,6 @@ import {
 // ─── Local types ───────────────────────────────────────────────────────────────
 interface WiGroup { id: string; name: string; rowIds: string[] }
 type SlotKey = 'a0' | 'b1' | 'g' | 'a3' | 'b4' | 'p' | 'm' | 'x' | 'i' | 'a6'
-
-interface NlDraftSlot {
-  slot_index: number
-  field: string
-  chosen: { option_code: string; score: number; source: string } | null
-}
-interface NlDraftRes {
-  suggested_seq?: string | null
-  slots?: NlDraftSlot[]
-  overall_confidence?: number
-}
 
 const HANDS = [{ v: 'RH', l: '右手' }, { v: 'LH', l: '左手' }, { v: 'BH', l: '雙手' }]
 
@@ -198,26 +189,6 @@ function aIsFilled(slot: ASlot): boolean {
   return slot.reach > 0 || slot.twist > 0 || slot.foot > 0
 }
 
-// ─── NL draft → CycleState patch ──────────────────────────────────────────────
-function nlDraftPatch(res: NlDraftRes): Partial<CycleState> {
-  const patch: Partial<CycleState> = {}
-  if (res.suggested_seq === 'GM' || res.suggested_seq === 'CM') {
-    patch.seq = res.suggested_seq as 'GM' | 'CM'
-  }
-  for (const slot of (res.slots ?? [])) {
-    if (!slot.chosen) continue
-    const code = slot.chosen.option_code
-    switch (slot.field) {
-      case 'g_code': patch.g = code; break
-      case 'b_code': patch.b1 = code; break
-      case 'b_code2': patch.b4 = code; break
-      case 'p_base_code': patch.p_base = code; break
-      // A-slot reverse-mapping skipped (distance→ASlot requires lexicon lookup)
-    }
-  }
-  return patch
-}
-
 // ─── Main component ────────────────────────────────────────────────────────────
 export function WiWorkbench() {
   const { data: me } = useMe()
@@ -229,7 +200,7 @@ export function WiWorkbench() {
   const activeWs = useWorkspace(s => s.activeWs)
   const save = useSaveWorksheet(activeWs)
   const qc = useQueryClient()
-  const { data: wsData } = useWorksheet(activeWs)
+  const { data: wsData } = useWorksheetWorkspace(activeWs)
   const { rows, addRow, delRow, setRows, totalTmu } = useWiStore()
 
   // ── existing editor state ──────────────────────────────────────────────────
@@ -238,11 +209,6 @@ export function WiWorkbench() {
   const [tech, setTech] = useState('')
   const [saveMsg, setSaveMsg] = useState('')
   const editable = canEdit(me)
-
-  // ── [F] NL draft state ─────────────────────────────────────────────────────
-  const [nlText, setNlText] = useState('')
-  const [nlLoading, setNlLoading] = useState(false)
-  const [nlError, setNlError] = useState('')
 
   // ── [D] drag state ──────────────────────────────────────────────────────────
   const [dragIdx, setDragIdx] = useState<number | null>(null)
@@ -277,7 +243,17 @@ export function WiWorkbench() {
       // 既有實體化端點：POST /api/v2/worksheets/{wid}/rows/from-module（body: module_id）。
       // hook onSuccess 會 invalidate ['worksheet', wid] → wsData refetch → 上方 effect
       // setRows 重灌工時表（後端已算好每列 TMU，前端不自算）。
-      const result = await instantiate.mutateAsync({ worksheetId: activeWs, moduleId: mod.id })
+      const result = await instantiate.mutateAsync({
+        worksheetId: activeWs,
+        moduleId: mod.id,
+        baseRevision: useWiStore.getState().revisionNo,
+      })
+      if (typeof result.revision_no === 'number') {
+        useWiStore.getState().setRevisionMeta({
+          revisionNo: result.revision_no,
+          contentHash: result.content_hash ?? null,
+        })
+      }
       setInsertWiOpen(false)
       showWiToast(`已插入「${mod.name_zh}」：${result.new_rows.length} 列`, 'ok')
       // TMU 漂移警告（沿 ProcessWorkspace 既有機制：instantiate 回應內 tmu_drift）
@@ -285,32 +261,15 @@ export function WiWorkbench() {
         setTimeout(() => showWiToast('部分列 TMU 因規則集不同已重算調整', 'warn'), 1500)
       }
     } catch (e) {
-      showWiToast('插入失敗：' + (e as Error).message, 'err')
+      const err = e as Error & { code?: string | null; humanMessage?: string; status?: number }
+      if (err.status === 409 && err.code === 'WORKSHEET_REVISION_CONFLICT') {
+        showWiToast('插入衝突：工序表已被更新，請重新載入後再插入', 'err')
+        qc.invalidateQueries({ queryKey: ['worksheet', activeWs] })
+      } else {
+        showWiToast('插入失敗：' + (err.humanMessage || err.message), 'err')
+      }
     }
   }
-
-  // ── load/switch worksheet ─────────────────────────────────────────────────
-  useEffect(() => {
-    if (!wsData) return
-    setRows(wsData.rows.map(r => ({
-      id: r.wi_row_id, seq: (r.cycle?.seq_kind === 'CM' ? 'CM' : 'GM') as 'GM' | 'CM',
-      handCode: r.hand ?? 'RH', freq: r.frequency, simoGroup: r.simo_group_id ?? '',
-      nv: { obj: r.object_vocab_id ?? '', from: r.from_vocab_id ?? '', to: r.to_vocab_id ?? '' },
-      narr: r.cycle?.narrative ?? '', tmu: r.cycle?.total_tmu ?? 0, seconds: r.cycle?.total_seconds ?? 0,
-      payload: r.cycle?.slot_inputs ?? null,
-    })))
-    const lm: Record<string, LevelCell> = {}; const gm: Record<string, GroupMeta> = {}
-    wsData.rows.forEach((r, i) => {
-      const L = r.level
-      lm[r.wi_row_id] = {
-        coefficient: L?.coefficient ?? 1, number: L?.number ?? '', number_count: L?.number_count ?? '',
-        level: L?.level ?? String(i + 1), countersignature: L?.countersignature ?? '', machine_count: 1, manpower: 1,
-      }
-      const csl = (L?.countersignature ?? '').trim()
-      if (csl && !gm[csl]) gm[csl] = { type: csl.startsWith('cub') ? 'cub' : 'sub', parent: L?.parent_countersignature ?? '', seq: i }
-    })
-    useLevelStore.getState().hydrate(lm, gm, wsData.rows.length)
-  }, [wsData, setRows])
 
   // ── debounced backend calculate ───────────────────────────────────────────
   const payload = useMemo(() => (opts ? buildPayload(cur, opts.code) : null), [cur, opts])
@@ -586,33 +545,6 @@ export function WiWorkbench() {
       .reduce((sum, r) => sum + (r.tmu * (r.freq || 1)), 0)
   }
 
-  // ── [F] NL draft ───────────────────────────────────────────────────────────
-  async function runNlDraft() {
-    const text = nlText.trim()
-    if (!text) return
-    setNlLoading(true)
-    setNlError('')
-    try {
-      const res = await apiPost<NlDraftRes>('/api/v2/worksheets/nl-draft', {
-        text,
-        rule_set_code: opts?.code,
-      })
-      const patch = nlDraftPatch(res)
-      if (Object.keys(patch).length > 0) {
-        setCur(c => ({ ...c, ...patch }))
-      }
-    } catch (e) {
-      const msg = (e as Error).message
-      if (msg.includes('501') || msg.includes('Not Implemented') || msg.includes('404')) {
-        setNlError('NL Draft 功能需要後端支援')
-      } else {
-        setNlError('預填失敗：' + msg)
-      }
-    } finally {
-      setNlLoading(false)
-    }
-  }
-
   // ── existing add/save functions ────────────────────────────────────────────
   function add() {
     if (tmu == null) return
@@ -640,13 +572,14 @@ export function WiWorkbench() {
     setSaveMsg('儲存中…')
     const lv = useLevelStore.getState()
     const d = derive(rows, lv.levelMap, lv.groupMeta)
-    const fallbackObj = vocab.find(v => v.kind === 'object')?.id
+    const baseRevision = useWiStore.getState().revisionNo
     const body = {
+      base_revision: baseRevision ?? undefined,
       rows: rows.map((r, i) => {
         const e = d[i] || {}
         return {
           id: r.id, seq_no: i + 1, hand: r.handCode,
-          object_vocab_id: r.nv.obj || fallbackObj,
+          object_vocab_id: r.nv.obj || null,
           from_vocab_id: r.nv.from || null, to_vocab_id: r.nv.to || null,
           frequency: r.freq, simo_group_id: r.simoGroup || null, narrative: r.narr, cycle: r.payload,
           level: {
@@ -660,10 +593,25 @@ export function WiWorkbench() {
     }
     try {
       const res = await save.mutateAsync(body)
+      if (typeof res.revision_no === 'number') {
+        useWiStore.getState().setRevisionMeta({
+          revisionNo: res.revision_no,
+          contentHash: res.content_hash ?? null,
+        })
+      }
       qc.invalidateQueries({ queryKey: ['wi-preview'] })
       qc.invalidateQueries({ queryKey: ['versions'] })
-      setSaveMsg(`✓ 已儲存：${res.rows.length} 列，合計 ${res.total_tmu} TMU（≈ ${(res.total_tmu * TMU_SEC).toFixed(2)} 秒）`)
-    } catch (e) { setSaveMsg('⚠️ 儲存失敗：' + (e as Error).message) }
+      qc.invalidateQueries({ queryKey: ['worksheet', activeWs] })
+      setSaveMsg(`✓ 已儲存：${res.rows.length} 列，合計 ${res.total_tmu} TMU（≈ ${(res.total_tmu * TMU_SEC).toFixed(2)} 秒）· rev ${res.revision_no ?? '?'}`)
+    } catch (e) {
+      const err = e as Error & { code?: string | null; humanMessage?: string; status?: number }
+      if (err.status === 409 && err.code === 'WORKSHEET_REVISION_CONFLICT') {
+        setSaveMsg('⚠️ 儲存衝突：工序表已被其他人更新。請重新載入後再存（不會靜默覆寫）。')
+        qc.invalidateQueries({ queryKey: ['worksheet', activeWs] })
+      } else {
+        setSaveMsg('⚠️ 儲存失敗：' + (err.humanMessage || err.message))
+      }
+    }
   }
 
   const total = totalTmu()
@@ -678,27 +626,20 @@ export function WiWorkbench() {
       {/* ═══ Editor section ═══ */}
       <div className="bg-white rounded-xl border p-4 space-y-3">
 
-        {/* [F] NL Draft bar */}
-        <div className="flex flex-wrap items-start gap-2 pb-2 border-b border-slate-100">
-          <span className="text-xs font-semibold text-slate-500 mt-2 shrink-0">AI 預填</span>
-          <textarea
-            rows={1}
-            className="flex-1 min-w-0 border rounded px-2 py-1.5 text-sm resize-none focus:outline-none focus:ring-1 focus:ring-blue-400"
-            placeholder="輸入口語描述，AI 自動填入動作參數…"
-            value={nlText}
-            onChange={e => setNlText(e.target.value)}
-            onKeyDown={e => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); if (!nlLoading) runNlDraft() } }}
-            disabled={nlLoading}
-          />
-          <button
-            onClick={runNlDraft}
-            disabled={nlLoading || !nlText.trim()}
-            className="px-3 py-1.5 bg-indigo-600 text-white text-sm rounded disabled:opacity-40 shrink-0"
-          >
-            {nlLoading ? '分析中…' : '填入'}
-          </button>
-          {nlError && <span className="text-xs text-red-500 w-full mt-0.5">{nlError}</span>}
-        </div>
+        {/* [F] AI Draft panel（取代舊 NL 預填） */}
+        <AiDraftPanel
+          ruleSetCode={opts?.code}
+          worksheetId={activeWs || null}
+          canWriteReviews={editable}
+          onAdoptCycle={(cycle) => {
+            setCur((c) => {
+              const next = payloadToState(cycle)
+              // 保留手別／語彙情境，不整頁清空
+              return { ...next, handCode: c.handCode || next.handCode, nv: { ...c.nv } }
+            })
+          }}
+          onLegacyFill={(patch) => setCur((c) => ({ ...c, ...patch }))}
+        />
 
         {/* Sequence type + hand */}
         <div className="flex flex-wrap items-center gap-3">

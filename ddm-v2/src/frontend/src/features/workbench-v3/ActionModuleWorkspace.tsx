@@ -7,7 +7,7 @@ import { useQueryClient } from '@tanstack/react-query'
 import { useRuleSetOptions, useVocab, useCalculate } from '../wi-workbench/api'
 import { useCreateVocab } from '../master-data/api'
 import type { VocabIn } from '../master-data/api'
-import { defaultCycle, buildPayload, payloadToState, shortNarr, type CycleState } from '../wi-workbench/cycle'
+import { defaultCycle, buildPayload, migrateSeqState, payloadToState, shortNarr, type CycleState } from '../wi-workbench/cycle'
 import { TMU_SEC } from '../../shared/config'
 import { useActiveRuleSet } from '../../shared/api/useActiveRuleSet'
 import { RuleSetUnavailable } from '../../shared/ui/RuleSetUnavailable'
@@ -17,6 +17,7 @@ import {
   nlDraftPatch, nlDraftPatchFillEmpty, sourceBadge, NL_FIELD_LABELS,
   type NlDraftRes,
 } from './nlDraft'
+import { MiCompositionTable } from './MiCompositionTable'
 import {
   useMotionModules,
   useCreateModule,
@@ -96,6 +97,7 @@ export function ActionModuleWorkspace() {
   const [showHandInMi, setShowHandInMi] = useState(true) // 顯示於MI checkbox
   const [tmu, setTmu] = useState<number | null>(null)
   const [tech, setTech] = useState('')
+  const [calcErrMsg, setCalcErrMsg] = useState<string | null>(null)
   const [editingModuleId, setEditingModuleId] = useState<string | null>(null)
   const [source, setSource] = useState<'manual' | 'ai' | 'copied'>('manual')
 
@@ -118,6 +120,9 @@ export function ActionModuleWorkspace() {
   const [searchQ, setSearchQ] = useState('')
   const [debouncedQ, setDebouncedQ] = useState('')
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set())
+  const [selectedSimoPairs, setSelectedSimoPairs] = useState<Record<string, string>>({})
+  const [orderedIds, setOrderedIds] = useState<string[]>([])
+  const [draggingId, setDraggingId] = useState<string | null>(null)
   const [loadingModuleId, setLoadingModuleId] = useState<string | null>(null)
   // 行內頻率（B-1）：草稿字串（輸入中）／儲存中的列／per-row debounce timer
   const [freqDraft, setFreqDraft] = useState<Record<string, string>>({})
@@ -160,6 +165,27 @@ export function ActionModuleWorkspace() {
   const createWiTemplate = useCreateWiTemplate()
   const qc = useQueryClient()
 
+  // 動作列表本地持序（後端 reorder 目前為 stub），保留本次工作排序。
+  useEffect(() => {
+    setOrderedIds(prev => {
+      const ids = modules.map(m => m.id)
+      const known = prev.filter(id => ids.includes(id))
+      const appended = ids.filter(id => !known.includes(id))
+      return [...known, ...appended]
+    })
+  }, [modules])
+
+  const orderedModules = useMemo(() => {
+    if (modules.length === 0) return [] as MotionModuleSummary[]
+    const byId = new Map(modules.map(m => [m.id, m] as const))
+    const ordered: MotionModuleSummary[] = []
+    orderedIds.forEach(id => {
+      const mod = byId.get(id)
+      if (mod) ordered.push(mod)
+    })
+    return ordered
+  }, [modules, orderedIds])
+
   // ADR-022 E-3：每列 Base/頻率改讀 list 摘要欄（base_tmu / frequency，後端 E-2
   // 從 current version rows[0] 回填）——不再逐筆撈 detail（N+1 已移除）。
 
@@ -176,11 +202,20 @@ export function ActionModuleWorkspace() {
     [cur, opts],
   )
   useEffect(() => {
-    if (!payload) { setTmu(null); setTech(''); return }
+    if (!payload) { setTmu(null); setTech(''); setCalcErrMsg(null); return }
     const id = setTimeout(() => {
+      setCalcErrMsg(null)
       calc.mutate(payload, {
-        onSuccess: r => { setTmu(r.total_tmu); setTech(r.tech_line) },
-        onError: () => { setTmu(null); setTech('') },
+        onSuccess: r => {
+          setTmu(r.total_tmu)
+          setTech(r.tech_line)
+          setCalcErrMsg(null)
+        },
+        onError: (err) => {
+          setTmu(null)
+          setTech('')
+          setCalcErrMsg(apiErrorMessage(err))
+        },
       })
     }, 400)
     return () => clearTimeout(id)
@@ -334,7 +369,7 @@ export function ActionModuleWorkspace() {
   }
 
   // ── Load module into builder（列編輯迴路，audit §1.7） ────────────────────────
-  async function loadModule(mod: MotionModuleSummary) {
+  async function loadModule(mod: MotionModuleSummary, mode: 'edit' | 'rework' = 'edit') {
     setLoadingModuleId(mod.id)
     try {
       const detail = await apiGet<MotionModuleSummary>(`/api/v2/motion-modules/${mod.id}`)
@@ -352,8 +387,9 @@ export function ActionModuleWorkspace() {
         nv: { ...next.nv, obj: vid('object_vocab_id'), from: vid('from_vocab_id'), to: vid('to_vocab_id') },
       })
       setWiSentence(mod.name_zh)
-      setEditingModuleId(mod.id)
-      setSource((detail.source as 'manual' | 'ai' | 'copied') ?? 'manual')
+      setEditingModuleId(mode === 'edit' ? mod.id : null)
+      setSource(mode === 'rework' ? 'copied' : ((detail.source as 'manual' | 'ai' | 'copied') ?? 'manual'))
+      showToast(mode === 'rework' ? `已載入為新動作：${mod.name_zh}` : `已載入編輯：${mod.name_zh}`, 'ok')
     } catch (err) {
       showToast('載入模組失敗：' + (err as Error).message, 'err')
     } finally {
@@ -368,6 +404,13 @@ export function ActionModuleWorkspace() {
       await deleteModule.mutateAsync(id)
       if (editingModuleId === id) resetBuilder()
       setSelectedIds(s => { const next = new Set(s); next.delete(id); return next })
+      setSelectedSimoPairs(prev => {
+        const next: Record<string, string> = {}
+        for (const [followerId, leaderId] of Object.entries(prev)) {
+          if (followerId !== id && leaderId !== id) next[followerId] = leaderId
+        }
+        return next
+      })
       showToast('已刪除：' + name, 'ok')
     } catch (err) {
       showToast('刪除失敗：' + (err as Error).message, 'err')
@@ -469,6 +512,64 @@ export function ActionModuleWorkspace() {
     setSelectedIds(s => {
       const next = new Set(s)
       if (next.has(id)) next.delete(id); else next.add(id)
+      setSelectedSimoPairs(prev => {
+        const pairs: Record<string, string> = {}
+        for (const [followerId, leaderId] of Object.entries(prev)) {
+          if (next.has(followerId) && (!leaderId || next.has(leaderId))) pairs[followerId] = leaderId
+        }
+        return pairs
+      })
+      return next
+    })
+  }
+
+  function toggleListSimo(moduleId: string, enabled: boolean) {
+    setSelectedSimoPairs(prev => {
+      const next = { ...prev }
+      if (!enabled) {
+        delete next[moduleId]
+        return next
+      }
+      if (!(moduleId in next)) next[moduleId] = ''
+      return next
+    })
+  }
+
+  function setListSimoPair(moduleId: string, leaderId: string | null) {
+    setSelectedSimoPairs(prev => {
+      const next = { ...prev }
+      if (!leaderId || leaderId === moduleId) {
+        next[moduleId] = ''
+        return next
+      }
+      if (Object.values(prev).includes(moduleId)) return prev
+      next[moduleId] = leaderId
+      return next
+    })
+  }
+
+  function moveOrderedModule(sourceId: string, targetId: string) {
+    if (sourceId === targetId) return
+    setOrderedIds(prev => {
+      const from = prev.indexOf(sourceId)
+      const to = prev.indexOf(targetId)
+      if (from < 0 || to < 0) return prev
+      const next = [...prev]
+      const [item] = next.splice(from, 1)
+      next.splice(to, 0, item)
+      return next
+    })
+  }
+
+  function shiftOrderedModule(sourceId: string, direction: -1 | 1) {
+    setOrderedIds(prev => {
+      const from = prev.indexOf(sourceId)
+      if (from < 0) return prev
+      const to = from + direction
+      if (to < 0 || to >= prev.length) return prev
+      const next = [...prev]
+      const [item] = next.splice(from, 1)
+      next.splice(to, 0, item)
       return next
     })
   }
@@ -481,10 +582,11 @@ export function ActionModuleWorkspace() {
 
   async function handleCreateWi() {
     if (!opts) return
-    const selected = modules.filter(m => selectedIds.has(m.id))
+    const selected = orderedModules.filter(m => selectedIds.has(m.id))
     if (selected.length === 0) return
     setCreatingWi(true)
     try {
+      const indexById = Object.fromEntries(selected.map((mod, index) => [mod.id, index]))
       // 每個動作的 rows[0] 快照複本（copy-on-write：WI 微調不影響來源動作）。
       // E-3 後 list 不再預載 detail → 建 WI 時才逐筆撈（僅勾選的少數幾筆，非 N+1）
       const rows: MotionModuleRow[] = await Promise.all(
@@ -493,11 +595,12 @@ export function ActionModuleWorkspace() {
           const src = detail.current_version_detail?.rows?.[0]
           if (!src) throw new Error(`動作「${mod.name_zh}」尚無已發布版本`)
           const clone = JSON.parse(JSON.stringify(src)) as MotionModuleRow  // 深拷貝（含 vocab_refs）
+          const simoLeaderId = selectedSimoPairs[mod.id]
           return {
             sub_activity: clone.sub_activity ?? mod.name_zh,
             hand: clone.hand,
             frequency: clone.frequency,
-            simo_pair_index: clone.simo_pair_index ?? null,
+            simo_pair_index: simoLeaderId ? indexById[simoLeaderId] ?? null : clone.simo_pair_index ?? null,
             vocab_refs: clone.vocab_refs ?? {},
             cycle: clone.cycle,
           }
@@ -521,6 +624,7 @@ export function ActionModuleWorkspace() {
       qc.invalidateQueries({ queryKey: ['motion-modules'] })
       qc.invalidateQueries({ queryKey: ['wi-templates'] })
       setSelectedIds(new Set())
+      setSelectedSimoPairs({})
       setWiName('')
       showToast(`已建立 WI：${name}（${rows.length} 動作）`, 'ok')
     } catch (err) {
@@ -660,7 +764,7 @@ export function ActionModuleWorkspace() {
             <select
               className="shrink-0 border rounded px-2 text-sm self-center py-1.5"
               value={cur.seq}
-              onChange={e => set({ seq: e.target.value as 'GM' | 'CM' })}
+              onChange={e => setCur(c => migrateSeqState(c, e.target.value as 'GM' | 'CM'))}
               aria-label="動作類型"
             >
               <option value="GM">一般移動</option>
@@ -737,6 +841,17 @@ export function ActionModuleWorkspace() {
             </button>
           </div>
 
+          {(tmu == null || tmu <= 0) && !calcErrMsg && (
+            <p className="text-xs text-amber-700" data-testid="save-block-reason">
+              尚未取得有效 TMU（需大於 0），請先完成必要格位並等待後端計算完成。
+            </p>
+          )}
+          {calcErrMsg && (
+            <p className="text-xs text-red-600" data-testid="calc-error-message">
+              TMU 計算失敗：{calcErrMsg}
+            </p>
+          )}
+
           {source === 'ai' && (
             <p className="text-xs text-violet-600">AI badge：此動作由 NL 草稿自動填入</p>
           )}
@@ -773,7 +888,7 @@ export function ActionModuleWorkspace() {
                 </button>
               ))}
             </div>
-            <span className="text-sm text-slate-500">共 {modules.length} 筆</span>
+            <span className="text-sm text-slate-500">共 {orderedModules.length} 筆</span>
             <span className="ml-auto text-sm text-slate-500">
               合計：{poolTotalTmu != null
                 ? <><b style={{ color: '#1a73e8' }}>{poolTotalTmu}</b> TMU / <b className="text-red-600">{(poolTotalTmu * TMU_SEC).toFixed(3)}</b>s</>
@@ -782,129 +897,43 @@ export function ActionModuleWorkspace() {
           </div>
 
           {/* 動作清單表格 */}
-          <div className="overflow-x-auto">
-            <table className="w-full text-sm">
-              <thead>
-                <tr className="bg-slate-100 text-left">
-                  <th className="p-1.5 w-7 text-center">
-                    <input
-                      type="checkbox"
-                      checked={modules.length > 0 && modules.every(m => selectedIds.has(m.id))}
-                      onChange={e => {
-                        if (e.target.checked) setSelectedIds(new Set(modules.map(m => m.id)))
-                        else setSelectedIds(new Set())
-                      }}
-                    />
-                  </th>
-                  <th className="p-1.5 w-8">#</th>
-                  <th className="p-1.5 w-14">手</th>
-                  <th className="p-1.5">WI / 動作描述</th>
-                  <th className="p-1.5 w-14">類型</th>
-                  <th className="p-1.5 w-20 text-right">Base TMU</th>
-                  <th className="p-1.5 w-14 text-right">頻率</th>
-                  <th className="p-1.5 w-20 text-right">Eff TMU</th>
-                  <th className="p-1.5 w-20 text-right">CT(秒)</th>
-                  <th className="p-1.5 w-36 text-center">操作</th>
-                </tr>
-              </thead>
-              <tbody>
-                {modulesLoading && (
-                  <tr><td colSpan={10} className="p-3 text-slate-400 text-center">載入中…</td></tr>
-                )}
-                {!modulesLoading && modules.length === 0 && (
-                  <tr><td colSpan={10} className="p-3 text-slate-400 text-center">
-                    {searchQ ? '無相符動作' : '尚無動作，請在上方建立器新增。'}
-                  </td></tr>
-                )}
-                {modules.map((mod, i) => {
-                  const isSelected = selectedIds.has(mod.id)
-                  const modSeq = getModuleSeq(mod)
-                  // E-3：後端摘要欄（base_tmu = rows[0].computed.total_tmu；frequency = rows[0].frequency）
-                  const baseTmu = mod.base_tmu ?? null
-                  const rowFreq = mod.frequency ?? null
-                  const effTmuRow = mod.total_tmu ?? null
-                  const freqSaving = freqSavingIds.has(mod.id)
-                  const rowCls = [
-                    'border-t',
-                    editingModuleId === mod.id ? 'bg-amber-50' : isSelected ? 'bg-blue-50' : '',
-                  ].filter(Boolean).join(' ')
-                  return (
-                    <tr key={mod.id} className={rowCls}>
-                      <td className="p-1.5 text-center">
-                        <input type="checkbox" checked={isSelected} onChange={() => toggleSelect(mod.id)} />
-                      </td>
-                      <td className="p-1.5">{i + 1}</td>
-                      <td className="p-1.5">{getModuleHand(mod)}</td>
-                      <td className="p-1.5 max-w-md">
-                        <span className="truncate block" title={mod.name_zh}>{mod.name_zh}</span>
-                        {mod.source === 'ai' && (
-                          <span className="text-[10px] px-1 py-0.5 rounded bg-violet-100 text-violet-700">AI</span>
-                        )}
-                      </td>
-                      <td className="p-1.5">
-                        <span className={`text-xs px-1.5 py-0.5 rounded font-medium ${
-                          modSeq === 'GM' ? 'bg-green-100 text-green-700'
-                          : modSeq === 'CM' ? 'bg-purple-100 text-purple-700'
-                          : 'bg-slate-100 text-slate-500'
-                        }`}>{modSeq}</span>
-                      </td>
-                      <td className="p-1.5 text-right">
-                        {baseTmu != null ? <span>{baseTmu}</span> : '—'}
-                      </td>
-                      {/* B-1：行內頻率 input（debounce 500ms → PUT rows/0，後端重算持久化） */}
-                      <td className="p-1.5 text-right">
-                        {rowFreq == null ? '—' : (
-                          <input
-                            type="number" min={1}
-                            className="border rounded w-14 px-1 py-0.5 text-sm text-right"
-                            // 儲存中不鎖輸入（M2/M3：使用者可繼續編輯，送出端序列化）
-                            value={freqDraft[mod.id] ?? String(rowFreq)}
-                            onChange={e => onFreqInput(mod, e.target.value)}
-                            aria-label={`${mod.name_zh} 頻率`}
-                            data-testid="action-row-freq"
-                          />
-                        )}
-                      </td>
-                      <td className="p-1.5 text-right">
-                        {freqSaving
-                          ? <span className="text-xs text-slate-400">計算中…</span>
-                          : effTmuRow != null
-                            ? <b style={{ color: '#1a73e8' }}>{effTmuRow}</b>
-                            : '—'}
-                      </td>
-                      <td className="p-1.5 text-right">
-                        {freqSaving ? '…' : effTmuRow != null ? (effTmuRow * TMU_SEC).toFixed(3) : '—'}
-                      </td>
-                      <td className="p-1.5 text-center whitespace-nowrap">
-                        <button
-                          onClick={() => loadModule(mod)}
-                          disabled={loadingModuleId !== null}
-                          className="text-xs px-2 py-0.5 border rounded hover:bg-slate-50 disabled:opacity-40"
-                          title="載回建立器編輯"
-                        >
-                          {loadingModuleId === mod.id ? '載入中…' : '✏️ 編輯'}
-                        </button>
-                        <button
-                          onClick={() => handleClone(mod.id, mod.name_zh)}
-                          disabled={cloneModule.isPending}
-                          className="text-xs px-2 py-0.5 border rounded hover:bg-slate-50 disabled:opacity-40 ml-1"
-                        >
-                          📋 複製
-                        </button>
-                        <button
-                          onClick={() => handleDelete(mod.id, mod.name_zh)}
-                          disabled={deleteModule.isPending}
-                          className="text-xs px-2 py-0.5 border border-red-200 text-red-600 rounded hover:bg-red-50 disabled:opacity-40 ml-1"
-                        >
-                          ✕ 刪除
-                        </button>
-                      </td>
-                    </tr>
-                  )
-                })}
-              </tbody>
-            </table>
-          </div>
+          <MiCompositionTable
+            modules={orderedModules}
+            modulesLoading={modulesLoading}
+            searchQ={searchQ}
+            selectedIds={selectedIds}
+            selectedSimoPairs={selectedSimoPairs}
+            editingModuleId={editingModuleId}
+            draggingId={draggingId}
+            loadingModuleId={loadingModuleId}
+            freqDraft={freqDraft}
+            freqSavingIds={freqSavingIds}
+            clonePending={cloneModule.isPending}
+            deletePending={deleteModule.isPending}
+            getModuleSeq={getModuleSeq}
+            getModuleHand={getModuleHand}
+            onSelectAll={checked => {
+              if (checked) {
+                setSelectedIds(new Set(orderedModules.map(m => m.id)))
+                setSelectedSimoPairs({})
+              } else {
+                setSelectedIds(new Set())
+                setSelectedSimoPairs({})
+              }
+            }}
+            onToggleSelect={toggleSelect}
+            onShiftOrderedModule={shiftOrderedModule}
+            onDropReorder={moveOrderedModule}
+            onDragStart={setDraggingId}
+            onDragEnd={() => setDraggingId(null)}
+            onFreqInput={onFreqInput}
+            onToggleListSimo={toggleListSimo}
+            onSetListSimoPair={setListSimoPair}
+            onLoadModule={mod => loadModule(mod)}
+            onReworkModule={mod => loadModule(mod, 'rework')}
+            onCloneModule={handleClone}
+            onDeleteModule={handleDelete}
+          />
 
         </div>
 
@@ -937,7 +966,7 @@ export function ActionModuleWorkspace() {
             {creatingWi ? '建立中…' : '建立 WI'}
           </button>
           <button
-            onClick={() => { setSelectedIds(new Set()); setWiName('') }}
+            onClick={() => { setSelectedIds(new Set()); setSelectedSimoPairs({}); setWiName('') }}
             className="text-xs text-slate-400 hover:text-slate-600"
           >
             清除

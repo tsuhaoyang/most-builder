@@ -2,7 +2,7 @@
 
 - **狀態**：Accepted（使用者/IE 指示於 2026-07-20；協調者裁決）
 - **決策者**：Howard（IE）＋ 審查總召
-- **關聯**：**ADR-014（值權威）— 本 ADR 為其執行細則，不推翻其原則**；ADR-021（IA）、ADR-022（兩層工作台）、`docs/v3/v2-authoritative-model-guide.md` §5
+- **關聯**：**ADR-014（值權威）— 本 ADR 為其執行細則，不推翻其原則**；ADR-021（IA）、ADR-022（兩層工作台）、[v2 權威模型守則](../architecture/v2-authoritative-model-guide.md) §5
 - **本文件是 P2 所有派工的必讀母版。**
 
 ## 1. 背景與三個推翻性發現

@@ -7,7 +7,8 @@ from __future__ import annotations
 
 from uuid import UUID
 
-from sqlalchemy import CheckConstraint, ForeignKey, Integer, Text, text
+import sqlalchemy as sa
+from sqlalchemy import CheckConstraint, ForeignKey, Integer, Text, UniqueConstraint, text
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.dialects.postgresql import UUID as PG_UUID
 from sqlalchemy.orm import Mapped, mapped_column
@@ -55,3 +56,36 @@ class ImportProfile(Base, TimestampMixin):
     column_map: Mapped[dict] = mapped_column(JSONB, nullable=False)
     time_unit: Mapped[str | None] = mapped_column(Text)
     owner: Mapped[str | None] = mapped_column(Text)  # 員工編號（建立者）
+
+
+class ImportRow(Base, TimestampMixin):
+    """正規化後的單列（ADR-027 §12.3）：支援 row lock／retry／parse lineage。"""
+
+    __tablename__ = "import_rows"
+
+    id: Mapped[UUID] = uuid_pk()
+    import_id: Mapped[UUID] = mapped_column(
+        PG_UUID(as_uuid=True),
+        ForeignKey("excel_imports.id", ondelete="CASCADE"),
+        nullable=False,
+    )
+    source_row_no: Mapped[int] = mapped_column(Integer, nullable=False)
+    raw_data: Mapped[dict | None] = mapped_column(JSONB)
+    normalized_data: Mapped[dict] = mapped_column(JSONB, nullable=False)
+    schema_version: Mapped[str] = mapped_column(Text, nullable=False, server_default=text("'import-row-v1'"))
+    input_hash: Mapped[str] = mapped_column(Text, nullable=False)
+    status: Mapped[str] = mapped_column(Text, nullable=False, server_default=text("'staged'"))
+    selected_for_submit: Mapped[bool] = mapped_column(
+        sa.Boolean, nullable=False, server_default=text("false")
+    )
+    last_error: Mapped[dict | None] = mapped_column(JSONB)
+
+    __table_args__ = (
+        UniqueConstraint("import_id", "source_row_no", name="uq_import_rows_import_source_row"),
+        CheckConstraint(
+            "status IN ("
+            "'staged','queued','processing','review','ready','failed','skipped','submitted')",
+            name="status",
+        ),
+        sa.Index("ix_import_rows_import_id", "import_id"),
+    )

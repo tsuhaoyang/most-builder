@@ -28,7 +28,7 @@ class WiRowSaveIn(BaseModel):
     sub_activity: str | None = None
     key_parts: str | None = None
     hand: str | None = None
-    object_vocab_id: uuid.UUID
+    object_vocab_id: uuid.UUID | None = None
     from_vocab_id: uuid.UUID | None = None
     to_vocab_id: uuid.UUID | None = None
     tool_vocab_id: uuid.UUID | None = None
@@ -42,8 +42,10 @@ class WiRowSaveIn(BaseModel):
 
 class WorksheetSaveIn(BaseModel):
     rows: list[WiRowSaveIn] = Field(default_factory=list)
-    # 工序表級寬放%（OQ-002）：選填；未帶＝不動既有值（加法相容），帶 null＝清除。
+    # 工序表級寬放%（data-model §2.5）：選填；未帶＝不動既有值（加法相容），帶 null＝清除。
     allowance_percent: float | None = Field(default=None, ge=0)
+    # R1：樂觀鎖；過渡期可省略（legacy），前端應一律送。
+    base_revision: int | None = Field(default=None, ge=1)
 
 
 class DefaultRuleSetInfo(BaseModel):
@@ -57,15 +59,35 @@ class DefaultRuleSetInfo(BaseModel):
     is_active: bool
 
 
+class PolicyVersionInfo(BaseModel):
+    """Worksheet 建立／clone 時 snapshot 的 policy 現況（R2a；顯示／追溯，不進 MOST 計算）。"""
+
+    id: uuid.UUID
+    code: str
+    version_no: int
+    name: str
+    status: str  # draft / published / retired
+    validator_revision: str | None = None
+    output_contract_version: str | None = None
+
+
 class WorksheetReadOut(BaseModel):
     worksheet_id: uuid.UUID
     status: str
     rows: list[dict[str, Any]]
     total_tmu: float
-    # 時間投影（impl-02 §3）：normal＝引擎輸出；standard＝normal×(1+allowance%/100)，allowance 未設時為 null（OQ-002）。
+    # 時間投影：normal＝引擎輸出；standard＝normal×(1+allowance%/100)，allowance 未設時為 null。
     normal_seconds: float
     allowance_percent: float | None = None
     standard_seconds: float | None = None
     # ADR-023 §3.4-4：default_rule_set_id 是建立時凍結的快照；此欄帶其現況狀態供警示徽章。
     # default_rule_set_id 可為 NULL → 此欄為 null，前端不顯示徽章。
     default_rule_set: DefaultRuleSetInfo | None = None
+    # R2a：policy snapshot（遷移前可能 null）
+    modeling_policy: PolicyVersionInfo | None = None
+    level_policy: PolicyVersionInfo | None = None
+    # R1 / ADR-027
+    revision_no: int = 1
+    content_hash: str | None = None
+    last_edited_by: str | None = None
+    last_edited_at: str | None = None

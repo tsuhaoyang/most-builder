@@ -10,6 +10,7 @@
   DELETE /api/v2/wi-set-projects/{project_id}/items/{item_id}  移除條目（analyst+）
   PUT    /api/v2/wi-set-projects/{project_id}/items/reorder    重排序（analyst+）
   POST   /api/v2/wi-set-projects/{project_id}/duplicate        複製專案（analyst+）
+    POST   /api/v2/wi-set-projects/{project_id}/instantiate      建立分析案件並實體化 WI（analyst+）
 """
 from __future__ import annotations
 
@@ -26,12 +27,15 @@ from ddm_v2.models.v2.motion_module import MotionModule, MotionModuleVersion
 from ddm_v2.models.v2.wi_set import WiSetItem, WiSetProject
 from ddm_v2.schemas.v2.wi_set import (
     ReorderRequest,
+    WiSetInstantiateIn,
+    WiSetInstantiateOut,
     WiSetItemCreate,
     WiSetItemOut,
     WiSetProjectCreate,
     WiSetProjectOut,
     WiSetProjectUpdate,
 )
+from ddm_v2.services.v2 import wi_set_service
 
 router = APIRouter(prefix="/api/v2", tags=["v2-wi-set"])
 
@@ -406,3 +410,27 @@ async def duplicate_project(
     await session.flush()
     await session.refresh(new_project, ["items"])
     return WiSetProjectOut.model_validate(new_project)
+
+
+@router.post(
+    "/wi-set-projects/{project_id}/instantiate",
+    response_model=WiSetInstantiateOut,
+    status_code=201,
+)
+async def instantiate_project(
+    project_id: uuid.UUID,
+    payload: WiSetInstantiateIn,
+    session: AsyncSession = Depends(get_db_session, scope="function"),
+    user: CurrentUser = Depends(require_role("analyst")),
+) -> WiSetInstantiateOut:
+    try:
+        result = await wi_set_service.instantiate_project(
+            session, project_id, payload, user.employee_no
+        )
+    except wi_set_service.WiSetInstantiationError as error:
+        status_code = 404 if error.code == "PROJECT_NOT_FOUND" else 422
+        raise HTTPException(
+            status_code=status_code,
+            detail={"code": error.code, "message": error.message},
+        ) from error
+    return WiSetInstantiateOut.model_validate(result)

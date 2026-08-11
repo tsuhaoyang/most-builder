@@ -18,7 +18,10 @@ export interface InstantiatedRowOut {
 
 export interface InstantiateResponse {
   new_rows: InstantiatedRowOut[]
-  tmu_drift: Array<{ row_index: number; module_tmu: number; actual_tmu: number; delta: number }>
+  tmu_drift?: { row_index?: number; module_tmu?: number; actual_tmu?: number; delta?: number }[]
+  skipped_vocab_missing?: number
+  revision_no?: number | null
+  content_hash?: string | null
 }
 
 // ── Domain types ───────────────────────────────────────────────────────────────
@@ -212,6 +215,7 @@ export const useUpdateModule = () => {
       apiPut<MotionModuleSummary>(`/api/v2/motion-modules/${id}`, body),
     onSuccess: (_data, { id }) => {
       invalidateModuleLists(qc)
+      qc.invalidateQueries({ queryKey: [WI_QK] })
       // 被改的那一筆若有 detail 快取 → 針對性重整（單 key，非 N+1）
       qc.invalidateQueries({ queryKey: [QK, 'detail', id] })
     },
@@ -368,10 +372,21 @@ export const useDeleteWiTemplate = () => {
 export const useInstantiateToWorksheet = () => {
   const qc = useQueryClient()
   return useMutation({
-    mutationFn: ({ worksheetId, moduleId }: { worksheetId: string; moduleId: string }) =>
+    mutationFn: ({
+      worksheetId,
+      moduleId,
+      baseRevision,
+    }: {
+      worksheetId: string
+      moduleId: string
+      baseRevision?: number | null
+    }) =>
       apiPost<InstantiateResponse>(
         `/api/v2/worksheets/${worksheetId}/rows/from-module`,
-        { module_id: moduleId },
+        {
+          module_id: moduleId,
+          ...(baseRevision != null ? { base_revision: baseRevision } : {}),
+        },
       ),
     onSuccess: (_data, { worksheetId }) => {
       qc.invalidateQueries({ queryKey: ['worksheet', worksheetId] })

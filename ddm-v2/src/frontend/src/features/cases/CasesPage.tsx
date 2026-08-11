@@ -1,6 +1,6 @@
 // Cases page — G-01 案件清單 + G-02 詳情面板 (L-04 SOP tab 取代)
 // ADR-021：匯出動作（wi-preview / excel / lb-csv / report.xlsx）併入案件詳情操作區
-import { useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { useMe, canPublish, canEdit, isAdmin } from '../../shared/auth/useMe'
 import { useWorkspace, type ActiveCaseMeta } from '../../shared/workspace'
 import { apiGet } from '../../shared/api/client'
@@ -235,11 +235,39 @@ function ExportActions({ worksheetId }: ExportActionsProps) {
         <p className="mt-2 text-sm text-red-600">WI 預覽失敗：{previewError}</p>
       )}
       {preview && previewState !== 'error' && (
-        <p className="mt-2 text-sm text-slate-600">
-          共 {preview.rows.length} 列 · 合計{' '}
-          <b className="text-emerald-600">{preview.total_tmu}</b> TMU
-          （≈ {(preview.total_tmu * TMU_SEC).toFixed(2)} 秒）· 狀態 {preview.status}
-        </p>
+        <div className="mt-2 space-y-2" data-testid="wi-preview-rows">
+          <p className="text-sm text-slate-600">
+            共 {preview.rows.length} 列 · 合計{' '}
+            <b className="text-emerald-600">{preview.total_tmu}</b> TMU
+            （≈ {(preview.total_tmu * TMU_SEC).toFixed(2)} 秒）· 狀態 {preview.status}
+          </p>
+          {preview.rows.length > 0 && (
+            <div className="max-h-72 overflow-auto border-y">
+              <table className="w-full text-xs">
+                <thead className="sticky top-0 bg-slate-100 text-left text-slate-500">
+                  <tr>
+                    <th className="w-12 px-2 py-1.5">步驟</th>
+                    <th className="px-2 py-1.5">WI / 動作內容</th>
+                    <th className="px-2 py-1.5">METHOD</th>
+                    <th className="w-20 px-2 py-1.5 text-right">TMU</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {preview.rows.map((row, index) => (
+                    <tr key={`${row.seq_no ?? index}-${index}`} className="border-t align-top">
+                      <td className="px-2 py-1.5 text-slate-400">{row.seq_no ?? index + 1}</td>
+                      <td className="px-2 py-1.5 text-slate-700">{row.sub_activity || '—'}</td>
+                      <td className="px-2 py-1.5 text-slate-500">{row.method || '—'}</td>
+                      <td className="px-2 py-1.5 text-right font-medium text-emerald-700">
+                        {row.tmu ?? '—'}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </div>
       )}
       {lbResult && (
         <pre className="mt-2 font-mono text-xs bg-slate-50 p-2 rounded max-h-72 overflow-auto">{lbResult}</pre>
@@ -422,7 +450,9 @@ export function CasesPage() {
   const [viewVersionId, setViewVersionId] = useState<string | null>(null)
   const [expandedIds, setExpandedIds] = useState<string[]>([])
   const [showNewCase, setShowNewCase] = useState(false)
+  const activeWs = useWorkspace((s) => s.activeWs)
   const setActiveCase = useWorkspace((s) => s.setActiveCase)
+  const selectedActiveWs = useRef<string | null>(null)
 
   const { data, isLoading, error } = useCases({ status: statusFilter })
 
@@ -432,6 +462,18 @@ export function CasesPage() {
     ? selectedItem.versions.find((v) => v.process_version_id === viewVersionId)
       ?? repVersionOf(selectedItem)
     : null
+
+  useEffect(() => {
+    if (!data || !activeWs || selectedActiveWs.current === activeWs) return
+    const item = data.items.find((candidate) =>
+      candidate.versions.some((version) => version.worksheet_id === activeWs),
+    )
+    if (!item) return
+    const version = item.versions.find((candidate) => candidate.worksheet_id === activeWs)
+    setSelectedId(item.worksheet_id)
+    setViewVersionId(version?.process_version_id ?? item.process_version_id)
+    selectedActiveWs.current = activeWs
+  }, [activeWs, data])
 
   const selectCase = (item: CaseOut) => {
     setSelectedId(item.worksheet_id)

@@ -51,7 +51,7 @@ async def wi_preview(session: AsyncSession, ws_id: uuid.UUID) -> dict[str, Any]:
             },
         })
     return {"worksheet_id": str(ws_id), "status": data["status"], "rows": rows, "total_tmu": data["total_tmu"],
-            # 時間投影（impl-02 §3）：normal=引擎輸出；standard=normal×(1+allowance%/100)，allowance 未設＝None（OQ-002）
+            # 時間投影：normal=引擎輸出；standard=normal×(1+allowance%/100)，allowance 未設＝None
             "normal_seconds": data["normal_seconds"], "allowance_percent": data["allowance_percent"],
             "standard_seconds": data["standard_seconds"]}
 
@@ -66,7 +66,7 @@ async def to_excel_bytes(session: AsyncSession, ws_id: uuid.UUID) -> bytes:
     ws.title = "WI"
     ws.append(["MODEL", "", "ANALYST", "", "TOTAL TMU", prev["total_tmu"]])
     # 時間欄（impl-02 §3）：正常秒＝引擎輸出；標準秒＝normal×(1+allowance%/100)。
-    # allowance 未設（NULL）→ 寬放%/標準秒留空：OQ-002 慣例——allowance 未定案前不得以 normal 假充 standard。
+    # allowance 未設（NULL）→ 寬放%/標準秒留空，不得以 normal 假充 standard。
     ws.append(["正常秒", prev["normal_seconds"],
                "寬放%", prev["allowance_percent"] if prev["allowance_percent"] is not None else "",
                "標準秒", prev["standard_seconds"] if prev["standard_seconds"] is not None else ""])
@@ -163,7 +163,7 @@ async def to_report_xlsx_bytes(session: AsyncSession, ws_id: uuid.UUID) -> bytes
     site = await session.get(Site, product.site_id)
 
     # 計算彙總；allowance_percent 為百分比值（e.g. 15.0 代表 15%），None = 未設定。
-    # OQ-002：allowance 未設定時標準秒留空，不得以 normal 假充 standard。
+    # allowance 未設定時標準秒留空，不得以 normal 假充 standard。
     data = await read_worksheet(session, ws_id)
     total_tmu = data["total_tmu"] or 0.0
     wi_row_count = len(data["rows"])

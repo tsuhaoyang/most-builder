@@ -21,20 +21,23 @@ from sqlalchemy.exc import IntegrityError
 
 # v2 定點重建路由
 from ddm_v2.api.routes.v2.admin_users import router as v2_admin_router
-from ddm_v2.api.routes.v2.cases import router as v2_cases_router
-from ddm_v2.api.routes.v2.wi_set import router as v2_wi_set_router
+from ddm_v2.api.routes.v2.ai_review import router as v2_ai_review_router
 from ddm_v2.api.routes.v2.audit_log import router as v2_audit_log_router
 from ddm_v2.api.routes.v2.calculate import router as v2_calculate_router
+from ddm_v2.api.routes.v2.cases import router as v2_cases_router
 from ddm_v2.api.routes.v2.catalog import router as v2_catalog_router
 from ddm_v2.api.routes.v2.export import router as v2_export_router
 from ddm_v2.api.routes.v2.import_excel import router as v2_import_router
 from ddm_v2.api.routes.v2.motion_module import router as v2_motion_module_router
 from ddm_v2.api.routes.v2.motion_template import router as v2_motion_template_router
 from ddm_v2.api.routes.v2.nl_draft import router as v2_nl_draft_router
+from ddm_v2.api.routes.v2.parse_jobs import router as v2_parse_jobs_router
 from ddm_v2.api.routes.v2.rule_set import router as v2_ruleset_router
 from ddm_v2.api.routes.v2.search import router as v2_search_router
 from ddm_v2.api.routes.v2.synonyms import router as v2_synonyms_router
 from ddm_v2.api.routes.v2.vocab import router as v2_vocab_router
+from ddm_v2.api.routes.v2.wi_context import router as v2_wi_context_router
+from ddm_v2.api.routes.v2.wi_set import router as v2_wi_set_router
 from ddm_v2.api.routes.v2.worksheet import router as v2_worksheet_router
 from ddm_v2.auth.startup_checks import (  # noqa: F401  （TRUSTED_GATEWAY_ENV 對外沿用舊匯入路徑）
     TRUSTED_GATEWAY_ENV,
@@ -50,6 +53,7 @@ from ddm_v2.exceptions import (
     ValidationError,
 )
 from ddm_v2.schemas.common import ErrorDetail, ErrorResponse
+from ddm_v2.services.v2.policy_service import NoDefaultPolicy
 from ddm_v2.services.v2.rule_set_service import NoActiveRuleSet
 from ddm_v2.settings import Settings, get_settings
 
@@ -165,9 +169,12 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     app.include_router(v2_search_router)
     app.include_router(v2_synonyms_router)
     app.include_router(v2_nl_draft_router)
+    app.include_router(v2_ai_review_router)
+    app.include_router(v2_parse_jobs_router)
     app.include_router(v2_audit_log_router)
     app.include_router(v2_cases_router)
     app.include_router(v2_wi_set_router)
+    app.include_router(v2_wi_context_router)
 
     _register_exception_handlers(app)
 
@@ -198,18 +205,20 @@ def _register_exception_handlers(app: FastAPI) -> None:
 
     @app.exception_handler(ValidationError)
     async def validation_error_handler(request: Request, exc: ValidationError) -> JSONResponse:
+        error_code = (exc.detail or {}).get("code") or "VALIDATION_ERROR"
         return JSONResponse(
             status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
-            content=ErrorResponse(error=ErrorDetail(code="VALIDATION_ERROR", message=exc.message, detail=exc.detail)).model_dump(),
+            content=ErrorResponse(error=ErrorDetail(code=error_code, message=exc.message, detail=exc.detail)).model_dump(),
         )
 
     @app.exception_handler(ConflictError)
     async def conflict_error_handler(request: Request, exc: ConflictError) -> JSONResponse:
-        error_code = "CONFLICT"
-        if "published" in exc.message.lower():
-            error_code = "VERSION_PUBLISHED"
-        elif "time_source" in exc.message.lower():
-            error_code = "TIME_SOURCE_IMMUTABLE"
+        error_code = (exc.detail or {}).get("code") or "CONFLICT"
+        if error_code == "CONFLICT":
+            if "published" in exc.message.lower():
+                error_code = "VERSION_PUBLISHED"
+            elif "time_source" in exc.message.lower():
+                error_code = "TIME_SOURCE_IMMUTABLE"
         return JSONResponse(
             status_code=status.HTTP_409_CONFLICT,
             content=ErrorResponse(error=ErrorDetail(code=error_code, message=exc.message, detail=exc.detail)).model_dump(),
@@ -235,6 +244,14 @@ def _register_exception_handlers(app: FastAPI) -> None:
         return JSONResponse(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             content=ErrorResponse(error=ErrorDetail(code="NO_ACTIVE_RULE_SET", message=str(exc))).model_dump(),
+        )
+
+    @app.exception_handler(NoDefaultPolicy)
+    async def no_default_policy_handler(request: Request, exc: NoDefaultPolicy) -> JSONResponse:
+        """R2a：缺 factory default published policy＝設定錯誤 → 500，不得靜默 NULL。"""
+        return JSONResponse(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            content=ErrorResponse(error=ErrorDetail(code="NO_DEFAULT_POLICY", message=str(exc))).model_dump(),
         )
 
     @app.exception_handler(IntegrityError)

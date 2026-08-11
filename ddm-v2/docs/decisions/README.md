@@ -1,46 +1,34 @@
-# 決策紀錄與討論索引
+# 決策紀錄索引
 
-此目錄用於保存 DDM v2 專案的架構決策、待解問題與討論過程。
+此目錄保存目前適用於 DDM v2 的架構決策。早期 OQ 討論稿與已被取代的 ADR 已自工作文件移除；其歷史仍可由 Git 查閱。
 
 ## 目的
 
 - 保存「為什麼這樣做」而不只是「做了什麼」
 - 記錄曾評估過的方案、取捨理由與否決原因
-- 持續追蹤待解問題與其解決狀態
 - 為後續開發者與 AI agent 提供可追溯的上下文
 
 ## 文件索引
 
 | 文件 | 主題 | 狀態 |
 |------|------|------|
-| [OQ-001-most-system-selection.md](OQ-001-most-system-selection.md) | MOST 系統範圍：MiniMOST / MaxiMOST 的階段性策略，以及產品、SKU、廠區的建模粒度 | 🟡 討論中 |
-| [OQ-002-allowance-and-standard-time.md](OQ-002-allowance-and-standard-time.md) | Normal Time / Standard Time 的定義、allowance 決策與舊資料匯入語義 | 🟡 討論中 |
-| [OQ-003-database-migration.md](OQ-003-database-migration.md) | PostgreSQL、multi-site、未來微服務邊界與 Phase 1 架構策略 | 🟡 討論中 |
-| [OQ-004-concurrent-access.md](OQ-004-concurrent-access.md) | 使用者工作區、後台發布、跨廠區產品版本與共享資料一致性 | 🟡 討論中 |
-| [OQ-005-custom-tool-elements.md](OQ-005-custom-tool-elements.md) | 非標準 MOST 元件、自定義工具元素與其治理方式 | 🟡 討論中 |
-| [OQ-006-phase1-implementation-open-questions.md](OQ-006-phase1-implementation-open-questions.md) | 從決策推進到 Phase 1 實作後浮現的細節問題 | 🟢 已定案 |
-| [ADR-010-nl-to-most-backlog.md](ADR-010-nl-to-most-backlog.md) | 自然語言 → MOST：暫不實作與後續條件 | ⚪ superseded by ADR-015 |
 | [ADR-011-schema-evolution-and-contract-stability.md](ADR-011-schema-evolution-and-contract-stability.md) | v2 實作期變更政策：契約穩定 + schema 加法演進（避免整合問題） | 🟢 已定案 |
 | [ADR-012-3d-rendering-architecture.md](ADR-012-3d-rendering-architecture.md) | 3D 模擬渲染架構：Web 3D 資產管線(A) 為基礎 + Pixel Streaming(B) 未來可選；workbench 新分頁 | 🟢 已定案 |
 | [ADR-013-excel-import-architecture.md](ADR-013-excel-import-architecture.md) | Excel 匯入：資料驅動(profile)+staging 暫存+預覽；增量 2a(ingest)→2b(enrich/commit) | 🟢 已定案 |
 | [ADR-014-v3-dictionary-as-value-authority.md](ADR-014-v3-dictionary-as-value-authority.md) | v3 IE 認證字典為值權威；rule-set `MINIMOST_FACTORY_V2`＋黃金重錨 | 🟢 accepted |
-| [ADR-015-nl-parsing-in-scope.md](ADR-015-nl-parsing-in-scope.md) | NL 解析納入 scope（DraftParserPort、建議層隔離）；取代 ADR-010 | 🟢 accepted |
+| [ADR-015-nl-parsing-in-scope.md](ADR-015-nl-parsing-in-scope.md) | NL 解析納入 scope（DraftParserPort、建議層隔離） | 🟢 accepted |
 | [ADR-016-search-infrastructure.md](ADR-016-search-infrastructure.md) | 檢索架構：pg_trgm＋pgvector 混合、search_documents 投影、EmbeddingProvider port | 🟡 proposed |
 | [ADR-017-motion-modules-library.md](ADR-017-motion-modules-library.md) | 組件庫 motion_modules：合併範本與 v3 MI 語句概念（registry＋實體化快照） | 🟡 proposed |
-| [ADR-018-workflow-and-role-convergence.md](ADR-018-workflow-and-role-convergence.md) | 審核工作流五態＋角色收斂（accepted 前 P5 凍結） | 🟡 proposed |
-
-## 主題歸屬
-
-為避免同一問題在多份文件中重複追問，後續討論請以以下文件作為主歸屬，其餘文件只保留摘要與引用：
-
-| 主題 | 主文件 | 說明 |
-|------|--------|------|
-| MOST 系統範圍、Product / SKU / Site 粒度 | `OQ-001-most-system-selection.md` | 包含 MiniMOST Phase 1 與跨 site 標準粒度 |
-| Normal Time / Standard Time / allowance / 舊資料時間語義 | `OQ-002-allowance-and-standard-time.md` | 包含 historical standard time 與 line-balance 輸入語義 |
-| PostgreSQL、site 資料隔離、history、auth 整合 | `OQ-003-database-migration.md` | 包含資料庫與 Phase 1 架構主決策 |
-| workspace、draft、published、並發編輯規則 | `OQ-004-concurrent-access.md` | 包含使用者工作流與版本治理 |
-| custom element 類型、建模、審核與版本化 | `OQ-005-custom-tool-elements.md` | 不重複討論 site / version 主體規則，必要時引用 OQ-003/OQ-004 |
-| Phase 1 規格落地後的新細節問題 | `OQ-006-phase1-implementation-open-questions.md` | 承接規格化過程中新增的實作細節問題 |
+| [ADR-018-workflow-and-role-convergence.md](ADR-018-workflow-and-role-convergence.md) | 審核工作流與角色收斂（viewer/analyst/approver/admin） | 🟢 accepted |
+| [ADR-019-worksheet-access-control.md](ADR-019-worksheet-access-control.md) | Worksheet 讀取端點存取控制：維持已登入 viewer+ | 🟢 accepted |
+| [ADR-020-simo-contribution-semantics.md](ADR-020-simo-contribution-semantics.md) | SIMO 標記列貢獻 0，時間由未標記主列吸收 | 🟢 accepted |
+| [ADR-021-ia-restructure-v3-parity.md](ADR-021-ia-restructure-v3-parity.md) | 前端資訊架構以 v3 驗證畫面為母版 | 🟢 accepted |
+| [ADR-022-workbench-two-layer-correction.md](ADR-022-workbench-two-layer-correction.md) | 工作台動作/WI 兩層模型、WI 大綱與 row inspector | 🟢 accepted |
+| [ADR-023-dictionary-governance-unification.md](ADR-023-dictionary-governance-unification.md) | MOST 字典 active、clone-on-write、認證血緣與回放 | 🟢 accepted |
+| [ADR-024-master-data-vs-dictionary-boundary.md](ADR-024-master-data-vs-dictionary-boundary.md) | 主數據、MOST 字典與業務產出的責任分界 | 🟢 accepted |
+| [ADR-025-import-template-matching-p2.md](ADR-025-import-template-matching-p2.md) | 匯入預覽接 template match，IE 核對後以 active rule-set 重算 | 🟢 accepted |
+| [ADR-026-wi-ai-parser-pipeline-boundary.md](ADR-026-wi-ai-parser-pipeline-boundary.md) | WI AI Parser 獨立 bounded context、DDM deterministic compiler 與 MOST 權威邊界 | 🟢 accepted |
+| [ADR-027-domain-evolution-versioning-and-ai-readiness.md](ADR-027-domain-evolution-versioning-and-ai-readiness.md) | Worksheet revision、Modeling/Level policy、outbox、row-level batch 與 AI readiness | 🟢 accepted |
 
 ## 狀態說明
 
@@ -57,12 +45,11 @@
 
 | 文件 | 說明 | 依賴決策 |
 |------|------|----------|
-| [`docs/core-logic/MOST-core-algorithm-spec.md`](../core-logic/MOST-core-algorithm-spec.md) | 不可變動的 MOST 核心算法規格、驗證與測試案例 | — |
 | [`docs/architecture/system-architecture-v2-spec.md`](../architecture/system-architecture-v2-spec.md) | 目標系統架構 v2（定點重建） | — |
-| [`docs/core-logic/minimost-sequence-model-core-logic-spec.md`](../core-logic/minimost-sequence-model-core-logic-spec.md) | MiniMOST Sequence Model 核心邏輯 | OQ-001 |
-| [`docs/core-logic/level-system-core-logic-spec.md`](../core-logic/level-system-core-logic-spec.md) | Level System 核心邏輯（含對 LB 輸出合約） | OQ-001 |
-
-> 註：phase1/phase1a 規格已隨 legacy 移除（2026-06-21）。
+| [`docs/architecture/wi-ai-parser-system-spec.md`](../architecture/wi-ai-parser-system-spec.md) | v2 WI AI Parser：互動/批次、action planning、MOST compiler 邊界、feedback learning | ADR-015、ADR-026 |
+| [`docs/architecture/domain-evolution-and-ai-readiness-spec.md`](../architecture/domain-evolution-and-ai-readiness-spec.md) | 核心持續演進下的 revision、policy version、method context、AI/batch 資料地基 | ADR-011、ADR-027 |
+| [`docs/core-logic/minimost-sequence-model-core-logic-spec.md`](../core-logic/minimost-sequence-model-core-logic-spec.md) | MiniMOST Sequence Model 核心邏輯 | ADR-014、ADR-020 |
+| [`docs/core-logic/level-system-core-logic-spec.md`](../core-logic/level-system-core-logic-spec.md) | Level System 核心邏輯（含對 LB 輸出合約） | — |
 
 ---
 
@@ -77,4 +64,4 @@
 
 若某項結論已可直接影響實作，請在 commit message、PR 描述或程式註解中引用對應編號。
 
-示例：`implements OQ-001: Phase 1 採 MiniMOST、保留 MaxiMOST 擴充點`
+示例：`implements ADR-020: SIMO 標記列不計入總工時`

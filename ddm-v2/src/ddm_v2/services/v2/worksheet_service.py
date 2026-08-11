@@ -15,6 +15,7 @@ from typing import Any
 from sqlalchemy import delete, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from ddm_v2.models.v2.policy import LevelPolicyVersion, ModelingPolicyVersion
 from ddm_v2.models.v2.rule_set import RuleSet
 from ddm_v2.models.v2.vocab import WorkVocabItem
 from ddm_v2.models.v2.worksheet import LevelEntry, MostCycle, MostWorksheet, ProcessVersion, WiRow
@@ -25,7 +26,15 @@ from ddm_v2.most_engine.rule_set_data import TMU_TO_SEC
 from ddm_v2.schemas.v2.most import cycle_in_to_engine, resolve_cycle_rule_set
 from ddm_v2.schemas.v2.worksheet import WorksheetSaveIn
 from ddm_v2.services.v2.audit_service import log_audit
+from ddm_v2.services.v2.level_validation_service import assert_publishable, validate_and_persist
+from ddm_v2.services.v2.outbox_service import enqueue_worksheet_saved
+from ddm_v2.services.v2.policy_service import level_summary, modeling_summary
 from ddm_v2.services.v2.rule_set_service import get_active_rule_set_code
+from ddm_v2.services.v2.worksheet_revision import (
+    bump_worksheet_revision,
+    content_hash_from_read,
+    set_content_hash,
+)
 
 
 class WorksheetNotFound(Exception):
@@ -44,7 +53,13 @@ class SimoPairInvalid(Exception):
     pass
 
 
-async def save_worksheet(session: AsyncSession, worksheet_id: uuid.UUID, payload: WorksheetSaveIn) -> dict[str, Any]:
+async def save_worksheet(
+    session: AsyncSession,
+    worksheet_id: uuid.UUID,
+    payload: WorksheetSaveIn,
+    *,
+    edited_by: str | None = None,
+) -> dict[str, Any]:
     ws = await session.get(MostWorksheet, worksheet_id)
     if ws is None:
         raise WorksheetNotFound(str(worksheet_id))
@@ -52,7 +67,19 @@ async def save_worksheet(session: AsyncSession, worksheet_id: uuid.UUID, payload
     if pv is not None and pv.status != "draft":
         raise NotEditable(f"版本狀態為 {pv.status}，已凍結不可存（請另存新檔）")
 
-    # 工序表級寬放%（OQ-002 / impl-02 §3）：payload 有帶才更新（加法相容——舊 client 不帶不影響既有值）；帶 null＝清除。
+    # R1：任何內容 mutation 前先 CAS revision（失敗則不刪 rows）
+    await bump_worksheet_revision(
+        session,
+        worksheet_id=worksheet_id,
+        base_revision=payload.base_revision,
+        edited_by=edited_by,
+    )
+    # bump 用 raw SQL；重新載入以免舊 revision_no 被 flush 蓋回
+    ws = await session.get(MostWorksheet, worksheet_id)
+    if ws is None:
+        raise WorksheetNotFound(str(worksheet_id))
+
+    # 工序表級寬放%（data-model §2.5）：payload 有帶才更新（加法相容）；帶 null＝清除。
     if "allowance_percent" in payload.model_fields_set:
         ws.allowance_percent = payload.allowance_percent
 
@@ -164,7 +191,25 @@ async def save_worksheet(session: AsyncSession, worksheet_id: uuid.UUID, payload
             machine_count=lv.machine_count, manpower=lv.manpower,
         ))
     await session.flush()
-    return await read_worksheet(session, worksheet_id)
+    out = await read_worksheet(session, worksheet_id)
+    ch = content_hash_from_read(out)
+    await set_content_hash(session, worksheet_id=worksheet_id, content_hash=ch)
+    await session.flush()
+    out["content_hash"] = ch
+    # R2b：save 後 append validation run（含 invalid）；不阻擋存檔
+    if ws.level_policy_version_id is not None:
+        await validate_and_persist(
+            session, worksheet_id, trigger="save", actor=edited_by or "unknown"
+        )
+    # R3b：同交易寫 outbox（reference only）
+    await enqueue_worksheet_saved(
+        session,
+        worksheet_id=worksheet_id,
+        revision_no=int(ws.revision_no or 1),
+        content_hash=ch,
+        edited_by=edited_by,
+    )
+    return out
 
 
 async def read_worksheet(session: AsyncSession, worksheet_id: uuid.UUID) -> dict[str, Any]:
@@ -183,7 +228,7 @@ async def read_worksheet(session: AsyncSession, worksheet_id: uuid.UUID) -> dict
         rows.append({
             "wi_row_id": str(wr.id), "seq_no": wr.seq_no, "hand": wr.hand,
             "sub_activity": wr.sub_activity, "key_parts": wr.key_parts,
-            "object_vocab_id": str(wr.object_vocab_id),
+            "object_vocab_id": str(wr.object_vocab_id) if wr.object_vocab_id else None,
             "from_vocab_id": str(wr.from_vocab_id) if wr.from_vocab_id else None,
             "to_vocab_id": str(wr.to_vocab_id) if wr.to_vocab_id else None,
             "tool_vocab_id": str(wr.tool_vocab_id) if wr.tool_vocab_id else None,
@@ -212,9 +257,23 @@ async def read_worksheet(session: AsyncSession, worksheet_id: uuid.UUID) -> dict
         drs = await session.get(RuleSet, ws.default_rule_set_id)
         if drs is not None:
             default_rule_set = {"code": drs.code, "status": drs.status, "is_active": drs.is_active}
+    modeling_policy = None
+    if ws.modeling_policy_version_id is not None:
+        mp = await session.get(ModelingPolicyVersion, ws.modeling_policy_version_id)
+        modeling_policy = modeling_summary(mp)
+    level_policy = None
+    if ws.level_policy_version_id is not None:
+        lp = await session.get(LevelPolicyVersion, ws.level_policy_version_id)
+        level_policy = level_summary(lp)
     return {"worksheet_id": worksheet_id, "status": ws.status, "rows": rows, "total_tmu": total,
             "normal_seconds": normal_seconds, "allowance_percent": allowance, "standard_seconds": standard_seconds,
-            "default_rule_set": default_rule_set}
+            "default_rule_set": default_rule_set,
+            "modeling_policy": modeling_policy,
+            "level_policy": level_policy,
+            "revision_no": int(ws.revision_no or 1),
+            "content_hash": ws.content_hash,
+            "last_edited_by": ws.last_edited_by,
+            "last_edited_at": ws.last_edited_at.isoformat() if ws.last_edited_at else None}
 
 
 async def _version_info(session: AsyncSession, worksheet_id: uuid.UUID) -> dict[str, Any]:
@@ -240,6 +299,8 @@ async def publish_worksheet(session: AsyncSession, worksheet_id: uuid.UUID, acto
     pv = await session.get(ProcessVersion, ws.process_version_id)
     if pv.status != "draft":
         raise NotEditable(f"版本狀態為 {pv.status}，無法核准")
+    # R2b §9.5：publish 前查現有 valid run；不得在此新建證據
+    await assert_publishable(session, worksheet_id)
     pv.status = "approved"
     pv.published_at = datetime.now(timezone.utc)
     pv.published_by = actor
@@ -269,7 +330,11 @@ async def clone_worksheet(session: AsyncSession, worksheet_id: uuid.UUID, actor:
                             status="draft", source_version_id=pv.id, created_by=actor)
     new_ws = MostWorksheet(id=uuid.uuid4(), process_version_id=new_pv.id, model_label=ws.model_label,
                            analyst=ws.analyst, study_date=ws.study_date, default_rule_set_id=ws.default_rule_set_id,
-                           allowance_percent=ws.allowance_percent, status="draft")
+                           modeling_policy_version_id=ws.modeling_policy_version_id,
+                           level_policy_version_id=ws.level_policy_version_id,
+                           allowance_percent=ws.allowance_percent, status="draft",
+                           revision_no=1, content_hash=None,
+                           last_edited_by=actor, last_edited_at=datetime.now(timezone.utc))
     session.add(new_pv)
     session.add(new_ws)
     await session.flush()
@@ -298,7 +363,24 @@ async def clone_worksheet(session: AsyncSession, worksheet_id: uuid.UUID, actor:
                                    number=lv.number, number_count=lv.number_count,
                                    machine_count=lv.machine_count, manpower=lv.manpower))
     await session.flush()
-    return {"new_worksheet_id": str(new_ws.id), "version_no": new_pv.version_no, "status": "draft", "source_version_no": pv.version_no}
+    # clone 內容 hash 在首次讀取／儲存前可為空；採源內容再算一次供診斷
+    out_src = await read_worksheet(session, new_ws.id)
+    ch = content_hash_from_read(out_src)
+    await set_content_hash(session, worksheet_id=new_ws.id, content_hash=ch)
+    await session.flush()
+    # R2b：clone 後對 revision=1 建立 validation 證據，使後續 publish 可過 gate
+    if new_ws.level_policy_version_id is not None:
+        await validate_and_persist(
+            session, new_ws.id, trigger="revalidate", actor=actor or "unknown"
+        )
+    return {
+        "new_worksheet_id": str(new_ws.id),
+        "version_no": new_pv.version_no,
+        "status": "draft",
+        "source_version_no": pv.version_no,
+        "revision_no": 1,
+        "content_hash": ch,
+    }
 
 
 async def list_versions(session: AsyncSession, worksheet_id: uuid.UUID) -> dict[str, Any]:

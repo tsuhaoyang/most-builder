@@ -388,4 +388,7 @@ async def instantiate_to_worksheet(
     return InstantiateResponse(
         new_rows=result["new_rows"],
         tmu_drift=result["tmu_drift"],
+        skipped_vocab_missing=result.get("skipped_vocab_missing", 0),
+        revision_no=result.get("revision_no"),
+        content_hash=result.get("content_hash"),
     )

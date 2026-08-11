@@ -10,6 +10,10 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from ddm_v2.exceptions import ConflictError, NotFoundError
 from ddm_v2.models.v2.org import Product, Site, Sku
 from ddm_v2.models.v2.worksheet import MostWorksheet, ProcessVersion
+from ddm_v2.services.v2.policy_service import (
+    get_default_level_policy,
+    get_default_modeling_policy,
+)
 from ddm_v2.services.v2.rule_set_service import get_active_rule_set
 
 
@@ -127,10 +131,29 @@ async def create_worksheet(session: AsyncSession, sku_id: uuid.UUID, payload, ac
     # ADR-023 §3.5：新建 worksheet 的預設規則版本＝目前 active（不再寫死 V1）。
     # 無 active 直接拋 NoActiveRuleSet（500），不得靜默寫 NULL。
     rs = await get_active_rule_set(session)
+    # R2a：同一 transaction snapshot published factory default；缺則 fail closed。
+    mp = await get_default_modeling_policy(session)
+    lp = await get_default_level_policy(session)
     pv = ProcessVersion(id=uuid.uuid4(), sku_id=sku_id, version_no=f"v{count + 1}", status="draft", created_by=actor)
-    ws = MostWorksheet(id=uuid.uuid4(), process_version_id=pv.id, model_label=payload.model_label,
-                       analyst=payload.analyst, default_rule_set_id=rs.id, status="draft")
+    ws = MostWorksheet(
+        id=uuid.uuid4(),
+        process_version_id=pv.id,
+        model_label=payload.model_label,
+        analyst=payload.analyst,
+        default_rule_set_id=rs.id,
+        modeling_policy_version_id=mp.id,
+        level_policy_version_id=lp.id,
+        status="draft",
+        revision_no=1,
+    )
     session.add(pv)
     session.add(ws)
     await session.flush()
-    return {"worksheet_id": ws.id, "version_no": pv.version_no, "status": "draft"}
+    return {
+        "worksheet_id": ws.id,
+        "version_no": pv.version_no,
+        "status": "draft",
+        "revision_no": 1,
+        "modeling_policy_version_id": mp.id,
+        "level_policy_version_id": lp.id,
+    }
