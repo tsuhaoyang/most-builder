@@ -423,9 +423,14 @@ grep -rn "TMU_TO_SEC\|TMU_SEC\|0\.036" src/ddm_v2/ src/frontend/src/
 | 12 | `ai_parse_runs` 對 **draft** rule-set 持有 RESTRICT ⇒ 預覽過一次的 draft 字典永遠刪不掉 | 未排程 |
 | 13 | 實作規格與 CI_GATES 宣稱的 grep gate（引擎純度、回放鐵則）**實際不存在**（見 §6.1） | 未排程 |
 | 14 | 測試依賴環境既存資料（`test_delete_referenced_draft_*` 需 `most_cycles` 有列） | 未排程 |
-| 15 | **P0：`expire_all()` 讓三個端點回 500**（§11） | 須先於 merge |
+| 15 | ~~P0：`expire_all()` 讓三個端點回 500~~ | ✅ 已修（§11） |
 | 16 | `tests/integration/` 有約 120 處「seed 未種就 skip」——seed 一旦部分失敗，整套會從「紅」退化成「綠但什麼都沒測」 | 未排程 |
-| 17 | CI 紅燈無人看：建議 branch protection 或把「貼出綠燈 CI run URL」列為 checkpoint 出口條件 | 未排程 |
+| 17 | CI 紅燈無人看：建議 branch protection 或把「貼出綠燈 CI run URL」列為 checkpoint 出口條件 | 未排程（§11 有直接證據） |
+| 18 | `require_seed` helper 未做——`tests/integration/` 約 120 處「seed 未種就 skip」，種子一旦部分失敗，整套會從「紅」退化成「綠但什麼都沒測」。**新補的 WI Set P0 迴歸測試自己就用了這個 pattern** | 未排程 |
+| 19 | 「主要路徑測試不得列為可後補的 nit」只寫在事後檢討裡，沒進 CLAUDE.md／CI_GATES／checkpoint skill——**教訓沒有寫進任何會被執行的地方** | 未排程 |
+| 20 | `worksheet_revision.py` 的裸 `assert ws is not None`（`f19e501` 既有）：`python -O` 下會退化成 `AttributeError`，兩者都是 500 | 未排程 |
+| 21 | `wi_set_service` 硬寫 `base_revision=None` → 每筆 WI 噴一行 legacy WARNING 假警報 | 未排程 |
+| 22 | coverage.py 對 async 檔案的行覆蓋不可信（`await` 之後系統性漏記）——若日後要拿覆蓋率當關卡需先處理 | 未排程 |
 
 ---
 
@@ -485,9 +490,10 @@ CLAUDE.md 早已記載「unit 與 integration 必須分開跑」，CI 卻沒照�
 
 ---
 
-## 11. P0：R1 樂觀鎖的 CAS 路徑讓三個端點回 500
+## 11. P0：R1 樂觀鎖的 CAS 路徑讓三個端點回 500（✅ 已修）
 
-這是本次稽核最嚴重的發現，**與 legacy/引擎無關，但必須在任何東西 merge 進 `202603-rc1` 之前修**。
+這是本次稽核最嚴重的發現，與 legacy/引擎無關。**已修復並補上 7 條迴歸測試**，
+`pytest tests/integration` 從 407 passed / 1 failed 變成 **415 passed / 0 failed**。
 
 ### 根因
 
@@ -520,8 +526,80 @@ CLAUDE.md 早已記載「unit 與 integration 必須分開跑」，CI 卻沒照�
 - R1 的 code review 把「import/CAS 測試可後補」列為 **nit** 並 APPROVE_WITH_NITS。
   那個「可後補」的 nit，就是這三個 500 的藏身處。
 
-### 修復方向（供參，非本文件裁決）
+### 修復方式
 
-`expire_all()` 收斂成只失效目標 worksheet（`session.expire(ws)`，或 bump 後統一重取），
-並補齊四個呼叫點的 `base_revision` 整合測試（成功路徑 + 409 衝突路徑），
-以及把 WI Set happy path 從 1 筆改成 ≥2 筆。
+改成 `session.refresh(ws, attribute_names=[...])`——**只重讀被 Core UPDATE 改過的那幾個欄位，
+且在 `await` 內完成**。四個候選方案的取捨（皆經實測，非紙上推論）：
+
+| 方案 | 防 stale | 不誤傷 | 否決理由 |
+|------|:---:|:---:|------|
+| `session.expire_all()` | ✅ | ❌ | 原況；誤傷全 session |
+| `session.expire(ws)` | ❌ | ✅ | expire 只是「下次再載」，async 下那個「下次」仍是同步 IO——把雷從呼叫端移到自己腳下 |
+| 整顆 `refresh()` / `get(populate_existing=True)` | ✅ | 半 | **實測**會連已載入的 relationship（`rows`／`process_version`）一起 expire，換個欄位埋同一顆雷 |
+| **`refresh(ws, attribute_names=[...])`** | ✅ | ✅ | **採用**。只碰被 Core UPDATE 改過的欄位，成本是一次 PK SELECT |
+
+欄位清單抽成模組常數放在 UPDATE 的 SET 清單旁邊，讓「改了 SET 卻忘了改 refresh」這個
+維護風險是看得見的。
+
+### ⚠️ 對失效機制的更正（實測推翻了 R1 worklog 的描述）
+
+R1 checkpoint 記的是「舊 revision 被 flush **蓋回**」。實測證明**這個形態在 SQLAlchemy 2.0
+下不成立**：ORM 的 UPDATE 只包含有 history 差異的欄位，identity map 握著舊 `revision_no`
+並不會在 flush 時把它寫回；連明寫 `ws.revision_no = <stale>` 也不會產生 UPDATE
+（committed state 就是那個值，net history 為空）。全 repo 也沒有任何一處對 `.revision_no`／
+`.content_hash` 做 ORM 賦值。
+
+**真正可觸發的是 stale read**：`read_worksheet()` 的 `revision_no`／`content_hash` 是直接讀
+identity map 那顆 ORM 物件的，而 `from-module` 與 `imports/submit` 的回應 revision 就來自
+那份 snapshot。不同步 → **回舊 revision 給 client → client 拿它當下次的 `base_revision`
+→ 之後永遠 409**。比 lost update 更難發現，嚴重性相當，而同一個修法把兩者一起解掉。
+
+`set_content_hash()` 是同一個失效模式的另一個欄位，而且原本**連 expire 都沒有**——
+`wi_set_service.instantiate_project` 迴圈第 2 圈的 `read_worksheet` 就會讀到舊 hash。
+今天沒出事只是因為 `content_hash_from_read()` 不吃這個欄位、回應用的是本地變數，
+是巧合不是設計；且拿掉 `expire_all()` 後這個 stale 會**更持久**。已一併修。
+
+### 迴歸測試
+
+涵蓋：bump 同時滿足「目標同步」與「不誤傷其他物件」、衝突路徑的 `current_revision` 必須是真值、
+`set_content_hash` 同步、`from-module` 帶 `base_revision` 的成功 + 409、
+`imports/submit` 帶 `base_revision` 的成功 + 409、WI Set 實體化 **3 筆** WI
+（不只 2 筆，讓迴圈確實跑滿）。
+
+**mutation 驗證結果（M0 ＝ 把 `worksheet_revision.py` + `worksheet_service.py` 還原成 `f19e501`
+的字面原始碼，也就是真正的 bug）：新增測試中有 5 條會紅，2 條不會。**
+
+初稿寫的「7 條皆通過 mutation 驗證」與「改回 `expire_all()` → 3 紅」都不成立：
+前者把「對某種 mutation 會紅」誤述成「對真 bug 會紅」；後者是只把 mutation 施加於
+`bump_worksheet_revision` 的數字，還原成 `f19e501` 字面原始碼實際是 **6 紅**（含既有的 rollback 測試）。
+
+> 這一段本身就是「**稽核文件裡的數字必須附上可複現的條件**」的反面教材——
+> 初稿在同一節寫下這條規則，卻在下一行違反它。數字要標明 mutation 的**施加範圍**與**基準版本**。
+
+被判定為零獨立覆蓋的那條測試**已刪除**：它的主張句（「bump 後的 revision_no 被 stale 的
+ORM 狀態蓋回去了」）在**每一種** mutation 下都通過，因為那個失效形態在 SQLAlchemy 2.0 下
+結構上不可能發生；它唯一會紅的斷言是另一條測試的複本。原處留了一段**負向知識註解**
+說明「刻意不寫這型測試」與理由，避免下一個人再加回來。
+
+### 補上核心設計約束的守衛，以及過程中發現的一個測試陷阱
+
+`attribute_names=` 窄化原本**零測試覆蓋**——把它換成整顆 `refresh(ws)`，415 條全綠。
+已補一條守衛測試，並附 mutation 證據（整顆 refresh → 紅、窄化 → 綠）。
+
+> **陷阱（值得記住的通則）：** 該守衛測試的**第一版在 mutation 下是綠的**，差點又是一條假測試。
+> 原因是 SQLAlchemy 2.0 會把載入時的 loader options 記在 `InstanceState.load_options`，
+> 並在整顆 `refresh()` 時**重放**——所以用 `selectinload(...)` 直接載入物件的 setup
+> 會把 bug 遮掉。正確的 setup 必須比照真實呼叫點：先 `session.get()`
+> （此時 `load_options` 是空的），再讓 relationship 被填充。
+>
+> 通則：**測試的 setup 若與生產路徑取得物件的方式不同，可能無意間關掉待測的失效模式。**
+> 這也是為什麼「新測試必須附 mutation 證據」不是形式要求——這條測試就是靠它才沒有假綠。
+
+### ⚠️ 這個 P0 一直有測試在抓，只是紅燈被容忍
+
+`test_instantiate_runtime_failure_rolls_back_worksheet_and_prior_rows` 本來就跑 2 筆 WI 的迴圈，
+它從 R1 落地起就是紅的，並且被帶進分支。所以 WI Set 那一路嚴格說**不是「沒測到」，
+是「測到了沒人理」**——這是 §9 第 17 項（CI 紅燈無人看）的直接證據，
+也讓「補測試」這個結論本身不完整：**沒有人看的紅燈，等於沒有測試。**
+
+該測試現已轉綠且斷言一字未動；既有 happy path 的 `imported_wi_count == 1` 保留（新增而非弱化）。

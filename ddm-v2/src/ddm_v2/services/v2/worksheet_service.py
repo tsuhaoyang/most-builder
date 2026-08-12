@@ -67,17 +67,15 @@ async def save_worksheet(
     if pv is not None and pv.status != "draft":
         raise NotEditable(f"版本狀態為 {pv.status}，已凍結不可存（請另存新檔）")
 
-    # R1：任何內容 mutation 前先 CAS revision（失敗則不刪 rows）
+    # R1：任何內容 mutation 前先 CAS revision（失敗則不刪 rows）。
+    # bump 走 raw SQL，但它會把 `ws` 這一顆（且只有這一顆）同步回 DB 真值，
+    # 所以下面直接沿用 `ws` 就是 bump 後的狀態，不需要再 get 一次。
     await bump_worksheet_revision(
         session,
         worksheet_id=worksheet_id,
         base_revision=payload.base_revision,
         edited_by=edited_by,
     )
-    # bump 用 raw SQL；重新載入以免舊 revision_no 被 flush 蓋回
-    ws = await session.get(MostWorksheet, worksheet_id)
-    if ws is None:
-        raise WorksheetNotFound(str(worksheet_id))
 
     # 工序表級寬放%（data-model §2.5）：payload 有帶才更新（加法相容）；帶 null＝清除。
     if "allowance_percent" in payload.model_fields_set:

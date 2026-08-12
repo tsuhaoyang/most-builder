@@ -40,6 +40,38 @@ def sha256_hex(s: str) -> str:
     return hashlib.sha256(s.encode("utf-8")).hexdigest()
 
 
+#: 本模組用 Core/raw UPDATE 直接改的欄位；改動 UPDATE 的 SET 清單時必須同步這裡，
+#: 否則 identity map 會留下 stale 值（見 :func:`_resync_worksheet`）。
+_BUMP_COLUMNS = ("revision_no", "last_edited_by", "last_edited_at")
+_HASH_COLUMNS = ("content_hash",)
+
+
+async def _resync_worksheet(
+    session: AsyncSession, worksheet_id: UUID, columns: tuple[str, ...]
+) -> MostWorksheet | None:
+    """把 identity map 裡那顆 ``MostWorksheet`` 的 ``columns`` 重讀成 DB 真值。
+
+    本模組一律用 Core/raw UPDATE 改 ``most_worksheets``，ORM 不會知道；而
+    ``read_worksheet()`` 回應裡的 ``revision_no``/``content_hash`` 正是直接從這顆
+    ORM 物件讀出來的，不同步就會回舊值（client 拿舊 revision 當下次的
+    ``base_revision`` → 永遠 409）。
+
+    為什麼**不是** ``session.expire_all()``：它會失效 session 內**所有**物件；呼叫端
+    手上的 ORM 物件（wi_set 迴圈裡的 item、from-module 的 ws、import 的 rec）下一次
+    屬性存取就變成 lazy load，在 AsyncSession 下即 ``MissingGreenlet``。
+    為什麼**不是** ``session.expire(ws)``：expire 只是把值標成「下次再載」，async 下
+    那個「下次」一樣是同步 IO——只是把雷從別人腳下移到自己腳下。必須在這裡
+    （還在 await 內）就把值讀回來。
+    為什麼**不是**整顆 ``refresh()``／``get(..., populate_existing=True)``：那會連已載入的
+    relationship（``rows``/``process_version``）一起 expire，等於換個欄位埋同一顆雷。
+    """
+    ws = await session.get(MostWorksheet, worksheet_id)
+    if ws is None:
+        return None
+    await session.refresh(ws, attribute_names=list(columns))
+    return ws
+
+
 def content_hash_from_read(payload: dict[str, Any]) -> str:
     """自 read_worksheet 形狀（或等價）計算 content_hash。"""
     slim = {
@@ -79,7 +111,8 @@ async def bump_worksheet_revision(
     - ``None``：legacy（過渡期）無條件 +1 並記 warning（規格允許直至前端必填）。
     回傳 bump 後的 ``revision_no``。
 
-    注意：一律 ``expire`` ORM 快取，避免後續 flush 把舊 revision_no 蓋回 DB。
+    注意：bump 走 Core/raw UPDATE，一律以 :func:`_resync_worksheet` 把 identity map
+    裡那**一顆** worksheet 對齊 DB 真值（不得用 ``expire_all()`` 掃全 session）。
     """
     now = datetime.now(timezone.utc)
     if base_revision is None:
@@ -97,8 +130,7 @@ async def bump_worksheet_revision(
             )
         )
         await session.flush()
-        session.expire_all()
-        ws = await session.get(MostWorksheet, worksheet_id)
+        ws = await _resync_worksheet(session, worksheet_id, _BUMP_COLUMNS)
         assert ws is not None
         return int(ws.revision_no)
 
@@ -124,23 +156,31 @@ async def bump_worksheet_revision(
         )
     ).first()
     if row is None:
-        session.expire_all()
-        ws = await session.get(MostWorksheet, worksheet_id)
+        # CAS 0 列：identity map 可能還握著 client 當初讀到的舊 revision，
+        # 必須重讀才拿得到真正的 current_revision 回給 409。
+        ws = await _resync_worksheet(session, worksheet_id, ("revision_no",))
         current = int(ws.revision_no) if ws is not None else None
         raise WorksheetRevisionConflict(
             worksheet_id=worksheet_id, current_revision=current
         )
     new_rev = int(row[0])
     await session.flush()
-    session.expire_all()
+    await _resync_worksheet(session, worksheet_id, _BUMP_COLUMNS)
     return new_rev
 
 
 async def set_content_hash(
     session: AsyncSession, *, worksheet_id: UUID, content_hash: str
 ) -> None:
+    """寫入 content_hash（Core UPDATE），並把 identity map 對齊。
+
+    與 bump 同一個失效模式：Core UPDATE 不會反映到已載入的 ORM 物件，而
+    ``read_worksheet()`` 是直接讀 ``ws.content_hash`` 的——同一個 session 內
+    只要再讀一次工序表（例如 wi_set 實體化迴圈的第 2 圈）就會拿到舊 hash。
+    """
     await session.execute(
         update(MostWorksheet)
         .where(MostWorksheet.id == worksheet_id)
         .values(content_hash=content_hash)
     )
+    await _resync_worksheet(session, worksheet_id, _HASH_COLUMNS)

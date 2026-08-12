@@ -86,6 +86,19 @@
 - [x] R1-4 `alembic upgrade` + integration + typecheck + checkpoint
   - 驗證：`v2_0028→v2_0029`；unit+revision_api+worksheet **16 passed**；typecheck 綠。
   - ORM expire fix：bump 後必須清 session 快取，避免舊 revision 被 flush 蓋回。
+    - ⚠️ **2026-08-12 更正並修復（P0）**：當時採用的 `session.expire_all()` 會失效
+      **整個 session** 的 ORM 物件，導致 async 下呼叫端的下一次屬性存取變成
+      `MissingGreenlet`。實際線上影響三處：WI Set 專案含 ≥2 筆 WI、
+      `from-module` 帶 `base_revision`、`imports/submit` 帶 `base_revision`（前端實際就這樣送）
+      全部 500。四個呼叫點只有 `save_worksheet` 因為之後多做了一次 `session.get`
+      而僥倖能用——而那正是唯一有 CAS 測試的那一個。
+    - 另更正失效機制：「舊 revision 被 flush 蓋回」實測在 SQLAlchemy 2.0 下**不成立**
+      （ORM UPDATE 只寫有 history 差異的欄位）。真正可觸發的是 **stale read**——
+      `read_worksheet()` 直接讀 identity map 那顆物件，回舊 revision 給 client，
+      client 拿它當下次 `base_revision` → 永遠 409。
+    - 修法：`session.refresh(ws, attribute_names=[...])` 只重讀被 Core UPDATE 改過的欄位。
+      補 7 條迴歸測試（含 mutation 驗證）。詳見
+      [引擎與 legacy 稽核 §11](../architecture/legacy-inventory-and-engine-audit.md)。
   - P0/P1 後修：AI cache key 含 ws:rev；Import/from-module `base_revision`；legacy adopt stale gate；`source_revision` BigInteger。
   - checkpoint：[R1 review](ca934a12-62e5-4670-a022-29c7602c86a7) → **APPROVE_WITH_NITS**（nit：legacy null revision；import/CAS／cache bust 測試可後補）。資安延後。
 

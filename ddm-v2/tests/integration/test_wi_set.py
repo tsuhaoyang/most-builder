@@ -243,6 +243,66 @@ async def test_instantiate_project_creates_case_with_preview_rows(client):
     assert preview.json()["total_tmu"] > 0
 
 
+async def test_instantiate_project_with_multiple_wis(client):
+    """專案含 ≥2 筆 WI（本功能存在的理由）：實體化迴圈必須跑完每一圈。
+
+    P0 迴歸：實體化用 raw SQL bump revision，若 bump 清掉整個 session 快取，
+    第 2 圈存取 `item` 就是 async lazy load → MissingGreenlet → 500。
+    """
+    site = (await client.get("/api/v2/sites")).json()
+    if not site:
+        pytest.skip("無 site（先跑 dev_seed_v2.py）")
+    rs_id = await _get_rule_set_id(client)
+    if rs_id is None:
+        pytest.skip("DB 無 rule_set，略過")
+
+    suffix = uuid.uuid4().hex[:8]
+    product = await client.post("/api/v2/products", json={
+        "site_id": site[0]["id"],
+        "name_zh": f"UT WI Set 多筆產品 {suffix}",
+        "external_code": f"UT-WISET-M-{suffix}",
+    })
+    assert product.status_code == 201, product.text
+    sku = await client.post("/api/v2/skus", json={
+        "product_id": product.json()["id"],
+        "sku_code": f"UT-WISET-M-{suffix}",
+    })
+    assert sku.status_code == 201, sku.text
+
+    project_id = await _make_project(client)
+    tmus = []
+    for _ in range(3):
+        module_id, tmu, _seconds = await _make_published_module(client, rs_id)
+        added = await client.post(f"/api/v2/wi-set-projects/{project_id}/items", json={
+            "wi_template_id": module_id,
+        })
+        assert added.status_code == 201, added.text
+        tmus.append(tmu)
+
+    created = await client.post(
+        f"/api/v2/wi-set-projects/{project_id}/instantiate",
+        json={"sku_id": sku.json()["id"], "model_label": f"MULTI-{suffix}"},
+    )
+    assert created.status_code == 201, created.text
+    result = created.json()
+    assert result["imported_wi_count"] == 3
+    assert result["imported_row_count"] == 3
+
+    worksheet_id = result["worksheet_id"]
+    preview = await client.get(f"/api/v2/worksheets/{worksheet_id}/export/wi-preview")
+    assert preview.status_code == 200, preview.text
+    assert len(preview.json()["rows"]) == 3
+
+    # 每個 WI 各自 bump 一次 → 新建的 worksheet（revision 1）跑完 3 圈應為 4，
+    # 且回傳的 revision_no 必須是 DB 真值（stale 快取會讓 client 拿到舊值 → 之後永遠 409）。
+    read = await client.get(f"/api/v2/worksheets/{worksheet_id}")
+    assert read.status_code == 200, read.text
+    body = read.json()
+    assert body["revision_no"] == 4
+    assert [r["seq_no"] for r in body["rows"]] == [1, 2, 3]
+    assert body["total_tmu"] == pytest.approx(sum(tmus))
+
+
 async def test_instantiate_empty_project_does_not_create_worksheet(client):
     """不可轉換的專案要在建立 worksheet 前失敗，避免分析案件留下空殼。"""
     products = (await client.get("/api/v2/products")).json()

@@ -34,6 +34,7 @@
 | **主數據詞彙** | create→list→delete；viewer 403 | `tests/integration/test_vocab.py` |
 | **Worksheet 存讀** | PUT→GET roundtrip，TMU 引擎算=28 | `tests/integration/test_worksheet.py` |
 | **SOP 版本** | versions / clone / publish / 再發布 409 / RBAC；**publish analyst→403（approver gate）**；**audit log 建立（action=approve）** | `tests/integration/test_worksheet.py` |
+| **Worksheet revision 樂觀鎖（R1 / ADR-027 §2）** | 同 `base_revision` 二次存檔 → 409 `WORKSHEET_REVISION_CONFLICT` 且不留半套；clone 重置為 1；publish 不 bump；`from-module`／`imports/submit` 帶 `base_revision` 的 bump + 409。**bump／`set_content_hash` 走 Core UPDATE，其 session 快取語意有三條不變量**：(A) 目標物件即時對齊 DB 真值、衝突須回報 DB 真 `current_revision`；(B) **不得 `expire_all()`** 誤傷 session 內其他物件（否則呼叫端下次屬性存取 = `MissingGreenlet`）；(C) `_resync_worksheet` 必須用 `refresh(..., attribute_names=)` **窄化到純量欄位**——整顆 `refresh()` 會把已載入的 `rows`／`process_version` expire 掉。**⚠️ 測試 setup 必須先 `session.get()` 再讓 relationship 被填充**：若直接用 `selectinload` 載入，SQLAlchemy 會把 loader options 記在 `InstanceState.load_options` 並在整顆 refresh 時**重放**，把 bug 遮掉（實測會產生一條恆綠的假測試） | `tests/integration/test_worksheet_revision_api.py` |
 | **使用者管理** | list / upsert / patch；bad role 422；自鎖 409；404；viewer 403 | `tests/integration/test_admin_users.py` |
 | **目錄/結構** | Site→Product→Sku→建立工序表；停用(is_active)；RBAC 403；404；重複 sku 409 | `tests/integration/test_catalog.py` |
 | **計算 V2（ADR-014）** | `POST /minimost/calculate` 走 `MINIMOST_FACTORY_V2`：GM=28 / CM=29（推45cm=18吋檔）/ 推18cm→M10 反例；覆寫值取代+tech_line 標 `*` | `tests/integration/test_calculate_v2.py` |
