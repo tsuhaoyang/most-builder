@@ -1394,6 +1394,9 @@ export function WISetBuilderPage() {
         <div className="flex items-center gap-2 flex-wrap">
           {/* Project selector */}
           <select
+            // 這個 select 原本沒有任何可及名稱（螢幕閱讀器只念得出選項），
+            // e2e 也只能用 `locator('select').first()` 靠 DOM 順序猜它是哪一個。
+            aria-label="選擇現有專案"
             className="border rounded px-2 py-1 text-sm max-w-xs focus:outline-none focus:ring-1 focus:ring-blue-400"
             value={projectId ?? ''}
             onChange={(e) => handleSelectProject(e.target.value)}

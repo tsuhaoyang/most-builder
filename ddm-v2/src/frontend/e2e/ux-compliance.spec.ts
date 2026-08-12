@@ -305,6 +305,36 @@ async function clickNavAndWait(page: Page, name: RegExp | string) {
   await page.waitForLoadState('networkidle')
 }
 
+// ─── Helper: 交錯句型列的欄位序列 ────────────────────────────────────────────
+// ADR-021 §Tab1 形態 3 ／ frontend-ux-spec §2.3 明定 GM/CM 各自的**欄位順序**。
+//
+// ⚠️ 不要退回用色塊上的可見文字（`getByText('A1', { exact: true })`）來定位：
+//   (1) 色塊抬頭是「A · A1」這一個文字節點，exact 比對永遠 0 命中 —— 正向斷言會
+//       無故變紅（CI run 31592913583 的 B-01-2），反向斷言（toHaveCount(0)）
+//       則會變成**恆真的假綠**（E-04-4 原本的 B2/P 兩條就是）；
+//   (2) 色塊主體的縮寫格在 A 段命中 index=1 時本身就顯示「A1」，
+//       文字比對會隨資料狀態多命中一個元素 → strict mode 隨機爆掉。
+// 所以一律用 SlotBuilder 上的 `data-testid="flow-item-<key>"` 語意錨點。
+const GM_FLOW = [
+  'hand', 'from', 'A1', 'B1', 'G', 'target', 'component', 'A2', 'B2', 'P', 'to', 'A3',
+]
+const CM_FLOW = [
+  'hand', 'from', 'A1', 'B1', 'G', 'target', 'component', 'M', 'to', 'X', 'I', 'where', 'A3',
+]
+
+async function flowItemKeys(page: Page): Promise<(string | undefined)[]> {
+  // `.first()` 是刻意的：evaluateAll 不走 strict mode，若日後頁面同時出現第二個
+  // SlotBuilder，沒有 .first() 會靜靜地把兩份格位串在一起（24 個而不是 12 個），
+  // 而不是報 strict 違規。明講「只看第一個 flow」比拿到一串垃圾好。
+  return page
+    .getByTestId('slot-builder-flow')
+    .first()
+    .locator('[data-testid^="flow-item-"]')
+    .evaluateAll((els) =>
+      els.map((el) => el.getAttribute('data-testid')?.replace('flow-item-', '')),
+    )
+}
+
 // ─── § A-01: Sidebar 結構 ─────────────────────────────────────────────────────
 
 test.describe('§A-01 Sidebar 結構 (UX spec §1.1–1.2)', () => {
@@ -496,9 +526,28 @@ test.describe('§B-01 workbench-v3 佈局 (checklist B-01, B-02, B-03)', () => {
     await expect(flow.getByText('元件')).toBeVisible()
     await expect(flow.getByText('到哪裡')).toBeVisible()
     await expect(flow.getByText('顯示於MI')).toBeVisible()
-    // GM 格位順序中的參數色塊
-    for (const key of ['A1', 'B1', 'G', 'A2', 'B2', 'P', 'A3']) {
-      await expect(flow.getByText(key, { exact: true })).toBeVisible()
+
+    // 規格要的是**欄位順序**，不只是「有沒有出現」（見 GM_FLOW 上方註解）：
+    //   使用手｜從哪裡｜A1｜B1｜G｜目標物｜元件｜A2｜B2｜P｜到哪裡｜A3（GM）
+    await expect.poll(() => flowItemKeys(page)).toEqual(GM_FLOW)
+
+    // 色塊仍必須讓使用者看得到「參數碼＋格位鍵」（v3 SlotBlock header = parameter_code + slot_key）。
+    //
+    // ⚠️ 這裡**不能**寫 `expect(block).toContainText(param)`：每一組 [key, param] 都滿足
+    //    `key.includes(param)`（'A1'⊃'A'、'G'≡'G'、'P'≡'P'），色塊上的說明文字（`距離(A)-取得`）
+    //    也本來就含參數碼 —— 那樣寫**永遠不可能紅**，把 `{item.param}` 整個從抬頭拿掉照樣綠。
+    //    改成對「抬頭那一條」比對 `參數碼 …… 格位鍵` 的先後：
+    //      - 釘住的是規格要的「兩者都出現、參數碼在前」；
+    //      - 中間用 `\W*`，**不釘死分隔符** —— 抬頭要不要對齊 v3 母版（兩個獨立 span、
+    //        無分隔符）是未決的獨立議題，不該被這條測試鎖住。
+    //    抬頭沒有自己的 testid（本輪不動產品碼），所以用 button 的第一個直接子 span 定位。
+    for (const [key, param] of [
+      ['A1', 'A'], ['B1', 'B'], ['G', 'G'], ['A2', 'A'], ['B2', 'B'], ['P', 'P'], ['A3', 'A'],
+    ] as const) {
+      const block = flow.getByTestId(`flow-item-${key}`)
+      await expect(block).toBeVisible()
+      const header = block.locator('button > span').first()
+      await expect(header).toHaveText(new RegExp(`^\\W*${param}\\W*${key}\\b`))
     }
   })
 
@@ -613,6 +662,21 @@ test.describe('§E-04 MOST 工作台單頁 (ADR-022 批次 B)', () => {
 
     const flow = page.getByTestId('slot-builder-flow')
 
+    // A 格：點「距離對照表」的檔位列（testid 尾碼＝band.index，本測 mock 只有 index=2 一檔）。
+    const fillASlot = async (title: string) => {
+      await flow.getByTitle(title).click()
+      await page.getByTestId('a-distance-row-2').click()
+      await page.getByRole('button', { name: '確認' }).click()
+      await expect(page.getByTestId('a-distance-row-2')).toHaveCount(0)
+    }
+    // 「這一格有值」的語意錨點：SlotBuilder 只在 filled 時渲染清除鈕（aria-label=`清除 <key>`）。
+    // exact 是必要的：外層 <button> 的 accessible name 由內容組出來、會**含**這個 aria-label。
+    const clearBtn = (key: string) =>
+      flow.getByRole('button', { name: `清除 ${key}`, exact: true })
+
+    await fillASlot('A 移動 — 取得段')   // A1：CM→GM 必須**保留**（§2.2），當本測的對照組
+    await fillASlot('A 移動 — 放置段')   // A2：GM→CM 必須清空
+
     await flow.getByTitle('P 放置').click()
     const pDialog = page.getByRole('heading', { name: 'P 放置' }).locator('..').locator('..')
     await pDialog.locator('select').first().selectOption('p_put')
@@ -623,16 +687,42 @@ test.describe('§E-04 MOST 工作台單頁 (ADR-022 批次 B)', () => {
     await expect(page.getByRole('heading', { name: 'B 身體動作 — 放置段' })).toHaveCount(0)
     await expect(flow.getByText('彎腰')).toBeVisible()
 
+    // 前提：切換前 A1/A2/P 三格都真的有值（否則下面的「被清空」全是空歡喜）
+    for (const key of ['A1', 'A2', 'P']) {
+      await expect(clearBtn(key)).toBeVisible()
+    }
+
     const seqSelect = page.getByLabel('動作類型')
     await seqSelect.selectOption('CM')
-    await expect(flow.getByText('B2', { exact: true })).toHaveCount(0)
-    await expect(flow.getByText('P', { exact: true })).toHaveCount(0)
+    // CM 的欄位序列（frontend-ux-spec §2.3）＝ GM 專屬的 A2/B2/P 消失、換上 M/X/I/哪裡。
+    //
+    // 這兩行原本是：
+    //     await expect(flow.getByText('B2', { exact: true })).toHaveCount(0)
+    //     await expect(flow.getByText('P',  { exact: true })).toHaveCount(0)
+    // 自 b66829d 把色塊抬頭改成「B · B2」之後，exact 文字比對永遠 0 命中，
+    // 這兩條反向斷言就變成**恆真**——實測把 B2/P 塞回 CM_ITEMS（直接違反遷移規則），
+    // 本測試依然全綠。改用 flow 序列比對，欄位集合才真的被守住。
+    await expect.poll(() => flowItemKeys(page)).toEqual(CM_FLOW)
     await expect(flow.getByTitle('M 控制移動')).toBeVisible()
     await expect(flow.getByTitle('X 製程時間')).toBeVisible()
     await expect(flow.getByTitle('I 對準/檢查')).toBeVisible()
 
     await seqSelect.selectOption('GM')
+    await expect.poll(() => flowItemKeys(page)).toEqual(GM_FLOW)
     await expect(flow.getByTitle('B 身體動作 — 放置段')).toBeVisible()
+
+    // ── 遷移規則守的是**值**，不只是欄位可見性（frontend-ux-spec §2.2）──────────
+    //   GM → CM：清空 P/A2/B2；CM → GM：清空 M/X/I，兩邊都保留 A1/B1/G/A3。
+    // A2/P 在 CM 沒有欄位可看，所以清空只能在**繞一圈回到 GM 後**驗：值若沒被清，
+    // 它會原封不動回到色塊上（migrateSeqState 的 GM 分支是 `p_base || …`，會沿用舊值）。
+    // 空格的縮寫是 '—'（filled 時才是動作標籤）→ 正向斷言，壞掉會大聲失敗。
+    await expect(flow.getByTestId('flow-item-A2')).toContainText('—')
+    await expect(flow.getByTestId('flow-item-P')).toContainText('—')
+    await expect(clearBtn('A2')).toHaveCount(0)
+    await expect(clearBtn('P')).toHaveCount(0)
+    // 對照組：A1 不在清空名單，繞一圈後必須仍有值（否則就是改成「全部清光」也會綠）
+    await expect(clearBtn('A1')).toBeVisible()
+    // B2 被清空後回填預設身體動作（DEFAULT_B_MOVE_CODE）→ 看得到「眼部」、看不到「彎腰」
     await expect(flow.getByText(/眼部/)).toBeVisible()
     await expect(flow.getByText('彎腰')).toHaveCount(0)
     await expect(flow.getByTitle('M 控制移動')).toHaveCount(0)
@@ -1427,7 +1517,9 @@ test.describe('§G-03 案件編輯情境頁 (ADR-021 Phase 3)', () => {
 
     await gotoAndWait(page)
     await clickNavAndWait(page, /WI 專案建立/)
-    await page.locator('select').first().selectOption('project-001')
+    // 用 aria-label 而非 `locator('select').first()`：後者靠 DOM 順序猜是哪個下拉，
+    // 版面一動就指到別的 select（wi-set-add.spec.ts 同一個下拉已改用可及名稱）。
+    await page.getByLabel('選擇現有專案').selectOption('project-001')
     await expect(page.getByRole('button', { name: '建立分析案件' })).toBeEnabled()
     await page.getByRole('button', { name: '建立分析案件' }).click()
 

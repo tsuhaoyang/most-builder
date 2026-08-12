@@ -22,6 +22,25 @@
    安裝時**一律** `--require-hashes`，且**不得** `pip install --upgrade pip`（那是唯一不受
    hash 保護的抓取）、`-e .` **必須**帶 `--no-build-isolation`（否則 build backend 走隔離環境
    無 hash 下載並執行）。詳見下方「依賴鎖版與安全稽核」。
+7. **測試必須自足，且反向斷言必須附 mutation 證據。** 兩條都是 2026-08-12 這一輪
+   各抓到實例後成文的（一輪內共三條假測試），不是預防性條文：
+   - **不得依賴環境既存資料。** 不要撈「第一列」「任一筆」——自己建。CI 後端 job 的 seed
+     只有 `dev_seed_v2` + `dev_seed_templates`（**不含** `dev_seed_30rows`），
+     e2e job 的 DB 也**沒有**跑過 `migrate_v3_user_data.py`，所以 `most_cycles`、`wi_rows`、
+     `wi_set_projects`、`category='wi-template'` 的 motion modules 在 CI 上**都是 0 列**。
+     實例：`test_delete_referenced_draft_returns_409_*`（撈 `most_cycles` → CI `NoResultFound`）、
+     `wi-add-live.spec.ts`（需 v3 遷移資料 → CI 永遠 0）。
+     本機綠不代表通過——複現 CI 請建乾淨 DB 只跑 CI 那幾支 seed（指令見文末）。
+   - **反向斷言（`toHaveCount(0)`／`not.toBeVisible`／`assert not …`）必須證明它會紅。**
+     正向斷言用壞掉的定位器會**大聲失敗**；反向斷言用壞掉的定位器會**安靜變成恆真**。
+     實例：`ux-compliance.spec.ts` 的 E-04-4 用 `getByText('B2', {exact:true})` 斷言
+     `toHaveCount(0)`，而色塊抬頭早已改成 `A · A1` 形式使該定位器永遠 0 命中——
+     把 `B2`/`P` 塞回 `CM_ITEMS`（直接違反 GM→CM 清空規則）該測試**依然全綠**。
+     ⚠️ Playwright 的 `getByText(exact:true)` 比對的是元素內**連續 immediate 文字節點的
+     合併值**，任何在同一個節點加前綴／分隔符的 UI 改動都會讓它靜默失準。
+     定位錨點請用 `data-testid`／`aria-label` 這類**不隨版面文案漂移**的語意錨點。
+   - 對應的正向要求：**新增或修改測試時附 mutation 證據**（改壞 → 紅，改回 → 綠）。
+     「沒看過它紅過的守門不算守門」——參見 `architecture/v2-authoritative-model-guide.md` §6。
 
 ## Feature → 驗證測試點 → script
 
