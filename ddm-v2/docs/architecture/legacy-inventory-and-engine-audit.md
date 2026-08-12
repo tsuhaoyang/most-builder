@@ -432,7 +432,7 @@ grep -rn "TMU_TO_SEC\|TMU_SEC\|0\.036" src/ddm_v2/ src/frontend/src/
 | 21 | `wi_set_service` 硬寫 `base_revision=None` → 每筆 WI 噴一行 legacy WARNING 假警報 | 未排程 |
 | 22 | coverage.py 對 async 檔案的行覆蓋不可信（`await` 之後系統性漏記）——若日後要拿覆蓋率當關卡需先處理 | 未排程 |
 | 23 | **依賴完全沒鎖**（§12）：CI 與 prod image 每次 build 都裝到最新版，同一份 commit 昨天綠今天紅 | **已處置（2026-08-12）**：`requirements.lock`／`requirements-dev.lock`（uv 產生、hash-pinned、universal），CI 與 Dockerfile 都從鎖檔安裝；`deps` job 擋鎖檔不同步 + pip-audit 阻斷式；nightly 跑「無鎖檔解析最新版」＋容器 smoke。本機 `.venv` 已同步到鎖檔 |
-| 23b | **開發機 Python 3.12 vs CI/Dockerfile 3.11**（§12 更正）：`requires-python >=3.11` 兩者都合法，但「本機與 CI 的變因」不只套件版本，還有直譯器 | 鎖檔 `--universal` 使兩者拿到同一組套件版本（實測無 `python_version` 分歧）；nightly 有 3.11+3.12 矩陣。**要不要收斂成單一版本＝待使用者決策** |
+| 23b | **開發機 Python 3.12 vs CI/Dockerfile 3.11**（§12 更正）：`requires-python >=3.11` 兩者都合法，但「本機與 CI 的變因」不只套件版本，還有直譯器 | 鎖檔 `--universal` 使兩者**實際安裝到同一組套件**；`--python-version` 使鎖檔本身**誰跑都一樣**（2026-08-12 補，原本只有前者，導致 `deps` 關卡假紅）；nightly 有 3.11+3.12 矩陣。**要不要收斂成單一版本＝待使用者決策** |
 
 ---
 
@@ -569,9 +569,18 @@ record 數）：
   > 實測本機 `.venv` 是 **Python 3.12.13**（`CLAUDE.md` 的 setup 指令寫的就是
   > `python3.12 -m venv .venv`），與 CI／Docker 的 3.11 不同——所以「本機與 CI 的變因」
   > 除了套件版本之外**還有直譯器版本**，當初的判斷少看了一格。
-  > 鎖檔用 `--universal` 解析，實測目前**沒有任何 `python_version` 條件分歧**，
-  > 3.11 與 3.12 拿到同一組套件版本，所以這格暫時不會咬人；
+  > 鎖檔用 `--universal` 解析，3.11 與 3.12 **實際安裝到的套件集合相同**，所以這格暫時不會咬人；
   > nightly 的 py3.11+py3.12 矩陣會在它開始咬人時先紅。
+  >
+  > > **2026-08-12 再更正**：本段原本寫的是「實測**沒有任何 `python_version` 條件分歧**」，
+  > > 那句話**是錯的**，而且錯在同一個地方——**又是只看了開發機那一側**。
+  > > `uv pip compile` 解析範圍的下界預設取自「跑的人被挑到的直譯器」而非 `requires-python`，
+  > > 所以在 3.12 上解出的範圍是 [3.12, ∞)、根本不含 3.11，當然看不到分歧；
+  > > 在 3.11 上解會多出 `tomli ; python_full_version <= '3.11'`。
+  > > 已於 `scripts/lock_deps.sh` 顯式釘死下界修正（見 ADR-029 決策 4 的更正段）。
+  > > 修正後鎖檔確實帶了一個 `python_version` 分歧的 pin，但該 marker 在 3.11.15／3.12.13
+  > > **求值皆為 False**，兩版本 `pip list` 實測相同——所以上面那句改用「實際安裝到的集合」
+  > > 陳述，那才是會咬人的東西。
   > **殘留決策**：要嘛把開發機收斂到 3.11，要嘛把 CI/Dockerfile 升到 3.12——
   > 目前是「兩個都支援、且有測試證明」，不是「已經對齊」。
 - 版本區間**有**上界，但對 0.x 套件形同虛設：`fastapi>=0.115,<1.0`。
@@ -598,7 +607,7 @@ record 數）：
 |---|---|
 | `ddm-v2/requirements.lock` | runtime 封閉集合（33 套件，含遞移依賴），逐一釘版本 + sha256 |
 | `ddm-v2/requirements-dev.lock` | runtime + dev 的超集合（46 套件），以 runtime lock 為 constraints 解析 |
-| `ddm-v2/scripts/lock_deps.sh` | 產生器（`uv pip compile --universal --generate-hashes`）；**冪等** |
+| `ddm-v2/scripts/lock_deps.sh` | 產生器（`uv pip compile --universal --python-version <requires-python 下界> --generate-hashes`）；**冪等**，且**輸出與執行者的直譯器版本無關** |
 | `ddm-v2/scripts/audit_deps.sh` ＋ `.pip-audit-ignore` | pip-audit 阻斷式關卡 + 具名豁免（附 `REVIEW-BY` 過期檢查） |
 | `ddm-v2/scripts/docker_smoke.sh` | build image → 起全新 postgres → 打端點 + 驗 GM=28/CM=29 |
 | `.github/workflows/nightly.yml` | 不用鎖檔解析最新版（py3.11+3.12）＋ 鎖檔稽核 ＋ 容器 smoke |
@@ -612,8 +621,10 @@ record 數）：
 3. **hash-pinned（`--require-hashes`）**。決定性理由是公司 build 走 HTTP proxy
    （`Dockerfile` 的 `HTTP_PROXY` ARG）——proxy 正是「換掉套件內容而不改版號」
    最不容易被發現的位置；版本相同 ≠ 內容相同。本機開發成本實測極低（`lock_deps.sh` 1.4 秒）。
-4. **`--universal`**：跨 OS／跨 Python 解析一組。實測目前**沒有任何 `python_version`
-   條件分歧**，也就是 3.11 與 3.12 拿到的是同一組版本。
+4. **`--universal` ＋ `--python-version`**：前者讓同一份鎖檔在 3.11／3.12 都裝得起來，
+   後者讓「誰跑都產出同一份鎖檔」。**兩件事要分開講**——`--universal` 只給前者，
+   解析範圍的下界預設是跑的人那台機器的直譯器，2026-08-12 因此讓 `deps` 同步關卡假紅過一次
+   （見上方 23b 與 ADR-029 決策 4 的更正段）。修正後兩版本**實際安裝到的套件集合相同**。
 
 **鎖到哪一組、以及本機同步**：鎖的是**新的那一組**（fastapi 0.141.1 / starlette 1.6.0），
 不是本機舊的 0.136.0——因為 0.141 的走訪不相容已在 `route_registry` 修掉，

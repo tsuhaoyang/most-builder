@@ -91,9 +91,21 @@ starlette 本機裝到帶 CVE 的 1.0.0。完整經過見
 
 - **產生器＝`uv pip compile`**（`./scripts/lock_deps.sh`），輸出是標準 pip requirements 格式，
   所以 **CI 與 Dockerfile 用原生 pip 就能安裝，image 內不需要 uv**。uv 只在「重新產生鎖檔」時需要。
-- **`--universal`**：跨 OS／跨 Python 版本解析同一組，平台差異用 marker 標註
-  （例：`colorama ; sys_platform == 'win32'`）。實測目前解析結果**沒有任何
-  `python_version` 條件分歧**，也就是 3.11（CI／Docker）與 3.12（開發機）拿到的是**同一組版本**。
+- **`--universal` 與 `--python-version` 是兩個不同的保證，不要混為一談**：
+  - `--universal` ＝「**同一份鎖檔在 3.11 與 3.12 上都裝得起來**」。跨 OS／架構／直譯器
+    解析同一組，差異用 marker 標註（例：`colorama ; sys_platform == 'win32'`、
+    `tomli ; python_full_version <= '3.11'`）。
+  - `--python-version` ＝「**同一份輸入在不同機器上跑出同一份鎖檔**」。這一項
+    `--universal` **不提供**：`uv pip compile` 解析範圍的**下界預設取自「跑的人那台機器上
+    被 uv 挑到的直譯器」**，而不是 `pyproject.toml` 的 `requires-python`
+    （`uv help pip compile`：「Defaults to the version of the Python interpreter used for
+    resolution」）。少了它，開發機（3.12）解 [3.12, ∞)、CI（3.11）解 [3.11, ∞)，
+    後者多一個 `tomli`，同步關卡因此**假紅**（2026-08-12，CI run 31591161223）。
+    `lock_deps.sh` 的三個 compile 一律帶 `--python-version`，值由腳本讀 `requires-python`
+    的下界得到（目前 3.11），不另寫死一份常數。
+  - 實測（2026-08-12）：3.11 與 3.12 兩種直譯器下跑 `lock_deps.sh`，四份產出**位元組相同**；
+    兩種版本各建乾淨 venv 以 `--require-hashes` 安裝均成功，且**實際安裝的套件集合相同**
+    （`tomli` 的 marker 在 3.11.15／3.12.13 上皆為 False，兩邊都不會裝到它）。
 - **`--generate-hashes` + 安裝時 `--require-hashes`**：釘的是 **artifact 的位元組**，不只版本字串。
   採用的決定性理由：公司 build 走 HTTP proxy（`Dockerfile` 的 `HTTP_PROXY` ARG），
   而 proxy 正是「換掉套件內容而不改版號」最不容易被發現的位置。版本相同 ≠ 內容相同。

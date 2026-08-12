@@ -108,16 +108,53 @@ requirement setuptools>=68`；新寫法 `--no-deps --no-build-isolation -e .` **
 改動前 image 內是 base image 自帶、**我們沒釘也沒稽核**的 setuptools 79.0.1／wheel 0.45.1；
 改動後是釘死 + 驗過 hash + 納入 `audit_deps.sh` 無豁免稽核的 84.0.0／0.48.0。
 
-### 4. `--universal`：對付第二條漂移軸（3.11 vs 3.12），但不強迫降級
+### 4. `--universal` ＋ `--python-version`：對付第二條漂移軸（3.11 vs 3.12），但不強迫降級
 
-`--universal` 跨 OS／跨 Python 版本解析同一組，平台差異用 marker 標註。
-**實測目前解析結果沒有任何 `python_version` 條件分歧**——3.11（CI／Docker）與 3.12（開發機）
-拿到的是同一組版本，唯三個 marker 是 `colorama ; sys_platform == 'win32'`、
-`uvloop ; platform_python_implementation != 'PyPy' and sys_platform != 'cygwin' and sys_platform != 'win32'`
-與 dev 的 `librt ; platform_python_implementation != 'PyPy'`。
+`--universal` 跨 OS／架構／直譯器解析同一組，平台差異用 marker 標註
+（`colorama ; sys_platform == 'win32'`、`uvloop ; platform_python_implementation != 'PyPy' and
+sys_platform != 'cygwin' and sys_platform != 'win32'`、dev 的 `librt ; platform_python_implementation != 'PyPy'`
+與 `tomli ; python_full_version <= '3.11'`）。
 
 因此**不強迫開發機降級到 3.11**：目前的狀態是「兩個版本都支援、且有測試證明」，
 由 nightly 的 py3.11+py3.12 矩陣持續證明。這**不是**「已經對齊」——見〈不由本 ADR 決定〉1。
+
+> **2026-08-12 更正：本節原文有兩處錯，且原文的錯法正是本 ADR 要防的那一種。**
+>
+> 原文寫「實測目前解析結果沒有任何 `python_version` 條件分歧」。那次實測是在 **3.12 開發機**
+> 上做的，而 3.12 恰好是**看不到分歧的那一側**——因為 `uv pip compile` 解析範圍的**下界
+> 預設取自「跑的人那台機器上被 uv 挑到的直譯器」**，不是 `pyproject.toml` 的
+> `requires-python`（`uv help pip compile` 對 `--python-version` 寫得很白：
+> 「Defaults to the version of the Python interpreter used for resolution.」
+> 「Defines the minimum Python version that must be supported by the resolved requirements.」）。
+> 開發機解的是 [3.12, ∞)、CI 解的是 [3.11, ∞)，後者多一個
+> `tomli ; python_full_version <= '3.11'`（`coverage` 在該區間的相依）。
+>
+> 兩處錯：
+> 1. **確實有 `python_version` 分歧**，只是在 3.12 那側的解析範圍不涵蓋 3.11，所以看不見。
+>    「實測沒有」實際上是「用一台看不到的機器測的」。
+> 2. **`--universal` 不保證輸出可重現。** 它保證的是「鎖檔對*範圍內*所有平台與版本都有效」，
+>    不保證「*範圍本身*是誰跑都一樣」。後者只有 `--python-version` 給得了。
+>    舊註解寫「universal 讓同一份鎖檔在兩者上都成立」——這句沒錯，但讀者會順勢以為
+>    它也保證了可重現性，於是**註解宣稱了程式碼沒做到的保證**。
+>
+> 後果比 diff 噪音嚴重一級：下界由執行者決定，代表在 3.12 開發機鎖出來的那份，
+> **解析範圍根本不涵蓋 3.11**，而它正是要拿去 `python:3.11-slim` 安裝的那一份——
+> 解析器從來沒有被要求為部署目標負責過。
+> 實際症狀則只有 `deps` job 假紅（CI run 31591161223）：後端 job 用同一份鎖檔在 3.11
+> 安裝與測試全綠，因為 `tomli` 的 marker 在 3.11.15 上為 False，**它從頭到尾沒被裝過**。
+> 也就是說**唯一壞掉的是同步關卡自己**。
+>
+> **修法**：`scripts/lock_deps.sh` 的三個 compile 一律帶 `--python-version`，值由腳本讀
+> `pyproject.toml` 的 `requires-python` 下界得到（目前 `>=3.11` → `3.11`），寫法看不懂就
+> 大聲失敗。**刻意不寫死常數**：寫死等於再開一條「宣告與實作各說各話」的縫（改了
+> `requires-python` 卻沒人改腳本，不會有任何關卡發現）。
+> 這也順帶修掉資安重審列為 Low 的 `requirements-build.lock`——那份輸入是純 `.in`、
+> 沒有 `requires-python` 可依循，所以它比另外兩份**更**依賴這個旗標。
+>
+> **驗證**：3.11 與 3.12 兩種直譯器下跑 `lock_deps.sh`，四份產出位元組相同（含無 `.venv`
+> 的 CI 形狀環境）；兩版本各建乾淨 venv 以 `--require-hashes` 安裝成功、`pip list` 集合相同、
+> unit 各 296 passed；3.11 另跑 integration 415 passed + 1 skipped 與黃金值 167 全過。
+> CI 的同步關卡邏輯**一個字沒改**——要修的是鎖檔的可重現性，不是把關卡放寬。
 
 ### 5. `pyproject.toml` 的相容區間完整保留，一個字沒改
 
@@ -356,8 +393,15 @@ PR 級的重複建置價值低而成本（每個 PR 的 CI 時間）是每次都
 
 - **`deps` job 開始頻繁地因非本 PR 的原因變紅**（例如每週多次）：代表阻斷式的定價估錯了，
   應改為「runtime 阻斷、dev 降為 warn + nightly 阻斷」的分級，而不是整體降級。
-- **出現任何一個 `python_version` 條件分歧的 pin**：決策 4「不強迫降級」的前提消失，
+- **3.11 與 3.12 上「實際安裝到的套件集合」開始不同**：決策 4「不強迫降級」的前提消失，
   必須立刻做 3.11/3.12 收斂（殘留 1）。nightly 矩陣是這個訊號的偵測器。
+  > **2026-08-12 修訂措辭。** 原文寫的是「出現任何一個 `python_version` 條件分歧的 pin」，
+  > 那個判準**太寬且會誤報**：今天 dev 鎖檔已經有一個
+  > `tomli ; python_full_version <= '3.11'`，但該 marker 在 3.11.15 與 3.12.13 上**皆為 False**，
+  > 兩邊 `pip list` 實測完全相同——存在一個帶 marker 的 pin，不等於兩個版本會裝到不同東西。
+  > 會咬人的是**求值後**的集合分歧，訊號要盯的是那個。
+  > （反過來說，這也表示不能用「鎖檔裡有沒有 marker」當偵測器，必須實際在兩版本安裝後比對，
+  > 即 nightly 矩陣在做的事。）
 - **鎖檔升級開始需要 `pyproject` 放寬區間才解得出來**：代表區間已落後於實際生態，
   該重新走一次下界的實測流程（不是直接放寬）。
 - **`.pip-audit-ignore` 出現第二筆、第三筆豁免**：豁免從例外變成常態，代表 dev 工具鏈的

@@ -27,12 +27,80 @@ if ! command -v uv >/dev/null 2>&1; then
     exit 1
 fi
 
-# --universal：跨 OS / 跨 Python 版本解析一組，用 marker 標註平台差異。
-#   本專案 requires-python = ">=3.11"，CI 與 Dockerfile 是 3.11、開發機是 3.12；
-#   universal 讓同一份鎖檔在兩者上都成立。
+# 讀 TOML 需要 tomllib（Python >= 3.11）。CI 的 `python3` 是 3.11，但開發機的 `python3`
+# 可能還是系統的 3.10（本專案 requires-python >= 3.11，開發用的是 .venv / python3.12）。
+# 這裡挑第一個「真的 import 得到 tomllib」的直譯器，而不是假設 `python3` 夠新——
+# 假設錯的話這支腳本會在開發機上炸，然後大家改成手寫 .in，同步關卡就白做了。
+#
+# 注意：這個直譯器只用來**讀 pyproject.toml**，不影響解析結果。uv 是獨立的 Rust 執行檔，
+# 它挑哪個直譯器與這裡挑哪個無關（見下方 --python-version）。
+PYBIN=""
+for cand in python3 python3.13 python3.12 python3.11; do
+    command -v "$cand" >/dev/null 2>&1 || continue
+    if "$cand" -c 'import tomllib' >/dev/null 2>&1; then PYBIN="$cand"; break; fi
+done
+if [ -z "$PYBIN" ]; then
+    echo "ERROR: 找不到具備 tomllib 的 Python（需要 >= 3.11）。" >&2
+    echo "       本專案 requires-python = '>=3.11'，請安裝 python3.11+ 後重跑。" >&2
+    exit 1
+fi
+
+# --- 解析目標的 Python 下界 --------------------------------------------------
+# 有兩個很容易被混為一談的保證。舊版註解只寫了 (a)，但讀起來像是連 (b) 一起保證了，
+# 而 (b) 其實是假的——這正是本專案一路在防的「註解宣稱了程式碼沒做到的保證」。
+#
+#   (a)「同一份鎖檔在 3.11 與 3.12 上都裝得起來」← 這個由 --universal 提供，屬實。
+#       universal 解析不綁單一 OS／架構／直譯器，差異用 environment marker 標註，
+#       安裝端各取所需（例：`colorama ; sys_platform == 'win32'`）。
+#
+#   (b)「同一份輸入在不同機器上跑出同一份鎖檔」← --universal **不**提供。
+#       uv 自己的說明寫得很白（`uv help pip compile` 的 --python-version）：
+#         「Defaults to the version of the Python interpreter used for resolution.」
+#         「Defines the minimum Python version that must be supported by the resolved
+#           requirements.」
+#       也就是解析範圍的**下界預設取自「uv 在這台機器上挑到的直譯器」**，
+#       而不是 pyproject 的 requires-python。於是：
+#         開發機（uv 挑到 .venv = 3.12）→ 解析範圍 [3.12, ∞)
+#         CI（setup-python 3.11，無 .venv）→ 解析範圍 [3.11, ∞)，多解出一個
+#           `tomli ; python_full_version <= '3.11'`（coverage 在該區間的相依）
+#       同一份 pyproject、同一版 uv，兩份不同的鎖檔 → 同步關卡假紅（CI run 31591161223）。
+#
+#       而且這不只是 diff 噪音：下界由「誰跑的」決定，代表在 3.12 開發機鎖出來的那份，
+#       其解析範圍**根本不涵蓋 3.11**——偏偏那正是 Dockerfile（python:3.11-slim）與 CI
+#       要拿去裝的版本。解析器沒有被要求為 3.11 負責過，卻由它產出部署用的鎖檔。
+#
+# 對策：用 --python-version 顯式釘死下界，讓輸出與執行者的直譯器無關。
+# 值直接讀 pyproject 的 requires-python，**不在這裡另寫一份常數**：寫死就是再開一條
+# 「宣告與實作各說各話」的縫（改了 requires-python 卻沒人改這支腳本，沒有任何東西會發現）。
+PY_FLOOR="$("$PYBIN" - <<'PY'
+import re
+import sys
+import tomllib
+
+with open("pyproject.toml", "rb") as fh:
+    spec = tomllib.load(fh)["project"]["requires-python"]
+
+# 只認得 ">=X.Y" 這一種寫法。看不懂就大聲失敗，而不是猜一個下界然後靜靜鎖錯——
+# 猜錯的後果是鎖檔的解析範圍與宣告的相容區間不一致，且沒有任何關卡會發現。
+m = re.fullmatch(r">=\s*(\d+\.\d+)", spec.strip())
+if not m:
+    sys.exit(
+        f"ERROR: 看不懂 requires-python = {spec!r}；本腳本只支援 '>=X.Y'。\n"
+        "       若確實要改寫法，請一併更新 scripts/lock_deps.sh 的下界解析。"
+    )
+print(m.group(1))
+PY
+)"
+
+echo "解析目標：Python >= ${PY_FLOOR}（取自 pyproject.toml 的 requires-python）"
+
+# --universal：跨 OS／架構／直譯器解析同一組，差異用 marker 標註 → 上面的保證 (a)。
+# --python-version：釘死解析範圍的下界 → 上面的保證 (b)，即「換台機器跑，輸出位元組相同」。
+#   兩者合起來才是「鎖檔對 [PY_FLOOR, ∞) 全程有效，且產生過程可重現」。
 # --generate-hashes：釘到 artifact 的 sha256，不只釘版本字串（見 docs/CI_GATES.md）。
 COMMON_ARGS=(
     --universal
+    --python-version "$PY_FLOOR"
     --generate-hashes
     --quiet
 )
@@ -62,22 +130,10 @@ uv pip compile pyproject.toml --extra dev \
 # 這份 .in 是**從 pyproject 的 [build-system].requires 生成**、不是手寫：手寫會與 pyproject
 #   各說各話，而生成 + CI「重跑後 diff 必須為空」剛好能擋住「改了 build-system.requires
 #   卻忘記重鎖」——那會讓 Docker build 在 --no-build-isolation 下缺套件而炸。
+#
+# 這份 .in 沒有 requires-python 可依循（純 requirements 格式），所以它比前兩份**更**依賴
+#   COMMON_ARGS 裡的 --python-version：少了它，uv 只能退回用當下挑到的直譯器當下界。
 echo "[3/3] 由 pyproject [build-system].requires 生成 requirements-build.in → requirements-build.lock"
-
-# 讀 TOML 需要 tomllib（Python >= 3.11）。CI 的 `python3` 是 3.11，但開發機的 `python3`
-# 可能還是系統的 3.10（本專案 requires-python >= 3.11，開發用的是 .venv / python3.12）。
-# 這裡挑第一個「真的 import 得到 tomllib」的直譯器，而不是假設 `python3` 夠新——
-# 假設錯的話這支腳本會在開發機上炸，然後大家改成手寫 .in，同步關卡就白做了。
-PYBIN=""
-for cand in python3 python3.13 python3.12 python3.11; do
-    command -v "$cand" >/dev/null 2>&1 || continue
-    if "$cand" -c 'import tomllib' >/dev/null 2>&1; then PYBIN="$cand"; break; fi
-done
-if [ -z "$PYBIN" ]; then
-    echo "ERROR: 找不到具備 tomllib 的 Python（需要 >= 3.11）。" >&2
-    echo "       本專案 requires-python = '>=3.11'，請安裝 python3.11+ 後重跑。" >&2
-    exit 1
-fi
 
 "$PYBIN" - <<'PY' > requirements-build.in
 import tomllib
