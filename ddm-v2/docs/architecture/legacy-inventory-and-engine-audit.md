@@ -431,7 +431,8 @@ grep -rn "TMU_TO_SEC\|TMU_SEC\|0\.036" src/ddm_v2/ src/frontend/src/
 | 20 | `worksheet_revision.py` 的裸 `assert ws is not None`（`f19e501` 既有）：`python -O` 下會退化成 `AttributeError`，兩者都是 500 | 未排程 |
 | 21 | `wi_set_service` 硬寫 `base_revision=None` → 每筆 WI 噴一行 legacy WARNING 假警報 | 未排程 |
 | 22 | coverage.py 對 async 檔案的行覆蓋不可信（`await` 之後系統性漏記）——若日後要拿覆蓋率當關卡需先處理 | 未排程 |
-| 23 | **依賴完全沒鎖**（§12）：CI 與 prod image 每次 build 都裝到最新版，同一份 commit 昨天綠今天紅。下界／排除區間已修正並實測（`fastapi>=0.133,!=0.137.0,!=0.137.1`／`starlette>=1.5.1`／`python-multipart>=0.0.18`），但**漂移本身要靠 lock 檔才解得掉** | 下界已修；lock **需決策** |
+| 23 | **依賴完全沒鎖**（§12）：CI 與 prod image 每次 build 都裝到最新版，同一份 commit 昨天綠今天紅 | **已處置（2026-08-12）**：`requirements.lock`／`requirements-dev.lock`（uv 產生、hash-pinned、universal），CI 與 Dockerfile 都從鎖檔安裝；`deps` job 擋鎖檔不同步 + pip-audit 阻斷式；nightly 跑「無鎖檔解析最新版」＋容器 smoke。本機 `.venv` 已同步到鎖檔 |
+| 23b | **開發機 Python 3.12 vs CI/Dockerfile 3.11**（§12 更正）：`requires-python >=3.11` 兩者都合法，但「本機與 CI 的變因」不只套件版本，還有直譯器 | 鎖檔 `--universal` 使兩者拿到同一組套件版本（實測無 `python_version` 分歧）；nightly 有 3.11+3.12 矩陣。**要不要收斂成單一版本＝待使用者決策** |
 
 ---
 
@@ -564,6 +565,15 @@ record 數）：
 
 - `pyproject.toml` 的 `requires-python`（`>=3.11`）與 CI（3.11）、Dockerfile
   （`FROM python:3.11-slim`）**是一致的**，沒有落差。
+  > **2026-08-12 更正**：這句只對「宣告 / CI / Dockerfile」三者成立，**漏了開發機**。
+  > 實測本機 `.venv` 是 **Python 3.12.13**（`CLAUDE.md` 的 setup 指令寫的就是
+  > `python3.12 -m venv .venv`），與 CI／Docker 的 3.11 不同——所以「本機與 CI 的變因」
+  > 除了套件版本之外**還有直譯器版本**，當初的判斷少看了一格。
+  > 鎖檔用 `--universal` 解析，實測目前**沒有任何 `python_version` 條件分歧**，
+  > 3.11 與 3.12 拿到同一組套件版本，所以這格暫時不會咬人；
+  > nightly 的 py3.11+py3.12 矩陣會在它開始咬人時先紅。
+  > **殘留決策**：要嘛把開發機收斂到 3.11，要嘛把 CI/Dockerfile 升到 3.12——
+  > 目前是「兩個都支援、且有測試證明」，不是「已經對齊」。
 - 版本區間**有**上界，但對 0.x 套件形同虛設：`fastapi>=0.115,<1.0`。
   **FastAPI 還在 0.x，依慣例 minor 版就可以有破壞性變更**——這次 0.136 → 0.141 正是如此。
   `<1.0` 允許的區間橫跨數十個可破壞的 minor 版，等於沒有保護。
@@ -581,9 +591,60 @@ record 數）：
 `pip install -e .`（CI 與 Dockerfile 都用它）在 fastapi 每次發版時**硬性解不出來**，
 那個失敗模式比「大聲記 ERROR、服務照跑」更糟，而且必須有人手動追版才能解除。
 
-**仍待決策（會影響 Docker build，不由本文件裁決）**：真正的 lock（例如 `pip-compile`
-產生的 `requirements.lock`，CI 與 Dockerfile 都用它安裝）。下界修好只是把「宣稱支援
-但會 crash」的區間消掉，**沒有**消除「同一份 commit 昨天綠今天紅」——那需要 lock。
+**已處置（2026-08-12）：鎖檔落地，漂移的源頭關掉。** 下界修好只是把「宣稱支援但會 crash」
+的區間消掉，**沒有**消除「同一份 commit 昨天綠今天紅」——那需要 lock。現在有了：
+
+| 產出 | 內容 |
+|---|---|
+| `ddm-v2/requirements.lock` | runtime 封閉集合（33 套件，含遞移依賴），逐一釘版本 + sha256 |
+| `ddm-v2/requirements-dev.lock` | runtime + dev 的超集合（46 套件），以 runtime lock 為 constraints 解析 |
+| `ddm-v2/scripts/lock_deps.sh` | 產生器（`uv pip compile --universal --generate-hashes`）；**冪等** |
+| `ddm-v2/scripts/audit_deps.sh` ＋ `.pip-audit-ignore` | pip-audit 阻斷式關卡 + 具名豁免（附 `REVIEW-BY` 過期檢查） |
+| `ddm-v2/scripts/docker_smoke.sh` | build image → 起全新 postgres → 打端點 + 驗 GM=28/CM=29 |
+| `.github/workflows/nightly.yml` | 不用鎖檔解析最新版（py3.11+3.12）＋ 鎖檔稽核 ＋ 容器 smoke |
+
+形狀上的四個決定：
+
+1. **鎖檔用 pip requirements 格式（不是 `uv.lock`）**——CI 與 Dockerfile 用**原生 pip**
+   就能裝，image 內不需要 uv。uv 只在「重新產生鎖檔」時需要，不進部署路徑。
+2. **`pyproject.toml` 的相容區間保留**。區間＝「這份程式碼支援什麼」，鎖檔＝「實際部署哪一組」，
+   兩者是不同的東西；鎖檔**不取代**區間宣告。本次未放寬任何下界。
+3. **hash-pinned（`--require-hashes`）**。決定性理由是公司 build 走 HTTP proxy
+   （`Dockerfile` 的 `HTTP_PROXY` ARG）——proxy 正是「換掉套件內容而不改版號」
+   最不容易被發現的位置；版本相同 ≠ 內容相同。本機開發成本實測極低（`lock_deps.sh` 1.4 秒）。
+4. **`--universal`**：跨 OS／跨 Python 解析一組。實測目前**沒有任何 `python_version`
+   條件分歧**，也就是 3.11 與 3.12 拿到的是同一組版本。
+
+**鎖到哪一組、以及本機同步**：鎖的是**新的那一組**（fastapi 0.141.1 / starlette 1.6.0），
+不是本機舊的 0.136.0——因為 0.141 的走訪不相容已在 `route_registry` 修掉，
+且 415 條 integration 是在 0.141 下驗過的；鎖回 0.136 等於刻意部署一組沒人在驗的版本。
+本機 `.venv` 已同步到鎖檔（fastapi 0.136.0 → 0.141.1 等 27 個套件），
+**同步後 296 unit / 415 integration+1 skipped / 167 core-logic 與乾淨 3.11 venv 數字完全相同**。
+「宣告與實際脫節」正是本節要根治的病，不在修的同時複製它。
+
+**新增的 CI 關卡（`deps` job，阻斷式）**：
+
+- **鎖檔同步**：重跑 `lock_deps.sh` 後 `git diff` 必須為空。擋的是鎖檔唯一會腐爛的方式——
+  有人改了 `pyproject` 卻沒重跑。因為 Dockerfile 用 `pip install --no-deps -e .`，
+  漏掉的依賴會讓 image **build 成功但 import 時才炸**。
+  （`lock_deps.sh` 不帶 `--upgrade`，`uv pip compile` 以既有 pin 為偏好 → 冪等，
+  所以這關**不會因為上游發新版而無故變紅**；那件事交給 nightly。）
+- **pip-audit 阻斷式（非 warn）**：warn 的守門等於沒有守門，「零告警」會同時代表
+  「沒事」與「根本沒在跑」（vault `Built-Gate-Never-Executed`）。要放行必須在
+  `.pip-audit-ignore` 具名 + 寫理由 + 附 `REVIEW-BY`，且出現在 PR diff 裡。
+  `requirements.lock`（會被部署出去的那組）**不接受豁免**。
+
+**實測稽核結果**：`requirements.lock` **0 findings**。`requirements-dev.lock` 1 筆——
+`PYSEC-2026-1845`（pytest ≤9.0.2，`/tmp/pytest-of-{user}` 可被**同主機的其他本機使用者**
+DoS/提權）。已具名豁免：不在 production image、威脅前提在一次性 CI runner 與單人開發機都
+不成立、且修正版 pytest 9.0.3 **超出** `pytest>=8.3,<9.0` 的宣告區間（跨大版號升級會動到
+711 條測試與 pytest-asyncio 相容性，屬另一件要獨立驗證的事，不在鎖版這次順手做）。
+
+**順帶補上的容器層守門**：host 上的 pytest **完全不經過 image**——Dockerfile 的 COPY 路徑、
+依賴安裝方式、entrypoint 的 alembic/seed 流程壞掉時，711 條測試照樣全綠
+（vault 先例 `Docker-Compose-Stale-Baked-Engine-Image`：pytest 91 passed 但容器內是舊引擎）。
+`docker_smoke.sh` 補上這一層，放在 nightly：走鎖檔之後 image 內容只在
+Dockerfile/`*.lock`/`src` 變動時才變，但 **base image 會被上游重建**，那個漂移只有時間觸發得到。
 
 ### 順帶修掉的既有漂移
 

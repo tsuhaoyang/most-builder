@@ -1,0 +1,149 @@
+name: Nightly（上游漂移偵測）
+
+# 這個 workflow 存在的唯一理由：**讓上游的破壞在 nightly 紅，而不是在某個無辜的 feature PR 上紅。**
+#
+# 主 CI（ci.yml）自從走鎖檔之後是完全決定性的——同一份 commit 今天綠、明年也綠。
+# 好處是 PR 不再被上游發版波及；代價是**我們也不再知道上游有沒有把我們弄壞**，
+# 直到某天有人重跑 lock 才一次爆出來。這支 job 把那個代價買回來：
+# 不用鎖檔、解析最新版、跑完整測試，壞了就在這裡壞。
+#
+# ⚠️ 已知限制（必須有人確認它真的跑過）：
+#   GitHub 的 `schedule` **只在預設分支（202603-rc1）上觸發**。這個檔在 feature branch 上
+#   合併進預設分支之前，排程一次都不會跑。vault 先例 Built-Gate-Never-Executed：
+#   「三層機密守門設計得很好，然後 13 天內保護了零次」——守門的驗收問題不是「寫好了嗎」，
+#   而是「它執行過幾次？」。因此本檔同時開 `workflow_dispatch`，
+#   合併後請手動觸發一次並確認綠燈，再把它當作在保護你。
+on:
+  schedule:
+    # 18:00 UTC = 台灣時間隔日 02:00
+    - cron: '0 18 * * *'
+  workflow_dispatch:
+
+# 最小權限，而且**這支比 ci.yml 更需要**：下面 latest-resolution job 的
+# `pip install -e ".[dev]"` 在設計上就是「抓今天上游最新的東西並執行它的
+# setup.py / PEP 517 build backend」——那正是供應鏈投毒最常見的落點，也是這支
+# workflow 存在的理由（它就是要去踩上游的變化）。若 GITHUB_TOKEN 落在 repo/org
+# 預設值（多數是 read/write），被投毒的程式碼就會在一個可寫 repo 的環境裡執行，
+# 能改 repo 內容**包含鎖檔本身**——等於用「偵測漂移的機制」把防漂移的機制拆掉。
+# 本檔全檔無任何 `secrets.*` 參照，且只由 schedule / workflow_dispatch 觸發
+# （非 pull_request_target），所以唯讀就夠用。
+permissions:
+  contents: read
+
+jobs:
+  latest-resolution:
+    name: 不用鎖檔、解析最新版（py${{ matrix.python-version }}）
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        # 3.11 = CI 與 Dockerfile 的實際部署版本。
+        # 3.12 = 開發機的實際版本（pyproject 宣告 requires-python >= 3.11，兩者都在支援範圍）。
+        # 兩條都跑，才對得起「>=3.11」這個宣告——只跑一條就是宣告又一次說謊。
+        python-version: ['3.11', '3.12']
+    defaults:
+      run:
+        working-directory: ddm-v2
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: ci
+          POSTGRES_PASSWORD: ci
+          POSTGRES_DB: ddm_ci
+        ports: ['5432:5432']
+        options: >-
+          --health-cmd "pg_isready -U ci -d ddm_ci"
+          --health-interval 5s --health-timeout 5s --health-retries 20
+    env:
+      DATABASE_URL: postgresql+asyncpg://ci:ci@localhost:5432/ddm_ci
+      AUTH_DEV_USER: IEC141289
+      PYTHONPATH: src
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+
+      # 刻意**不用**鎖檔：這裡要的就是「今天上游最新版是什麼」。
+      - name: 安裝依賴（解析最新版，無鎖檔）
+        run: pip install -e ".[dev]"
+
+      # 先把實際解出來的版本印出來並與鎖檔對照。job 紅的時候，
+      # 第一個要問的問題是「哪個套件動了」——不要讓下一個人再追一輪。
+      - name: 解析結果 vs 鎖檔（差異即上游新版）
+        run: |
+          pip freeze --exclude-editable | tr 'A-Z_' 'a-z-' | sort > /tmp/latest.txt
+          grep -oE '^[a-zA-Z0-9._-]+==[^ ]+' requirements-dev.lock \
+            | tr 'A-Z_' 'a-z-' | sort > /tmp/locked.txt
+          {
+            echo "### 最新解析 vs requirements-dev.lock"
+            echo '```diff'
+            diff /tmp/locked.txt /tmp/latest.txt || true
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
+          echo "--- 差異（< 鎖檔 / > 最新）---"
+          diff /tmp/locked.txt /tmp/latest.txt || true
+
+      - name: 乾淨 import
+        run: python -c "from ddm_v2.main import create_app; create_app(); print('app OK')"
+
+      - name: Migrate + seed
+        run: |
+          alembic upgrade head
+          python scripts/dev_seed_v2.py
+          python scripts/dev_seed_templates.py
+
+      - name: 核心邏輯黃金/反例
+        run: python scripts/core_logic/run_all.py
+
+      # 與 ci.yml 相同，unit / integration 必須分兩段跑：
+      # 兩個目錄有同名檔案（test_search.py）且都不是 package，合成一行會 collection error → 整批不執行。
+      - name: pytest（unit）
+        run: pytest tests/unit -q
+
+      - name: pytest（integration）
+        run: pytest tests/integration -q
+
+      - name: ruff
+        run: ruff check src/
+
+  audit-latest:
+    name: 安全稽核（最新版解析，早期預警）
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: ddm-v2
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - run: pip install pip-audit==2.10.1
+
+      # 對「鎖檔的那一組」再稽核一次。ci.yml 已經每個 PR 都稽核，這裡重跑的價值是**時間**：
+      # 新的 CVE 公告是隨時間出現的，不是隨 commit 出現的。讓它在半夜先紅，
+      # 好過明天早上砸在一個完全無關的 feature PR 上。
+      - name: 稽核鎖檔（與 PR 上同一支腳本、同一份豁免清單）
+        run: ./scripts/audit_deps.sh
+
+  docker-image:
+    name: 容器映像（build + 起容器 + 端點/黃金值 smoke）
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: ddm-v2
+    steps:
+      - uses: actions/checkout@v4
+
+      # host 上的 pytest 完全不經過 image：Dockerfile 的 COPY 路徑、鎖檔安裝方式、
+      # entrypoint 的 alembic/seed 流程壞掉時，711 條測試照樣全綠。
+      # vault 先例 Docker-Compose-Stale-Baked-Engine-Image 就是這樣被漏掉的。
+      #
+      # 放 nightly 而不是每個 PR 的理由：走鎖檔之後 image 內容只在
+      # Dockerfile / *.lock / src 變動時才會變，PR 級的重複建置價值低；
+      # 但**base image（python:3.11-slim、node:20-slim）是會被上游重建的**，
+      # 那個漂移只有時間觸發得到，正好適合 nightly。
+      # （若要更嚴，可改成對 Dockerfile / requirements*.lock 的路徑觸發加進 ci.yml。）
+      - name: docker build + 容器 smoke
+        run: ./scripts/docker_smoke.sh

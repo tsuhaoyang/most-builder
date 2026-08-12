@@ -1,6 +1,6 @@
 # DDM v2 文件索引
 
-> **版本：** 2026-08-04
+> **版本：** 2026-08-12
 > **範圍：** 僅列目前 ddm-v2 的核心邏輯、系統設計、功能決策、有效 roadmap 與必要參考資產。
 
 ## 權威順序
@@ -56,9 +56,10 @@
 完整狀態與主題索引見 [decisions/README.md](decisions/README.md)。
 
 - **Accepted：** ADR-011～015、ADR-018～027。
-- **Proposed：** ADR-016、ADR-017、ADR-028。
+- **Proposed：** ADR-016、ADR-017、ADR-028、ADR-029。
 - ADR-026/027 已於 2026-08-10 accepted；實作仍依 roadmap 分批（L4 jobs 先於 worksheet revision／outbox）。
 - ADR-028（most_engine 邊界驗證與單一權威）proposed，待 User 核可；前置條件為正式環境 `slot_inputs` 掃描。
+- ADR-029（Python 依賴鎖版與阻斷式 pip-audit）proposed，待 User 核可；**實作已落地並複驗**，殘留決策為 3.11/3.12 收斂、nightly 合併後的首次觸發、docker smoke 是否升為 PR 關卡。
 
 ## Roadmap
 
@@ -73,8 +74,8 @@ Roadmap 只定義時程與退出條件，不定義資料真相。
 
 | 文件 | 用途 | 狀態 |
 |------|------|------|
-| [CI Gates](CI_GATES.md) | 核心、DB、API、前端、隔離與回放的合併門檻 | ✅ |
-| [Legacy 分類清冊與引擎稽核](architecture/legacy-inventory-and-engine-audit.md) | **提出「清掉 legacy」之前必讀**：六類 legacy 的保留／移除判定依據、most_engine 純度稽核、靜默 fallback 實測 | ✅ |
+| [CI Gates](CI_GATES.md) | 核心、DB、API、前端、隔離與回放的合併門檻；含〈依賴鎖版與安全稽核〉 | ✅ ADR-029 |
+| [Legacy 分類清冊與引擎稽核](architecture/legacy-inventory-and-engine-audit.md) | **提出「清掉 legacy」之前必讀**：六類 legacy 的保留／移除判定依據、most_engine 純度稽核、靜默 fallback 實測；§12 為 ADR-029 的事實基礎 | ✅ |
 | [Docker 資料持久化](reference/docker-data-persistence.zh-TW.md) | PostgreSQL volume 與安全操作 | 📌 |
 | [v3 使用者資料來源](reference/v3-user-data-source.md) | v3 SQLite WI/WI 大綱來源、保護規則、checksum 與搬遷驗證 | ✅ |
 

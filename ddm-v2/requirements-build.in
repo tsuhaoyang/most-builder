@@ -1,0 +1,4 @@
+# 由 scripts/lock_deps.sh 從 pyproject.toml 的 [build-system].requires 生成——請勿手改。
+# 改 build 依賴請改 pyproject.toml，然後重跑 ./scripts/lock_deps.sh。
+setuptools>=68
+wheel

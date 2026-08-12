@@ -30,6 +30,7 @@
 | [ADR-026-wi-ai-parser-pipeline-boundary.md](ADR-026-wi-ai-parser-pipeline-boundary.md) | WI AI Parser 獨立 bounded context、DDM deterministic compiler 與 MOST 權威邊界 | 🟢 accepted |
 | [ADR-027-domain-evolution-versioning-and-ai-readiness.md](ADR-027-domain-evolution-versioning-and-ai-readiness.md) | Worksheet revision、Modeling/Level policy、outbox、row-level batch 與 AI readiness | 🟢 accepted |
 | [ADR-028-most-engine-boundary-validation-and-single-authority.md](ADR-028-most-engine-boundary-validation-and-single-authority.md) | most_engine 邊界驗證加嚴（三層權威、無 strict 旗標）與刪除重複計算實作 | 🟡 proposed |
+| [ADR-029-python-dependency-locking-and-audit-gate.md](ADR-029-python-dependency-locking-and-audit-gate.md) | Python 依賴鎖版（hash-pinned 雙鎖檔、pip 格式）＋阻斷式 pip-audit＋nightly 上游漂移偵測 | 🟡 proposed |
 
 ## 狀態說明
 
@@ -51,6 +52,7 @@
 | [`docs/architecture/domain-evolution-and-ai-readiness-spec.md`](../architecture/domain-evolution-and-ai-readiness-spec.md) | 核心持續演進下的 revision、policy version、method context、AI/batch 資料地基 | ADR-011、ADR-027 |
 | [`docs/core-logic/minimost-sequence-model-core-logic-spec.md`](../core-logic/minimost-sequence-model-core-logic-spec.md) | MiniMOST Sequence Model 核心邏輯 | ADR-014、ADR-020 |
 | [`docs/core-logic/level-system-core-logic-spec.md`](../core-logic/level-system-core-logic-spec.md) | Level System 核心邏輯（含對 LB 輸出合約） | — |
+| [`docs/CI_GATES.md`](../CI_GATES.md)〈依賴鎖版與安全稽核〉 | 鎖檔形狀、更新時機、pip-audit 豁免政策與 nightly | ADR-029 |
 
 ---
 

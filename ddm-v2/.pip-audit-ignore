@@ -1,0 +1,36 @@
+# 已知漏洞的**明示豁免清單**（被 scripts/audit_deps.sh 讀取，CI 與本機跑的是同一份）。
+#
+# 為什麼要有這個檔，而不是把 pip-audit 設成 warn：
+#   設成 warn 的守門等於沒有守門——「零告警」會同時代表「沒事」和「根本沒在跑」，
+#   兩者無法分辨（vault: Built-Gate-Never-Executed，三層機密守門 13 天保護了零次）。
+#   所以 pip-audit 是 **blocking**，要放行就必須在這裡留下具名、有理由、有複查日期的紀錄，
+#   而且會出現在 PR diff 裡被看到。
+#
+# 格式：每行一個 vulnerability ID，`#` 起始為註解。
+# 硬規則：
+#   1. 每一筆都必須寫「為什麼在本 app 不可利用（或風險可接受）」與「REVIEW-BY 日期」。
+#   2. **只允許豁免 requirements-dev.lock（開發/CI 工具鏈）的項目。**
+#      requirements.lock（會進 production image 的那一組）在 CI 是**無豁免**稽核，
+#      要放行只能升版或換套件——不能在這裡消音。
+#   3. REVIEW-BY 過期 → scripts/audit_deps.sh 會紅，強迫重新判斷而不是無限期沉默。
+
+# ---------------------------------------------------------------------------
+# PYSEC-2026-1845 / CVE-2025-71176 / GHSA-6w46-j5rx-g56g — pytest <= 9.0.2
+#
+# 內容：UNIX 上 pytest 用可預測的 `/tmp/pytest-of-{user}` 目錄名，
+#       **同一台機器上的其他本機使用者**可藉此 DoS 或可能提權。
+#
+# 為什麼豁免（三個獨立理由）：
+#   1. **不在 production image**：pytest 只在 requirements-dev.lock，
+#      requirements.lock 目前 pip-audit 全綠（0 findings）。攻擊面不含部署產物。
+#   2. **威脅前提在我們的執行環境不成立**：需要「攻擊者是同一台主機上的另一個本機使用者」。
+#      CI 是 GitHub Actions 一次性單租戶 runner（跑完即銷毀，無其他本機使用者）；
+#      開發是 WSL2 單一使用者。沒有多租戶共用 UNIX 主機的情境。
+#   3. **修正版超出宣告區間**：fix 是 pytest 9.0.3，而 pyproject 是 `pytest>=8.3,<9.0`。
+#      要吃到修正得跨大版號升級（pytest 9 有破壞性變更，且 pytest-asyncio 0.26.0
+#      對 pytest 9 的支援未經本專案驗證），影響 711 條測試。
+#      **不在「鎖版機制」這次改動裡順手做**——那是另一件要獨立驗證的事。
+#
+# 待辦（不是本次範圍）：評估 pytest 9 + pytest-asyncio 升級，屆時移除本豁免。
+# REVIEW-BY: 2026-11-30
+PYSEC-2026-1845

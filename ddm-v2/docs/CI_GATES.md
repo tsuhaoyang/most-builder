@@ -16,6 +16,12 @@
    - **帶型整組驗證**：A（reach/twist/foot）與 M（ladder/foot/rotation/hand）是「帶」不是「選項」——上界遞增不重疊、末帶開放，且**每條寫入帶表的路徑**（`replace_bands`／`PUT /full`／`import`）都要過 `validate_full_bands`。漏一條就會出現「靜默夾取到末帶、不報錯但算錯值」。
    - **子表數＝12**（含 `m_foot`）。新增子表時 `load_full`／`_insert_children`／export／import 四處必須同步；守護＝以 `inspect(model).mapper.column_attrs` 反射逐欄比對的 round-trip 測試（漏欄會紅）。
 5. 前端改動 → typecheck + build + Playwright smoke 綠。
+6. **依賴一律從鎖檔安裝**（`requirements.lock` / `requirements-dev.lock` / `requirements-build.lock`）。
+   改了 `pyproject.toml` 的依賴宣告（含 `[build-system].requires`）就**必須**重跑
+   `./scripts/lock_deps.sh` 並把三個 `.lock` 與 `requirements-build.in` 一起 commit，否則 `deps` job 紅。
+   安裝時**一律** `--require-hashes`，且**不得** `pip install --upgrade pip`（那是唯一不受
+   hash 保護的抓取）、`-e .` **必須**帶 `--no-build-isolation`（否則 build backend 走隔離環境
+   無 hash 下載並執行）。詳見下方「依賴鎖版與安全稽核」。
 
 ## Feature → 驗證測試點 → script
 
@@ -56,9 +62,133 @@
 | **前端字典管理（ADR-023 D4）** | L1 版本清單（狀態徽章＋啟用中＋血緣中文）→ L2 七參數分頁（A 三分量／M 四分量次級 tab）；**對認證版的任何寫入動作攔截跳 clone-on-write**；帶界違規顯示後端人話錯誤而非原始 JSON；**無硬編碼 rule-set code**（一律經 `useActiveRuleSet`） | `src/frontend/e2e/dictionary.spec.ts`（Type A mocked-API） |
 | 依賴完整性 | `create_app()` 乾淨 import；端點測試抓 lazy import | CI「乾淨 import」step + 上列各端點測試 |
 
+## 依賴鎖版與安全稽核
+
+### 為什麼有鎖檔
+
+在鎖檔之前，CI 與 Docker build 都是 `pip install -e .`，**每次重裝都重新解析到當下的最新版**，
+而本機 `.venv` 是幾個月前裝的。於是**同一份 commit 在 CI 與本機跑的是不同的依賴**，
+而且本機永遠複現不出 CI 的問題。實際發生過：fastapi 本機 0.136 / CI 0.141.1
+（`include_router()` 資料結構改了 → 走訪路由表的守衛失效，兩條 unit CI 紅本機綠）；
+starlette 本機裝到帶 CVE 的 1.0.0。完整經過見
+`docs/architecture/legacy-inventory-and-engine-audit.md` §12。
+
+### 形狀
+
+| 檔案 | 內容 | 誰用 |
+|---|---|---|
+| `pyproject.toml` `[dependencies]` | **相容區間**＝「這份程式碼支援哪些版本」（每個下界都有實測依據，見該檔註解） | 人；`lock_deps.sh` 的輸入 |
+| `requirements.lock` | **runtime 封閉集合**，逐一釘死版本 + sha256（33 個套件，含遞移依賴） | Dockerfile（production image） |
+| `requirements-dev.lock` | runtime + dev 工具鏈的超集合（46 個），以 `requirements.lock` 為 constraints 解析 | CI 各 job、本機開發 |
+| `requirements-build.in` | 由 `pyproject` `[build-system].requires` **生成**（勿手改） | `lock_deps.sh` 的輸入 |
+| `requirements-build.lock` | **PEP 517 build backend 集合**（`setuptools` / `wheel` / `packaging`），釘死 + sha256 | Dockerfile、CI 各 job |
+| `.pip-audit-ignore` | 具名、有理由、有 `REVIEW-BY` 日期的漏洞豁免清單 | `audit_deps.sh` |
+
+**區間與鎖檔是兩件不同的東西，都要留著**：區間是「支援什麼」，鎖檔是「實際部署哪一組」。
+鎖檔不取代區間宣告。
+
+要點：
+
+- **產生器＝`uv pip compile`**（`./scripts/lock_deps.sh`），輸出是標準 pip requirements 格式，
+  所以 **CI 與 Dockerfile 用原生 pip 就能安裝，image 內不需要 uv**。uv 只在「重新產生鎖檔」時需要。
+- **`--universal`**：跨 OS／跨 Python 版本解析同一組，平台差異用 marker 標註
+  （例：`colorama ; sys_platform == 'win32'`）。實測目前解析結果**沒有任何
+  `python_version` 條件分歧**，也就是 3.11（CI／Docker）與 3.12（開發機）拿到的是**同一組版本**。
+- **`--generate-hashes` + 安裝時 `--require-hashes`**：釘的是 **artifact 的位元組**，不只版本字串。
+  採用的決定性理由：公司 build 走 HTTP proxy（`Dockerfile` 的 `HTTP_PROXY` ARG），
+  而 proxy 正是「換掉套件內容而不改版號」最不容易被發現的位置。版本相同 ≠ 內容相同。
+  代價評估後認為很低：`--require-hashes` 只作用在該次安裝指令內，不影響日常 `pip install`；
+  加依賴的成本是「改 pyproject + 跑 `lock_deps.sh`」（實測 1.4 秒）。
+- **`pip install --no-deps --no-build-isolation -e .`**：依賴已由鎖檔裝好，這行只註冊本專案套件。
+  - 少了 `--no-deps`，pip 會拿相容區間再解析一次，**可能把鎖檔釘住的版本升掉**（鎖了等於沒鎖）。
+  - 少了 `--no-build-isolation`，**hash 驗證會被繞過一個缺口**：`--no-deps` 關掉的只是
+    *執行期*依賴解析，關不掉 PEP 517 build isolation。pip 仍會另開隔離環境向索引抓
+    `[build-system].requires` 的 `setuptools>=68`／`wheel`（**不驗 hash**）然後**執行它們**，
+    而 build backend 正是產生「最終安裝進 image 的 `ddm_v2` 套件」的那段程式碼。
+    因此必須**先**裝 `requirements-build.lock` 再加這個旗標。
+    實測（`--network none`）：舊寫法會去打 `/simple/setuptools/` 並失敗；新寫法零連線即完成。
+- **不得 `pip install --upgrade pip`**：那會抓一個**沒有版本、沒有 hash** 的 pip，
+  再用它去驗證全部 sha256——等於信任根本身不受該控制措施保護。base image 內建的 pip
+  自 pip 8 起就支援 `--require-hashes`。真要升 pip 必須另立一份帶 hash 的鎖檔。
+
+### 誰在什麼時候要更新鎖檔
+
+| 情境 | 動作 |
+|---|---|
+| 改了 `pyproject.toml` 的 `[dependencies]`、`[dev]` 或 `[build-system].requires` | **必須** `./scripts/lock_deps.sh`，三個 `.lock` + `requirements-build.in` 一起 commit |
+| 只改 `src/` / `tests/` / 文件 | **不用動**。鎖檔不隨程式碼變動 |
+| 要刻意升級某套件 | `./scripts/lock_deps.sh --upgrade-package fastapi`（顯式，不會順手升到別的） |
+| 全面升級 | `./scripts/lock_deps.sh --upgrade`（要跑完整測試 + docker smoke 才算數） |
+| `pip-audit` 報漏洞 | 優先升到修正版；升不了才在 `.pip-audit-ignore` 具名豁免 |
+| nightly 紅了 | 上游有破壞性變更。先判斷是「我們要跟進」還是「上游的 bug」，再決定升不升 |
+
+`lock_deps.sh` **不帶 `--upgrade`**：`uv pip compile` 會把既有 `.lock` 的 pin 當偏好值，
+所以它是**冪等**的——沒改依賴時重跑產出位元組相同。CI 的同步關卡正是靠這個性質
+（「重跑一次、diff 必須為空」），也因此**不會因為上游發了新版就無故變紅**。
+
+### CI 怎麼用
+
+- **`deps` job（每個 PR/push，阻斷式）**
+  1. **鎖檔同步關卡**：重跑 `lock_deps.sh`，`git diff` 必須為空。
+     擋的是唯一會讓鎖檔腐爛的情況——有人改了 `pyproject` 卻沒重跑。
+     那會讓 image 少裝一個套件（因為 `--no-deps`），**build 成功但 import 時才炸**。
+  2. **`./scripts/audit_deps.sh`（pip-audit，阻斷式非警告）**。
+
+- **`backend` / `e2e` job**：`pip install --require-hashes -r requirements-build.lock`
+  ＋ `pip install --require-hashes --no-build-isolation -r requirements-dev.lock`
+  ＋ `pip install --no-deps --no-build-isolation -e .`（與 Dockerfile 同一套作法）。
+  ⚠️ 原本「只裝宣告的依賴 → 漏宣告 runtime 依賴（如 openpyxl）會爆」這個性質**完整保留**：
+  鎖檔是從 pyproject 宣告解析出來的封閉集合，沒宣告的套件不會出現在鎖檔裡。
+
+- **`nightly.yml`（排程 + 手動）**：見下方「Nightly」。
+
+### 為什麼 pip-audit 是阻斷式而不是警告
+
+設成 warn 的守門等於沒有守門——「零告警」會同時代表「沒事」和「根本沒在跑」，兩者無法分辨
+（vault 先例 `Built-Gate-Never-Executed`：三層機密守門設計得很好，13 天內保護了零次，
+因為 hooks 從沒被安裝）。所以是**阻斷式 + 具名豁免清單**：要放行就得在 `.pip-audit-ignore`
+留下理由與 `REVIEW-BY` 日期，並且會出現在 PR diff 裡被看到。
+
+兩份鎖檔的豁免政策**刻意不同**：
+
+- `requirements.lock`（會被部署出去）→ **無豁免**。要放行只能升版或換套件。
+- `requirements-build.lock`（build backend）→ **無豁免**。它在 build 時被執行，且為了
+  `--no-build-isolation` 也實際留在 production image 裡。
+- `requirements-dev.lock`（開發/CI 工具鏈）→ 允許具名豁免。
+
+「上游今天發 CVE、明天 CI 就紅」這個代價是**接受的**，因為紅的理由是真的
+（我們確實裝著一個有已知漏洞的套件），而修法很便宜（重跑 lock 升版）。
+nightly 的 `audit-latest` 會讓它通常在半夜先紅，而不是砸在隔天某個無關的 feature PR 上。
+`audit_deps.sh` 另有**豁免過期檢查**：`REVIEW-BY` 過期就紅，不讓任何豁免無限期沉默。
+
+**目前狀態（2026-08-12 實測）**：`requirements.lock` **0 findings**；
+`requirements-dev.lock` 1 筆具名豁免 `PYSEC-2026-1845`（pytest ≤9.0.2 的 `/tmp/pytest-of-{user}`
+本機提權/DoS）——不在 production image、威脅前提（同主機另一個本機使用者）在
+一次性 CI runner 與單人開發機都不成立、且修正版 pytest 9.0.3 超出 `pytest>=8.3,<9.0` 宣告區間。
+理由全文與複查日期見 `.pip-audit-ignore`。
+
+### Nightly（`.github/workflows/nightly.yml`）
+
+走鎖檔之後主 CI 是完全決定性的——好處是 PR 不再被上游發版波及，
+代價是**我們也不再知道上游有沒有把我們弄壞**。nightly 把那個代價買回來：
+
+| job | 做什麼 | 抓什麼 |
+|---|---|---|
+| `latest-resolution`（py3.11 + py3.12 矩陣） | **不用鎖檔**、`pip install -e ".[dev]"` 解析最新版，跑 core_logic + unit + integration + ruff | 上游破壞性變更。**在 nightly 紅，不在無辜的 feature PR 上紅** |
+| `audit-latest` | 對鎖檔重跑 `audit_deps.sh` | 隨時間出現的新 CVE 公告（早期預警） |
+| `docker-image` | `./scripts/docker_smoke.sh`＝build image → 起全新 postgres → 打端點 + 驗 GM=28/CM=29 | Dockerfile／entrypoint 腐爛；**base image（`python:3.11-slim`／`node:20-slim`）被上游重建**的漂移 |
+
+矩陣跑 3.11 **和** 3.12 的理由：3.11 是 CI 與 Dockerfile 的實際部署版本，
+3.12 是開發機的實際版本，`requires-python` 宣告的是 `>=3.11`——只跑一條就是宣告又一次說謊。
+
+> ⚠️ **`schedule` 只在預設分支（`202603-rc1`）上觸發。** 這個檔合併進預設分支之前，
+> 排程一次都不會跑。合併後請**手動 `workflow_dispatch` 觸發一次並確認綠燈**，
+> 再把它當作在保護你——守門的驗收問題不是「寫好了嗎」而是「它執行過幾次」。
+
 ## CI jobs（`.github/workflows/ci.yml`）
 
-- **backend**：postgres service → 裝宣告依賴 → 乾淨 import → migrate+seed → core_logic → `pytest tests/unit` → `pytest tests/integration`
+- **deps**：鎖檔同步關卡（重跑 `lock_deps.sh` → diff 必須為空）→ `audit_deps.sh`（pip-audit，阻斷式）
+- **backend**：postgres service → **裝鎖檔依賴（`--require-hashes`）** → 乾淨 import → migrate+seed → core_logic → `pytest tests/unit` → `pytest tests/integration`
   - ⚠️ **兩段式不可合併回 `pytest -q`**：`tests/unit` 與 `tests/integration` 有同名檔案（`test_search.py`）
     且兩個目錄都不是 package，單一 `pytest -q` 會 import file mismatch → collection error →
     **整批中斷、一條測試都不算數**（守衛型測試因此可能長期沒真的跑過）。
@@ -70,13 +200,24 @@
 
 ```bash
 cd ddm-v2
-pip install -e ".[dev]"
+# ⚠️ 用鎖檔安裝，不要用 `pip install -e ".[dev]"`——後者會解析到當下最新版，
+#    等於刻意重現「本機與 CI 裝到不同版」這個病。
+pip install --require-hashes -r requirements-build.lock
+pip install --require-hashes --no-build-isolation -r requirements-dev.lock
+pip install --no-deps --no-build-isolation -e .
 DATABASE_URL=... PYTHONPATH=src alembic upgrade head
 DATABASE_URL=... PYTHONPATH=src python scripts/dev_seed_v2.py
 DATABASE_URL=... PYTHONPATH=src python scripts/core_logic/run_all.py
 PYTHONPATH=src pytest tests/unit -q                       # 免 DB
 DATABASE_URL=... PYTHONPATH=src pytest tests/integration -q
 ( cd src/frontend && npm run typecheck && npm run build )
+
+# deps job（改了依賴才需要；audit 需先 pip install pip-audit==2.10.1）
+./scripts/lock_deps.sh && git diff --exit-code -- requirements.lock requirements-dev.lock requirements-build.in requirements-build.lock
+./scripts/audit_deps.sh
+
+# 容器交付路徑（host 的 pytest 完全不經過 image，兩者可以分叉數天）
+./scripts/docker_smoke.sh
 ```
 
 ⚠️ **本機 DB ≠ CI DB**：backend job 只跑 `dev_seed_v2.py` ＋ `dev_seed_templates.py`，

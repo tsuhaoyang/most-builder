@@ -58,20 +58,30 @@ dependencies = [
     "uvicorn[standard]>=0.30,<1.0",
     "pydantic>=2.9,<3.0",
     "PyJWT>=2.8,<3.0",
-    # 下界 0.0.18 = CVE-2024-53981（GHSA-59g5-xgcq-4qw3）的修正版；與上面 starlette
-    # CVE-2026-54283 是**同一條 pre-auth 路徑上的同型缺陷**，只是這個套件的下界還停在
-    # 出事版本。`<0.0.18` 在「最後一個 boundary 之後」的狀態機是逐 byte 走的，每個非
-    # CR/LF 的 byte 都送一次 log event（`logger.warning("Consuming a byte ...")`）。
-    # 攻擊路徑與 starlette 那條完全相同：未認證者對 `POST /api/v2/imports/upload` 送一個
-    # 收尾 boundary 後掛幾十 MB 垃圾的 multipart body；FastAPI 一樣是先 `await request.form()`
-    # 才 `solve_dependencies()`（`require_role("analyst")` 在後者），所以 CPU 燒完、
-    # event loop 卡死都發生在認證之前。
-    # 實測（200 KB 垃圾 epilogue，計 root logger 收到的 record 數）：
-    #   0.0.9（＝原本的下界）200,000 events / 0.93 s；0.0.17 200,000 events / 0.94 s；
-    #   0.0.18 1 event / <0.001 s；0.0.26 0 events。→ 修正確實落在 0.0.18。
-    # 對現況零行為變更（實裝 0.0.26），純粹是讓宣告與已知事實一致；fastapi 自己的
-    # `standard` extra 也已經是 `python-multipart>=0.0.18`（0.133~0.141.1 逐版確認）。
-    "python-multipart>=0.0.18,<1.0",
+    # 下界 0.0.31。這個套件與上面 starlette CVE-2026-54283 共用**同一條 pre-auth 路徑**：
+    # 未認證者打 `POST /api/v2/imports/upload`，FastAPI `routing.py` 是先 `await request.form()`
+    # 才 `solve_dependencies()`（`require_role("analyst")` 在後者），所以 parser 燒掉的 CPU
+    # 全部發生在認證之前；且 starlette 依**實際** Content-Type 分派，攻擊者送 urlencoded
+    # 就走到 `QuerystringParser`（而非 multipart 分支）。
+    #
+    # 為什麼是 0.0.31 而不是更低——pip-audit 2.10.1 對 0.0.18 實跑，共 6 筆（不是 2 筆）：
+    #   PYSEC-2026-1852 / CVE-2026-24486 → fix 0.0.22  路徑穿越，需 UPLOAD_DIR +
+    #       UPLOAD_KEEP_FILENAME=True（本 app 未用該 API）→ 不可利用
+    #   PYSEC-2026-3038 / CVE-2026-40347 → fix 0.0.26  大 preamble/epilogue DoS → **可利用**
+    #   PYSEC-2026-3039 / CVE-2026-42561 → fix 0.0.27  part header 數量/大小無上限 DoS → **可利用**
+    #   PYSEC-2026-3037 / CVE-2026-53538 → fix 0.0.30  `;` 被當成 urlencoded 分隔符 →
+    #       與 WHATWG/urllib.parse 不一致，可對上游 WAF 走私欄位（同 CVE-2021-23336 型）。
+    #       advisory 明講經 Starlette/FastAPI `request.form()` 可達 → **可利用**
+    #   PYSEC-2026-3036 / CVE-2026-53539 → fix 0.0.30  同一段 `find(b"&")` 回退邏輯造成
+    #       O(B²)：1 MiB 的 `a;a;a;…` ≈ 10^11 次位元組比較、單一請求數秒 CPU，且 parser 是
+    #       同步的（整個 worker 卡住）。**本組裡對本 app 最嚴重的一筆** → **可利用**
+    #   PYSEC-2026-3040 / CVE-2026-53540 → fix 0.0.31  `parse_form()` 未擋負的 Content-Length；
+    #       advisory 明講 Starlette/FastAPI 不呼叫 `parse_form()` → 不可利用
+    # 取全部 6 筆的最大修正版 = 0.0.31。停在 0.0.27（只看前兩筆 CVE）會讓宣告仍允許
+    # 0.0.27～0.0.29 這段帶著上面兩條 QuerystringParser 缺陷的區間——那正是本次要根治的
+    # 「宣告落後於已知事實」。
+    # 對現況零行為變更（鎖檔實裝 0.0.32），純粹是把宣告拉到與實裝、與已知 CVE 一致。
+    "python-multipart>=0.0.31,<1.0",
     "sqlalchemy[asyncio]>=2.0,<3.0",
     "alembic>=1.13,<2.0",
     "asyncpg>=0.29,<1.0",

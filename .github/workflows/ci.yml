@@ -6,7 +6,60 @@ on:
     branches: ['**']
   pull_request:
 
+# 最小權限。本檔全程不寫 repo、也不用任何 secret（全檔無 `secrets.*` 參照），
+# 只需要 checkout 的讀取權。不宣告的話 GITHUB_TOKEN 會落在 repo/org 的**預設值**
+# （多數設定是 read/write）——而 CI 每個 job 都會安裝並執行第三方套件的程式碼
+# （setup.py / PEP 517 build backend / pytest plugin）。一旦其中之一被投毒，
+# 惡意程式碼就是在一個「帶著可寫 repo 憑證」的環境裡跑，能改 repo 內容**包含鎖檔本身**，
+# 把這次整套鎖版控制反過來繳械。宣告成唯讀，讓 token 拿不到寫入權。
+permissions:
+  contents: read
+
 jobs:
+  deps:
+    name: 依賴（鎖檔同步 + 安全稽核）
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: ddm-v2
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      # uv 版本要釘死：同步關卡是「重跑一次、diff 必須為空」，
+      # 若 uv 版本浮動、輸出格式變了，關卡會在沒有人改依賴時無故變紅。
+      - name: 安裝 uv（釘版）
+        run: |
+          curl -LsSf https://astral.sh/uv/0.11.21/install.sh | sh
+          echo "$HOME/.local/bin" >> "$GITHUB_PATH"
+
+      # 鎖檔會腐爛的唯一方式：有人改了 pyproject 的依賴卻沒重跑 scripts/lock_deps.sh。
+      # 那會讓 image 裡少裝一個套件（Dockerfile 用 --no-deps），build 成功但 import 時才炸。
+      # 這一關把它擋在 PR 上。lock_deps.sh 不帶 --upgrade ＝ 冪等，所以沒改依賴時 diff 必為空，
+      # 不會因為上游發了新版就無故變紅（那件事交給 nightly）。
+      # requirements-build.in / requirements-build.lock 也在這一關內：前者是由
+      # pyproject `[build-system].requires` 生成的，所以「改了 build 依賴卻沒重鎖」
+      # 會在這裡紅。少了它，Docker build 的 --no-build-isolation 會在缺套件時才炸。
+      - name: 鎖檔與 pyproject 同步（重跑 lock 後 diff 必須為空）
+        run: |
+          ./scripts/lock_deps.sh
+          if ! git diff --exit-code -- requirements.lock requirements-dev.lock requirements-build.in requirements-build.lock; then
+            echo "::error::鎖檔與 pyproject.toml 不同步。請在本機跑 ./scripts/lock_deps.sh 並把三個 .lock 與 requirements-build.in 一起 commit。"
+            exit 1
+          fi
+
+      # pip-audit 版本同樣釘死，理由同上：不希望工具自己升級變成 CI 紅燈的原因。
+      - name: 安裝 pip-audit（釘版）
+        run: pip install pip-audit==2.10.1
+
+      # 阻斷式（非 warn）。理由與豁免政策見 ddm-v2/.pip-audit-ignore 的檔頭
+      # 與 docs/CI_GATES.md「依賴鎖版與安全稽核」一節。
+      # requirements.lock（會被部署出去的那一組）**不接受任何豁免**。
+      - name: 依賴安全稽核（pip-audit，阻斷式）
+        run: ./scripts/audit_deps.sh
+
   backend:
     name: 後端（unit + integration + 核心邏輯 + 乾淨依賴）
     runs-on: ubuntu-latest
@@ -33,9 +86,24 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: '3.11'
-      # 只裝「宣告的」依賴 → 漏宣告 runtime 依賴(如 openpyxl)會在 import/測試時爆
-      - name: 安裝依賴
-        run: pip install -e ".[dev]"
+      # 只從鎖檔安裝，且驗 sha256。**不是** `pip install -e ".[dev]"`——那會每次重新解析到
+      # 當下最新版，同一份 commit 昨天綠今天紅，而本機永遠複現不出來
+      # （見 docs/architecture/legacy-inventory-and-engine-audit.md §12）。
+      #
+      # 原本「只裝宣告的依賴 → 漏宣告 runtime 依賴(如 openpyxl)會在 import/測試時爆」
+      # 這個性質**完整保留**：鎖檔是從 pyproject 的宣告解析出來的封閉集合，
+      # 沒宣告的套件就不會出現在鎖檔裡，import 時照樣爆。
+      # `--no-deps` 是為了保證 pip 不會拿相容區間再解析一次而把鎖檔的版本升掉。
+      # `--no-build-isolation` + 先裝 requirements-build.lock：`--no-deps` 關掉的只是
+      # 執行期依賴解析，關不掉 PEP 517 build isolation——少了它，pip 會另開隔離環境
+      # 向索引拉 `[build-system].requires` 的 setuptools/wheel（**不驗 hash**）並執行它們，
+      # 而那正是打包 ddm_v2 的程式碼。CI 與 Dockerfile 必須用同一套作法，否則
+      # 「本機/CI 跑的跟部署的不是同一件事」這個病又換個地方再得一次。
+      - name: 安裝依賴（鎖檔 + hash 驗證）
+        run: |
+          pip install --require-hashes -r requirements-build.lock
+          pip install --require-hashes --no-build-isolation -r requirements-dev.lock
+          pip install --no-deps --no-build-isolation -e .
       - name: 乾淨 import（app 建得起來，含所有 router/service）
         run: python -c "from ddm_v2.main import create_app; create_app(); print('app OK')"
       - name: Migrate + seed（整合測試要有 rule-set/worksheet，否則 skip）
@@ -96,10 +164,14 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: '20'
-      - name: 後端依賴 + migrate + seed
+      # 與 backend job 同樣走鎖檔：e2e 若還用 `-e ".[dev]"`，
+      # 漂移只是從 backend 換個地方繼續發生（而且 e2e 打的是 preview server，更難追）。
+      - name: 後端依賴（鎖檔 + hash 驗證）+ migrate + seed
         working-directory: ddm-v2
         run: |
-          pip install -e ".[dev]"
+          pip install --require-hashes -r requirements-build.lock
+          pip install --require-hashes --no-build-isolation -r requirements-dev.lock
+          pip install --no-deps --no-build-isolation -e .
           alembic upgrade head
           python scripts/dev_seed_v2.py
           python scripts/dev_seed_templates.py

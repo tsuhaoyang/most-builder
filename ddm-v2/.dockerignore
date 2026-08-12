@@ -1,16 +1,43 @@
+# ⚠️ `.dockerignore` **不是 `.gitignore`**——下一個人一定會想「gitignore 哪需要寫 `**/`」。
+# 這裡的 pattern 走 Go `filepath.Match`，對**完整相對路徑**匹配，且 `*` **不跨 `/`**：
+# 裸的 `__pycache__` 只匹配 context 根層的 `./__pycache__`，`src/ddm_v2/**/__pycache__`
+# 全部漏網。（官方文件要用 `*/temp*` 才能表達「根的任一直接子目錄」，正是這個語意。）
+# gitignore 那套「不含斜線 = 任意深度」在這裡**不成立**。
+# `**/` 匹配「零個或多個目錄層」，所以加上去不會失去原本的根層效果（已實測驗證）。
+#
+# 規則：凡是「不管在哪一層都不該進 image」的**產物／快取**名稱，一律 `**/`；
+# 而 `data`/`docs`/`tests`/`.env` 這種**同名項目可能是合法來源或建置輸入**的，
+# 刻意只鎖根層，避免誤排除（理由見下方該組的註解）。
 .git
-.venv
-.pytest_cache
-__pycache__
-*.py[cod]
-*.egg-info
+**/.venv
+**/.pytest_cache
+# __pycache__/*.pyc 是**會被執行的程式碼**，不是佔空間的垃圾：CPython 預設的失效判斷
+# 只比對 pyc header 內嵌的來源 mtime+size，而 `COPY` 保留 mtime——header 對得上的
+# `src/ddm_v2/auth/__pycache__/identity.cpython-311.pyc` 進了 image，容器內的 3.11 就會
+# 採用那份 bytecode 而**完全不解析 identity.py**（`PYTHONDONTWRITEBYTECODE=1` 只擋寫入、
+# 不擋讀取）。而且 image 是在**開發者機器上**建的，工作樹本來就會有 CI 版本的 pyc。
+# 這條有沒有生效由 scripts/docker_smoke.sh 的 .pyc 斷言驗。
+**/__pycache__
+**/*.py[cod]
+# host 的 egg-info 是舊的建置中繼產物；image 內由 `pip install -e .` 重新產生，不該混入。
+**/*.egg-info
+# 以下四條**刻意只鎖根層**，不要加 `**/`（註解只能整行：行尾 `#` 會變成 pattern 的一部分，
+# 讓整條規則靜靜失效——已實測，所以理由寫在上面而不是行尾）：
+#   .env  → 巢狀 .env 可能是前端建置輸入（Vite 會讀），盲目全排會靜靜改掉 build 結果
+#   data / docs / tests → 都是合法的來源目錄名，`**/` 會誤掃 src 底下的同名目錄
 .env
 data
 docs
 tests
 docker-wheels
-# 前端原始碼需保留給 Docker 的 node build stage；只排除產物與相依
-src/frontend/node_modules
+**/.mypy_cache
+**/.ruff_cache
+**/*.db
+# 前端原始碼需保留給 Docker 的 node build stage；只排除產物與相依。
+# node_modules 用 `**/` 而非固定路徑：`COPY src ./src` 會把 src 底下的東西整棵帶進
+# 最終 image（第二階段的 `COPY --from=frontend /fe/dist` 只覆蓋 dist，不會清掉它），
+# 所以任何位置的 node_modules 都不能漏。這條有沒有生效由 scripts/docker_smoke.sh 驗。
+**/node_modules
 src/frontend/dist
 src/frontend/test-results
 src/frontend/playwright-report

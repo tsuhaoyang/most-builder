@@ -17,6 +17,7 @@ V3_DB_HOST ?= ../ddm-v3/apps/api/minimost.db
 V3_DB_CONTAINER ?= /tmp/minimost.db
 
 .PHONY: help \
+	lock audit docker-smoke \
 	up down stop restart build rebuild-app ps logs \
 	db-shell db-backup db-restore db-reset db-wipe \
 	seed-demo v3-db-stage v3-migrate-dryrun v3-migrate v3-migration-dryrun v3-migration \
@@ -24,6 +25,11 @@ V3_DB_CONTAINER ?= /tmp/minimost.db
 
 help:
 	@echo "DDM v2 Make targets"
+	@echo ""
+	@echo "Dependencies (see docs/CI_GATES.md「依賴鎖版與安全稽核」):"
+	@echo "  make lock               Regenerate all three requirements*.lock after editing pyproject deps."
+	@echo "  make audit              pip-audit all three lock files (same script CI runs)."
+	@echo "  make docker-smoke       Build image + run container smoke (endpoints + GM=28/CM=29)."
 	@echo ""
 	@echo "Service lifecycle:"
 	@echo "  make up                 Start db + app (with dev overlay)."
@@ -68,6 +74,18 @@ help:
 	@echo "  COMPOSE_FILES='-f docker-compose.yml' make up"
 	@echo "  BACKUP_FILE=data/backups/custom.sql make db-backup"
 	@echo "  V3_DB_HOST=/path/minimost.db make v3-migrate-dryrun"
+
+# 改了 pyproject 的依賴宣告（含 [build-system].requires）後必跑，
+# 三個 .lock 與 requirements-build.in 一起 commit（否則 CI 的 deps job 會紅）。
+# 顯式升級：make lock ARGS="--upgrade-package fastapi"
+lock:
+	./scripts/lock_deps.sh $(ARGS)
+
+audit:
+	./scripts/audit_deps.sh
+
+docker-smoke:
+	./scripts/docker_smoke.sh
 
 up:
 	$(COMPOSE) up -d
