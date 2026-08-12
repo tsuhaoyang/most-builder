@@ -52,7 +52,7 @@
 | **NLP 同義詞 + nl-draft（impl-05）** | synonyms list(200)/create IE(201)/duplicate(409+SYNONYM_CONFLICT)/viewer(403)/delete(204)；**option_code 不存在→422 OPTION_CODE_NOT_FOUND（Fix-T1）**；**全形空白 normalize 後空→422 VALIDATION_ERROR（Fix-T3）**；nl-draft GM 治具防護(F-05 §4.1)；v3 治具全套單元（壓合站/壓合位置/治具→GM；執行/進行/**機台（CM 觸發詞，Fix-T2）**→CM）；normalize OR 兜底消除（Fix-Low-T：測试机器→測試機器；機台機臺→機臺機臺） | `tests/unit/test_nlp.py`、`tests/integration/test_nlp_api.py` |
 | 前端（全分頁） | 載入/身分/分頁渲染/匯入精靈 | `src/frontend/e2e/smoke.spec.ts` |
 | **前端 UX 合規（v3 規格）** | §A-01/02/03 Sidebar 結構/背景色/折疊/角色可見性；§B-01/B-02/B-03 workbench-v3 NlDraft+Slot Strip；§C-01 MiCompositionTable gap 文件化；§E-04/05/06 WI Pool 三層 Tab；§G-01/G-02 分析案件+RBAC gating；§H-01 字典管理頁；§I-01 viewer RBAC；§L-03/04 退役確認（33 條，Type A mocked-API，無需 preview_server） | `src/frontend/e2e/ux-compliance.spec.ts` |
-| **字典治理：刪除／解除封存（ADR-023 D3b）** | DELETE 僅 draft（published／retired／certified_import／is_active 各自 409，**斷言 `detail.code` 不只狀態碼**）；**被引用的 draft 不可刪**（現為五個 RESTRICT 引用方：`most_cycles`／`most_worksheets`／`motion_module_versions`／`ai_parse_runs`／`ai_parse_jobs`）→ 409 `RULE_SET_IN_USE`＋筆數（回放鐵則的另一面）；刪除連帶 13 張子表歸零；audit 先寫後刪且自帶 `code`/`provenance`/`children_deleted`（實體消失後它是唯一紀錄）；unretire 後 `is_active` **仍為 false**；引用方清單以 `pg_catalog` 比對常數（張數不寫死），新增引用表卻沒同步常數會先紅 | `tests/integration/test_rule_set_delete_unretire.py` |
+| **字典治理：刪除／解除封存（ADR-023 D3b）** | DELETE 僅 draft（published／retired／certified_import／is_active 各自 409，**斷言 `detail.code` 不只狀態碼**）；**被引用的 draft 不可刪**（現為五個 RESTRICT 引用方：`most_cycles`／`most_worksheets`／`motion_module_versions`／`ai_parse_runs`／`ai_parse_jobs`）→ 409 `RULE_SET_IN_USE`＋筆數（回放鐵則的另一面）；刪除連帶 13 張子表歸零；audit 先寫後刪且自帶 `code`/`provenance`/`children_deleted`（實體消失後它是唯一紀錄）；unretire 後 `is_active` **仍為 false**；引用方清單以 `pg_catalog` 比對常數，比對粒度為 **(表, 欄) 對**（張數不寫死；只比表名的話「欄名寫錯→靜默數 0」與「同一表兩條 RESTRICT FK→dict 塌成一條」都測不出來），新增引用表／改錯欄名都會先紅；**引用情境由測試自建 Site→SKU→worksheet→WiRow→MostCycle（不撈既有 `most_cycles`）——CI 後端 job 不跑 `dev_seed_30rows.py`，依賴既有列＝本機綠／CI 紅** | `tests/integration/test_rule_set_delete_unretire.py` |
 | **前端字典管理（ADR-023 D4）** | L1 版本清單（狀態徽章＋啟用中＋血緣中文）→ L2 七參數分頁（A 三分量／M 四分量次級 tab）；**對認證版的任何寫入動作攔截跳 clone-on-write**；帶界違規顯示後端人話錯誤而非原始 JSON；**無硬編碼 rule-set code**（一律經 `useActiveRuleSet`） | `src/frontend/e2e/dictionary.spec.ts`（Type A mocked-API） |
 | 依賴完整性 | `create_app()` 乾淨 import；端點測試抓 lazy import | CI「乾淨 import」step + 上列各端點測試 |
 
@@ -77,4 +77,20 @@ DATABASE_URL=... PYTHONPATH=src python scripts/core_logic/run_all.py
 PYTHONPATH=src pytest tests/unit -q                       # 免 DB
 DATABASE_URL=... PYTHONPATH=src pytest tests/integration -q
 ( cd src/frontend && npm run typecheck && npm run build )
+```
+
+⚠️ **本機 DB ≠ CI DB**：backend job 只跑 `dev_seed_v2.py` ＋ `dev_seed_templates.py`，
+**不跑 `dev_seed_30rows.py`**（那支只在 e2e job）——所以 CI 的 `most_cycles` / `wi_rows` 是 **0 列**，
+而開發機通常早就被 30rows 種過。任何「撈一列既有資料來用」的整合測試都會**本機綠、CI 紅**
+（2026-08 `test_delete_referenced_draft_returns_409_with_reference_count` 即此）。
+**整合測試必須自建所需資料**（自己建 Site→SKU→worksheet→row），不得依賴既有列，
+也不得以 UPDATE 劫持 demo 資料（那只是靠 fixture rollback 沒落盤而已）。
+要在合併前驗證，請在**乾淨 DB** 上重現：
+
+```bash
+createdb ddm_ci_repro   # 或 docker compose exec db psql -U ... -c 'CREATE DATABASE ddm_ci_repro'
+export DATABASE_URL=postgresql+asyncpg://.../ddm_ci_repro
+PYTHONPATH=src alembic upgrade head
+PYTHONPATH=src python scripts/dev_seed_v2.py && PYTHONPATH=src python scripts/dev_seed_templates.py
+PYTHONPATH=src pytest tests/integration -q     # 這裡綠才算真的綠
 ```

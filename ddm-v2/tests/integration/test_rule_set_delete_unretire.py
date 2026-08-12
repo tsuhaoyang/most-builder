@@ -33,6 +33,46 @@ async def draft(db_session) -> str:
     return code
 
 
+async def _make_cycle_referencing(client, db_session, rule_set_code: str) -> str:
+    """自建 Site→Product→SKU→worksheet→WiRow→MostCycle，cycle 快照指向 `rule_set_code`。
+
+    ⚠️ **不得**改用「撈一列既有 most_cycles 來改 rule_set_id」：
+    (a) 那要求環境剛好有 `dev_seed_30rows.py` 種的資料——CI 後端 job 只跑
+        dev_seed_v2＋dev_seed_templates，`most_cycles` 是 0 列 → NoResultFound
+        （本機綠 / CI 紅的典型「靠環境湊巧而綠」）；
+    (b) 那等於劫持一列真實 demo 資料，只靠 fixture rollback 才沒落盤。
+    這裡走真實寫入路徑（POST /skus/{id}/worksheets → PUT /worksheets/{id}），
+    rule_set_id 由 service 依 cycle.rule_set_code 快照，不是手動 UPDATE 塞進去的。
+    """
+    from ddm_v2.models.v2.org import Product, Site, Sku
+
+    tag = uuid.uuid4().hex[:8]
+    site = Site(name_zh=f"UT_DEL_SITE_{tag}")
+    db_session.add(site)
+    await db_session.flush()
+    product = Product(site_id=site.id, name_zh=f"UT_DEL_PROD_{tag}")
+    db_session.add(product)
+    await db_session.flush()
+    sku = Sku(product_id=product.id, sku_code=f"UT_DEL_SKU_{tag}", name_zh=f"D3b 引用測試 {tag}")
+    db_session.add(sku)
+    await db_session.commit()
+
+    r = await client.post(f"/api/v2/skus/{sku.id}/worksheets",
+                          json={"model_label": "UT_DEL", "analyst": "UT_D3B"})
+    assert r.status_code in (200, 201), r.text
+    ws_id = r.json()["worksheet_id"]
+
+    # GM 黃金列（A6 B0 G6 A10 B0 P6 A0）；此處只借它當一列合法 cycle，值不是本檔的斷言對象。
+    row = {"id": str(uuid.uuid4()), "seq_no": 1, "hand": "RH", "frequency": 1,
+           "cycle": {"seq": "GM", "rule_set_code": rule_set_code,
+                     "a0": {"reach_cm": 20}, "g2": {"g_code": "g_grasp"},
+                     "a3": {"reach_cm": 25}, "p5": {"p_base_code": "p_place_none"}},
+           "level": {"ascription": "main", "level": "1"}}
+    saved = await client.put(f"/api/v2/worksheets/{ws_id}", json={"rows": [row]})
+    assert saved.status_code == 200, saved.text
+    return ws_id
+
+
 async def _row(db_session, code: str) -> RuleSet:
     rs = (await db_session.execute(select(RuleSet).where(RuleSet.code == code))).scalar_one()
     await db_session.refresh(rs)
@@ -156,10 +196,9 @@ async def test_delete_referenced_draft_returns_409_with_reference_count(client, 
     回 409＋引用數，讓使用者知道「有幾筆擋著」。
     """
     rs_id = (await _row(db_session, draft)).id
-    cycle_id = (await db_session.execute(text("SELECT id FROM most_cycles LIMIT 1"))).scalar_one()
-    await db_session.execute(
-        text("UPDATE most_cycles SET rule_set_id=:rs WHERE id=:i"), {"rs": rs_id, "i": cycle_id})
-    await db_session.commit()
+    await _make_cycle_referencing(client, db_session, draft)
+    # 前置條件自證：測試自建的引用真的落在 most_cycles 上（否則 409 可能是別的守門擋的）。
+    assert (await svc.count_references(db_session, rs_id))["most_cycles"] == 1
 
     r = await client.delete(f"/api/v2/rule-sets/{draft}")
     assert r.status_code == 409, r.text
@@ -185,15 +224,29 @@ async def test_count_references_covers_every_restrict_referrer(db_session, draft
     ⚠️ 這條守衛只在 `pytest tests/integration` 跑得到。CI 曾用單一 `pytest -q`，
     因 tests/unit 與 tests/integration 有同名檔案而 collection error 整批中斷，
     v2_0026／v2_0028 的漂移就是那時溜過去的。
+
+    比對粒度是 **(表, 欄) 對**，不是表名集合：`count_references` 是用
+    `WHERE {column} = :rs_id` 組查詢的，只比表名的話「欄名寫錯」（查到的是別的欄，
+    數出 0 → 服務層放行 → IntegrityError 500）與「同一張表有兩條 RESTRICT FK」
+    （dict 以表名為 key 會把兩條塌成一條）兩種漂移都測不出來。
     """
     rs_id = (await _row(db_session, draft)).id
-    actual = set((await svc.count_references(db_session, rs_id)).keys())
-    expected = {row[0] for row in (await db_session.execute(text("""
-        SELECT c.conrelid::regclass::text FROM pg_constraint c
+    # attnum = ANY(conkey)：取出 FK 的實際來源欄名。本專案指向 rule_sets 的 FK 皆為單欄；
+    # 若日後出現複合 FK，這裡會多列出來 → 斷言變紅，正是要人來看的時機。
+    expected = {(t, c) for t, c in (await db_session.execute(text("""
+        SELECT c.conrelid::regclass::text, a.attname
+        FROM pg_constraint c
         JOIN pg_class p ON p.oid = c.confrelid
+        JOIN pg_attribute a ON a.attrelid = c.conrelid AND a.attnum = ANY(c.conkey)
         WHERE p.relname = 'rule_sets' AND c.contype = 'f' AND c.confdeltype = 'r'
     """))).all()}
-    assert actual == expected, f"引用方清單與 DB 的 RESTRICT FK 不一致：{actual} vs {expected}"
+    assert set(svc._RESTRICT_REFERRERS) == expected, \
+        f"引用方 (表, 欄) 與 DB 的 RESTRICT FK 不一致：{set(svc._RESTRICT_REFERRERS)} vs {expected}"
+
+    # 常數對了還不夠：對外輸出（409 回應的 references）也必須每張表都在。
+    actual = set((await svc.count_references(db_session, rs_id)).keys())
+    assert actual == {t for t, _ in expected}, \
+        f"count_references 輸出的表名與 DB 的 RESTRICT FK 不一致：{actual}"
 
 
 async def test_delete_missing_rule_set_returns_404(client):
