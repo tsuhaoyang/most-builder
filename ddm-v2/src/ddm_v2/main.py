@@ -19,26 +19,8 @@ from fastapi.responses import FileResponse, JSONResponse, RedirectResponse
 from fastapi.staticfiles import StaticFiles
 from sqlalchemy.exc import IntegrityError
 
-# v2 定點重建路由
-from ddm_v2.api.routes.v2.admin_users import router as v2_admin_router
-from ddm_v2.api.routes.v2.ai_review import router as v2_ai_review_router
-from ddm_v2.api.routes.v2.audit_log import router as v2_audit_log_router
-from ddm_v2.api.routes.v2.calculate import router as v2_calculate_router
-from ddm_v2.api.routes.v2.cases import router as v2_cases_router
-from ddm_v2.api.routes.v2.catalog import router as v2_catalog_router
-from ddm_v2.api.routes.v2.export import router as v2_export_router
-from ddm_v2.api.routes.v2.import_excel import router as v2_import_router
-from ddm_v2.api.routes.v2.motion_module import router as v2_motion_module_router
-from ddm_v2.api.routes.v2.motion_template import router as v2_motion_template_router
-from ddm_v2.api.routes.v2.nl_draft import router as v2_nl_draft_router
-from ddm_v2.api.routes.v2.parse_jobs import router as v2_parse_jobs_router
-from ddm_v2.api.routes.v2.rule_set import router as v2_ruleset_router
-from ddm_v2.api.routes.v2.search import router as v2_search_router
-from ddm_v2.api.routes.v2.synonyms import router as v2_synonyms_router
-from ddm_v2.api.routes.v2.vocab import router as v2_vocab_router
-from ddm_v2.api.routes.v2.wi_context import router as v2_wi_context_router
-from ddm_v2.api.routes.v2.wi_set import router as v2_wi_set_router
-from ddm_v2.api.routes.v2.worksheet import router as v2_worksheet_router
+# v2 定點重建路由（清單與掛載自我檢查都在 route_registry，preview_server 共用同一份）
+from ddm_v2.api.route_registry import mount_v2_routers
 from ddm_v2.auth.startup_checks import (  # noqa: F401  （TRUSTED_GATEWAY_ENV 對外沿用舊匯入路徑）
     TRUSTED_GATEWAY_ENV,
     warn_if_identity_config_insecure,
@@ -155,26 +137,9 @@ def create_app(settings: Settings | None = None) -> FastAPI:
 
     app.state.settings = app_settings
 
-    # v2 路由
-    app.include_router(v2_calculate_router)
-    app.include_router(v2_worksheet_router)
-    app.include_router(v2_vocab_router)
-    app.include_router(v2_motion_template_router)
-    app.include_router(v2_motion_module_router)
-    app.include_router(v2_export_router)
-    app.include_router(v2_import_router)
-    app.include_router(v2_ruleset_router)
-    app.include_router(v2_admin_router)
-    app.include_router(v2_catalog_router)
-    app.include_router(v2_search_router)
-    app.include_router(v2_synonyms_router)
-    app.include_router(v2_nl_draft_router)
-    app.include_router(v2_ai_review_router)
-    app.include_router(v2_parse_jobs_router)
-    app.include_router(v2_audit_log_router)
-    app.include_router(v2_cases_router)
-    app.include_router(v2_wi_set_router)
-    app.include_router(v2_wi_context_router)
+    # v2 路由：掛完會對帳（少一條就 raise）。沒有 API 的服務比啟動失敗更難察覺，
+    # 且 FastAPI 0.141 已示範過「include_router 的結構會變」——見 route_registry docstring。
+    mount_v2_routers(app)
 
     _register_exception_handlers(app)
 

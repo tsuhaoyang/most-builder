@@ -1,11 +1,16 @@
 """身分設定的啟動期安全告警（ADR-023 D7 / D7b · C-1）。
 
 **為什麼獨立成一個模組**：D7 把 gateway 信任警告掛在 `main.create_app()` 裡，等於
-「任何不走 factory 的入口都默默拿不到警告」——而 `scripts/preview_server.py` 正是這種
-入口（它自己組 FastAPI 逐一 include_router），也正是 CLAUDE.md 的主要啟動方式。
-警告搬到這裡後，**每一個入口都只需呼叫 `warn_if_identity_config_insecure()` 一次**，
-且 `tests/unit/test_startup_security.py` 會掃描所有 `uvicorn.run(...)` 的入口，
-確認它們都呼叫了——新增入口而忘了叫，測試會紅，不會再默默失去警告。
+「任何不走 factory 的入口都默默拿不到警告」——而 `scripts/preview_server.py`（CLAUDE.md
+的主要啟動方式）就是不走 factory 的入口：它自己 `FastAPI(...)` 再掛路由，拿不到
+`create_app()` 裡的任何啟動期檢查。警告搬到這裡後，**每一個入口都只需呼叫
+`warn_if_identity_config_insecure()` 一次**，且 `tests/unit/test_startup_security.py`
+會掃描所有 `uvicorn.run(...)` 的入口，確認它們都呼叫了——新增入口而忘了叫，測試會紅，
+不會再默默失去警告。
+
+（註：preview_server 掛路由的方式已改成共用 `api.route_registry.mount_v2_routers()`，
+逐一 `include_router` 的寫法被 `tests/unit/test_route_mounting.py` 的 AST 測試禁止；
+但它仍然不經 `create_app()`，所以本模組存在的理由不變。）
 
 兩個獨立的告警來源（可同時成立，各發一筆）：
 

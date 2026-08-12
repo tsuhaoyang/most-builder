@@ -16,6 +16,7 @@ import logging
 
 import pytest
 
+from ddm_v2.api.route_registry import iter_mounted_api_routes
 from ddm_v2.auth.startup_checks import DEV_USER_ENV
 from ddm_v2.main import TRUSTED_GATEWAY_ENV, create_app
 
@@ -80,5 +81,8 @@ def test_warning_does_not_block_startup(caplog):
     with caplog.at_level(logging.WARNING, logger="ddm_v2.main"):
         app = create_app()
     assert _warnings(caplog), "前提：本案例確實走到會警告的分支"
-    paths = {getattr(r, "path", None) for r in app.routes}
+    # ⚠️ 不要改回 `for r in app.routes`：FastAPI >= 0.141 的 include_router 是延遲展開
+    # （app.routes 只放 _IncludedRouter），直接走訪會一條 API 都看不到 —— 這正是本測試
+    # 曾經在 CI（新版）紅、本機（舊版）綠的原因。走訪一律走 route_registry。
+    paths = {r.path for r in iter_mounted_api_routes(app)}
     assert "/api/v2/rule-sets/{code}/full" in paths

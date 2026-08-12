@@ -431,6 +431,172 @@ grep -rn "TMU_TO_SEC\|TMU_SEC\|0\.036" src/ddm_v2/ src/frontend/src/
 | 20 | `worksheet_revision.py` 的裸 `assert ws is not None`（`f19e501` 既有）：`python -O` 下會退化成 `AttributeError`，兩者都是 500 | 未排程 |
 | 21 | `wi_set_service` 硬寫 `base_revision=None` → 每筆 WI 噴一行 legacy WARNING 假警報 | 未排程 |
 | 22 | coverage.py 對 async 檔案的行覆蓋不可信（`await` 之後系統性漏記）——若日後要拿覆蓋率當關卡需先處理 | 未排程 |
+| 23 | **依賴完全沒鎖**（§12）：CI 與 prod image 每次 build 都裝到最新版，同一份 commit 昨天綠今天紅。下界／排除區間已修正並實測（`fastapi>=0.133,!=0.137.0,!=0.137.1`／`starlette>=1.5.1`／`python-multipart>=0.0.18`），但**漂移本身要靠 lock 檔才解得掉** | 下界已修；lock **需決策** |
+
+---
+
+## 12. 依賴沒鎖：本次 CI-only 失敗的系統性根因
+
+CI 修活之後第一次真的跑測試，unit 出現 2 條「CI 紅、本機綠」。追下去發現**變因不是
+Python 版本，是套件版本**：
+
+| | 本機 `.venv` | CI（每次重裝） |
+|---|---|---|
+| fastapi | 0.136.0 | **0.141.1** |
+| starlette | 1.0.0 | **1.6.0** |
+
+FastAPI 0.141 改了 `include_router()` 的資料結構——不再把子 router 的 `APIRoute`
+攤平進 `app.router.routes`，改成放一個延遲展開的 `_IncludedRouter` 節點。
+於是 `{r.path for r in app.routes}` 退化成只剩 FastAPI 預設路由加一個 `None`
+（19 個 `_IncludedRouter` 沒有 `.path`，在 set 裡塌成一個）。
+
+**但 app 本身完全正常**：`app.openapi()` 有 84 條 path、TestClient 打得到 handler、
+415 條 integration 在 0.141 下全綠。**壞掉的只有「走訪路由表」這件事。**
+
+> 這推翻了初判。看到「`create_app()` 產出的 app 沒有任何 v2 路由」時，
+> 自然的結論是「正式環境若命中同樣條件就是全掛」——**那是錯的**。
+> 教訓：`app.routes` 走不到 ≠ 路由不存在；判斷 API 面是否存在要問 OpenAPI，不要問路由表。
+
+同源的第二處不相容（修好第一處後才浮現）：0.141 把 `Dependant.computed_scope`
+從 cached_property 改成模組私有函式，直接讀會 `AttributeError`。
+
+**第三處，由獨立複審建三組 overlay 環境實測出來的版本空窗：**
+
+| fastapi 版本 | `_IncludedRouter`（延遲展開） | `iter_route_contexts`（官方走訪器） | 走訪結果 |
+|---|:---:|:---:|---|
+| ≤ 0.136.3 | 無 | 無 | 舊路徑可用 |
+| **0.137.0 / 0.137.1** | **有** | **無** | **兩邊都不成立 → 回空** |
+| ≥ 0.137.2 | 有 | 有 | 新走訪器可用 |
+
+也就是說「用新 API 是否存在來判斷資料結構是新是舊」本身就有兩個版本的空窗。
+教訓：**探測能力（API 在不在）不等於探測結構（資料長什麼樣）**，
+跨版本相容要驗的是後者。
+
+**已修（2026-08）**：`iter_mounted_api_routes` 的舊路徑改成驗**結構**——走訪前先掃
+`routes`，出現既非 `APIRoute`、也非已知 starlette 節點（`Route`/`WebSocketRoute`/
+`Mount`/`Host`）的型別就丟 `RouteTraversalUnsupported`，不再回一個看似正常的空結果。
+0.137.0 實測：修前 `pytest tests/unit` 5 failed（訊息長得像「路由沒掛上」），修後五條
+一致指名 `fastapi.routing._IncludedRouter`，`create_app()` 照常起得來（OpenAPI 84 條）。
+用白名單而非「`!= _IncludedRouter`」黑名單：黑名單只擋得住已經知道名字的那個容器。
+（已知邊界：白名單只掃**頂層**節點——保證的是「不是已知葉節點」而非「我看得進去」。
+若未來的延遲展開容器改成繼承 `Mount`／`Route`，白名單會放行而內容仍看不到 → 回到靜默
+少報。已寫進 `_KNOWN_NON_API_ROUTE_TYPES` 的註解當已知邊界。）
+
+**對帳單位是 `(path, method)` 不是 path**（複審追加）：19 支 router 的 106 條路由只塌成
+83 條 path，用 path 對帳等於自願放掉方法級解析度——「掛上了 GET、掉了同路徑的
+PUT/DELETE」會讓差集為空 → 記 ERROR 放行 → 那批寫入 API 全 404 而自我檢查一聲不吭。
+快樂路徑本來就是逐 path＋method，這次把降級路徑（`_reconcile_with_framework` 問
+OpenAPI 的那層）也拉到同一個單位，順帶把原本並存的三種「路由數量」單位收斂成一種。
+
+另外 `pyproject.toml` 的 `fastapi>=0.115` 下界是**錯的**：程式碼用
+`Depends(..., scope="function")`，而 `scope=` 參數是 0.121.0 才有的——
+裝 0.115～0.120 任一版，`import ddm_v2` 直接 `TypeError`
+（實測 0.120.4：`Depends() got an unexpected keyword argument 'scope'`）。
+「宣稱支援但實際會 crash」的區間存在，本身就說明沒有人真的驗過下界。
+
+**已修（2026-08）**：下界改成 `fastapi>=0.133,<1.0,!=0.137.0,!=0.137.1` ＋
+顯式宣告 `starlette>=1.5.1,<2.0`。0.133 而非 0.121 的理由：0.121～0.132 把 starlette
+釘在 `<1.0`，而 `tests/unit/test_cors_security.py` 的威脅前提（wildcard origin ＋
+credentials 會鏡射任意 Origin）只有 starlette ≥ 1.0 成立（實測 0.47/0.48/0.49/0.50
+都回 `*`）；0.133.0 是第一個放行 starlette 1.x 的 fastapi。實測：0.121.0 → 1 failed、
+0.133.0 → 292 passed。
+
+`starlette` 的下界最初訂在 **1.3.1**，決定性理由是資安而非相容性：
+**CVE-2026-54283（form limits 在 urlencoded 分支被靜默忽略 → DoS）在本 app 是
+pre-auth 可利用的**。`POST /api/v2/imports/upload` 宣告 `UploadFile = File(...)`，
+FastAPI `routing.py` 先 `await request.form()`（~406 行）才 `solve_dependencies()`
+（~457 行，`require_role("analyst")` 在那裡），而 starlette 依**實際** Content-Type
+分派——攻擊者送 `application/x-www-form-urlencoded` 就走進沒有 limit 的 `FormParser`。
+實測（未認證，5000 欄，預設上限 1000）：
+
+| starlette | 回應 | 意義 |
+|---|---|---|
+| 1.0.0 | 401 | parser 全收了 5000 欄，之後才輪到認證＝limits 被忽略 |
+| 1.3.0 | 401 | 同上（**1.3.0 還沒修**，所以那一格是 1.3.1 不是 1.3） |
+| 1.3.1 | 400 | parser 先擋下＝limits 生效，且發生在認證之前 |
+
+同時涵蓋 CVE-2026-48710（BADHOST 路徑授權繞過，≤1.0.0；本 app 不用
+`request.url.path` 做安全判斷，故非直接可利用，但沒有理由停在受影響版本）。
+
+**再抬到 1.5.1（複審追加）**：`FileResponse.max_ranges = 100` 是 **1.5.1 才加入**的
+（逐版拆 wheel 比對 `starlette/responses.py`：1.3.1／1.5.0 沒有、1.5.1／1.6.0 有），
+所以 `>=1.3.1` 允許解到的 1.3.1～1.5.0 **沒有 Range 數量上限**。本 app 的
+`/assets/<bundle>.js`（`StaticFiles`）與 `/`（`FileResponse`）都是未認證可達：
+`Range: bytes=0-0,2-2,…`（刻意不相鄰以避開 merge）會讓伺服器對檔案做上千次 seek/read，
+再回一份每個 part 都帶 boundary 的 `multipart/byteranges`。實測（1 MB 檔、1500 個
+range、~14 KB header）：
+
+| starlette | 回應 | body | 耗時 |
+|---|---|---|---|
+| 1.5.0 | 206 multipart/byteranges（1500 parts） | 180 KB（13× 放大） | 0.46 s |
+| 1.5.1 / 1.6.0 | 200（超過上限就整份送，單次循序讀） | 1 MB | 0.012～0.016 s |
+
+O(n²) 在更早版本已修，所以是放大而非爆炸（Low）；抬下界的理由是
+**「宣告的下界＝實際的保護」**——實裝 1.6.0 有這道上限而宣告落後於它，正是本節在講的病。
+沒有再抬到 1.6.0：1.6.0 的新東西是 `RequestBodyLimitMiddleware`
+（`starlette/middleware/body_limit.py`，1.5.1 沒有），本 app 沒在用；
+為沒在用的功能訂下界就把下界變回「保守估計」。真的掛上它時再抬。
+
+與 `fastapi>=0.133` 不衝突：fastapi 0.133／0.136／0.137.2／0.141.1 對 starlette 都只有
+下界（`>=0.40.0`／`>=0.46.0`）沒有上界（拆 wheel METADATA 逐版查過）。
+**本機 `.venv` 的 starlette 已同步從 1.0.0 升到 1.6.0**——宣告與實際脫節正是本節在講的病，
+不能一邊修一邊複製它。
+
+`python-multipart` 的下界同理，而且是**同一條 pre-auth 路徑上的同型缺陷**：
+原本寫 `>=0.0.9`，但 CVE-2024-53981（GHSA-59g5-xgcq-4qw3）到 **0.0.18** 才修——
+`<0.0.18` 在「最後一個 boundary 之後」的狀態機逐 byte 走，每個非 CR/LF 的 byte 都送一次
+log event。攻擊路徑與上面 starlette 那條完全相同（同一個 `POST /api/v2/imports/upload`，
+一樣在 `solve_dependencies()` 之前）。實測（200 KB 垃圾 epilogue，計 root logger 收到的
+record 數）：
+
+| python-multipart | log events | 耗時 |
+|---|---|---|
+| 0.0.9（原下界） | 200,000 | 0.93 s |
+| 0.0.17 | 200,000 | 0.94 s |
+| 0.0.18 | 1 | <0.001 s |
+| 0.0.26（本機實裝） | 0 | <0.001 s |
+
+外推：40 MB body ≈ 190 CPU-秒，全部發生在認證之前。改成 `>=0.0.18` 對現況零行為變更
+（實裝 0.0.26），純粹是讓宣告與已知事實一致；fastapi 自己的 `standard` extra 也早就是
+`python-multipart>=0.0.18`（0.133～0.141.1 逐版確認）。
+
+### 為什麼這是系統性問題
+
+- `pyproject.toml` 的 `requires-python`（`>=3.11`）與 CI（3.11）、Dockerfile
+  （`FROM python:3.11-slim`）**是一致的**，沒有落差。
+- 版本區間**有**上界，但對 0.x 套件形同虛設：`fastapi>=0.115,<1.0`。
+  **FastAPI 還在 0.x，依慣例 minor 版就可以有破壞性變更**——這次 0.136 → 0.141 正是如此。
+  `<1.0` 允許的區間橫跨數十個可破壞的 minor 版，等於沒有保護。
+  `starlette` 更是連宣告都沒有（由 fastapi 遞移帶入），本機 1.0.0 → CI 1.6.0。
+- `Dockerfile` 是 `pip install -e .`（無 lock），所以 **prod image 每次重 build 也會漂移**。
+- 綜合起來：CI 與 prod 的行為隨上游發版變動，**同一份 commit 昨天綠今天紅**，
+  而本機永遠複現不出來（本機 venv 是幾個月前裝的）。這次剛好只弄壞兩條測試，
+  下一次可能弄壞的是行為。
+
+**本次做了（下界）**：`fastapi>=0.133,<1.0,!=0.137.0,!=0.137.1` ＋ `starlette>=1.5.1,<2.0`
+＋ `python-multipart>=0.0.18,<1.0`，每個數字都有 overlay／拆 wheel 的實測依據（見上）。
+**上界刻意維持 `<1.0`**：0.x 的破壞性變更改由
+`route_registry` 的結構偵測（不認得的節點型別就 `RouteTraversalUnsupported`）＋
+`tests/unit/test_route_mounting.py` 的 OpenAPI 對照擋。把上界收成 `<0.142` 會讓
+`pip install -e .`（CI 與 Dockerfile 都用它）在 fastapi 每次發版時**硬性解不出來**，
+那個失敗模式比「大聲記 ERROR、服務照跑」更糟，而且必須有人手動追版才能解除。
+
+**仍待決策（會影響 Docker build，不由本文件裁決）**：真正的 lock（例如 `pip-compile`
+產生的 `requirements.lock`，CI 與 Dockerfile 都用它安裝）。下界修好只是把「宣稱支援
+但會 crash」的區間消掉，**沒有**消除「同一份 commit 昨天綠今天紅」——那需要 lock。
+
+### 順帶修掉的既有漂移
+
+`scripts/preview_server.py` 自己抄了一份 router 清單，且**已漂移成少掛
+`ai_review`／`parse_jobs`／`wi_context` 三支**——而 e2e 打的正是 preview server，
+等於**預覽的 API 面與正式 app 不一致**。已改為與 `main.py` 共用同一份清單
+（`api/route_registry.py`），兩邊 OpenAPI 的 `(path, method)` 集合完全相同
+（107 條 operation／84 條 path，差集雙向皆空）。
+
+這個「差集為空」由 `test_preview_server_exposes_the_same_api_surface` 釘住，不是靠人工
+比對：原本只有一條 AST 測試斷言 preview **沒有**自己列 `include_router`，那是單向的——
+mutation 實測把 `mount_v2_routers(app)` 整行換成 `pass`，17 條測試全綠，預覽會變成
+一個只有前端、零 API 的服務。新測試在同一個 mutation 下紅（少 106 條 operation）。
 
 ---
 

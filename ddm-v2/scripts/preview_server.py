@@ -26,22 +26,7 @@ from fastapi import FastAPI
 from fastapi.responses import FileResponse, HTMLResponse
 from fastapi.staticfiles import StaticFiles
 
-from ddm_v2.api.routes.v2.admin_users import router as v2_admin_router
-from ddm_v2.api.routes.v2.audit_log import router as v2_audit_log_router
-from ddm_v2.api.routes.v2.calculate import router as v2_router  # 含 /api/v2/me
-from ddm_v2.api.routes.v2.cases import router as v2_cases_router
-from ddm_v2.api.routes.v2.catalog import router as v2_catalog_router
-from ddm_v2.api.routes.v2.export import router as v2_export_router
-from ddm_v2.api.routes.v2.import_excel import router as v2_import_router
-from ddm_v2.api.routes.v2.motion_module import router as v2_motion_module_router
-from ddm_v2.api.routes.v2.motion_template import router as v2_motion_template_router
-from ddm_v2.api.routes.v2.nl_draft import router as v2_nl_draft_router
-from ddm_v2.api.routes.v2.rule_set import router as v2_ruleset_router
-from ddm_v2.api.routes.v2.search import router as v2_search_router
-from ddm_v2.api.routes.v2.synonyms import router as v2_synonyms_router
-from ddm_v2.api.routes.v2.vocab import router as v2_vocab_router
-from ddm_v2.api.routes.v2.wi_set import router as v2_wi_set_router
-from ddm_v2.api.routes.v2.worksheet import router as v2_worksheet_router
+from ddm_v2.api.route_registry import mount_v2_routers
 from ddm_v2.auth.startup_checks import warn_if_identity_config_insecure
 
 DIST = Path(__file__).resolve().parent.parent / "src" / "frontend" / "dist"
@@ -56,23 +41,10 @@ warn_if_identity_config_insecure()
 
 app = FastAPI(title="v2 MOST Workbench 預覽")
 
-# 全部 v2 router（須與 main.py 一致）
-app.include_router(v2_router)
-app.include_router(v2_worksheet_router)
-app.include_router(v2_vocab_router)
-app.include_router(v2_motion_template_router)
-app.include_router(v2_motion_module_router)
-app.include_router(v2_export_router)
-app.include_router(v2_import_router)
-app.include_router(v2_ruleset_router)
-app.include_router(v2_admin_router)
-app.include_router(v2_catalog_router)
-app.include_router(v2_search_router)
-app.include_router(v2_synonyms_router)
-app.include_router(v2_nl_draft_router)
-app.include_router(v2_audit_log_router)
-app.include_router(v2_cases_router)
-app.include_router(v2_wi_set_router)
+# 全部 v2 router：與 main.py 共用 `V2_ROUTERS` 這一份清單。
+# 原本這裡自己抄一份 include_router，已經漂移成少掛 ai_review / parse_jobs / wi_context
+# 三支——預覽（含 e2e）看到的 API 面跟正式 app 不一樣，是最難查的那種假 404。
+mount_v2_routers(app)
 
 # 已建置的前端靜態資源（Vite 產物在 dist/assets）
 if (DIST / "assets").is_dir():
