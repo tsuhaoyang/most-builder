@@ -144,8 +144,13 @@ overflow 帶 → 9999° 報錯。加嚴的是「無帶可查時不得偷用最�
   **本機綠燈不構成任何證據**（先例：`Always-True-Assertion-Detector-Self-Disable` 型二，
   「差集守門的待驗集合是空的」）。
 - 部署順序硬性規定：**正式環境掃描綠 → 才可部署加嚴版本**。有命中則先做一次性資料修補
-  migration，把原 `slot_inputs` 與原 `total_tmu` 抄進 `workflow_audit_log`（或 ADR-027 R3 的
-  review event）留痕後再改值。
+  migration，把原 `slot_inputs` 與原 `total_tmu` 抄進 ~~`workflow_audit_log`（或 ADR-027 R3 的
+  review event）~~ 留痕後再改值。
+  > ⚠️ **上面刪除線那兩個去處都寫錯了，實測都寫不進去**（`workflow_audit_log` 的
+  > `entity_type` CHECK allow-list 沒有 `most_cycle`；`ai_review_events` 是
+  > `ON DELETE CASCADE`）。**留痕落在哪張表由 User 裁決，見〈不由本 ADR 決定〉#9。**
+  > 在裁決下來之前，**不要自行挑一張表塞進去**——本 ADR 的位階高於 `--help`，
+  > 照這行指標走過去的人讀到的必須是「待裁決」，不是一份會失敗或會被 CASCADE 刪掉的做法。
 
 ### 5. `calculate.py:200`：改拋 `SequenceError("X_FIXED_SECONDS_MISSING", ...)`，並在發布期先擋
 
@@ -336,3 +341,25 @@ overflow 帶 → 9999° 報錯。加嚴的是「無帶可查時不得偷用最�
 6. 新錯誤碼的前端 i18n 文案與 Phase 5 雙語計畫的關係。
 7. 加嚴後是否重算 `most_cycles.computed` 快取——本 ADR 預設**不重算**（沿用 ADR-014 對 X
    捨入變更的同一處置）。
+8. **`ai_parse_runs.drafts[].cycle` 的加嚴後處置**。`scripts/audit_slot_inputs.py` 另掃這一處，
+   但**只列為指標、不列入放行條件**（不進 exit code），理由：草稿是**尚未被採用**的建議，
+   不會被原樣重存回 `most_cycles`；被採用時會重新過 `CycleIn` + `compute_cycle`
+   （`most_compiler/engine_gate.py`），屆時被加嚴版本擋下**正是預期行為**（ADR-026 的
+   engine_gate 即為此存在）。該數字回答的是「加嚴後有多少 AI 草稿會開始被拒」——決定要不要
+   加嚴時想知道的觀測值，不是阻擋部署的理由。因未改變閘門語意，此項不需重新核可本 ADR。
+   附帶：掃描腳本把 **S2**（payload 連現行 `CycleIn` 都驗不過）列為 WARN 而非 BLOCK，
+   同理——那種列**今天就已經會 422**，不是加嚴造成的；閘門要量的是加嚴帶來的**差值**。
+   S1（斷言 #33）維持 BLOCK，那是本 ADR 明文授權的放行條件。
+9. **一次性資料修補的「原值留痕」要落在哪張表**（§4 末段的 ⚠️ 指向此項）。
+   本 ADR §4 原文寫的兩個去處**經實測都不可用**，這是 ADR 層級的缺陷，不由實作端自行選表：
+
+   | 候選 | 實測結論 |
+   |---|---|
+   | `workflow_audit_log` | **寫不進去**。`entity_type` 的 CHECK allow-list 是 `{process_version, motion_module, rule_set, motion_template}`（`migrations/versions_v2/v2_0017_workflow_audit.py:33`），**沒有 `most_cycle`**。 |
+   | `ai_review_events`（ADR-027 R3 的 review event） | **不可用**。`run_id` 是 `ON DELETE CASCADE`（`models/v2/ai_ops.py:124-128`）：parse run 一被刪，稽核軌跡跟著消失。而修補留痕的整個意義就是它必須活得比來源久。 |
+   | 兩者共通 | ADR-027 §69 與 `domain-evolution-and-ai-readiness-spec.md`（:74／:500）都明文「`workflow_audit_log` **只承載低頻 workflow transition**」。把逐列的資料修補塞進去，與該裁決衝突。 |
+
+   可能的方向（**本 ADR 不選**，僅供裁決時參考）：修補 migration 自帶一張一次性快照表、
+   放寬 `workflow_audit_log` 的 allow-list、或另立資料修補專用的留痕表。
+   在裁決下來之前，`scripts/audit_slot_inputs.py` 的 runbook 第 5 步與報告結論都只寫
+   「待裁決、不要自行挑表」，不預設任何一種做法。
