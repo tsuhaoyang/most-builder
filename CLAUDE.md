@@ -31,8 +31,13 @@ All commands below assume `cd ddm-v2` first.
 
 ```bash
 # Setup (one-time)
-python3.12 -m venv .venv
-.venv/bin/pip install -e ".[dev]"
+# ⚠️ 一律從鎖檔安裝，不要用 `pip install -e ".[dev]"`：那會解析到當下最新版，
+#    裝出與 CI／Docker 不同的一組依賴（ADR-029；docs/CI_GATES.md 硬性規則 6）。
+#    Python 用 3.11（對齊 CI 與 Dockerfile 的 python:3.11-slim）。
+python3.11 -m venv .venv
+.venv/bin/pip install --require-hashes -r requirements-build.lock
+.venv/bin/pip install --require-hashes --no-build-isolation -r requirements-dev.lock
+.venv/bin/pip install --no-deps --no-build-isolation -e .
 
 # DB migration + seed
 # 資料庫名是 ddm_v2_most（不是 ddm_v2）；帳密以 compose 的 db 服務為準，可查：
@@ -89,44 +94,16 @@ app 綁 `127.0.0.1:8877`（ADR-023 D7b）：gateway 模式無條件信任入站 
 
 ### Backend (hexagonal: routes → services → repositories)
 
-```
-src/ddm_v2/
-├── main.py              FastAPI app factory; mounts routers; exception→HTTP mapping
-├── api/routes/v2/       One file per feature group (calculate, worksheet, catalog, export, …)
-├── most_engine/         ★ THE ONLY CALCULATION ENGINE
-│   ├── calculate.py     compute_cycle() / compute_table() — GM/CM TMU logic
-│   ├── level.py         Level System R1–R9 validator + LB output contract builder
-│   ├── narrative.py     METHOD sentence generation
-│   ├── rule_set_data.py RuleSetData value object (no DB, no framework)
-│   └── providers.py     Adapters: build_from_seed() (tests) / load_rule_set_from_db() (runtime)
-├── services/v2/         Business logic (worksheet_service, export_service, catalog_service, …)
-├── models/v2/           SQLAlchemy 2.0 async ORM models
-├── schemas/v2/          Pydantic v2 request/response schemas
-├── auth/                Identity resolution (gateway header / verify-mode session cookie)
-└── database.py          Async engine + session factory
-```
-
 **Critical design invariant**: `most_engine/` is the single authority for all TMU calculation and level validation. The frontend never calculates — every TMU value comes from `POST /api/v2/minimost/calculate`. Rule-set tables in the DB are the value source; the engine reads them at runtime.
 
 ### Data Hierarchy
 
-```
-Site → Product → SKU → ProcessVersion → MostWorksheet → WiRow
-                                                       ├── MostCycle (slot_inputs JSONB, total_tmu)
-                                                       └── LevelEntry (main/sub/cub/nb relationships)
-```
+`Site → Product → SKU → ProcessVersion → MostWorksheet → WiRow`；`MostCycle` 以
+**per-cycle 的 `rule_set_id`** 釘住當初的規則版本（回放靠這個欄位，不是靠程式分支）。
 
 ### Frontend (`src/frontend/src/`)
 
-```
-shared/
-├── api/client.ts      Single API entry point (injects AUTH_DEV_USER header in dev, unified errors)
-├── auth/useMe.ts      Identity + RBAC gating (canEdit / canPublish / isAdmin)
-├── workspace.ts       Zustand: activeWs shared across WI / Export / SOP tabs
-└── types/api.d.ts     Generated from backend OpenAPI (do not hand-edit)
-
-features/<tab>/        Vertical slices: api.ts (TanStack Query) + store.ts (Zustand) + <Tab>.tsx
-```
+`shared/api/client.ts` 是唯一 API 入口；`shared/types/api.d.ts` **由 OpenAPI 產生，不可手改**。
 
 Feature tabs follow the v3-parity IA (7 primary + admin extras) defined in **ADR-021** (`ddm-v2/docs/decisions/ADR-021-ia-restructure-v3-parity.md`).
 
@@ -140,12 +117,12 @@ Feature tabs follow the v3-parity IA (7 primary + admin extras) defined in **ADR
 
 ## CI Gates (must pass before merging)
 
-1. **Runtime deps**: Every `import` in `src/` must be declared in `pyproject.toml` `[dependencies]` (not just `[dev]`).
-2. **Integration test coverage**: Every feature endpoint group needs at minimum one integration test covering happy path + one boundary/RBAC case.
-3. **Golden values**: Any change touching `most_engine/`, rule-set seeds, level rules, or `schemas/v2/most.py` must pass `scripts/core_logic/run_all.py`. Anchors: **GM=28** (A6 B0 G6 A10 B0 P6 A0) and **CM=29** (A10 B0 G3 M16 X0 I0 A0 @ 45cm push).
-4. **Value authority (ADR-014)**: The active rule-set is `MINIMOST_FACTORY_V2`. `src/ddm_v2/seed/v2/rule_set_seed_v2.py` is a **generated file** — never hand-edit it. To change values: edit `ddm-v2/docs/v3/reference/minimost_ai_dictionary_v1.json`, then re-run `scripts/import_v3_dictionary.py`.
-5. **V1 replay isolation**: `MINIMOST_FACTORY_V1` snapshot tests must stay green (stored worksheet TMU must not change).
-6. **Frontend**: `npm run typecheck && npm run build` + Playwright smoke must pass.
+**完整清單以 `ddm-v2/docs/CI_GATES.md` 為準**（此處只留最常被引用的那條錨點，
+避免兩份清單漂移——先前這裡停在 6 條、那邊已經是 7 條）：
+
+- **Golden values**: 任何動到 `most_engine/`、rule-set seeds、level rules 或
+  `schemas/v2/most.py` 的改動都必須通過 `scripts/core_logic/run_all.py`。
+  錨點 **GM=28**（A6 B0 G6 A10 B0 P6 A0）與 **CM=29**（A10 B0 G3 M16 X0 I0 A0 @ 45cm push）。
 
 ## Hard Rules (from `.cursor/rules/`)
 
