@@ -20,6 +20,9 @@ docs/architecture/v2-authoritative-model-guide.md §1）。本腳本按 tests/in
                                   / 'SM7-ApplyBack%' / '測試模組-%'
                                   （versions 由 DB CASCADE；wi_rows.source_module_id SET NULL；
                                    wi_set_items 為 soft-ref 不受影響）
+    search_documents            : doc_type='motion_module' 且模組已不存在的孤兒投影
+                                  （search_documents 無 FK，刪模組不 CASCADE——不掃就會
+                                   每跑一次 cleanup 重新製造孤兒）
     wi_set_projects.project_code: 'UT-WISET-%'（items 由 DB CASCADE）
     skus.sku_code               : 'UTSKU-%' / 'AGGTEST\\_%' / 'GUARDTEST\\_%'
                                   （process_versions→worksheets→rows→cycles/levels 全 CASCADE）
@@ -110,6 +113,21 @@ TARGETS: list[Target] = [
             "OR name_zh LIKE 'SM7-ApplyBack%' OR name_zh LIKE '測試模組-%'"
         ),
         sample_col="name_zh",
+    ),
+    Target(
+        # 必須排在 motion_modules 之後：search_documents 無 ORM/FK（v2_0013 raw SQL
+        # 建表），刪模組不會 CASCADE 投影列。此 sweep 收的是「模組已不存在」的孤兒
+        # ——含上一個 Target 剛刪掉的測試模組投影（同 transaction 內 NOT EXISTS 已
+        # 看得到刪除結果）。dry-run 顯示的是現存孤兒數，execute 時會再涵蓋本次刪除
+        # 產生的新孤兒。不加此步的話每跑一次 cleanup 就重新製造孤兒（dev 機 81 筆
+        # 孤兒的主要來源）。
+        label="search_documents (motion_module 孤兒投影)",
+        table="search_documents",
+        where=(
+            "doc_type = 'motion_module' AND NOT EXISTS "
+            "(SELECT 1 FROM motion_modules m WHERE m.id = search_documents.ref_id)"
+        ),
+        sample_col="content_norm",
     ),
     Target(
         label="work_vocab_items (UT詞彙/分頁/noLimit/搜尋/停用/RBAC，未被引用)",

@@ -524,6 +524,11 @@ async def delete_module(
     - standard modules 需先由管理員 retire → 409。
     - draft / retired 直接刪除；DB cascade 處理 MotionModuleVersion。
     - personal scope：只有 owner 可刪除自己的模組。
+    - search_documents 投影必須在**同一交易**以 raw SQL 清掉：search_documents
+      沒有 ORM model（v2_0013 以 raw SQL 建表；寫入端 clone/publish 也是 raw SQL
+      upsert），ref_id 是跨 doc_type 的裸 uuid、刻意無 FK——ORM cascade 與 DB
+      cascade 都救不到。不清會留下指向已刪模組的孤兒投影，/api/v2/search 會
+      持續回傳已刪模組（既存孤兒由 v2_0036 data migration 清理）。
     """
     m = await session.get(MotionModule, module_id)
     if m is None:
@@ -534,6 +539,13 @@ async def delete_module(
         raise ModuleIsStandard(
             f"模組 {module_id} 為 standard 狀態，需先由管理員 retire 才可刪除"
         )
+    await session.execute(
+        text(
+            "DELETE FROM search_documents"
+            " WHERE doc_type = 'motion_module' AND ref_id = :ref_id"
+        ),
+        {"ref_id": str(module_id)},
+    )
     await session.delete(m)
     await session.flush()
 
