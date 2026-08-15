@@ -165,6 +165,68 @@ if [ "$pyc" != "0" ]; then
 fi
 
 echo
+echo "=== 背景 worker（ai_parse_jobs）的部署面 ==="
+# 為什麼要有這段：本輪真的踩到了——工作樹裡有 services/v2/parse_job_worker.py，
+# 但既有的 ddm-v2:smoketest image 裡**沒有**這個檔（image 比程式碼舊），而上面每一條檢查
+# （套件對鎖檔、無 dev 工具、無 node_modules、無 .pyc）連同下面的端點與黃金值
+# **全部照樣綠**：那些驗的是「image 內部自洽」，不是「image 是不是由這份程式碼建出來的」。
+# 於是「worker 根本沒被部署進去」對所有現有關卡都是隱形的——vault 先例
+# Docker-Compose-Stale-Baked-Engine-Image 的同一個病，換了一個模組再犯一次。
+WORKER_PY=/app/src/ddm_v2/services/v2/parse_job_worker.py
+if docker exec "$APP" test -f "$WORKER_PY"; then
+    echo "worker 模組存在: $WORKER_PY"
+else
+    fail "image 內找不到 $WORKER_PY —— image 比程式碼舊，請重 build"
+fi
+
+# 有檔案 ≠ 會跑。真正決定的是容器**當下這組環境變數**解出來的 settings，所以這裡不讀
+# 原始碼、直接問容器；docker exec 繼承容器環境，問到的與 app 進程啟動時看到的是同一組。
+# 刻意**不比對 interval/batch 的具體數值**：那是後端可調的預設值，寫死在這裡只會變成
+# 「每次調參都得順手改 smoke」的假關卡。只驗「有啟用」與「值合理」，數值原樣印出當證據。
+echo "--- 容器內實際生效的 worker 設定 ---"
+worker_out=$(docker exec "$APP" python -c '
+from ddm_v2.settings import get_settings
+
+s = get_settings()
+print(f"enabled={s.parse_worker_enabled} interval_s={s.parse_worker_interval_s} batch={s.parse_worker_batch}")
+
+problems = []
+if not s.parse_worker_enabled:
+    problems.append("worker 被關閉：批次 job 建了不會自己跑，只能靠 API 手動 tick")
+if s.parse_worker_interval_s <= 0:
+    problems.append("interval_s 必須 > 0")
+if s.parse_worker_batch < 1:
+    problems.append("batch 必須 >= 1")
+
+if problems:
+    print("VERDICT_BAD: " + "；".join(problems))
+else:
+    print("VERDICT_OK")
+' 2>&1)
+while IFS= read -r line; do printf '    %s\n' "$line"; done <<< "$worker_out"
+case "$worker_out" in
+    *VERDICT_OK*)  ;;
+    *VERDICT_BAD*) fail "背景 worker 設定不可用（見上）" ;;
+    *)             fail "讀不到容器內 worker 設定（settings 沒有 parse_worker_* 欄位？image 比程式碼舊）" ;;
+esac
+
+# ⚠️ 尚未涵蓋：**行為**斷言（建一個 job，斷言它未經手動 tick 就自行推進）。
+# 刻意不寫進本腳本，因為它在 smoke 環境**無法成立**，硬寫只會多一條永遠紅或永遠被
+# 跳過的假關卡（本專案最該避免的東西）。三個前提在此都不存在：
+#   1. 建 job 需要一筆已 map 且含 description 的 import 暫存列——smoke 容器沒有匯入資料。
+#   2. 建 job 需要 status=active 的 AiDeploymentBundle，而**沒有任何 seed 會建它**
+#      （全 repo grep：只有 models/ 與 services/ 提到，seed/ 零命中），
+#      所以 POST /api/v2/imports/{id}/parse-jobs 在 smoke 容器必定 503
+#      「ai deployment bundle missing or inactive」。
+#   3. 要真的推進 item 還需要連得到的 LLM，smoke 容器沒有。
+# 在 shell 裡湊出 1+2 只能直接對 DB 灌 fixture，那會讓本腳本綁死 ai_ops 的表結構。
+# 行為覆蓋應留在 tests/integration/test_parse_job_worker.py（fixture 屬於那一層）。
+# 另有一個獨立障礙：worker 的 logger.info（啟動行、每輪推進筆數）在部署設定下**看不到**
+# ——uvicorn 預設 LOGGING_CONFIG 沒有 root 設定，root 停在 WARNING 且無 handler，
+# 於是「worker 沒起來」與「worker 正常但沒事做」在容器 log 裡完全長一樣。
+# 補上 root logging 設定之後，這裡才可能加一條 log-based 的存活斷言。
+
+echo
 echo "=== 端點 ==="
 expect_status "GET /api/v2/rule-sets/active" 200 -H "$H" "$BASE/api/v2/rule-sets/active"
 expect_status "GET /api/v2/me" 200 -H "$H" "$BASE/api/v2/me"

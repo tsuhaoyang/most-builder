@@ -20,10 +20,87 @@
 #   要升級請顯式：./scripts/lock_deps.sh --upgrade-package fastapi
 set -euo pipefail
 
+# --- uv 版本閘 ---------------------------------------------------------------
+# 下面第 90 行起花了十幾行論證「同一份 pyproject、**同一版 uv**」是鎖檔可重現的前提，
+# 但在此之前那個前提從來沒有被檢查過——只檢查了 `command -v uv`（uv 存不存在），
+# 沒檢查是哪一版。這正是本專案一路在防的那個病：**註解宣稱了一個程式碼沒有驗證的前提**。
+#
+# 沒有這道閘的實際後果：uv 的 resolver 改版（新的回溯策略、新的 marker 正規化、輸出格式
+# 微調）會讓同一份 pyproject 解出不同的鎖檔。於是 CI 的同步關卡（重跑 lock_deps.sh、
+# git diff 必須為空）就會在**沒有任何人改過依賴**的情況下變紅，而 diff 看起來像是
+# 依賴真的變了。這種假紅的辨識成本極高——CI run 31591161223 那次（下界問題，不是版本問題）
+# 就燒掉了一輪，而那次至少 diff 只有一行 `tomli`；resolver 改版的 diff 會是整份檔。
+#
+# 這個常數目前有**第二份拷貝**在 `.github/workflows/ci.yml`（安裝 uv 那步的 URL 版本號）。
+# 兩份必須一起動。為了讓 CI 那份可以停止手抄，本腳本提供：
+#     ./scripts/lock_deps.sh --print-expected-uv-version
+#
+# ⚠️ 要用它，**必須先賦值再驗證**，不可以直接把 $(...) 塞進 URL 裡：
+#     UV_VERSION="$(./scripts/lock_deps.sh --print-expected-uv-version)"
+#     [ -n "$UV_VERSION" ] || { echo "無法取得 EXPECTED_UV_VERSION"; exit 1; }
+#     curl -LsSf "https://astral.sh/uv/${UV_VERSION}/install.sh" | sh
+#
+# 為什麼不能寫成一行 `curl -LsSf https://astral.sh/uv/$(...)/install.sh | sh`——
+# 2026-08-15 實測（bash -e，GitHub Actions 的 run: 預設就是 `bash -e {0}`，無 pipefail）：
+#   1. 命令替換用在**命令的參數位置**時，即使被替換的指令失敗，`-e` 也**不會**中止；
+#      整段照跑，只是替換成空字串 → URL 塌成 `https://astral.sh/uv//install.sh`。
+#   2. 那個 URL **不是 404**：astral.sh 回 200 並 302 到
+#      `releases.astral.sh/installers/uv/latest/uv-installer.sh`，也就是 **latest**。
+#      實測當下 latest 是 uv 0.12.5，與下面 EXPECTED_UV_VERSION 釘的並非同一版。
+#   3. 於是它會**安靜地裝上錯的 uv 版本**——正是本檔整段版本閘要防的那件事，
+#      而 curl exit 0、sh exit 0、`-e` 全程沒有話說。（加 pipefail 也救不了，
+#      因為每一環的退出碼都真的是 0。）
+#   對照組：版本號打錯字（例 `9.9.9-nope`）反而會 404，`-f` 讓 curl 退 22——
+#   但沒有 pipefail 時 pipeline 仍以 sh 的 0 收場，一樣不中止，只是變成「沒裝到」。
+# 賦值形式則相反：`VAR="$(失敗的指令)"` 的退出碼就是該指令的退出碼，`-e` 會確實中止；
+# 再加一道顯式空值檢查，連「替換成功但印出空字串」也一併擋掉。
+#
+# 之後就只剩這裡一個真相來源。（本輪未改 ci.yml：該檔另有他人在動。）
+#
+# 怎麼升 uv（完整程序，不要只改這個常數就收工）：
+#   1. 本機裝新版 uv，並把 EXPECTED_UV_VERSION 改成新版號
+#   2. 重跑 ./scripts/lock_deps.sh —— **預期會產生 diff**（resolver 換版了）
+#   3. 把 diff 逐行看過：版本升降是否合理？有沒有莫名多／少套件？
+#   4. 三份 .lock（+ requirements-build.in）與本檔一起 commit，缺一 CI 同步關卡會紅
+#   5. 同步改 .github/workflows/ci.yml 安裝 uv 那步的版本號（或改成上面那個 $() 寫法）
+#   6. 跑完整驗證：pytest unit + integration、./scripts/audit_deps.sh、./scripts/docker_smoke.sh
+#      （鎖檔換版＝實際部署的那一組換了，不是文件變更）
+EXPECTED_UV_VERSION="0.11.21"
+
 cd "$(dirname "$0")/.."
 
+# 讓 CI／其他腳本能取得期望版本而不必手抄一份（見上）。放在 uv 檢查**之前**：
+# 會問這個問題的時機正是「uv 還沒裝，要知道該裝哪一版」。
+if [ "${1:-}" = "--print-expected-uv-version" ]; then
+    echo "$EXPECTED_UV_VERSION"
+    exit 0
+fi
+
 if ! command -v uv >/dev/null 2>&1; then
-    echo "ERROR: 需要 uv（https://docs.astral.sh/uv/）。安裝：curl -LsSf https://astral.sh/uv/install.sh | sh" >&2
+    echo "ERROR: 需要 uv（https://docs.astral.sh/uv/）。" >&2
+    echo "       本專案釘死 uv ${EXPECTED_UV_VERSION}，請裝**這一版**（不要裝 latest）：" >&2
+    echo "         curl -LsSf https://astral.sh/uv/${EXPECTED_UV_VERSION}/install.sh | sh" >&2
+    exit 1
+fi
+
+# `uv --version` 輸出形如 `uv 0.11.21 (x86_64-unknown-linux-gnu)`；取第二欄。
+ACTUAL_UV_VERSION="$(uv --version 2>/dev/null | awk '{print $2}')"
+
+if [ "$ACTUAL_UV_VERSION" != "$EXPECTED_UV_VERSION" ]; then
+    echo "ERROR: uv 版本不符——本腳本拒絕以非預期版本產生鎖檔。" >&2
+    echo "       實際版本：${ACTUAL_UV_VERSION:-<解析不到，uv --version 輸出格式變了？>}" >&2
+    echo "       期望版本：${EXPECTED_UV_VERSION}" >&2
+    echo "" >&2
+    echo "       為什麼擋：不同版本的 uv（resolver 改版）對同一份 pyproject 可能解出不同的鎖檔，" >&2
+    echo "       於是 CI 的同步關卡會在沒有人改過依賴的情況下變紅，且 diff 看起來像依賴真的變了。" >&2
+    echo "" >&2
+    echo "       兩條路，二選一：" >&2
+    echo "       (a) 裝對版本（多數情況選這條）：" >&2
+    echo "             curl -LsSf https://astral.sh/uv/${EXPECTED_UV_VERSION}/install.sh | sh" >&2
+    echo "       (b) 確實要升級 uv：更新本檔頂部的 EXPECTED_UV_VERSION，**並重新產生三份鎖檔**" >&2
+    echo "           （requirements.lock / requirements-dev.lock / requirements-build.lock）" >&2
+    echo "           一起 commit，同時同步 .github/workflows/ci.yml 的 uv 版本。" >&2
+    echo "           完整程序見本檔頂部「怎麼升 uv」註解——只改常數不重鎖，CI 會紅。" >&2
     exit 1
 fi
 

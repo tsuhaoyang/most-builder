@@ -141,9 +141,25 @@ jobs:
       # vault 先例 Docker-Compose-Stale-Baked-Engine-Image 就是這樣被漏掉的。
       #
       # 放 nightly 而不是每個 PR 的理由：走鎖檔之後 image 內容只在
-      # Dockerfile / *.lock / src 變動時才會變，PR 級的重複建置價值低；
-      # 但**base image（python:3.11-slim、node:20-slim）是會被上游重建的**，
-      # 那個漂移只有時間觸發得到，正好適合 nightly。
+      # Dockerfile / *.lock / src 變動時才會變，PR 級的重複建置價值低。
+      #
+      # ⚠️ 措辭更新（2026-08-15）：這裡原本寫的理由是「**base image（python:3.11-slim、
+      # node:20-slim）是會被上游重建的**，那個漂移只有時間觸發得到，正好適合 nightly」。
+      # **那句話現在是假的**：兩個 base image 已於 2026-08-15 用 manifest list digest
+      # 釘死（見 ddm-v2/Dockerfile 的 FROM 行與其上方說明），tag 再怎麼被上游重建，
+      # 這裡 build 到的都是同一份位元組。這支 job 不會、也不可能再看到 base image 漂移。
+      #
+      # 釘死之後這支 job 實際還在抓什麼（價值仍在，只是換了項目）：
+      #   - Dockerfile / entrypoint / COPY 路徑腐爛（host 的 pytest 完全不經過 image）
+      #   - 釘住的 digest 是否還拉得到（上游把 manifest 撤掉／registry 變動會在這裡紅）
+      #   - 鎖檔安裝路徑（--require-hashes / --no-build-isolation）是否仍成立
+      #   - 容器內的黃金值 GM=28 / CM=29
+      #
+      # 釘死換來的新風險，**這支 job 抓不到**：pin 會過期，也就是 base image 出了安全修補
+      # 而我們還停在舊 digest 上。這個風險目前**沒有自動化守門**，靠人定期複查
+      # （升級程序寫在 Dockerfile 的 FROM 註解）。要補的話，合理作法是加一步比對
+      # 「tag 當下解析到的 digest」與「Dockerfile 釘住的 digest」，不一致時**警告而非擋**
+      # ——那是提醒該複查了，不是建置失敗。本輪刻意沒加（只改敘述、不改行為）。
       # （若要更嚴，可改成對 Dockerfile / requirements*.lock 的路徑觸發加進 ci.yml。）
       - name: docker build + 容器 smoke
         run: ./scripts/docker_smoke.sh

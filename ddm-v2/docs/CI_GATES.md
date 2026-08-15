@@ -21,7 +21,11 @@
    `./scripts/lock_deps.sh` 並把三個 `.lock` 與 `requirements-build.in` 一起 commit，否則 `deps` job 紅。
    安裝時**一律** `--require-hashes`，且**不得** `pip install --upgrade pip`（那是唯一不受
    hash 保護的抓取）、`-e .` **必須**帶 `--no-build-isolation`（否則 build backend 走隔離環境
-   無 hash 下載並執行）。詳見下方「依賴鎖版與安全稽核」。
+   無 hash 下載並執行）。
+   **`Dockerfile` 兩個 `FROM` 一律帶 `@sha256:`（manifest list digest），不得只留 tag**——
+   那是跑上述所有 hash 驗證的信任根。**重跑 `lock_deps.sh` 前 uv 版本必須等於
+   `EXPECTED_UV_VERSION`**，否則腳本拒絕執行（不同 resolver 產出不同鎖檔＝同步關卡假紅）。
+   詳見下方「依賴鎖版與安全稽核」。
 7. **測試必須自足，且反向斷言必須附 mutation 證據。** 兩條都是 2026-08-12 這一輪
    各抓到實例後成文的（一輪內共三條假測試），不是預防性條文：
    - **不得依賴環境既存資料。** 不要撈「第一列」「任一筆」——自己建。CI 後端 job 的 seed
@@ -36,6 +40,9 @@
      實例：`ux-compliance.spec.ts` 的 E-04-4 用 `getByText('B2', {exact:true})` 斷言
      `toHaveCount(0)`，而色塊抬頭早已改成 `A · A1` 形式使該定位器永遠 0 命中——
      把 `B2`/`P` 塞回 `CM_ITEMS`（直接違反 GM→CM 清空規則）該測試**依然全綠**。
+     （後記 2026-08-15：`A · A1` 本身是 b66829d 偏離規格的發明，已依 accepted
+     ADR-021:53 收編回單一格位鍵標籤「A1」，B-01-2 的抬頭斷言同步收緊為精確比對；
+     E-04-4 維持 data-testid 序列比對——文字錨點是當初假綠的根因，不因收編而回頭。）
      ⚠️ Playwright 的 `getByText(exact:true)` 比對的是元素內**連續 immediate 文字節點的
      合併值**，任何在同一個節點加前綴／分隔符的 UI 改動都會讓它靜默失準。
      定位錨點請用 `data-testid`／`aria-label` 這類**不隨版面文案漂移**的語意錨點。
@@ -79,6 +86,7 @@
 | **前端 UX 合規（v3 規格）** | §A-01/02/03 Sidebar 結構/背景色/折疊/角色可見性；§B-01/B-02/B-03 workbench-v3 NlDraft+Slot Strip；§C-01 MiCompositionTable gap 文件化；§E-04/05/06 WI Pool 三層 Tab；§G-01/G-02 分析案件+RBAC gating；§H-01 字典管理頁；§I-01 viewer RBAC；§L-03/04 退役確認（33 條，Type A mocked-API，無需 preview_server） | `src/frontend/e2e/ux-compliance.spec.ts` |
 | **字典治理：刪除／解除封存（ADR-023 D3b）** | DELETE 僅 draft（published／retired／certified_import／is_active 各自 409，**斷言 `detail.code` 不只狀態碼**）；**被引用的 draft 不可刪**（現為五個 RESTRICT 引用方：`most_cycles`／`most_worksheets`／`motion_module_versions`／`ai_parse_runs`／`ai_parse_jobs`）→ 409 `RULE_SET_IN_USE`＋筆數（回放鐵則的另一面）；刪除連帶 13 張子表歸零；audit 先寫後刪且自帶 `code`/`provenance`/`children_deleted`（實體消失後它是唯一紀錄）；unretire 後 `is_active` **仍為 false**；引用方清單以 `pg_catalog` 比對常數，比對粒度為 **(表, 欄) 對**（張數不寫死；只比表名的話「欄名寫錯→靜默數 0」與「同一表兩條 RESTRICT FK→dict 塌成一條」都測不出來），新增引用表／改錯欄名都會先紅；**引用情境由測試自建 Site→SKU→worksheet→WiRow→MostCycle（不撈既有 `most_cycles`）——CI 後端 job 不跑 `dev_seed_30rows.py`，依賴既有列＝本機綠／CI 紅** | `tests/integration/test_rule_set_delete_unretire.py` |
 | **前端字典管理（ADR-023 D4）** | L1 版本清單（狀態徽章＋啟用中＋血緣中文）→ L2 七參數分頁（A 三分量／M 四分量次級 tab）；**對認證版的任何寫入動作攔截跳 clone-on-write**；帶界違規顯示後端人話錯誤而非原始 JSON；**無硬編碼 rule-set code**（一律經 `useActiveRuleSet`） | `src/frontend/e2e/dictionary.spec.ts`（Type A mocked-API） |
+| **AI 批次解析 worker 硬化複驗（ADR-030）** | `fail_job` 終態必經 `_finalize_job_status` 計算：先推進 1 筆再結構性失敗→**partial**、`cancel_requested_at` 已設再結構性失敗→**cancelled**（直寫 `failed` 的旁路兩條皆紅；n_rows=1 首 tick 毒殺分不出直寫與計算）；**parse 段**（`RuleBasedParser.parse`）的 executor＋wait_for 獨立釘死（只拆 parse 段→TimeoutError 不發生、normalize 段測試不動＝靜默 wedge 現形）；done callback 在 **app 運行中（未進 shutdown）** 即出 worker 死亡 ERROR log（斷言全程在 lifespan context 內，finally 那句救不了場）；啟動訊息 **WARNING 級**（DEBUG 級捕捉＋斷言 `levelno`，降級即紅）；配額預設 `MAX_INFLIGHT_JOBS_PER_USER == 5` 防漂移（機制由 429 整合測試以 monkeypatch 常數驗證） | `tests/integration/test_parse_job_worker.py`、`tests/unit/test_wi_ai_cpu_guards.py`、`tests/unit/test_parse_job_worker.py`、`tests/unit/test_parse_job_service.py` |
 | 依賴完整性 | `create_app()` 乾淨 import；端點測試抓 lazy import | CI「乾淨 import」step + 上列各端點測試 |
 
 ## 依賴鎖版與安全稽核
@@ -141,6 +149,50 @@ starlette 本機裝到帶 CVE 的 1.0.0。完整經過見
 - **不得 `pip install --upgrade pip`**：那會抓一個**沒有版本、沒有 hash** 的 pip，
   再用它去驗證全部 sha256——等於信任根本身不受該控制措施保護。base image 內建的 pip
   自 pip 8 起就支援 `--require-hashes`。真要升 pip 必須另立一份帶 hash 的鎖檔。
+- **base image 必須以 digest 釘死**（2026-08-15 起）。`Dockerfile` 兩個 `FROM` 都帶
+  `@sha256:`，**不得**只留 tag。
+  - 理由是上一條的延伸：上面 800+ 個 wheel 的 sha256 驗證，**全部是跑在 base image 裡面**
+    的（驗 hash 的 pip、解壓的 tar、跑 build backend 的直譯器都來自它）。base image 是整套
+    控制措施的信任根；移除 `pip install --upgrade pip` 之後，它是**唯一**沒被釘住的一環。
+    tag 是可變指標——上游 rebuild 後 `python:3.11-slim` 指到不同位元組，而 Dockerfile 沒變、
+    鎖檔 diff 空的、CI 全綠，同一份 commit 前後建出不同的 image，沒有任何關卡看得見。
+  - ⚠️ **釘的必須是 manifest list（OCI image index）的 digest，不是單平台 image 的。**
+    釘錯層級的症狀是在非 amd64 機器上 build 以「no match for platform」失敗，而錯訊看不出根因。
+    取值與驗證層級——**一次抓取同時得到 digest 與層級**（分兩次抓，中間上游剛好 rebuild
+    就會拿到「A 的 digest ＋ B 的層級」，正是這裡要防的錯）：
+    ```bash
+    docker buildx imagetools inspect python:3.11-slim --raw > /tmp/mf.json
+    echo "sha256:$(sha256sum /tmp/mf.json | cut -d' ' -f1)"   # ← 貼進 Dockerfile 的值
+    python3 -c 'import json;print(json.load(open("/tmp/mf.json"))["mediaType"])'
+    # 後者必須是 application/vnd.oci.image.index.v1+json；
+    # 若是 ...image.manifest.v1+json 就是單平台的，不要用。
+    ```
+    ⚠️ **判層級一定要真的解析 JSON，不要用 grep 湊**。2026-08-15 實測：`python:3.11-slim`
+    的 index manifest 是**壓成一行**的，且 `"manifests"` 排在頂層 `"mediaType"` **之前**，
+    於是 `grep -o '"mediaType"…' | head -1` 取到的是**子 manifest** 的
+    `...image.manifest.v1+json`，看起來就像「單平台、不能用」，會擋掉一次完全合法的升級。
+    （`node:20-slim` 的是多行縮排格式，grep 剛好會對——「在一個 tag 上試通就當通用」正是入口。）
+    推薦這條的理由：digest 的定義就是 manifest 位元組的 sha256，所以它**自我驗證**，
+    不依賴任何人類可讀輸出的格式維持穩定。
+    人工看一眼用 `docker buildx imagetools inspect <tag>`（頂層 `Digest:`／`MediaType:` 兩行都在）；
+    腳本要裸值用 `... inspect <tag> | awk '/^Digest:/{print $2; exit}'`。
+
+    ⚠️ **不要用 `--format '{{.Manifest.Digest}}'` 或 `'{{.Manifest.MediaType}}'`**。
+    2026-08-15 實測（docker 29.3.0 / buildx v0.31.1）：格式字串若**只由一個 `.Manifest`
+    選擇子構成**，buildx 會忽略它、改印整段人類可讀的預設輸出，且 **exit 0、stderr 全空**。
+    照這個寫自動化比對會**恆不相等而毫無錯誤訊號**。（成因是「只有選擇子」這個形狀：
+    `{{println .Manifest.Digest}}` 或前面多一個字元都能正常印裸值；但只需記上面那條。）
+
+    也不要用 `docker pull` + `docker images --digests` 取值：取到哪個層級取決於本機 daemon
+    當下拉了哪個平台，正是釘錯層級的來源。
+  - tag 保留不刪：同時給 tag 與 digest 時 **Docker 只認 digest**，tag 是給人看的「哪一條線」。
+  - **代價（刻意接受，但要有人管）**：釘死＝**不再自動拿到 base image 的安全修補**。
+    在此之前 nightly 的 `docker-image` job 會因上游 rebuild 順帶碰到新 base image，
+    **釘死之後它不會了**——pin 過期這件事目前**沒有自動化守門**，靠人依 `Dockerfile`
+    `FROM` 註解的升級程序定期複查。升 digest 後 `./scripts/docker_smoke.sh` 必須綠。
+  - 目前 pin（2026-08-15 實測）：`node:20-slim` → `sha256:2cf067cf…`（20-bookworm-slim，
+    上游建置 2026-04-22）；`python:3.11-slim` → `sha256:a630a63c…`（3.11.16-slim-trixie，
+    上游建置 2026-08-13）。容器內實測 `Python 3.11.16` / `Debian 13 (trixie)` / `pip 24.0`。
 
 ### 誰在什麼時候要更新鎖檔
 
@@ -152,10 +204,45 @@ starlette 本機裝到帶 CVE 的 1.0.0。完整經過見
 | 全面升級 | `./scripts/lock_deps.sh --upgrade`（要跑完整測試 + docker smoke 才算數） |
 | `pip-audit` 報漏洞 | 優先升到修正版；升不了才在 `.pip-audit-ignore` 具名豁免 |
 | nightly 紅了 | 上游有破壞性變更。先判斷是「我們要跟進」還是「上游的 bug」，再決定升不升 |
+| 要升 uv | **不是換工具而是換依賴解析器**：改 `lock_deps.sh` 的 `EXPECTED_UV_VERSION` → 重鎖（會有 diff，逐行看過）→ 同步 `ci.yml` 的 uv 版本 → 完整測試 + `docker_smoke.sh` |
+| 要升 base image（安全修補／例行複查） | `docker buildx imagetools inspect <tag> --raw > /tmp/mf.json` → `sha256sum` 取新 digest、**同一份輸出用 `python3 -c 'import json;…["mediaType"]'`** 確認是 index（見上節兩個雷：`--format '{{.Manifest.Digest}}'` 會靜默印出整段預設輸出且 exit 0；`grep` 取 mediaType 會取到子 manifest）→ 換 `Dockerfile` 兩個 `FROM` 的 `@sha256:` → 更新該處 pin 日期 → `./scripts/docker_smoke.sh` 必須綠。**無自動守門，需人為排程複查** |
 
 `lock_deps.sh` **不帶 `--upgrade`**：`uv pip compile` 會把既有 `.lock` 的 pin 當偏好值，
 所以它是**冪等**的——沒改依賴時重跑產出位元組相同。CI 的同步關卡正是靠這個性質
 （「重跑一次、diff 必須為空」），也因此**不會因為上游發了新版就無故變紅**。
+
+**但冪等的前提是「同一版 uv」，而那個前提從前只寫在註解裡、沒有被檢查**（腳本只驗
+`command -v uv`，不驗版本）。uv 的 resolver 改版足以讓同一份 `pyproject` 解出不同鎖檔，
+於是同步關卡會在**沒有人改過依賴**的情況下變紅，且 diff 看起來像依賴真的變了——
+這種假紅的辨識成本極高（可對照 2026-08-12 CI run 31591161223 那次下界問題，
+而那次 diff 只有一行 `tomli`；resolver 改版的 diff 會是整份檔）。
+因此 `lock_deps.sh` 頂部宣告 **`EXPECTED_UV_VERSION`**，
+版本不符即以非 0 退出並印出實際／期望版本與兩條處置路徑。
+（**本文件刻意不抄那個版本號**——查現值請跑 `./scripts/lock_deps.sh --print-expected-uv-version`
+或直接看腳本頂部。先前這裡抄了一份，等於同一個值有三處拷貝、且文件那份沒有任何東西會發現它過期。）
+
+升 uv 是**變更依賴的動作，不是換個工具**，完整程序見 `scripts/lock_deps.sh` 檔頭：
+改常數 → 重跑產生 diff → 逐行看過 diff → 三份 `.lock` 一起 commit →
+同步 `.github/workflows/ci.yml` 的 uv 版本 → 跑完整測試 + `audit_deps.sh` + `docker_smoke.sh`。
+
+⚠️ **這個版本號目前有兩份拷貝**：`scripts/lock_deps.sh` 的 `EXPECTED_UV_VERSION`
+與 `.github/workflows/ci.yml` 安裝 uv 那步的 URL。兩份必須一起動。
+為了讓 CI 停止手抄，腳本提供 `./scripts/lock_deps.sh --print-expected-uv-version`。
+`ci.yml` 要改的話**必須寫成「先賦值再驗證」**（**尚未套用**）：
+
+```bash
+UV_VERSION="$(./scripts/lock_deps.sh --print-expected-uv-version)"
+[ -n "$UV_VERSION" ] || { echo "無法取得 EXPECTED_UV_VERSION"; exit 1; }
+curl -LsSf "https://astral.sh/uv/${UV_VERSION}/install.sh" | sh
+```
+
+**不可以**寫成一行 `curl -LsSf https://astral.sh/uv/$(...)/install.sh | sh`。
+2026-08-15 實測（`bash -e`，即 Actions `run:` 的預設 shell，無 pipefail）：命令替換用在
+**參數位置**時失敗不會讓 `-e` 中止，URL 塌成 `https://astral.sh/uv//install.sh`；而該 URL
+**不是 404**——astral.sh 回 200 並轉到 `installers/uv/latest/uv-installer.sh`，
+於是**安靜地裝上 latest**（實測當下 latest 為 0.12.5，與 `EXPECTED_UV_VERSION` 釘的並非同一版），
+curl 與 sh 的退出碼都真的是 0，連 `pipefail` 都救不了。
+賦值形式的命令替換失敗則會確實中止，再加一道空值檢查連「印出空字串」也擋掉。
 
 ### CI 怎麼用
 
@@ -207,7 +294,15 @@ nightly 的 `audit-latest` 會讓它通常在半夜先紅，而不是砸在隔�
 |---|---|---|
 | `latest-resolution`（py3.11 + py3.12 矩陣） | **不用鎖檔**、`pip install -e ".[dev]"` 解析最新版，跑 core_logic + unit + integration + ruff | 上游破壞性變更。**在 nightly 紅，不在無辜的 feature PR 上紅** |
 | `audit-latest` | 對鎖檔重跑 `audit_deps.sh` | 隨時間出現的新 CVE 公告（早期預警） |
-| `docker-image` | `./scripts/docker_smoke.sh`＝build image → 起全新 postgres → 打端點 + 驗 GM=28/CM=29 | Dockerfile／entrypoint 腐爛；**base image（`python:3.11-slim`／`node:20-slim`）被上游重建**的漂移 |
+| `docker-image` | `./scripts/docker_smoke.sh`＝build image → 起全新 postgres → 打端點 + 驗 GM=28/CM=29 | Dockerfile／entrypoint／COPY 路徑腐爛；釘住的 base digest 是否還拉得到；鎖檔安裝路徑是否仍成立 |
+
+> ⚠️ **措辭已更新（2026-08-15）**：`docker-image` 這列原本寫的是它會抓
+> 「**base image（`python:3.11-slim`／`node:20-slim`）被上游重建**的漂移」。
+> 自 base image 以 digest 釘死後**那句話是假的**——tag 再怎麼被上游重建，這支 job
+> build 到的都是同一份位元組，它不會、也不可能再看到 base image 漂移。
+> 換來的新風險是**反向的**：pin 會過期（base image 出了安全修補而我們還停在舊 digest）。
+> 這個風險**沒有任何自動化守門**。若要補，合理作法是加一步比對「tag 當下解析到的 digest」
+> 與「Dockerfile 釘住的 digest」，不一致時**警告而非擋**（那是提醒該複查，不是建置失敗）。
 
 矩陣跑 3.11 **和** 3.12 的理由：3.11 是 CI 與 Dockerfile 的實際部署版本，
 3.12 是開發機的實際版本，`requires-python` 宣告的是 `>=3.11`——只跑一條就是宣告又一次說謊。
