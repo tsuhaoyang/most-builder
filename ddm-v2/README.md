@@ -21,7 +21,7 @@
 
 ## 先決條件
 
-- Python **3.11+**（見 `pyproject.toml`）
+- Python **3.11**（對齊 CI 與 Dockerfile 的 `python:3.11-slim`；`pyproject.toml` 的下界是 3.11）
 - Node **20+**（前端建置）
 - PostgreSQL（本機或 `docker compose up db`）
 
@@ -31,8 +31,12 @@
 
 ```bash
 cd ddm-v2
-python3.12 -m venv .venv && .venv/bin/pip install -e ".[dev]"
-export DATABASE_URL="postgresql+asyncpg://USER:PASS@localhost:5432/ddm_v2"
+# 一律從鎖檔裝（ADR-029）；`pip install -e ".[dev]"` 會解析到當下最新版，裝出與 CI／Docker 不同的依賴
+python3.11 -m venv .venv
+.venv/bin/pip install --require-hashes -r requirements-build.lock
+.venv/bin/pip install --require-hashes --no-build-isolation -r requirements-dev.lock
+.venv/bin/pip install --no-deps --no-build-isolation -e .
+export DATABASE_URL="postgresql+asyncpg://USER:PASS@localhost:5432/ddm_v2_most"
 PYTHONPATH=src .venv/bin/alembic upgrade head
 PYTHONPATH=src .venv/bin/python scripts/dev_seed_v2.py        # site/product/sku/worksheet + admin
 PYTHONPATH=src .venv/bin/python scripts/dev_seed_templates.py  # 動作範本庫

@@ -1,7 +1,7 @@
 # ADR-029: Python 依賴鎖版與阻斷式依賴安全稽核
 
-**狀態：** proposed
-**日期：** 2026-08-12
+**狀態：** accepted（2026-08-15，User 核可）
+**日期：** 2026-08-12（accepted 2026-08-15）
 **關聯：** [ADR-028](ADR-028-most-engine-boundary-validation-and-single-authority.md)（同一輪稽核的另一半：
 那份管「引擎算什麼」，本份管「引擎跑在哪一組依賴上」）、
 [引擎與 legacy 稽核 §12](../architecture/legacy-inventory-and-engine-audit.md)（事實基礎，每個版本數字都有 overlay／拆 wheel 實測）、
@@ -351,8 +351,8 @@ PR 級的重複建置價值低而成本（每個 PR 的 CI 時間）是每次都
 | # | 斷言 | 實測 |
 |---|---|---|
 | 16 | `.venv` 的 fastapi / starlette / pytest / python-multipart == 鎖檔（0.141.1 / 1.6.0 / 8.4.2 / 0.0.32） | ✅ |
-| 17 | `.venv` 不含鎖檔以外的套件 | ❌ **`psycopg2-binary 2.9.11` 例外**（全 repo 零引用，見殘留 5） |
-| 18 | 開發文件不再教人用未鎖的安裝方式 | ❌ **`CLAUDE.md:35` 與 `ddm-v2/README.md:34` 仍寫 `pip install -e ".[dev]"`**（先例 `Unfalsifiable-Security-Claim-Doc-Gate-Drift`：綠燈守門與錯誤文件可以長期並存且永遠不會互相糾正） |
+| 17 | `.venv` 不含鎖檔以外的套件 | ✅ **2026-08-15 關閉**。`psycopg2-binary 2.9.11` 已從 `.venv` 移除。移除前查證：`src/`／`scripts/`／`tests/`／`migrations/` 零引用、三份鎖檔皆無、`pip show` 的 `Required-by` 為空；移除後 unit 453／integration 425／golden 全綠，`alembic current` 仍為 `v2_0035 (head)`（本專案走 asyncpg，同步驅動非必要） |
+| 18 | 開發文件不再教人用未鎖的安裝方式 | ✅ **2026-08-15 關閉**。`CLAUDE.md`、`README.md`、`QUICKSTART.md` 三份都改為鎖檔安裝。<br>**本斷言原本的證據不完整**：它只點名 `CLAUDE.md` 與 `README.md`，漏了 `QUICKSTART.md`——而後者正是 `README.md` 指過去的那份，也就是新人實際會照著做的那份。修正時一併發現這三份寫 `python3.12`、DB 名寫 `ddm_v2`（實際是 `ddm_v2_most`），皆已對齊。<br>這正是斷言原文引用的 `Unfalsifiable-Security-Claim-Doc-Gate-Drift` 的下一層：**連「哪些文件會漂移」的清單本身也會漏**。 |
 
 ## 後果
 
@@ -422,11 +422,10 @@ PR 級的重複建置價值低而成本（每個 PR 的 CI 時間）是每次都
    （`Dockerfile`／`requirements*.lock`／`entrypoint.sh` 有動才跑），代價是那類 PR 的 CI 時間。
 4. **pytest 9 升級**（跨大版號 + pytest-asyncio 相容性 + 711 條測試），完成後移除唯一那筆豁免。
    `REVIEW-BY: 2026-11-30` 是這件事的截止提醒，不是承諾日期。
-5. **`psycopg2-binary` 的處置。** 它在本機 `.venv` 裡（2.9.11），但**全 repo 零引用**、
-   也不在任何鎖檔裡（本專案用 asyncpg）。這是「本機有、鎖檔沒有」的殘留，
-   要嘛移除、要嘛查清楚它是誰帶進來的並補宣告——在此之前，斷言 17 是紅的。
+5. ~~**`psycopg2-binary` 的處置。**~~ **2026-08-15 關閉：已移除**（見斷言 17）。
 6. **`starlette 1.6.0` 起的 `Using httpx with starlette.testclient is deprecated` 警告。**
    未來某版可能移除支援，屆時 711 條測試會一起受影響。要不要現在就改用官方建議的用法、
    還是等它真的移除再處理，需要獨立評估（涉及所有 integration 測試的 client fixture）。
-7. **文件面的收尾**：`CLAUDE.md` 與 `ddm-v2/README.md` 的 setup 指令仍教人
-   `pip install -e ".[dev]"`（斷言 18）。`CLAUDE.md` 屬使用者設定檔，其修改需使用者自行決定。
+7. ~~**文件面的收尾**~~ **2026-08-15 關閉**（見斷言 18）：`CLAUDE.md`、`README.md`、`QUICKSTART.md`
+   三份皆已改為鎖檔安裝。原文只列了前兩份——**漏掉的 `QUICKSTART.md` 正是 `README.md` 指過去、
+   新人實際會照做的那份**。教訓記在斷言 18 的儲存格裡。

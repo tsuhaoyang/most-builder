@@ -55,11 +55,16 @@
 
 完整狀態與主題索引見 [decisions/README.md](decisions/README.md)。
 
-- **Accepted：** ADR-011～015、ADR-018～027。
-- **Proposed：** ADR-016、ADR-017、ADR-028、ADR-029。
+- **Accepted：** ADR-011～015、ADR-018～027、ADR-029。
+- **Proposed：** ADR-016、ADR-017、ADR-028。
 - ADR-026/027 已於 2026-08-10 accepted；實作仍依 roadmap 分批（L4 jobs 先於 worksheet revision／outbox）。
-- ADR-028（most_engine 邊界驗證與單一權威）proposed，待 User 核可；前置條件為正式環境 `slot_inputs` 掃描。
-- ADR-029（Python 依賴鎖版與阻斷式 pip-audit）proposed，待 User 核可；**實作已落地並複驗**，殘留決策為 3.11/3.12 收斂、nightly 合併後的首次觸發、docker smoke 是否升為 PR 關卡。
+- ADR-028（most_engine 邊界驗證與單一權威）**仍 proposed**，且**不應在正式環境掃描之前簽署**——
+  §7 的執行順序把 User 核可放在「正式環境掃描報告」之後（第 2 步），先簽等於在缺證據時授權加嚴。
+  掃描工具已於 2026-08-15 交付（`scripts/audit_slot_inputs.py`），本機零命中不構成放行證據（斷言 #34）。
+  另有一項待裁決：§4 的留痕機制不可用（見該 ADR〈不由本 ADR 決定〉第 9 項）。
+- ADR-029（Python 依賴鎖版與阻斷式 pip-audit）**2026-08-15 accepted**，18 條驗收斷言全綠。
+  殘留決策：3.11/3.12 收斂、nightly 合併後的首次觸發、docker smoke 是否升為 PR 關卡、pytest 9 升級、
+  starlette testclient deprecation。
 
 ## Roadmap
 

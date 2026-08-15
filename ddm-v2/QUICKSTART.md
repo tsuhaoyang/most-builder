@@ -12,16 +12,21 @@
 ```bash
 cd ddm-v2
 
-# 2.1 虛擬環境 + 安裝
-python3.12 -m venv .venv
-.venv/bin/pip install -e ".[dev]"
+# 2.1 虛擬環境 + 安裝（一律從鎖檔裝，見 ADR-029）
+#     不要用 `pip install -e ".[dev]"`：那會解析到當下最新版，裝出與 CI／Docker 不同的一組依賴。
+#     Python 用 3.11，對齊 CI 與 Dockerfile 的 python:3.11-slim。
+python3.11 -m venv .venv
+.venv/bin/pip install --require-hashes -r requirements-build.lock
+.venv/bin/pip install --require-hashes --no-build-isolation -r requirements-dev.lock
+.venv/bin/pip install --no-deps --no-build-isolation -e .
 
 # 2.2 PostgreSQL（任選）
 #   A) 自己的 PG：建好 DB，設 DATABASE_URL
 #   B) 用 compose 只起 DB（需主機存取 → 疊 dev override 才會發佈 port）：
 #      docker compose -f docker-compose.yml -f docker-compose.dev.yml up -d db
 #      （主機 5432 被佔用時：POSTGRES_HOST_PORT=15432 ... 並改下面 URL 的 port）
-export DATABASE_URL="postgresql+asyncpg://USER:PASS@localhost:5432/ddm_v2"
+#      帳密以 compose 的 db 服務為準：docker compose exec db sh -c 'echo $POSTGRES_USER/$POSTGRES_DB'
+export DATABASE_URL="postgresql+asyncpg://USER:PASS@localhost:5432/ddm_v2_most"
 
 # 2.3 遷移 + 種子
 PYTHONPATH=src .venv/bin/alembic upgrade head
