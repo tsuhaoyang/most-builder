@@ -25,9 +25,13 @@ def _cm(a0, g, m, x, i, a6, b1=None):
     return {"seq": "CM", "slots": {0: a0, 1: {"b_code": b1}, 2: g, 3: m, 4: x, 5: i, 6: a6}}
 
 
-GM_GOLD = lambda: _gm(_a(reach=20), {"g_code": "g_grasp"}, _a(reach=25), {"p_base_code": "p_place_none"}, _a())
-CM_GOLD = lambda: _cm(_a(reach=25), {"g_code": "g_touch"}, {"m_components": [{"verb_code": "m_push", "distance_cm": 45}]},
-                      {"x_code": "x_none"}, {"i_code": "i_none"}, _a())
+def GM_GOLD():
+    return _gm(_a(reach=20), {"g_code": "g_grasp"}, _a(reach=25), {"p_base_code": "p_place_none"}, _a())
+
+
+def CM_GOLD():
+    return _cm(_a(reach=25), {"g_code": "g_touch"}, {"m_components": [{"verb_code": "m_push", "distance_cm": 45}]},
+               {"x_code": "x_none"}, {"i_code": "i_none"}, _a())
 
 
 # ── 黃金（V2）──

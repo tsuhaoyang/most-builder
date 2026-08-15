@@ -45,9 +45,10 @@ async def _seed_mapped_import(db_session, *, n_rows: int = 2):
 
 @pytest.mark.asyncio
 async def test_parse_job_create_tick_idempotent(client, db_session):
+    from sqlalchemy import select
+
     from ddm_v2.models.v2.ai_ops import AiParseJobItem, AiParseRun
     from ddm_v2.models.v2.import_staging import ImportRow
-    from sqlalchemy import select
 
     import_id, rows = await _seed_mapped_import(db_session, n_rows=2)
     code = await _get_rs_code(client)
@@ -71,7 +72,6 @@ async def test_parse_job_create_tick_idempotent(client, db_session):
     assert r_dup.json()["id"] == job["id"]
 
     # materialize import_rows
-    from sqlalchemy import select
 
     ir = (
         await db_session.execute(select(ImportRow).where(ImportRow.import_id == import_id))

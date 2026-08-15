@@ -9,7 +9,6 @@ import pytest
 
 from ddm_v2.services.v2.import_service import apply_mapping, suggest_header_row
 
-
 # ── suggest_header_row ────────────────────────────────────────────────────────
 
 class TestSuggestHeaderRow:

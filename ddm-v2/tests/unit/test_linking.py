@@ -5,13 +5,13 @@ import pytest
 
 from ddm_v2.nlp.contracts import (
     EvidenceSpan,
+    OptionCandidate,
     PlannedAction,
     RoleValue,
     SourceRef,
     WorkInstructionPlan,
 )
 from ddm_v2.nlp.linking import SlotLinker, _merge_l1_l2
-from ddm_v2.nlp.contracts import OptionCandidate
 
 
 def _plan(action_type: str, text: str, roles: dict | None = None) -> WorkInstructionPlan:

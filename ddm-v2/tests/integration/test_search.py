@@ -22,6 +22,7 @@ async def test_search_unauthorized(client, monkeypatch):
     否則匿名請求被解析成 dev 使用者而回 200。
     """
     import httpx
+
     from ddm_v2.main import create_app
 
     monkeypatch.delenv("AUTH_DEV_USER", raising=False)

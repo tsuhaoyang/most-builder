@@ -9,12 +9,13 @@
 """
 from __future__ import annotations
 
-import pytest
 from unittest.mock import MagicMock
 
-from ddm_v2.search.normalization import build_content_norm, normalize
+import pytest
+
 from ddm_v2.search.adapters.null_provider import NullProvider
-from ddm_v2.search.service import SearchHit, SearchService
+from ddm_v2.search.normalization import build_content_norm, normalize
+from ddm_v2.search.service import SearchService
 
 pytestmark = pytest.mark.unit
 

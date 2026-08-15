@@ -10,10 +10,9 @@ from __future__ import annotations
 
 import pytest
 
+from ddm_v2.nlp.lexicon import build_lexicon, match_all
 from ddm_v2.nlp.normalization import normalize
-from ddm_v2.nlp.lexicon import LexEntry, build_lexicon, match_all
 from ddm_v2.nlp.rule_based import RuleBasedParser
-from ddm_v2.nlp.ports import NLDraftResult
 
 pytestmark = pytest.mark.unit
 

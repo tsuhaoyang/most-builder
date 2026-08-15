@@ -5,7 +5,6 @@ import os
 import uuid
 
 import pytest
-from sqlalchemy import select
 
 if not os.getenv("DATABASE_URL"):
     pytest.skip("需要 DATABASE_URL", allow_module_level=True)
