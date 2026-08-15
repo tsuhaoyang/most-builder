@@ -30,9 +30,9 @@ async def main(yes: bool) -> None:
         sys.exit(1)
 
     # 在 event loop 內 import，避免 asyncpg 初始化問題
-    from sqlalchemy.ext.asyncio import create_async_engine, AsyncSession
-    from sqlalchemy.orm import sessionmaker
     from sqlalchemy import text
+    from sqlalchemy.ext.asyncio import AsyncSession, create_async_engine
+    from sqlalchemy.orm import sessionmaker
 
     sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "src"))
     from ddm_v2.search.normalization import build_content_norm

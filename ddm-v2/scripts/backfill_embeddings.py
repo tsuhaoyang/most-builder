@@ -26,9 +26,9 @@ async def main(dry_run: bool) -> None:
         print("DATABASE_URL 未設定，跳過", file=sys.stderr)
         return
 
-    from sqlalchemy.ext.asyncio import create_async_engine, AsyncSession
-    from sqlalchemy.orm import sessionmaker
     from sqlalchemy import text
+    from sqlalchemy.ext.asyncio import AsyncSession, create_async_engine
+    from sqlalchemy.orm import sessionmaker
 
     engine = create_async_engine(database_url, echo=False)
     Session = sessionmaker(engine, class_=AsyncSession, expire_on_commit=False)

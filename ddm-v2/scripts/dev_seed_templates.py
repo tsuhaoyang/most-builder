@@ -13,7 +13,14 @@ from sqlalchemy import select
 from ddm_v2.database import get_db_session
 from ddm_v2.models.v2.motion_template import MotionTemplate
 from ddm_v2.schemas.v2.most import (
-    ASlot, CycleIn, GSlot, ISlot, MComponent, MSlot, PSlot, XSlot,
+    ASlot,
+    CycleIn,
+    GSlot,
+    ISlot,
+    MComponent,
+    MSlot,
+    PSlot,
+    XSlot,
 )
 
 
