@@ -1,0 +1,126 @@
+{
+  "id": "d039_0423b4e8",
+  "source_text": "左手從料架拿取假DIMM保持住至流水線",
+  "notes": "預標註草稿（rule pipeline 自動產生；scripts/gold_harvest.py）。非 gold——IE 覆核核准前不得移入 tests/gold/wi_plans/。",
+  "review_status": "pending_ie",
+  "approved_by": null,
+  "plan_origin": "rule_based_v1_preannotation",
+  "ie_modified": null,
+  "split": null,
+  "split_groups": [
+    "module:ac3ce9bb-a878-434e-88bf-a2a4fd9e480d",
+    "module:d9203ed2-8138-4d2a-8ab6-480ff29daafb"
+  ],
+  "split_component": "module:2b73646b-bfb4-43aa-a610-9c21f6543776",
+  "source_provenance": [
+    {
+      "table": "motion_module_versions",
+      "id": "7fc58b77-1e55-4ef3-a4ff-6cf6aaad7cf8",
+      "detail": "rows[0].sub_activity",
+      "group_key": "module:d9203ed2-8138-4d2a-8ab6-480ff29daafb",
+      "db_timestamp": "2026-08-04T06:59:46.592154+00:00",
+      "raw_text": "左手從料架拿取假DIMM保持住至流水線"
+    },
+    {
+      "table": "motion_module_versions",
+      "id": "93b2939c-56e6-48a2-9ab5-6409a88a0246",
+      "detail": "rows[0].sub_activity",
+      "group_key": "module:ac3ce9bb-a878-434e-88bf-a2a4fd9e480d",
+      "db_timestamp": "2026-08-04T06:59:47.010638+00:00",
+      "raw_text": "左手從料架拿取假DIMM保持住至流水線"
+    },
+    {
+      "table": "motion_modules",
+      "id": "ac3ce9bb-a878-434e-88bf-a2a4fd9e480d",
+      "detail": "name_zh (category=action)",
+      "group_key": "module:ac3ce9bb-a878-434e-88bf-a2a4fd9e480d",
+      "db_timestamp": "2026-08-04T06:59:46.997481+00:00",
+      "raw_text": "左手從料架拿取假DIMM保持住至流水線"
+    }
+  ],
+  "challenge_tags": {
+    "zh_simplified_variant": false,
+    "fullwidth_chars": false,
+    "typo": "unknown",
+    "homophone": "unknown",
+    "mixed_zh_en": true,
+    "english_only": false,
+    "inverted_word_order": "unknown",
+    "colloquial": "unknown",
+    "multi_action": true,
+    "quantity": false,
+    "tool_handling": false,
+    "simo_both_hands": false,
+    "missing_info": "unknown",
+    "ambiguity": "unknown",
+    "diagram_reference_no_image": false,
+    "site_jargon_dirty_import": "unknown"
+  },
+  "heuristic_tags_unverified": [
+    "quantity",
+    "tool_handling",
+    "simo_both_hands"
+  ],
+  "preannotation_caveat": [
+    "likely_multi_action_undercounted",
+    "empty_lexicon_no_slot_candidates"
+  ],
+  "preannotation": {
+    "pipeline": "rule_based_v1 -> plan_from_rule_result -> SlotLinker(no-db) -> compile_plan -> engine_gate(most_engine) -> compute_routing(auto=off)",
+    "planner": "rule_based_v1",
+    "rule_set_code": "MINIMOST_FACTORY_V2",
+    "lexicon_source": "rule_option_synonyms",
+    "lexicon_size": 0,
+    "routing_reasons": [
+      "composite_unknown"
+    ]
+  },
+  "plan": {
+    "schema_version": "wi-plan-v1",
+    "source_text": "左手從料架拿取假DIMM保持住至流水線",
+    "normalized_text": "左手從料架拿取假dimm保持住至流水線",
+    "language": "zh",
+    "source_ref": {
+      "kind": "interactive",
+      "worksheet_id": null,
+      "import_id": null,
+      "import_row_index": null
+    },
+    "actions": [
+      {
+        "action_id": "a1",
+        "action_type": "composite_unknown",
+        "sequence_order": 1,
+        "roles": {},
+        "evidence": [
+          {
+            "start": 0,
+            "end": 19,
+            "text": "左手從料架拿取假dimm保持住至流水線"
+          }
+        ],
+        "notes": "rule_based_v1"
+      }
+    ],
+    "dependencies": [],
+    "unresolved": [
+      "composite_unknown"
+    ]
+  },
+  "synthetic_synonyms": [],
+  "expected_cycles": [
+    {
+      "action_id": "a1",
+      "complete": false,
+      "cycle": null,
+      "issues_contain": [
+        "composite_unknown"
+      ]
+    }
+  ],
+  "gold_schema_version": "wi-gold-v1",
+  "expected": {
+    "action_count": 1,
+    "routing_status": "abstain"
+  }
+}

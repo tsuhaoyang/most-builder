@@ -1,0 +1,125 @@
+{
+  "id": "d019_d9190952",
+  "source_text": "雙手接觸DIMM壓合治具拉至規定位置",
+  "notes": "預標註草稿（rule pipeline 自動產生；scripts/gold_harvest.py）。非 gold——IE 覆核核准前不得移入 tests/gold/wi_plans/。",
+  "review_status": "pending_ie",
+  "approved_by": null,
+  "plan_origin": "rule_based_v1_preannotation",
+  "ie_modified": null,
+  "split": null,
+  "split_groups": [
+    "module:3725c049-1450-4788-ad75-80a337fa40e0",
+    "module:dcbb30a8-44f0-4218-aafb-b6882a66aca0"
+  ],
+  "split_component": "module:32a29bba-fabe-4332-baee-9785d4c2525d",
+  "source_provenance": [
+    {
+      "table": "motion_module_versions",
+      "id": "437a60f0-ef7a-4f52-a91f-419b7f8ce1eb",
+      "detail": "rows[0].sub_activity",
+      "group_key": "module:3725c049-1450-4788-ad75-80a337fa40e0",
+      "db_timestamp": "2026-08-04T06:59:46.963044+00:00",
+      "raw_text": "雙手接觸DIMM壓合治具拉至規定位置"
+    },
+    {
+      "table": "motion_module_versions",
+      "id": "b91e9fca-a311-496a-bbdb-db6f76f460c2",
+      "detail": "rows[0].sub_activity",
+      "group_key": "module:dcbb30a8-44f0-4218-aafb-b6882a66aca0",
+      "db_timestamp": "2026-08-04T06:59:46.569688+00:00",
+      "raw_text": "雙手接觸DIMM壓合治具拉至規定位置"
+    },
+    {
+      "table": "motion_modules",
+      "id": "3725c049-1450-4788-ad75-80a337fa40e0",
+      "detail": "name_zh (category=action)",
+      "group_key": "module:3725c049-1450-4788-ad75-80a337fa40e0",
+      "db_timestamp": "2026-08-04T06:59:46.949867+00:00",
+      "raw_text": "雙手接觸DIMM壓合治具拉至規定位置"
+    }
+  ],
+  "challenge_tags": {
+    "zh_simplified_variant": false,
+    "fullwidth_chars": false,
+    "typo": "unknown",
+    "homophone": "unknown",
+    "mixed_zh_en": true,
+    "english_only": false,
+    "inverted_word_order": "unknown",
+    "colloquial": "unknown",
+    "multi_action": false,
+    "quantity": false,
+    "tool_handling": true,
+    "simo_both_hands": true,
+    "missing_info": "unknown",
+    "ambiguity": "unknown",
+    "diagram_reference_no_image": false,
+    "site_jargon_dirty_import": "unknown"
+  },
+  "heuristic_tags_unverified": [
+    "quantity",
+    "tool_handling",
+    "simo_both_hands"
+  ],
+  "preannotation_caveat": [
+    "take_move_pair_may_be_single_cm",
+    "empty_lexicon_no_slot_candidates"
+  ],
+  "preannotation": {
+    "pipeline": "rule_based_v1 -> plan_from_rule_result -> SlotLinker(no-db) -> compile_plan -> engine_gate(most_engine) -> compute_routing(auto=off)",
+    "planner": "rule_based_v1",
+    "rule_set_code": "MINIMOST_FACTORY_V2",
+    "lexicon_source": "rule_option_synonyms",
+    "lexicon_size": 0,
+    "routing_reasons": [
+      "no_candidate_p",
+      "missing_core_p"
+    ]
+  },
+  "plan": {
+    "schema_version": "wi-plan-v1",
+    "source_text": "雙手接觸DIMM壓合治具拉至規定位置",
+    "normalized_text": "雙手接觸dimm壓合治具拉至規定位置",
+    "language": "zh",
+    "source_ref": {
+      "kind": "interactive",
+      "worksheet_id": null,
+      "import_id": null,
+      "import_row_index": null
+    },
+    "actions": [
+      {
+        "action_id": "a1",
+        "action_type": "move_place",
+        "sequence_order": 1,
+        "roles": {},
+        "evidence": [
+          {
+            "start": 0,
+            "end": 18,
+            "text": "雙手接觸dimm壓合治具拉至規定位置"
+          }
+        ],
+        "notes": "rule_based_v1"
+      }
+    ],
+    "dependencies": [],
+    "unresolved": []
+  },
+  "synthetic_synonyms": [],
+  "expected_cycles": [
+    {
+      "action_id": "a1",
+      "complete": false,
+      "seq": "GM",
+      "issues_contain": [
+        "missing_core_p"
+      ]
+    }
+  ],
+  "gold_schema_version": "wi-gold-v1",
+  "expected": {
+    "action_count": 1,
+    "routing_status": "review"
+  }
+}

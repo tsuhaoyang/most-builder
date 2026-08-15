@@ -50,6 +50,7 @@
 | [WI AI Parser 實作規格](llm/wi-ai-parser-implementation-spec.md) | 實作層：契約、模組、DB、prompt、測試與 L0–L4 分期 | 🔄 |
 | [WI AI Parser 交付追蹤](llm/wi-ai-parser-worklog.md) | Phase 狀態、卡點、D3 決策、checkpoint 與驗收紀錄 | 🔄 交付期間持續更新 |
 | [WI AI Eval Reports](llm/eval-reports/README.md) | gold plan 評測輸出（`wi_ai_eval.py`） | 🔄 L3+ |
+| [WI Gold Set 擴充覆核工作流](llm/gold-review/README.md) | 預標註草稿的 IE 覆核／轉正流程、自我指涉排除、split 原則（`gold_harvest.py`） | 🔄 P0 覆核中 |
 
 ## 架構決策
 

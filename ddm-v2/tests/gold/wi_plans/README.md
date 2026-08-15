@@ -8,11 +8,14 @@ IE 核准（或種子）的計畫案例，供 L3+ 迴歸與 `scripts/wi_ai_eval.
 |------|------|
 | `gold_schema_version` | 固定 `wi-gold-v1` |
 | `id` | 穩定案例 ID |
-| `approved_by` | `seed`（開發種子）或 IE 工號／核准紀錄 |
+| `approved_by` | IE 工號／核准紀錄；`seed` **只認 `SEED_GOLD_IDS` 白名單的 3 個 A5 種子檔**（`src/ddm_v2/nlp/gold_eval.py`）——非白名單案例填 `seed` 視同未核准且守門測試（`tests/unit/test_gold_draft_isolation.py`）必紅 |
+| `plan_origin` | plan 出處，**非 seed 案例轉正必填**：預標註轉正＝`rule_based_v1_preannotation`、IE 從零手寫＝`ie_manual`。缺欄＝守門紅（自我指涉排除靠這欄；`nlp/planner_eval.py`） |
+| `ie_modified` | **非 seed 案例轉正必填 `true|false`**（JSON bool）：`true`＝IE 改過 plan 內容（真實 ground truth）；`false`＝原樣核准（該筆排除出 planner 段 Plan 層指標）。缺欄＝守門紅 |
+| `expected_incomplete_reason` | 非 seed 案例若**沒有任何 `complete: true` 帶 `total_tmu` 的 cycle**，必填此欄誠實記錄原因（如「原文缺放置目標，資訊不足以定 P 參數」）——否則撞空殼守門（P1-3 tripwire） |
 | `boundary` | 邊界標籤（如 `acquire_only_no_invented_steps`） |
 | `plan` | `wi-plan-v1` WorkInstructionPlan（gold 輸入） |
 | `synthetic_synonyms` | 評測用同義詞（unit／無 DB） |
-| `expected_cycles` | 與 A5 fixture 同形：complete／TMU／tech_line… |
+| `expected_cycles` | 與 A5 fixture 同形：complete／TMU／tech_line…；`expected_engine_rejected: true`＝「complete 但引擎拒絕」的期望（重放驗「引擎仍拒絕」，不驗 TMU——harvest 對 engine gate 拒收的 cycle 寫這個，轉正前應修正） |
 | `expected.action_count` / `routing_status` | 可選總體斷言 |
 
 評測有**兩段並列**（皆不呼叫 LLM、不需 DB）：

@@ -9,9 +9,12 @@
 
 - 檔名：`wi-gold-<UTC timestamp>.json`
 - 最新一次亦寫 `wi-gold-latest.json`（方便 diff；可入版控）
+- **降級守門**：gold_dir 含任何未核准案例（`approved_by` 空、或 `review_status`
+  非 approved）時，檔名改為 `wi-draft-<stamp>.json`／`wi-draft-latest.json`，
+  **拒寫** `wi-gold-*`——覆核期間不得污染官方報告（報告內 `unapproved_cases` 點名）。
 - 本目錄以 `.gitkeep` 與 `wi-gold-latest.json` 為起點；歷史報告可選擇性 commit。
 
-## 報告格式（`report_schema_version: wi-gold-report-v3`）
+## 報告格式（`report_schema_version: wi-gold-report-v4`）
 
 兩段並列、分開呈現：
 
@@ -39,6 +42,16 @@
     `boundary_trivially_empty=true`、排除於 micro 聚合」——舊算法會讓
     「全面 abstain、不給 evidence」的 planner 拿滿分（指標獎勵棄權）。
     現行 seed gold 三筆都有 evidence，此修正**不影響**現行 micro 數字。
+- v3 → v4（2026-08-16）：頂層 compile 段形狀仍不變；新增頂層 `unapproved_cases`
+  （非空時報告檔名降級 `wi-draft-*`）。`planner_eval` 內**語意修正——自我指涉
+  排除**：gold 檔標 `plan_origin=<planner>_preannotation` 且 `ie_modified` 非
+  true（＝該 gold plan 就是受測 planner 的預標註輸出、IE 原樣核准）者，排除出
+  Plan 層指標（`action_count_accuracy` 與 `boundary_span` 聚合的分母都不含）；
+  `summary` 新增 `plan_metrics_n` 與 `self_referential_excluded`
+  （count/cases/reason），`cases[*]` 新增 `plan_origin`／`ie_modified`。
+  動機：橡皮圖章實驗（60 筆草稿只改身分欄位轉正）會把 accuracy 從 0.667 吹到
+  0.98——那是 planner 給自己打分，不是能力。現行 seed gold 三筆無
+  `plan_origin`，此修正**不影響**現行數字。
 
 ### planner 段指標（操作型定義）
 

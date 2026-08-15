@@ -22,6 +22,36 @@ from ddm_v2.nlp.linking import SlotLinker
 from ddm_v2.nlp.routing import compute_routing
 
 GOLD_SCHEMA_VERSION = "wi-gold-v1"
+DEFAULT_RULE_SET_CODE = "MINIMOST_FACTORY_V2"
+
+# 正式 gold 的 seed fixture 白名單（唯一出處）：`approved_by: "seed"` 的豁免
+# （空殼守門、轉正欄位要求、報告核准計數）**只對這三個已知 A5 種子檔有效**。
+# 「seed」不是任人填的萬用豁免字串——先前只認字串時，把任意案例標
+# `approved_by: "seed"` 並刪 `plan_origin` 就能同時穿透空殼守門（P1-3）與
+# 自我指涉排除（P0-1），實測可重現 0.98 的假指標。新增 seed fixture 需改這裡
+# ＋對應守門測試（tests/unit/test_gold_draft_isolation.py）。
+SEED_GOLD_IDS = frozenset(
+    {
+        "g01_acquire_dimm",
+        "g02_screwdriver_screw_x2",
+        "g05_composite_unknown",
+    }
+)
+
+
+def is_seed_gold_case(data: dict) -> bool:
+    """本案例是否為白名單內的 seed fixture（approved_by=seed 且 id 在名單上）。"""
+    return data.get("approved_by") == "seed" and str(data.get("id")) in SEED_GOLD_IDS
+
+
+def case_rule_set_code(data: dict) -> str:
+    """gold/draft 檔內的 rule_set_code（頂層優先，其次 preannotation），缺省 V2。
+
+    單一出處：`scripts/gold_harvest.py --recompile` 與本模組共用，兩邊不得各硬寫。
+    """
+    top = data.get("rule_set_code")
+    pre = (data.get("preannotation") or {}).get("rule_set_code")
+    return str(top or pre or DEFAULT_RULE_SET_CODE)
 
 
 @dataclass
@@ -84,7 +114,16 @@ def _check_cycle(draft: Any, exp: dict) -> CycleCheck:
         else:
             if draft.cycle.get("seq") != exp.get("seq"):
                 errors.append(f"seq {draft.cycle.get('seq')!r} != {exp.get('seq')!r}")
-            if draft.engine_result is None:
+            if exp.get("expected_engine_rejected"):
+                # 期望＝「complete 但引擎拒絕」（harvest 對 engine_result=None 的
+                # complete cycle 寫的期望形狀）：驗「引擎仍拒絕」，不驗 TMU。
+                # 引擎若改為接受，代表期望過時（規則變了）——照樣紅，不假綠。
+                if draft.engine_result is not None:
+                    errors.append(
+                        "expected engine rejection (expected_engine_rejected) "
+                        "but engine accepted"
+                    )
+            elif draft.engine_result is None:
                 errors.append("expected engine_result")
             else:
                 if draft.engine_result.get("total_tmu") != exp.get("total_tmu"):
@@ -126,7 +165,7 @@ async def evaluate_gold_case(data: dict) -> GoldCaseResult:
     drafts = compile_plan(
         plan,
         candidates,
-        rule_set_code="MINIMOST_FACTORY_V2",
+        rule_set_code=case_rule_set_code(data),
         allow_lists=allow_lists_from_rule_set(rs),
     )
     drafts = apply_engine_gate(drafts, rs)

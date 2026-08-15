@@ -165,6 +165,7 @@
 | D3-010 | 2026-08-15 | 硬化 | `_mark_job_failed` 把 pool 逾時/斷線等暫時性失敗判死刑，且繞過 `_finalize_job_status` 留下「終態 job＋active items」（code-reviewer #1） | 全部判死 vs 失敗分類 | 結構性（JobNotFound/RuleSetNotFound/RuntimeError=bundle 缺失）立即判死；其他視為 infra，log 後下輪重試、**連續** 5 次才判死（`MAX_CONSECUTIVE_JOB_FAILURES`）。判死一律走 `svc.fail_job`（收尾 items＋import_rows＋`_finalize_job_status`），狀態機單一路徑 |
 | D3-011 | 2026-08-15 | 硬化 | 撤權不中止在途 job（security F4） | 完整物件級授權 vs 最小集 | 本輪最小集：`_runnable_jobs` 跳過 `app_users.is_active=False` 的 requester。**已知缺口（後續票）**：imported_by/site scope 的完整物件級授權（誰能 create/tick/cancel 誰的 import）未做 |
 | D3-012 | 2026-08-15 | 硬化 | tick 交易在首個計數 UPDATE 後抱著 ai_parse_jobs 列鎖跨 LLM 呼叫，Cancel 被卡（code-reviewer #3） | job 挑選 SKIP LOCKED／LLM 移出交易 vs 縮鎖窗＋誠實文件 | 選後者：計數改交易尾端一次性遞增（鎖窗縮到 LLM 之後；殘餘＝首次 tick 的 queued→running，上限 ≈ batch×llm_timeout=32s，LLM 預設關閉時毫秒級）；worker docstring 撤回「job 挑選層免鎖」的錯誤宣稱。LLM 移出交易＝重構 parse_interactive 的交易邊界，收益只在 LLM 開啟時存在 → 併入 ADR-030 觸發條件 2（dedicated worker 抽離時做正解） |
+| D3-013 | 2026-08-16 | P0 gold | gold 預標註管線（`scripts/gold_harvest.py`）：草稿 plan＝rule planner 輸出，IE 原樣轉正會讓 planner 給自己打分（審查實測 accuracy 0.667→0.98 假跳） | 指標照算＋文件警告 vs 結構性排除 | 結構性排除：草稿標 `plan_origin=rule_based_v1_preannotation`、轉正必填 `ie_modified: true\|false`；`summarize_planner_results` 把「plan_origin=受測 planner 且 ie_modified≠true」排除出 Plan 層指標（報告 `self_referential_excluded` 列名單與理由；report schema 升 v4）。橡皮圖章回歸測試釘死「未修改轉正 → 指標不動」。配套：pending_ie 守門改整份 plan 相等比對；`--recompile` 對正式 gold 預設拒絕（`--relock-approved --reason` 留痕）；「取＋放」配對不再誤標 multi_action（13/42 筆改發中性旗標 `take_place_pair_may_be_single_gm`）；非 seed 核准案例須有實質 cycle 或 `expected_incomplete_reason`；未核准案例混入 gold_dir 時報告降級 `wi-draft-latest.json` |
 
 ## 5. Checkpoint 紀錄
 
@@ -182,6 +183,7 @@
 | 2026-08-11 | R3b | code-reviewer agent | P1：缺 UNIQUE(aggregate,event_no)；P2 測試薄 | UNIQUE 以 v2_0033 補；**APPROVE_WITH_NITS**（[R3b review](19d777d6-6a9a-49d5-bfc9-5b19dc078d20)）。 |
 | 2026-08-11 | R3a | code-reviewer agent | P1：缺 publish freeze IT；P2 ORM index／standalone revision | freeze IT＋index 已補；**APPROVE_WITH_NITS**（[R3a review](3325fa79-8b6a-4f87-9e0b-0b7386f6a27c)）。 |
 | 2026-08-15 | L4 硬化 | checkpoint 三席（security＋code-reviewer×2） | Blocker：F1 毒 job 卡死 loop 且重啟不復原；#1 `_mark_job_failed` 暫時性失敗判死＋狀態機旁路；#2/F6 worker 先死→shutdown 炸/dispose 跳過/死亡靜默。必修：F3 idempotency 未範圍化、F5 `str(exc)` 落 DB、#6 cleanup 漏 search_documents、F2 上傳/配額無上限、F4 撤權不中止、#3 tick 鎖窗 | 全部修復（D3-009～D3-012；migration v2_0037；ADR-030 proposed）。已知缺口：F4 完整物件級授權（D3-011）；LLM 移出交易（D3-012→ADR-030 觸發條件） |
+| 2026-08-16 | P0 gold 預標註管線 | code-reviewer agent | P0-1 自我指涉評測（草稿 plan＝planner 輸出，橡皮圖章轉正把指標吹到 0.98）；P0-2 pending_ie 守門只查 action 數（改 action_type/整句換掉都綠）；P1-3「IE 核准」無實質門檻；P1-4 `--recompile` 可零摩擦改寫正式 gold；P1-5 取放配對誤標 multi_action 且 caveat 方向反了（13/42 筆）；P2-6～P2-9 取樣/啟發式/全形/報告污染誠實性；P3 十項小修 | 全部修復（D3-013）。驗證：橡皮圖章實驗排除 60 筆、Plan 層指標釘在基線 2/3 與 4/7 不動；5 條 mutation 逐一紅→綠；unit 583／integration 445＋1 skip／golden 全綠；正式 gold 3 筆 byte-identical |
 
 ## 6. 驗收紀錄（spec §0.1）
 

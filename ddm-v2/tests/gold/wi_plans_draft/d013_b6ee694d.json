@@ -1,0 +1,109 @@
+{
+  "id": "d013_b6ee694d",
+  "source_text": "雙手拿取DIMM組於DIMM卡槽 (依據配置要求-16個DIMM)",
+  "notes": "預標註草稿（rule pipeline 自動產生；scripts/gold_harvest.py）。非 gold——IE 覆核核准前不得移入 tests/gold/wi_plans/。",
+  "review_status": "pending_ie",
+  "approved_by": null,
+  "plan_origin": "rule_based_v1_preannotation",
+  "ie_modified": null,
+  "split": null,
+  "split_groups": [
+    "module:12ce967e-4c91-4b5d-b2a7-a41a317a1dc1"
+  ],
+  "split_component": "module:12ce967e-4c91-4b5d-b2a7-a41a317a1dc1",
+  "source_provenance": [
+    {
+      "table": "motion_modules",
+      "id": "12ce967e-4c91-4b5d-b2a7-a41a317a1dc1",
+      "detail": "name_zh (category=wi-template)",
+      "group_key": "module:12ce967e-4c91-4b5d-b2a7-a41a317a1dc1",
+      "db_timestamp": "2026-08-04T06:59:46.482826+00:00",
+      "raw_text": "雙手拿取DIMM組於DIMM卡槽 (依據配置要求-16個DIMM)"
+    }
+  ],
+  "challenge_tags": {
+    "zh_simplified_variant": false,
+    "fullwidth_chars": false,
+    "typo": "unknown",
+    "homophone": "unknown",
+    "mixed_zh_en": true,
+    "english_only": false,
+    "inverted_word_order": "unknown",
+    "colloquial": "unknown",
+    "multi_action": false,
+    "quantity": true,
+    "tool_handling": false,
+    "simo_both_hands": true,
+    "missing_info": "unknown",
+    "ambiguity": "unknown",
+    "diagram_reference_no_image": false,
+    "site_jargon_dirty_import": "unknown"
+  },
+  "heuristic_tags_unverified": [
+    "quantity",
+    "tool_handling",
+    "simo_both_hands"
+  ],
+  "preannotation_caveat": [
+    "take_place_pair_may_be_single_gm",
+    "empty_lexicon_no_slot_candidates"
+  ],
+  "preannotation": {
+    "pipeline": "rule_based_v1 -> plan_from_rule_result -> SlotLinker(no-db) -> compile_plan -> engine_gate(most_engine) -> compute_routing(auto=off)",
+    "planner": "rule_based_v1",
+    "rule_set_code": "MINIMOST_FACTORY_V2",
+    "lexicon_source": "rule_option_synonyms",
+    "lexicon_size": 0,
+    "routing_reasons": [
+      "composite_unknown"
+    ]
+  },
+  "plan": {
+    "schema_version": "wi-plan-v1",
+    "source_text": "雙手拿取DIMM組於DIMM卡槽 (依據配置要求-16個DIMM)",
+    "normalized_text": "雙手拿取dimm組於dimm卡槽 (依據配置要求-16個dimm)",
+    "language": "zh",
+    "source_ref": {
+      "kind": "interactive",
+      "worksheet_id": null,
+      "import_id": null,
+      "import_row_index": null
+    },
+    "actions": [
+      {
+        "action_id": "a1",
+        "action_type": "composite_unknown",
+        "sequence_order": 1,
+        "roles": {},
+        "evidence": [
+          {
+            "start": 0,
+            "end": 33,
+            "text": "雙手拿取dimm組於dimm卡槽 (依據配置要求-16個dimm)"
+          }
+        ],
+        "notes": "rule_based_v1"
+      }
+    ],
+    "dependencies": [],
+    "unresolved": [
+      "composite_unknown"
+    ]
+  },
+  "synthetic_synonyms": [],
+  "expected_cycles": [
+    {
+      "action_id": "a1",
+      "complete": false,
+      "cycle": null,
+      "issues_contain": [
+        "composite_unknown"
+      ]
+    }
+  ],
+  "gold_schema_version": "wi-gold-v1",
+  "expected": {
+    "action_count": 1,
+    "routing_status": "abstain"
+  }
+}

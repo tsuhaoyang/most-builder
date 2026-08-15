@@ -1,0 +1,126 @@
+{
+  "id": "d038_aa72871a",
+  "source_text": "左手抓握DIMM材料盒保持住",
+  "notes": "預標註草稿（rule pipeline 自動產生；scripts/gold_harvest.py）。非 gold——IE 覆核核准前不得移入 tests/gold/wi_plans/。",
+  "review_status": "pending_ie",
+  "approved_by": null,
+  "plan_origin": "rule_based_v1_preannotation",
+  "ie_modified": null,
+  "split": null,
+  "split_groups": [
+    "module:8451efa7-7536-48f7-b579-b56d21608c02",
+    "module:ef3a2924-ed66-4429-9c98-8ab96a8e9de3"
+  ],
+  "split_component": "module:0c944bee-3c4f-4e72-a071-2b45c118a6af",
+  "source_provenance": [
+    {
+      "table": "motion_module_versions",
+      "id": "687ed233-54bd-4b49-ab1c-2f39e39fc9d3",
+      "detail": "rows[3].sub_activity",
+      "group_key": "module:8451efa7-7536-48f7-b579-b56d21608c02",
+      "db_timestamp": "2026-08-04T06:59:46.363497+00:00",
+      "raw_text": "左手抓握DIMM材料盒保持住"
+    },
+    {
+      "table": "motion_module_versions",
+      "id": "87f0fddc-5ce7-4e0f-9099-82c8b14b39f1",
+      "detail": "rows[0].sub_activity",
+      "group_key": "module:ef3a2924-ed66-4429-9c98-8ab96a8e9de3",
+      "db_timestamp": "2026-08-04T06:59:46.731074+00:00",
+      "raw_text": "左手抓握DIMM材料盒保持住"
+    },
+    {
+      "table": "motion_modules",
+      "id": "ef3a2924-ed66-4429-9c98-8ab96a8e9de3",
+      "detail": "name_zh (category=action)",
+      "group_key": "module:ef3a2924-ed66-4429-9c98-8ab96a8e9de3",
+      "db_timestamp": "2026-08-04T06:59:46.720228+00:00",
+      "raw_text": "左手抓握DIMM材料盒保持住"
+    }
+  ],
+  "challenge_tags": {
+    "zh_simplified_variant": false,
+    "fullwidth_chars": false,
+    "typo": "unknown",
+    "homophone": "unknown",
+    "mixed_zh_en": true,
+    "english_only": false,
+    "inverted_word_order": "unknown",
+    "colloquial": "unknown",
+    "multi_action": true,
+    "quantity": false,
+    "tool_handling": false,
+    "simo_both_hands": false,
+    "missing_info": "unknown",
+    "ambiguity": "unknown",
+    "diagram_reference_no_image": false,
+    "site_jargon_dirty_import": "unknown"
+  },
+  "heuristic_tags_unverified": [
+    "quantity",
+    "tool_handling",
+    "simo_both_hands"
+  ],
+  "preannotation_caveat": [
+    "likely_multi_action_undercounted",
+    "empty_lexicon_no_slot_candidates"
+  ],
+  "preannotation": {
+    "pipeline": "rule_based_v1 -> plan_from_rule_result -> SlotLinker(no-db) -> compile_plan -> engine_gate(most_engine) -> compute_routing(auto=off)",
+    "planner": "rule_based_v1",
+    "rule_set_code": "MINIMOST_FACTORY_V2",
+    "lexicon_source": "rule_option_synonyms",
+    "lexicon_size": 0,
+    "routing_reasons": [
+      "composite_unknown"
+    ]
+  },
+  "plan": {
+    "schema_version": "wi-plan-v1",
+    "source_text": "左手抓握DIMM材料盒保持住",
+    "normalized_text": "左手抓握dimm材料盒保持住",
+    "language": "zh",
+    "source_ref": {
+      "kind": "interactive",
+      "worksheet_id": null,
+      "import_id": null,
+      "import_row_index": null
+    },
+    "actions": [
+      {
+        "action_id": "a1",
+        "action_type": "composite_unknown",
+        "sequence_order": 1,
+        "roles": {},
+        "evidence": [
+          {
+            "start": 0,
+            "end": 14,
+            "text": "左手抓握dimm材料盒保持住"
+          }
+        ],
+        "notes": "rule_based_v1"
+      }
+    ],
+    "dependencies": [],
+    "unresolved": [
+      "composite_unknown"
+    ]
+  },
+  "synthetic_synonyms": [],
+  "expected_cycles": [
+    {
+      "action_id": "a1",
+      "complete": false,
+      "cycle": null,
+      "issues_contain": [
+        "composite_unknown"
+      ]
+    }
+  ],
+  "gold_schema_version": "wi-gold-v1",
+  "expected": {
+    "action_count": 1,
+    "routing_status": "abstain"
+  }
+}

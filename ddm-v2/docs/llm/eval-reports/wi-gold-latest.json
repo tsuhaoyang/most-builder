@@ -1,11 +1,12 @@
 {
   "report_kind": "wi-gold-eval",
-  "report_schema_version": "wi-gold-report-v3",
+  "report_schema_version": "wi-gold-report-v4",
   "gold_schema_version": "wi-gold-v1",
-  "generated_at": "2026-08-15T07:49:27.890688+00:00",
+  "generated_at": "2026-08-15T18:24:29.023842+00:00",
   "gold_dir": "/home/howard/workspace/most-builder/ddm-v2/tests/gold/wi_plans",
   "dataset_note": "n=3；全部 seed（approved_by=seed）；IE 核准 0/50，未達 docs/architecture/wi-ai-parser-system-spec.md §19 P0 前置",
   "gold_load_errors": [],
+  "unapproved_cases": [],
   "summary": {
     "total": 3,
     "passed": 3,
@@ -97,6 +98,12 @@
     "summary": {
       "planner": "rule_based_v1",
       "n": 3,
+      "plan_metrics_n": 3,
+      "self_referential_excluded": {
+        "count": 0,
+        "cases": [],
+        "reason": "這些案例的 gold plan 即受測 planner 的預標註輸出（plan_origin=<planner>_preannotation）且 IE 未修改內容（ie_modified≠true）：拿 planner 自己的輸出當標準答案評 planner＝自我指涉，對 Plan 層指標零證據力，故排除。IE 實際改過（ie_modified=true）的案例是真實 ground truth，照常計入；compile 段不受影響（驗 compiler+engine，非 planner）。"
+      },
       "action_count_accuracy": 0.6666666666666666,
       "action_count_matches": 2,
       "boundary_span": {
@@ -115,7 +122,7 @@
       },
       "dependency_f1": null,
       "dependency_f1_note": "未實作（docs/architecture/wi-ai-parser-system-spec.md §14.4 門檻列原文為「boundary/dependency F1」合為一項，boundary_span_f1 只涵蓋前半）。未實作原因：(1) action counts 不齊時 pred↔gold 的 action 對齊無定義，dependency 端點無從對應；(2) rule_based_v1 永遠回空 dependencies（gold g02 有 tool_held_for，真的算恆為 0）。實作並定義對齊規則前，不得以 boundary_span_f1 單獨宣告 §14.4 該列達標。",
-      "degenerate_planner_note": "退化分數警告：rule_based_v1 恆輸出單一 action、evidence 恆為整句 [0, len(normalized_text))、dependencies 恆空——本節分數反映 gold 集形狀（單 action 且整句標註的案例佔比），不是 planner 的切分能力，不得引用為 P2 進度或能力證據。",
+      "degenerate_planner_note": "退化分數警告：rule_based_v1 恆輸出單一 action、evidence 恆為整句 [0, len(normalized_text))、dependencies 恆空——本節分數反映 gold 集形狀（單 action 且整句標註的案例佔比），不是 planner 的切分能力，不得引用為 P2 進度或能力證據。另：由本 planner 預標註、IE 未修改即轉正（ie_modified=false）的案例已排除於 Plan 層指標（見 self_referential_excluded）——若轉正後指標往 1.0 跳，那是自我指涉假象（planner 給自己打分），不是能力提升。",
       "spec_targets": {
         "action_count_exact_match": 0.95,
         "boundary_span_f1": 0.9
@@ -135,6 +142,8 @@
         "boundary_fp": 0,
         "boundary_fn": 0,
         "boundary_span_f1": 1.0,
+        "plan_origin": null,
+        "ie_modified": null,
         "gold_spans": [
           [
             0,
@@ -162,6 +171,8 @@
         "boundary_fp": 1,
         "boundary_fn": 2,
         "boundary_span_f1": 0.0,
+        "plan_origin": null,
+        "ie_modified": null,
         "gold_spans": [
           [
             0,
@@ -193,6 +204,8 @@
         "boundary_fp": 0,
         "boundary_fn": 0,
         "boundary_span_f1": 1.0,
+        "plan_origin": null,
+        "ie_modified": null,
         "gold_spans": [
           [
             0,

@@ -28,6 +28,15 @@
    `boundary_span_f1` 只涵蓋前半，**不得單獨引用為該列達標**。未實作原因見
    `DEPENDENCY_F1_NOTE`。
 
+自我指涉排除（Plan 層指標的證據力守門）：
+
+- gold 檔若標 `plan_origin=<planner>_preannotation` 且 `ie_modified` 非 true，
+  代表 gold plan 就是受測 planner 的預標註輸出、IE 原樣核准——planner 給自己
+  打分沒有證據力，這類案例**排除出 Plan 層指標**（action_count_accuracy 與
+  boundary span F1 的分母都不含它們），summary 的 `self_referential_excluded`
+  明列筆數、名單與理由。IE 改過（`ie_modified: true`）的案例是真實 ground
+  truth，照常計入。compile 段（gold_eval）不受此排除影響。
+
 boundary 標註可用性規則（缺就點名，不硬湊）：
 
 - `composite_unknown` 依 `contracts.sanitize_planner_output` 可合法無 evidence，
@@ -71,6 +80,22 @@ RULE_PLANNER_NAME = "rule_based_v1"
 # 規格全檔名（引用時不可只寫「spec §14.4」——implementation spec 的 §14.4 是別的章節）
 SPEC_DOC = "docs/architecture/wi-ai-parser-system-spec.md"
 
+# gold/draft 檔的 `plan_origin` 值（scripts/gold_harvest.py 寫入；summarize 排除比對用）
+PREANNOTATION_ORIGIN_SUFFIX = "_preannotation"
+
+
+def planner_preannotation_origin(planner: str) -> str:
+    """`plan_origin` 的規範值：<planner>_preannotation（預標註草稿的 plan 出處標記）。"""
+    return f"{planner}{PREANNOTATION_ORIGIN_SUFFIX}"
+
+
+SELF_REFERENTIAL_EXCLUSION_REASON = (
+    "這些案例的 gold plan 即受測 planner 的預標註輸出（plan_origin=<planner>_preannotation）"
+    "且 IE 未修改內容（ie_modified≠true）：拿 planner 自己的輸出當標準答案評 planner"
+    "＝自我指涉，對 Plan 層指標零證據力，故排除。IE 實際改過（ie_modified=true）的"
+    "案例是真實 ground truth，照常計入；compile 段不受影響（驗 compiler+engine，非 planner）。"
+)
+
 # `docs/architecture/wi-ai-parser-system-spec.md` §14.4 / §19 P2 退出條件
 # （報告對照用；本模組不以此決定成敗）。
 # 注意：spec §14.4 該列原文是「boundary/**dependency** F1 ≥ 0.90」；本實作只算
@@ -94,6 +119,9 @@ RULE_DEGENERATE_NOTE = (
     "[0, len(normalized_text))、dependencies 恆空——本節分數反映 gold 集形狀"
     "（單 action 且整句標註的案例佔比），不是 planner 的切分能力，"
     "不得引用為 P2 進度或能力證據。"
+    "另：由本 planner 預標註、IE 未修改即轉正（ie_modified=false）的案例已排除於 "
+    "Plan 層指標（見 self_referential_excluded）——若轉正後指標往 1.0 跳，"
+    "那是自我指涉假象（planner 給自己打分），不是能力提升。"
 )
 
 # data(gold case dict) → 預測 plan
@@ -151,12 +179,13 @@ def load_gold_cases_checked(
         try:
             WorkInstructionPlan.model_validate(plan)
         except ValidationError as exc:
-            first = exc.errors()[0] if exc.errors() else {}
-            loc = ".".join(str(p) for p in first.get("loc", ()))
+            details = exc.errors()
+            loc = ".".join(str(p) for p in details[0]["loc"]) if details else ""
+            msg = details[0]["msg"] if details else "invalid"
             load_errors.append(
                 GoldLoadError(
                     file=path.name,
-                    error=f"gold_case_invalid:plan_schema:{loc}:{first.get('msg', 'invalid')}",
+                    error=f"gold_case_invalid:plan_schema:{loc}:{msg}",
                 )
             )
             continue
@@ -202,6 +231,9 @@ class PlannerCaseResult:
     boundary_fp: int
     boundary_fn: int
     boundary_span_f1: float | None  # per-case；無有效標註或兩邊皆無 span 時為 None
+    # gold plan 出處（自我指涉排除依據；見 SELF_REFERENTIAL_EXCLUSION_REASON）
+    plan_origin: str | None = None
+    ie_modified: bool | None = None  # 僅認 JSON bool；缺欄或非 bool 一律 None（保守＝排除）
     gold_spans: list[list[int]] = field(default_factory=list)
     pred_spans: list[list[int]] = field(default_factory=list)
     errors: list[str] = field(default_factory=list)
@@ -274,9 +306,18 @@ def _f1(tp: int, fp: int, fn: int) -> float | None:
     return (2 * tp) / (2 * tp + fp + fn)
 
 
+def _case_provenance(data: dict) -> tuple[str | None, bool | None]:
+    """gold 檔的 (plan_origin, ie_modified)；ie_modified 僅認 JSON bool，其餘視為未宣告。"""
+    origin = data.get("plan_origin")
+    origin = str(origin) if isinstance(origin, str) and origin else None
+    ie_mod = data.get("ie_modified")
+    return origin, (ie_mod if isinstance(ie_mod, bool) else None)
+
+
 async def evaluate_planner_case(data: dict, plan_fn: PlannerFn) -> PlannerCaseResult:
     case_id = str(data.get("id") or "unknown")
     errors: list[str] = []
+    plan_origin, ie_modified = _case_provenance(data)
 
     gold_plan = data.get("plan") or {}
     gold_actions = gold_plan.get("actions") or []
@@ -298,6 +339,8 @@ async def evaluate_planner_case(data: dict, plan_fn: PlannerFn) -> PlannerCaseRe
             boundary_fp=0,
             boundary_fn=0,
             boundary_span_f1=None,
+            plan_origin=plan_origin,
+            ie_modified=ie_modified,
             errors=[f"gold_case_invalid:{exc}"],
         )
 
@@ -354,9 +397,23 @@ async def evaluate_planner_case(data: dict, plan_fn: PlannerFn) -> PlannerCaseRe
         boundary_fp=fp,
         boundary_fn=fn,
         boundary_span_f1=f1,
+        plan_origin=plan_origin,
+        ie_modified=ie_modified,
         gold_spans=sorted([list(k) for k in gold_spans.elements()]),
         pred_spans=sorted([list(k) for k in pred_spans.elements()]),
         errors=errors,
+    )
+
+
+def is_self_referential(result: PlannerCaseResult, planner: str) -> bool:
+    """gold plan＝受測 planner 的預標註且 IE 未（宣告）修改——對 Plan 層指標零證據力。
+
+    ie_modified 缺欄或非 bool 視同未修改（保守排除）；轉正流程必填 bool，
+    守門在 tests/unit/test_gold_draft_isolation.py 的空殼/欄位 tripwire。
+    """
+    return (
+        result.plan_origin == planner_preannotation_origin(planner)
+        and result.ie_modified is not True
     )
 
 
@@ -364,8 +421,12 @@ def summarize_planner_results(
     results: list[PlannerCaseResult], *, planner: str
 ) -> dict[str, Any]:
     n = len(results)
-    matches = sum(1 for r in results if r.action_count_match)
-    annotated = [r for r in results if r.boundary_annotated]
+    # 自我指涉排除（P0-1）：planner 不得給自己打分。排除只作用於 Plan 層指標，
+    # 名單與理由必須進 summary——不是靜默少算。
+    excluded = [r for r in results if is_self_referential(r, planner)]
+    plan_scored = [r for r in results if not is_self_referential(r, planner)]
+    matches = sum(1 for r in plan_scored if r.action_count_match)
+    annotated = [r for r in plan_scored if r.boundary_annotated]
     scored = [r for r in annotated if not r.boundary_trivially_empty]
     tp = sum(r.boundary_tp for r in scored)
     fp = sum(r.boundary_fp for r in scored)
@@ -375,12 +436,18 @@ def summarize_planner_results(
     return {
         "planner": planner,
         "n": n,
-        "action_count_accuracy": (matches / n) if n else None,
+        "plan_metrics_n": len(plan_scored),
+        "self_referential_excluded": {
+            "count": len(excluded),
+            "cases": [r.case_id for r in excluded],
+            "reason": SELF_REFERENTIAL_EXCLUSION_REASON,
+        },
+        "action_count_accuracy": (matches / len(plan_scored)) if plan_scored else None,
         "action_count_matches": matches,
         "boundary_span": {
             "annotated_cases": len(annotated),
             "scored_cases": len(scored),
-            "unannotated_cases": [r.case_id for r in results if not r.boundary_annotated],
+            "unannotated_cases": [r.case_id for r in plan_scored if not r.boundary_annotated],
             "trivially_empty_cases": [
                 r.case_id for r in annotated if r.boundary_trivially_empty
             ],

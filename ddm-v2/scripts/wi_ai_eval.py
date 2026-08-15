@@ -25,6 +25,14 @@
   2 ＝ gold 輸入不可用（malformed JSON／缺 `plan`／plan schema 不合＝
        `gold_case_invalid`，或 n=0 沒量到任何案例）。有載入錯誤時仍會評測
        其餘有效案例並產出報告（`gold_load_errors` 區塊），但退出碼以 2 為準。
+
+報告檔名守門：gold_dir 含任何**未核准**案例（approved_by 空、或 review_status
+非 approved）時，報告寫成 `wi-draft-latest.json`／`wi-draft-<stamp>.json`，
+**拒寫** `wi-gold-latest.json`——覆核期間不得污染官方報告。
+
+Plan 層自我指涉排除：gold 檔標 `plan_origin=<planner>_preannotation` 且
+`ie_modified` 非 true 者，排除出 planner 段 Plan 層指標（planner 不得給自己
+打分；見 `nlp/planner_eval.py` 的 SELF_REFERENTIAL_EXCLUSION_REASON）。
 """
 from __future__ import annotations
 
@@ -39,18 +47,23 @@ ROOT = Path(__file__).resolve().parents[1]
 if str(ROOT / "src") not in sys.path:
     sys.path.insert(0, str(ROOT / "src"))
 
-from ddm_v2.nlp.gold_eval import GOLD_SCHEMA_VERSION, evaluate_gold_case  # noqa: E402
+from ddm_v2.nlp.gold_eval import (  # noqa: E402
+    GOLD_SCHEMA_VERSION,
+    evaluate_gold_case,
+    is_seed_gold_case,
+)
 from ddm_v2.nlp.planner_eval import (  # noqa: E402
     RULE_PLANNER_NAME,
     SPEC_DOC,
     PlannerFn,
     evaluate_planner_case,
+    is_self_referential,
     load_gold_cases_checked,
     rule_based_plan,
     summarize_planner_results,
 )
 
-REPORT_SCHEMA_VERSION = "wi-gold-report-v3"
+REPORT_SCHEMA_VERSION = "wi-gold-report-v4"
 
 EXIT_CODE_HELP = (
     "exit codes: 0 = all green; "
@@ -97,23 +110,62 @@ def _build_llm_plan_fn(timeout_s: float) -> PlannerFn:
     return _plan
 
 
+def _case_is_approved(data: dict) -> bool:
+    """核准判定：approved_by 非空 且 review_status ∈ {缺欄(seed 慣例), approved}。
+
+    `approved_by: "seed"` 只認 `SEED_GOLD_IDS` 白名單（R6）：seed 是三個已知
+    A5 fixture 的慣例，不是任人填的豁免字串——非白名單的 seed 視同未核准
+    （報告降級 wi-draft-*、進 unapproved_cases 點名）。
+    """
+    if data.get("approved_by") in (None, ""):
+        return False
+    if data.get("approved_by") == "seed" and not is_seed_gold_case(data):
+        return False
+    return data.get("review_status") in (None, "approved")
+
+
+def _is_unmodified_preannotation(data: dict) -> bool:
+    """plan 出處是 planner 預標註且 IE 未宣告修改（與 planner_eval 的自我指涉
+    排除同語意：ie_modified 僅認 JSON true，缺欄/false 都算未修改）。"""
+    origin = data.get("plan_origin")
+    return (
+        isinstance(origin, str)
+        and origin.endswith("_preannotation")
+        and data.get("ie_modified") is not True
+    )
+
+
 def _dataset_note(cases: list[tuple[Path, dict]]) -> str:
     """依實際 n 與 approved_by 動態生成（不寫死「未達 50 筆」——gold 長大後會變錯）。"""
     n = len(cases)
-    seed_n = sum(1 for _, d in cases if d.get("approved_by") == "seed")
-    ie_n = sum(1 for _, d in cases if d.get("approved_by") not in (None, "", "seed"))
-    unmarked_n = n - seed_n - ie_n
+    seed_n = sum(1 for _, d in cases if is_seed_gold_case(d))
+    fake_seed_n = sum(
+        1 for _, d in cases if d.get("approved_by") == "seed" and not is_seed_gold_case(d)
+    )
+    ie_cases = [d for _, d in cases if d.get("approved_by") not in (None, "", "seed")]
+    ie_n = len(ie_cases)
+    unmarked_n = n - seed_n - fake_seed_n - ie_n
+    # 給主管看的頭條句必須自帶但書（R4）：原樣核准的預標註對 planner 段
+    # 零證據力，不能讓「IE 核准 N 筆」單獨成立
+    rubber_n = sum(1 for d in ie_cases if _is_unmodified_preannotation(d))
     parts = [f"n={n}"]
     if n and seed_n == n:
         parts.append("全部 seed（approved_by=seed）")
     elif seed_n:
         parts.append(f"seed {seed_n} 筆")
+    if fake_seed_n:
+        parts.append(f"approved_by=seed 但非白名單 {fake_seed_n} 筆（不計核准）")
     if unmarked_n:
         parts.append(f"approved_by 未標 {unmarked_n} 筆")
     if ie_n < 50:
         parts.append(f"IE 核准 {ie_n}/50，未達 {SPEC_DOC} §19 P0 前置")
     else:
         parts.append(f"IE 核准 {ie_n} 筆，已達 {SPEC_DOC} §19 P0 的 50 筆前置")
+    if rubber_n:
+        parts.append(
+            f"其中 ie_modified≠true 的預標註 {rubber_n} 筆"
+            "（原樣核准，不計 planner 段證據力——見 self_referential_excluded）"
+        )
     return "；".join(parts)
 
 
@@ -171,19 +223,27 @@ def main() -> int:
     now = datetime.now(timezone.utc)
     stamp = now.strftime("%Y%m%dT%H%M%SZ")
 
+    # P2-9：未核准案例混入 gold_dir → 官方報告檔名拒用 wi-gold-*（降級 wi-draft-*）
+    unapproved_cases = [path.name for path, d in cases if not _case_is_approved(d)]
+
     report = {
         "report_kind": "wi-gold-eval",
         # v3：planner_eval.summary 的 boundary → boundary_span（含 scored_cases/
         # trivially_empty_cases）、spec_targets.boundary_f1 → boundary_span_f1、
         # 新增 dependency_f1(=null)+note、gold_load_errors、動態 dataset_note；
         # cases 的 boundary_f1 → boundary_span_f1、新增 boundary_trivially_empty。
-        # 頂層 summary/cases（compile 段）自 v1 起形狀不變。
+        # v4：Plan 層指標語意變更——自我指涉案例（plan_origin=planner 預標註且
+        # ie_modified≠true）排除出 action_count_accuracy／boundary_span 聚合；
+        # planner_eval.summary 新增 plan_metrics_n＋self_referential_excluded、
+        # cases 新增 plan_origin/ie_modified；頂層新增 unapproved_cases（有值時
+        # 報告檔名降級 wi-draft-*）。頂層 summary/cases（compile 段）自 v1 起形狀不變。
         "report_schema_version": REPORT_SCHEMA_VERSION,
         "gold_schema_version": GOLD_SCHEMA_VERSION,
         "generated_at": now.isoformat(),
         "gold_dir": str(args.gold_dir),
         "dataset_note": _dataset_note(cases),
         "gold_load_errors": [e.to_dict() for e in load_errors],
+        "unapproved_cases": unapproved_cases,
         "summary": {
             "total": len(compile_results),
             "passed": passed,
@@ -202,13 +262,20 @@ def main() -> int:
     }
 
     args.out.mkdir(parents=True, exist_ok=True)
-    out_path = args.out / f"wi-gold-{stamp}.json"
-    latest = args.out / "wi-gold-latest.json"
+    prefix = "wi-draft" if unapproved_cases else "wi-gold"
+    out_path = args.out / f"{prefix}-{stamp}.json"
+    latest = args.out / f"{prefix}-latest.json"
     text = json.dumps(report, ensure_ascii=False, indent=2) + "\n"
     out_path.write_text(text, encoding="utf-8")
     latest.write_text(text, encoding="utf-8")
 
     print(f"gold eval → {out_path}")
+    if unapproved_cases:
+        print(
+            f"[gold]     WARNING: gold_dir 含 {len(unapproved_cases)} 筆未核准案例"
+            f"（{', '.join(unapproved_cases[:5])}{'…' if len(unapproved_cases) > 5 else ''}）"
+            f"——報告降級為 {latest.name}，拒寫 wi-gold-latest.json（防覆核期間污染官方報告）"
+        )
     if load_errors:
         print(f"[gold]     {len(load_errors)} invalid gold file(s):")
         for e in load_errors:
@@ -223,20 +290,31 @@ def main() -> int:
 
     acc = planner_summary["action_count_accuracy"]
     micro = planner_summary["boundary_span"]["micro"]
+    excluded = planner_summary["self_referential_excluded"]
     print(
         f"[planner]  planner={planner_summary['planner']}  n={planner_summary['n']}  "
+        f"plan_metrics_n={planner_summary['plan_metrics_n']}  "
+        f"self_ref_excluded={excluded['count']}  "
         f"action_count_accuracy={acc if acc is None else round(acc, 4)} "
         f"(target {planner_summary['spec_targets']['action_count_exact_match']})  "
         f"boundary_span_f1={micro['f1'] if micro['f1'] is None else round(micro['f1'], 4)} "
         f"(target {planner_summary['spec_targets']['boundary_span_f1']})  "
         "dependency_f1=n/a(未實作)"
     )
+    if excluded["count"]:
+        print(
+            f"           excluded (self-referential, plan_origin=planner 且 ie_modified≠true): "
+            f"{', '.join(excluded['cases'][:8])}{'…' if excluded['count'] > 8 else ''}"
+        )
     for r in planner_results:
         mark = "OK" if r.ok else "GOLD-ERR"
         f1 = "n/a" if r.boundary_span_f1 is None else round(r.boundary_span_f1, 4)
+        # 被自我指涉排除的案例逐案標 [SELF-REF]——只在 summary 列名單的話，
+        # 逐案表會讓人以為它們有計入 Plan 層指標
+        self_ref = "  [SELF-REF]" if is_self_referential(r, planner_name) else ""
         print(
             f"  [{mark}] {r.case_id}  actions {r.pred_action_count}/{r.gold_action_count}"
-            f"  match={r.action_count_match}  boundary_span_f1={f1}"
+            f"  match={r.action_count_match}  boundary_span_f1={f1}{self_ref}"
         )
         for e in r.errors[:8]:
             print(f"       - {e}")
