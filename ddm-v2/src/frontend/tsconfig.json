@@ -7,6 +7,11 @@
     "jsx": "react-jsx",
     "strict": true,
     "skipLibCheck": true,
+    // 瀏覽器程式碼不該看得到 Node 全域：不設 types 時 TS 會自動載入 node_modules/@types/*
+    // 全部（含 @types/node，playwright 的傳依賴），process.env 會過主 typecheck、setTimeout
+    // 回傳型別被改成 NodeJS.Timeout。只列 vite/client（import.meta.env、asset import 等
+    // 瀏覽器側型別）。e2e/config 檔要 node 型別 → tsconfig.e2e.json 自己 override。
+    "types": ["vite/client"],
     "resolveJsonModule": true,
     "isolatedModules": true,
     "noEmit": true,

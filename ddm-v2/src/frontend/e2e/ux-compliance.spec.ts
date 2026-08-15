@@ -69,7 +69,9 @@ const MOCK_CASES_DRAFT = {
     total_tmu:          28,
     created_at:         '2026-01-01T00:00:00Z',
     approved_at:        null,
-    model_label:        null,
+    // 型別放寬（不是行為改動）：G-03-2d 會把這個物件展開後覆寫 model_label 成字串，
+    // 不註記的話 TS 會把字面 null 收窄成 `null` 型別而拒絕該覆寫。
+    model_label:        null as string | null,
     version_count:      1,
     versions: [{
       process_version_id: 'pv-001',
@@ -309,11 +311,13 @@ async function clickNavAndWait(page: Page, name: RegExp | string) {
 // ADR-021 §Tab1 形態 3 ／ frontend-ux-spec §2.3 明定 GM/CM 各自的**欄位順序**。
 //
 // ⚠️ 不要退回用色塊上的可見文字（`getByText('A1', { exact: true })`）來定位：
-//   (1) 色塊抬頭是「A · A1」這一個文字節點，exact 比對永遠 0 命中 —— 正向斷言會
-//       無故變紅（CI run 31592913583 的 B-01-2），反向斷言（toHaveCount(0)）
-//       則會變成**恆真的假綠**（E-04-4 原本的 B2/P 兩條就是）；
-//   (2) 色塊主體的縮寫格在 A 段命中 index=1 時本身就顯示「A1」，
-//       文字比對會隨資料狀態多命中一個元素 → strict mode 隨機爆掉。
+//   (1) 抬頭文案會漂：b66829d 曾把抬頭改成「A · A1」這一個文字節點，exact 比對
+//       永遠 0 命中 —— 正向斷言無故變紅（CI run 31592913583 的 B-01-2），反向斷言
+//       （toHaveCount(0)）則變成**恆真的假綠**（E-04-4 原本的 B2/P 兩條就是）。
+//       2026-08-15 抬頭已依 ADR-021 收編回單一格位鍵「A1」，但教訓不變：文字錨點
+//       跟著文案陪葬，語意錨點不會；
+//   (2) 色塊主體的縮寫格在 A 段命中 index=1 時本身就顯示「A1」——抬頭收編後
+//       跟抬頭同字，文字比對會隨資料狀態多命中元素 → strict mode 隨機爆掉。
 // 所以一律用 SlotBuilder 上的 `data-testid="flow-item-<key>"` 語意錨點。
 const GM_FLOW = [
   'hand', 'from', 'A1', 'B1', 'G', 'target', 'component', 'A2', 'B2', 'P', 'to', 'A3',
@@ -531,24 +535,34 @@ test.describe('§B-01 workbench-v3 佈局 (checklist B-01, B-02, B-03)', () => {
     //   使用手｜從哪裡｜A1｜B1｜G｜目標物｜元件｜A2｜B2｜P｜到哪裡｜A3（GM）
     await expect.poll(() => flowItemKeys(page)).toEqual(GM_FLOW)
 
-    // 色塊仍必須讓使用者看得到「參數碼＋格位鍵」（v3 SlotBlock header = parameter_code + slot_key）。
-    //
-    // ⚠️ 這裡**不能**寫 `expect(block).toContainText(param)`：每一組 [key, param] 都滿足
-    //    `key.includes(param)`（'A1'⊃'A'、'G'≡'G'、'P'≡'P'），色塊上的說明文字（`距離(A)-取得`）
-    //    也本來就含參數碼 —— 那樣寫**永遠不可能紅**，把 `{item.param}` 整個從抬頭拿掉照樣綠。
-    //    改成對「抬頭那一條」比對 `參數碼 …… 格位鍵` 的先後：
-    //      - 釘住的是規格要的「兩者都出現、參數碼在前」；
-    //      - 中間用 `\W*`，**不釘死分隔符** —— 抬頭要不要對齊 v3 母版（兩個獨立 span、
-    //        無分隔符）是未決的獨立議題，不該被這條測試鎖住。
-    //    抬頭沒有自己的 testid（本輪不動產品碼），所以用 button 的第一個直接子 span 定位。
-    for (const [key, param] of [
-      ['A1', 'A'], ['B1', 'B'], ['G', 'G'], ['A2', 'A'], ['B2', 'B'], ['P', 'P'], ['A3', 'A'],
-    ] as const) {
+    // 色塊抬頭＝**單一格位鍵標籤**（A1/B1/G…）。三方版本各不同：ADR-021:53 與
+    // frontend-ux-spec §2.3 的流程寫「…｜A1｜B1｜G｜…」（單標籤）；v3 SlotBlock.vue:142-143
+    // 是 code＋key 兩個獨立 span（無分隔符）；b66829d 發明「A · A1」（三邊都不是，
+    // 自稱對齊 v3 實則偏離）。2026-08-15 依 DOC_REGISTRY 權威序（accepted ADR 優先）收編。
+    // 原本這裡是 `^\W*${param}\W*${key}\b` 的過渡型 regex（刻意不釘分隔符、等這個裁決），
+    // 裁決落地後收緊成**精確比對**：抬頭恰好等於格位鍵，把「A · 」之類前綴加回來必須紅。
+    // 參數碼不再由抬頭承載：色帶配色（SLOT_COLORS[param]）與說明文字（`距離(A)-取得`）
+    // 本來就帶著它——也因此不另寫 toContainText(param)（那條永遠不可能紅，見 git 舊註解）。
+    // 定位走 slot-key testid（本檔一貫的語意錨點），不是外層色帶 span：st.filled 時
+    // 色帶還含 ✕ 清除鈕子節點，textContent 變「A1✕」，精確比對會把「該格已填值」
+    // 誤報成抬頭壞掉。錨在最內層 key label 才能既保住精確比對（「A · 」加回來必須紅）
+    // 又不隱性綁死「該格未填值」。
+    for (const key of ['A1', 'B1', 'G', 'A2', 'B2', 'P', 'A3'] as const) {
       const block = flow.getByTestId(`flow-item-${key}`)
       await expect(block).toBeVisible()
-      const header = block.locator('button > span').first()
-      await expect(header).toHaveText(new RegExp(`^\\W*${param}\\W*${key}\\b`))
+      await expect(block.getByTestId('slot-key')).toHaveText(key)
     }
+
+    // 填值狀態迴歸（2026-08 審查點）：st.filled 時色帶尾端多一顆 ✕ 清除鈕
+    // （SlotBuilder slotBlock），錨在外層色帶 span 的舊斷言會讀到「G✕」而誤紅——
+    // 抬頭斷言不得隱性綁死「該格未填值」。實際把 G 填成 g_simple（MOCK_OPTS 唯一
+    // g 選項；互動模式同 E-04-5），驗證 ✕ 出現後抬頭精確比對仍成立。
+    await flow.getByTitle('G 取得').click()
+    const gDialog = page.getByRole('heading', { name: 'G 取得' }).locator('..').locator('..')
+    await gDialog.locator('select').first().selectOption('g_simple')
+    await gDialog.getByRole('button', { name: '確認' }).click()
+    await expect(flow.getByTestId('flow-item-G').getByLabel('清除 G')).toBeVisible()
+    await expect(flow.getByTestId('flow-item-G').getByTestId('slot-key')).toHaveText('G')
   })
 
   test('B-01-3: 摘要列九欄常駐（ADR-021 §Tab1 形態 2）', async ({ page }) => {
@@ -702,6 +716,8 @@ test.describe('§E-04 MOST 工作台單頁 (ADR-022 批次 B)', () => {
     // 自 b66829d 把色塊抬頭改成「B · B2」之後，exact 文字比對永遠 0 命中，
     // 這兩條反向斷言就變成**恆真**——實測把 B2/P 塞回 CM_ITEMS（直接違反遷移規則），
     // 本測試依然全綠。改用 flow 序列比對，欄位集合才真的被守住。
+    // （2026-08-15 抬頭已依 ADR-021 收編回「B2」單標籤，getByText 理論上又抓得到了，
+    //   但**不要改回去**：文字錨點才是當初假綠的根因，序列比對不隨文案漂。）
     await expect.poll(() => flowItemKeys(page)).toEqual(CM_FLOW)
     await expect(flow.getByTitle('M 控制移動')).toBeVisible()
     await expect(flow.getByTitle('X 製程時間')).toBeVisible()

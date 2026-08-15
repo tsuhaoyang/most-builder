@@ -136,6 +136,9 @@ jobs:
           node-version: '20'
       - run: npm ci
       - run: npm run typecheck
+      # e2e spec／playwright.config／vite.config 不在主 tsconfig 的 include 內，
+      # 不跑這條的話那些檔案的型別錯只有 playwright 實跑才會炸（tsconfig.e2e.json）。
+      - run: npm run typecheck:e2e
       - run: npm run build
 
   e2e:

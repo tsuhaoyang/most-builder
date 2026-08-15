@@ -263,7 +263,8 @@ export function SlotBuilder({
     <div
       key={item.key}
       // ADR-021 §Tab1 形態 3 的欄位順序是規格，需要一個不隨版面文案漂移的錨點才驗得動
-      // （原本 e2e 用色塊上的可見文字定位，b66829d 把色塊抬頭改成「A · A1」後就永久失準）。
+      // （e2e 曾用色塊可見文字定位，抬頭文案一改就失準——b66829d 的「A · A1」踩過；
+      //   抬頭現已收編回單一 key（見下方 slotBlock），但順序驗證仍走 testid 不走文案）。
       data-testid={`flow-item-${item.key}`}
       className="flex w-[110px] min-w-[110px] flex-col rounded-md border px-1.5 pt-1 pb-1.5"
       style={{ background: '#fdf8e8', borderColor: '#e0d8c0' }}
@@ -345,7 +346,14 @@ export function SlotBuilder({
           title={SLOT_MODAL_LABELS[item.slotKey]}
         >
           <span className={`flex items-center justify-between px-2 py-1 text-[10px] font-semibold leading-none ${clr.strip}`}>
-            <span>{item.param} · {item.key}</span>
+            {/* 抬頭＝單一格位鍵標籤（A1/B1/G…）。三方版本：ADR-021:53／frontend-ux-spec §2.3
+                流程寫「…｜A1｜B1｜G｜…」（單標籤）；v3 SlotBlock.vue:142-143 是 code＋key
+                兩個獨立 span（無分隔符）；b66829d 則發明了「A · A1」（三邊都不是）。
+                2026-08-15 依 DOC_REGISTRY 權威序以 accepted ADR 收編為單一 key。
+                參數碼仍由色帶配色（SLOT_COLORS[param]）與說明文字（caption 含「(A)」等）承載。
+                data-testid=slot-key：e2e 對抬頭做精確比對用的錨點。不能改比對外層色帶
+                span——st.filled 時那層還含 ✕ 清除鈕，textContent 會變成「A1✕」。 */}
+            <span data-testid="slot-key">{item.key}</span>
             {st.filled && (
               <span
                 role="button"

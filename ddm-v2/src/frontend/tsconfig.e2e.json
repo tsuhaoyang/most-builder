@@ -1,0 +1,13 @@
+{
+  // e2e spec／support／Node 側 config 檔的型別檢查（`npm run typecheck:e2e`）。
+  // 為什麼要分開：主 tsconfig 的 include 只有 ["src"]，這些檔案從未進過 tsc，
+  // 型別錯只有 playwright 實跑（或 vite 載 config）才會炸。CI 的 frontend job
+  // 兩個 typecheck 都跑。設定沿用主 tsconfig（strict 等全繼承），只換 include。
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    // playwright.config.ts / vite.config.ts 跑在 Node，process 等全域需要 node 型別；
+    // 不放進主 tsconfig：瀏覽器程式碼不該看得到 Node 全域。
+    "types": ["node"]
+  },
+  "include": ["e2e", "playwright.config.ts", "vite.config.ts"]
+}
