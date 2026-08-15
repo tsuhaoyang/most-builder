@@ -15,22 +15,46 @@ from ddm_v2.nlp.routing import compute_routing
 
 FIXTURE_DIR = Path(__file__).resolve().parents[1] / "integration" / "fixtures" / "e2e_plans"
 
+FIXTURES = [
+    "01_acquire_dimm.json",
+    "02_screwdriver_screw_x2.json",
+    "03_push_fixture_30cm.json",
+    "04_scan_and_confirm.json",
+    "05_composite_unknown.json",
+]
+
 
 def _load(name: str) -> dict:
     return json.loads((FIXTURE_DIR / name).read_text(encoding="utf-8"))
 
 
+@pytest.mark.parametrize("fname", FIXTURES)
+def test_e2e_fixture_evidence_offsets_valid(fname: str):
+    """fixture lint：evidence offset 必須落在 normalized_text 內且 slice 相符。
+
+    05_composite_unknown 曾有 `end=12 > len(normalized_text)=11` 的越界
+    （Python slice 靜默 clamp，肉眼與 pipeline 消費者測試都看不出）；
+    此測試守住該修正——改回 12 必轉紅。
+    """
+    data = _load(fname)
+    norm = data["plan"]["normalized_text"]
+    for action in data["plan"]["actions"]:
+        for ev in action.get("evidence") or []:
+            assert 0 <= ev["start"] < ev["end"] <= len(norm), (
+                fname,
+                action["action_id"],
+                ev,
+                f"len={len(norm)}",
+            )
+            assert norm[ev["start"] : ev["end"]] == ev["text"], (
+                fname,
+                action["action_id"],
+                ev,
+            )
+
+
 @pytest.mark.asyncio
-@pytest.mark.parametrize(
-    "fname",
-    [
-        "01_acquire_dimm.json",
-        "02_screwdriver_screw_x2.json",
-        "03_push_fixture_30cm.json",
-        "04_scan_and_confirm.json",
-        "05_composite_unknown.json",
-    ],
-)
+@pytest.mark.parametrize("fname", FIXTURES)
 async def test_e2e_fixture_pipeline(fname: str):
     data = _load(fname)
     plan = WorkInstructionPlan.model_validate(data["plan"])

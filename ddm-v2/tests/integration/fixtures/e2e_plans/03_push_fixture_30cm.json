@@ -17,7 +17,7 @@
           "object": {"text": "治具", "value": null, "unit": null, "status": "explicit", "action_ref": null},
           "distance": {"text": "30cm", "value": 30, "unit": "cm", "status": "explicit", "action_ref": null}
         },
-        "evidence": [{"start": 0, "end": 8, "text": "推治具30cm"}],
+        "evidence": [{"start": 0, "end": 7, "text": "推治具30cm"}],
         "notes": null
       }
     ],

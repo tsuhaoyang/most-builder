@@ -14,7 +14,7 @@
         "action_type": "composite_unknown",
         "sequence_order": 1,
         "roles": {},
-        "evidence": [{"start": 0, "end": 12, "text": "依照sop完成其餘作業"}],
+        "evidence": [{"start": 0, "end": 11, "text": "依照sop完成其餘作業"}],
         "notes": null
       }
     ],

@@ -1,7 +1,12 @@
-"""WI AI gold-plan 評測 runner（L3-3）。
+"""WI AI gold **compile 段**評測 runner（L3-3）。
 
 輸入：`tests/gold/wi_plans/*.json`（IE 核准案例；目前以 A5 fixture 作種子）。
 pipeline：gold plan → SlotLinker → compile → engine_gate → routing（無 LLM）。
+
+注意：本段以 gold `plan` 為**輸入**，驗的是 compiler+engine；text→plan 的
+planner 段（`docs/architecture/wi-ai-parser-system-spec.md` §14.4 的
+plan action-count / boundary F1——另一份 implementation spec 的 §14.4 是別的章節，
+引用需帶全檔名）在 `nlp/planner_eval.py`，兩段由 `scripts/wi_ai_eval.py` 並列輸出。
 """
 from __future__ import annotations
 
