@@ -8,13 +8,16 @@ import { useRuleSetOptions, useVocab, useCalculate } from '../wi-workbench/api'
 import { useCreateVocab } from '../master-data/api'
 import type { VocabIn } from '../master-data/api'
 import { defaultCycle, buildPayload, migrateSeqState, payloadToState, shortNarr, type CycleState } from '../wi-workbench/cycle'
+import { ActionCard } from '../wi-workbench/ActionCard'
+import type { AiCycleDraft, AiPlannedAction, ReviewBatchOut } from '../wi-workbench/aiTypes'
 import { TMU_SEC } from '../../shared/config'
 import { useActiveRuleSet } from '../../shared/api/useActiveRuleSet'
 import { RuleSetUnavailable } from '../../shared/ui/RuleSetUnavailable'
 import { apiGet, apiPost } from '../../shared/api/client'
+import { useMe, canEdit } from '../../shared/auth/useMe'
 import { SlotBuilder, aIsFilled } from './SlotBuilder'
 import {
-  nlDraftPatch, nlDraftPatchFillEmpty, sourceBadge, NL_FIELD_LABELS,
+  compatMatchesDraft, nlDraftPatch, nlDraftPatchFillEmpty, sourceBadge, NL_FIELD_LABELS,
   type NlDraftRes,
 } from './nlDraft'
 import { MiCompositionTable } from './MiCompositionTable'
@@ -90,6 +93,9 @@ export function ActionModuleWorkspace() {
   const { data: vocab = [] } = useVocab()
   const calc = useCalculate()
   const createVocab = useCreateVocab()
+  // review 事件（學習迴圈）需 IE 以上；viewer 送必 403 → 依角色直接略過（同 AiDraftPanel）
+  const { data: me } = useMe()
+  const canWriteReviews = canEdit(me)
 
   // Builder state
   const [cur, setCur] = useState<CycleState>(defaultCycle())
@@ -106,6 +112,21 @@ export function ActionModuleWorkspace() {
   const [nlLoading, setNlLoading] = useState(false)
   const [nlResult, setNlResult] = useState<NlDraftRes | null>(null)
   const [nlAskOpen, setNlAskOpen] = useState(false)      // 覆蓋/填空兩鍵 modal
+  // §18.3 多 action：已逐筆採用的 draft action_id（採用→存檔→採用下一筆的迴圈標記）
+  const [adoptedDraftIds, setAdoptedDraftIds] = useState<Set<string>>(new Set())
+  // review 事件（學習迴圈）失敗提示：非阻斷，但不可靜默（No error bypass）
+  const [reviewWarn, setReviewWarn] = useState<string | null>(null)
+
+  // ai.drafts 是權威草稿（wi_ai_service：頂層 slots 只是舊前端相容的壓平欄位）
+  const nlDrafts: AiCycleDraft[] = nlResult?.ai?.drafts ?? []
+  const nlMulti = nlDrafts.length > 1
+  // 單 action 但相容欄位（rule_based）與權威草稿（可能來自 LLM）不一致 → 與多 action
+  // 同待遇：不自動套用、隱藏會誤導的壓平欄位列，只出權威草稿卡
+  const nlDraftMismatch = !!nlResult && nlDrafts.length === 1 && !compatMatchesDraft(nlResult, nlDrafts[0])
+  const nlCompatHidden = nlMulti || nlDraftMismatch
+  const nlActionsById: Record<string, AiPlannedAction> = Object.fromEntries(
+    (nlResult?.ai?.plan?.actions ?? []).map(a => [a.action_id, a]),
+  )
 
   // Toast
   const [toast, setToast] = useState<ToastState | null>(null)
@@ -265,7 +286,18 @@ export function ActionModuleWorkspace() {
         text, rule_set_code: opts.code,
       })
       setNlResult(res)
-      if (hasEditorContent(cur)) {
+      setAdoptedDraftIds(new Set())
+      setReviewWarn(null)
+      const drafts = res.ai?.drafts ?? []
+      if (drafts.length > 1) {
+        // §18.3：多 action 不得自動套用（相容 slots 只壓平首個 action，
+        // 自動套用＝靜默丟棄其餘 action）→ 逐筆呈現、逐筆採用
+        showToast(`AI 解析出 ${drafts.length} 個動作草稿，請逐筆採用`, 'ok')
+      } else if (drafts.length === 1 && !compatMatchesDraft(res, drafts[0])) {
+        // 相容欄位（永遠 rule_based）與權威草稿（可能 LLM）不一致：自動套用會把
+        // 編輯器覆蓋成 rule 的猜測、卡片卻顯示另一結果 → 只出卡片（與多 action 同待遇）
+        showToast('AI 草稿與相容建議不一致，請由草稿卡採用', 'ok')
+      } else if (hasEditorContent(cur)) {
         setNlAskOpen(true)               // 編輯器有內容 → 詢問覆蓋/填空
       } else {
         applyNlDraft(res, 'overwrite')
@@ -294,17 +326,59 @@ export function ActionModuleWorkspace() {
     setNlAskOpen(false)
   }
 
+  // ── 採用單一 AI draft（§18.3 多 action 逐筆迴圈；沿用 AiDraftPanel 慣例） ──────
+  function adoptNlDraft(draft: AiCycleDraft) {
+    if (!draft.cycle) return
+    // 編輯器已有內容（如：採用草稿 1 後手調、或手動建模到一半）→ 覆蓋前確認。
+    // 「填空」對整卡載入無意義（草稿是完整 cycle），一個覆蓋確認即可（與 NL 預填
+    // 的覆蓋/填空 modal 語意對稱）。
+    if (hasEditorContent(cur) && !window.confirm(
+      '編輯器已有內容，採用此草稿將覆蓋現有格位（保留手別與情境詞彙）。確定覆蓋？',
+    )) return
+    const next = payloadToState(draft.cycle)
+    // 保留手別／語彙情境（與 wi-workbench onAdoptCycle 同款），其餘整組載入草稿
+    setCur(c => ({ ...next, handCode: c.handCode || next.handCode, nv: { ...c.nv } }))
+    setWiSentence('')                 // 名稱回到自動命名（草稿內容已換）
+    setEditingModuleId(null)          // 草稿＝新動作；不得靜默覆寫編輯中的模組
+    setSource('ai')
+    setAdoptedDraftIds(prev => new Set(prev).add(draft.action_id))
+    showToast(`已採用動作草稿：${draft.narrative ?? draft.action_id}`, 'ok')
+    // review event（學習迴圈）：採用已成功，記錄失敗不阻斷；但失敗不可靜默吞掉
+    // （No error bypass）——console.warn＋面板灰字提示。viewer（level 0）送必 403，
+    // 依角色直接略過（同 AiDraftPanel 的 canWriteReviews gating）。
+    const runId = nlResult?.ai?.run_id
+    if (runId && canWriteReviews) {
+      apiPost<ReviewBatchOut>(`/api/v2/nl-drafts/${runId}/reviews`, {
+        ui_version: 'workbench-v3@nl-multi',
+        events: [{
+          event_type: 'accept_plan',
+          target: { action_id: draft.action_id },
+          reason: '採用單一 draft 至編輯器',
+        }],
+      }).catch(err => {
+        console.warn('[nl-review] review 事件記錄失敗（非阻斷）：', err)
+        setReviewWarn(apiErrorMessage(err))
+      })
+    }
+  }
+
   // ── Reset builder ─────────────────────────────────────────────────────────
-  function resetBuilder() {
+  // keepNl：多 action 迴圈中存檔後保留 NL 面板（否則其餘草稿隨 reset 消失＝變相丟棄）
+  // 參數用解構命名，避免遮蔽外層 rule-set `opts`（曾因同名遮蔽埋過雷）
+  function resetBuilder({ keepNl = false }: { keepNl?: boolean } = {}) {
     setCur(defaultCycle())
     setWiSentence('')
     setTmu(null)
     setTech('')
     setEditingModuleId(null)
     setSource('manual')
-    setNlText('')
-    setNlResult(null)
-    setNlAskOpen(false)
+    if (!keepNl) {
+      setNlText('')
+      setNlResult(null)
+      setNlAskOpen(false)
+      setAdoptedDraftIds(new Set())
+      setReviewWarn(null)
+    }
   }
 
   // ── Save / update module（名稱＝WI 語句覆寫；空則自動命名） ────────────────────
@@ -362,7 +436,10 @@ export function ActionModuleWorkspace() {
         })
         showToast('已新增動作：' + name, 'ok')
       }
-      resetBuilder()
+      // 多 action 迴圈：還有「可採用」的未採用草稿 → 保留 NL 面板供採用下一筆（§18.3）。
+      // 無 cycle 的草稿（如 composite_unknown）永遠採用不了，不能讓面板永不自動收。
+      const keepNl = nlMulti && nlDrafts.some(d => d.cycle != null && !adoptedDraftIds.has(d.action_id))
+      resetBuilder({ keepNl })
     } catch (err) {
       showToast('儲存失敗：' + (err as Error).message, 'err')
     }
@@ -661,7 +738,7 @@ export function ActionModuleWorkspace() {
       node: <span className="bg-blue-100 text-blue-700 rounded px-1.5 py-0.5 text-xs font-medium">{gm ? '一般移動' : '控制移動'}</span>,
     },
     { label: '使用手', node: <span>{HAND_NAME[cur.handCode] ?? cur.handCode}</span> },
-    { label: '基礎 TMU', node: <b className="text-base" style={{ color: '#1a73e8' }}>{tmu ?? '—'}</b> },
+    { label: '基礎 TMU', node: <b className="text-base" style={{ color: '#1a73e8' }} data-testid="summary-base-tmu">{tmu ?? '—'}</b> },
     {
       label: '頻率',
       node: (
@@ -725,9 +802,15 @@ export function ActionModuleWorkspace() {
                 }`}>
                   信心 {Math.round((nlResult.overall_confidence ?? 0) * 100)}%
                 </span>
-                {nlResult.suggested_seq && (
+                {!nlCompatHidden && nlResult.suggested_seq && (
                   <span className="bg-slate-200 text-slate-700 rounded px-1.5 py-0.5">
                     建議：{nlResult.suggested_seq === 'GM' ? '一般移動 (GM)' : '控制移動 (CM)'}
+                  </span>
+                )}
+                {nlResult.ai && (
+                  <span className="text-slate-500">
+                    routing: {nlResult.ai.routing_status}
+                    {nlResult.ai.provenance?.fallback ? '（rule fallback）' : ''}
                   </span>
                 )}
                 <button
@@ -736,26 +819,76 @@ export function ActionModuleWorkspace() {
                   aria-label="關閉 NL 結果"
                 >✕</button>
               </div>
-              {/* 逐 slot 命中/缺漏（badge 四態：明確/推斷/預設/待確認） */}
-              <div className="flex flex-wrap gap-x-4 gap-y-1">
-                {(nlResult.slots ?? []).map(s => (
-                  <span key={s.field} className="inline-flex items-center gap-1">
-                    <span className="text-slate-500">{NL_FIELD_LABELS[s.field] ?? s.field}</span>
-                    {s.chosen ? (
-                      <>
-                        <span className={`rounded border px-1 py-0.5 leading-none ${
-                          sourceBadge(s.chosen.source) === '明確' ? 'bg-blue-50 text-blue-600 border-blue-200'
-                          : sourceBadge(s.chosen.source) === '預設' ? 'bg-amber-50 text-amber-600 border-amber-200'
-                          : 'bg-emerald-50 text-emerald-600 border-emerald-200'
-                        }`}>{sourceBadge(s.chosen.source)}</span>
-                        <span className="text-slate-700">{nlOptionLabel(s.field, s.chosen.option_code)}</span>
-                      </>
-                    ) : (
-                      <span className="rounded border px-1 py-0.5 leading-none bg-red-50 text-red-500 border-red-200">待確認</span>
-                    )}
-                  </span>
-                ))}
-              </div>
+
+              {/* §18.3 多 action：逐筆呈現、逐筆採用，絕不靜默只取第一筆 */}
+              {nlMulti && (
+                <p
+                  className="text-amber-800 bg-amber-50 border border-amber-200 rounded px-2 py-1"
+                  data-testid="nl-multi-warning"
+                >
+                  AI 解析出 {nlDrafts.length} 個動作草稿 — 請逐筆採用，勿靜默只取第一筆。
+                  可依「採用 → 新增動作 → 採用下一筆」逐一入庫。
+                </p>
+              )}
+
+              {/* 單 action 但 LLM 權威草稿與 rule 相容欄位不一致：不自動套用（否則
+                  編輯器被覆蓋成 rule 的猜測、卡片卻顯示另一結果）→ 由草稿卡採用 */}
+              {nlDraftMismatch && (
+                <p
+                  className="text-amber-800 bg-amber-50 border border-amber-200 rounded px-2 py-1"
+                  data-testid="nl-consistency-warning"
+                >
+                  AI 權威草稿與相容建議不一致（或草稿未完整編譯）— 未自動套用，
+                  請確認下方草稿卡內容後按「採用到編輯器」。
+                </p>
+              )}
+
+              {/* review 事件失敗（非阻斷）：不吞錯，灰字提示學習迴圈缺了這筆 */}
+              {reviewWarn && (
+                <p className="text-slate-400" data-testid="nl-review-warning">
+                  學習迴圈：review 事件記錄失敗（{reviewWarn}）；不影響已採用內容。
+                </p>
+              )}
+
+              {/* ai.drafts 權威草稿卡（單 action 也顯示：CM 草稿無法用相容 slots 表達） */}
+              {nlDrafts.length > 0 && (
+                <div className="grid gap-2 sm:grid-cols-2" data-testid="nl-draft-cards">
+                  {nlDrafts.map(d => (
+                    <ActionCard
+                      key={d.action_id}
+                      action={nlActionsById[d.action_id]}
+                      draft={d}
+                      adopted={adoptedDraftIds.has(d.action_id)}
+                      onAdopt={() => adoptNlDraft(d)}
+                    />
+                  ))}
+                </div>
+              )}
+
+              {/* 逐 slot 命中/缺漏（badge 四態：明確/推斷/預設/待確認）。
+                  多 action 或與權威草稿不一致時隱藏：頂層 slots 是 rule_based 的
+                  壓平相容欄位，會誤導 */}
+              {!nlCompatHidden && (
+                <div className="flex flex-wrap gap-x-4 gap-y-1">
+                  {(nlResult.slots ?? []).map(s => (
+                    <span key={s.field} className="inline-flex items-center gap-1">
+                      <span className="text-slate-500">{NL_FIELD_LABELS[s.field] ?? s.field}</span>
+                      {s.chosen ? (
+                        <>
+                          <span className={`rounded border px-1 py-0.5 leading-none ${
+                            sourceBadge(s.chosen.source) === '明確' ? 'bg-blue-50 text-blue-600 border-blue-200'
+                            : sourceBadge(s.chosen.source) === '預設' ? 'bg-amber-50 text-amber-600 border-amber-200'
+                            : 'bg-emerald-50 text-emerald-600 border-emerald-200'
+                          }`}>{sourceBadge(s.chosen.source)}</span>
+                          <span className="text-slate-700">{nlOptionLabel(s.field, s.chosen.option_code)}</span>
+                        </>
+                      ) : (
+                        <span className="rounded border px-1 py-0.5 leading-none bg-red-50 text-red-500 border-red-200">待確認</span>
+                      )}
+                    </span>
+                  ))}
+                </div>
+              )}
             </div>
           )}
 
@@ -820,7 +953,7 @@ export function ActionModuleWorkspace() {
             )}
             {editingModuleId && (
               <button
-                onClick={resetBuilder}
+                onClick={() => resetBuilder()}
                 className="shrink-0 px-2 py-1.5 border rounded text-slate-600 hover:bg-slate-50 text-sm"
               >
                 取消編輯
@@ -834,7 +967,7 @@ export function ActionModuleWorkspace() {
               {isSaving ? '儲存中…' : editingModuleId ? '更新模組' : '新增動作'}
             </button>
             <button
-              onClick={resetBuilder}
+              onClick={() => resetBuilder()}
               className="shrink-0 px-3 py-1.5 border rounded-lg text-slate-600 hover:bg-slate-50 text-sm"
             >
               清空

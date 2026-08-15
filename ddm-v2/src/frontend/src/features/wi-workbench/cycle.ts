@@ -97,13 +97,16 @@ export function payloadToState(p: Record<string, any>): CycleState { // eslint-d
   s.seq = p.seq === 'CM' ? 'CM' : 'GM'
   const toA = (o: any): ASlot => ({ reach: o?.reach_cm || 0, twist: o?.twist_deg || 0, foot: o?.foot_cm || 0 }) // eslint-disable-line @typescript-eslint/no-explicit-any
   s.a0 = toA(p.a0); s.a6 = toA(p.a6)
-  s.g = p.g2?.g_code || ''; s.gMod = p.g2?.modifiers || {}; s.gRepeat = p.g2?.repeat_count || 1; s.b1 = p.b1?.b_code ?? null
+  // 數值欄一律 ??（不可 ||）：0 是後端的合法值（MComponent schema 預設 distance_cm=0
+  // ——compiler 對「沒講距離」的 CM 就編出 0）。|| 會把 0 靜默換成前端寫死的預設，
+  // 等於前端捏造使用者/AI 從未提出的格位值（違反 DISC-06／No fake defaults）。
+  s.g = p.g2?.g_code || ''; s.gMod = p.g2?.modifiers || {}; s.gRepeat = p.g2?.repeat_count ?? 1; s.b1 = p.b1?.b_code ?? null
   if (s.seq === 'GM') {
     s.a3 = toA(p.a3); s.b4 = p.b4?.b_code ?? null
-    s.p_base = p.p5?.p_base_code || ''; s.p_addons = p.p5?.p_addon_codes || []; s.precision = !!p.p5?.precision; s.pRepeat = p.p5?.repeat_count || 1
+    s.p_base = p.p5?.p_base_code || ''; s.p_addons = p.p5?.p_addon_codes || []; s.precision = !!p.p5?.precision; s.pRepeat = p.p5?.repeat_count ?? 1
   } else {
     const m = (p.m3?.m_components || [])[0] || {}
-    s.m = { verb: m.verb_code || '', distance: m.distance_cm || 30, angle: m.angle_deg || 90, rev: m.revolutions || 1, dia: m.diameter_cm || 10 }
+    s.m = { verb: m.verb_code || '', distance: m.distance_cm ?? 30, angle: m.angle_deg ?? 90, rev: m.revolutions ?? 1, dia: m.diameter_cm ?? 10 }
     s.x = p.x4?.x_code || 'x_none'; s.x_sec = p.x4?.x_seconds || 0; s.i = p.i5?.i_code || 'i_none'
   }
   if (typeof p.frequency === 'number' && p.frequency > 0) {
