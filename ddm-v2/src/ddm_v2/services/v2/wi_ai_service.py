@@ -4,6 +4,8 @@ Spec §10；drafts 由 most_compiler + engine 產生，禁止在本層算 TMU。
 """
 from __future__ import annotations
 
+import asyncio
+import functools
 import hashlib
 import json
 import logging
@@ -36,7 +38,7 @@ from ddm_v2.nlp.contracts import (
 from ddm_v2.nlp.linking import SlotLinker
 from ddm_v2.nlp.llm_client import OpenAICompatClient
 from ddm_v2.nlp.llm_planner import LLMPlannerAdapter
-from ddm_v2.nlp.normalization import normalize_with_map
+from ddm_v2.nlp.normalization import MAX_PARSE_TEXT_CHARS, normalize_with_map
 from ddm_v2.nlp.planner_ports import LLMRawResponse, PlannerError
 from ddm_v2.nlp.prompts import plan_v1
 from ddm_v2.nlp.routing import compute_routing
@@ -52,6 +54,24 @@ from ddm_v2.settings import get_settings
 logger = logging.getLogger(__name__)
 
 DEFAULT_BUNDLE_CODE = "wi-ai-dev-000"
+
+# 同步 CPU 段（normalize_with_map／RuleBasedParser.parse）的逾時上限。
+# 為什麼是 10s：長度上限（MAX_PARSE_TEXT_CHARS=2000）已把病理最壞情況鎖在
+# 本機實測 ≈2–3s；10s ≈ 3 倍餘裕（涵蓋較慢的部署 CPU），同時把「守衛被繞過」
+# 的殘餘風險從分鐘級壓到秒級。逾時丟 TimeoutError → tick_job 的 item 級
+# retry/failed 路徑接手。注意：wait_for 只中斷 await 端，executor 執行緒會跑完
+# 才回收——這是刻意取捨：loop 保持回應優先，殘餘執行緒有 attempt 上限封頂。
+PARSE_CPU_TIMEOUT_S = 10.0
+
+
+class TextTooLong(ValueError):
+    """解析輸入超過 MAX_PARSE_TEXT_CHARS（呼叫端應標 review，不應重試）。"""
+
+    def __init__(self, length: int) -> None:
+        self.length = length
+        super().__init__(
+            f"parse text too long: {length} chars > {MAX_PARSE_TEXT_CHARS} limit"
+        )
 
 
 def _canonical_json(obj: Any) -> str:
@@ -195,13 +215,26 @@ async def parse_interactive(
     """
     if source_kind not in {"interactive", "import_row"}:
         raise ValueError(f"invalid source_kind: {source_kind}")
+    # 長度守衛（防毒 job 卡死 event loop 的第一層）：normalize_with_map 的
+    # SequenceMatcher 最壞 O(n·m)，超長輸入不進 parser。批次路徑（tick_job）
+    # 在呼叫前就標 review，不會走到這裡；此處是所有呼叫端的最後防線。
+    if len(text) > MAX_PARSE_TEXT_CHARS:
+        raise TextTooLong(len(text))
     t0 = time.perf_counter()
     resolved_bundle = _resolve_bundle_code(bundle_code)
     ctx = context or ParseContext(rule_set_code=rule_set_code)
     if ctx.rule_set_code != rule_set_code:
         ctx = ctx.model_copy(update={"rule_set_code": rule_set_code})
 
-    norm, _offset_map = normalize_with_map(text)
+    # CPU 段移出 event loop（第二層）：SequenceMatcher 是純 Python 同步碼，直接
+    # 呼叫會卡住 loop，asyncio.wait_for 對「同步阻塞」根本沒有中斷點——必須先丟
+    # executor 讓 loop 保持回應，timeout 才有作用點。executor 內是純函數，不碰
+    # AsyncSession。
+    loop = asyncio.get_running_loop()
+    norm, _offset_map = await asyncio.wait_for(
+        loop.run_in_executor(None, normalize_with_map, text),
+        timeout=PARSE_CPU_TIMEOUT_S,
+    )
     t_norm = time.perf_counter()
 
     rs = await _get_rule_set(session, rule_set_code)
@@ -237,7 +270,13 @@ async def parse_interactive(
 
     synonyms = await syn_svc.list_synonyms(session, rule_set_code)
     parser = RuleBasedParser(synonyms)
-    rule_result = parser.parse(text, rule_set_code=rule_set_code)
+    # rule parser 同樣是同步 CPU 段（normalize + lexicon 全文最長匹配）→ executor。
+    rule_result = await asyncio.wait_for(
+        loop.run_in_executor(
+            None, functools.partial(parser.parse, text, rule_set_code=rule_set_code)
+        ),
+        timeout=PARSE_CPU_TIMEOUT_S,
+    )
 
     source_ref = SourceRef(
         kind="import_row" if source_kind == "import_row" else "interactive",

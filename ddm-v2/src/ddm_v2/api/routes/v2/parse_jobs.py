@@ -50,6 +50,8 @@ async def create_parse_job(
         )
     except svc.ImportNotFound:
         raise HTTPException(status_code=404, detail="匯入批次不存在") from None
+    except svc.JobQuotaExceeded as exc:
+        raise HTTPException(status_code=429, detail=str(exc)) from None
     except svc.NoStagedRows:
         raise HTTPException(status_code=422, detail="無可用暫存列（需先 map 且含 description）") from None
     except syn_svc.RuleSetNotFound:

@@ -59,7 +59,7 @@ class ImportProfile(Base, TimestampMixin):
 
 
 class ImportRow(Base, TimestampMixin):
-    """正規化後的單列（ADR-027 §12.3）：支援 row lock／retry／parse lineage。"""
+    """正規化後的單列（wi-ai-parser-implementation-spec §12–13）：支援 row lock／retry／parse lineage。"""
 
     __tablename__ = "import_rows"
 

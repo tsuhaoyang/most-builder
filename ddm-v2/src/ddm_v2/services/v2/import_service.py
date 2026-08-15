@@ -18,6 +18,7 @@ if TYPE_CHECKING:
 
     from ddm_v2.models.v2.vocab import WorkVocabItem
 
+from ddm_v2.nlp.normalization import MAX_PARSE_TEXT_CHARS
 from ddm_v2.schemas.v2.import_excel import REQUIRED_FIELDS
 from ddm_v2.services.v2.template_matching import score_keywords
 
@@ -89,6 +90,14 @@ def apply_mapping(raw_payload: dict, sheet: str, header_row: int,
         # 正規化
         if "description" in rec and rec["description"] is not None:
             rec["description"] = str(rec["description"]).strip()
+            # 長度上限（Blocker 1a）：Excel 單格可塞 32,767 字元，超長描述是
+            # parser（SequenceMatcher 病理輸入）的毒藥。不截斷（保留原文供人工
+            # 處置）、不丟列——警告＋解析階段標 review（tick_job 同上限把關）。
+            if len(rec["description"]) > MAX_PARSE_TEXT_CHARS:
+                warnings.append(
+                    f"列{ri + 1}：描述 {len(rec['description'])} 字元超過上限 "
+                    f"{MAX_PARSE_TEXT_CHARS}，AI 解析將跳過此列並標記人工審核"
+                )
         if "hand" in rec and rec.get("hand") is not None:
             rec["hand"] = _HAND_MAP.get(str(rec["hand"]).strip().lower(), None)
         if "seconds" in column_map:

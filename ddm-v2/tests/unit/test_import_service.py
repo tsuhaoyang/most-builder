@@ -135,3 +135,27 @@ class TestApplyMapping:
         rows, _ = apply_mapping(payload, "Sheet1", 0, {"description": 0}, "sec")
         # _row 應是 Excel 列號（header=row 0 → data starts at row 1 → _row=2）
         assert rows[0]["_row"] == 2
+
+    # ── Blocker 1a：描述長度上限（毒 job 防線的 ingest 端）────────────────────
+    # mutation：拿掉 apply_mapping 的長度檢查 → test_overlong_description_warns 紅
+
+    def test_overlong_description_warns_but_keeps_row(self) -> None:
+        from ddm_v2.nlp.normalization import MAX_PARSE_TEXT_CHARS
+
+        long_desc = "甲" * (MAX_PARSE_TEXT_CHARS + 1)
+        grid = [["描述"], [long_desc]]
+        payload = _make_payload(grid)
+        rows, warnings = apply_mapping(payload, "Sheet1", 0, {"description": 0}, "sec")
+        # 列保留、原文不截斷（交人工處置），但必須出警告
+        assert len(rows) == 1
+        assert rows[0]["description"] == long_desc
+        assert any("超過上限" in w for w in warnings)
+
+    def test_description_at_limit_no_warning(self) -> None:
+        from ddm_v2.nlp.normalization import MAX_PARSE_TEXT_CHARS
+
+        grid = [["描述"], ["乙" * MAX_PARSE_TEXT_CHARS]]
+        payload = _make_payload(grid)
+        rows, warnings = apply_mapping(payload, "Sheet1", 0, {"description": 0}, "sec")
+        assert len(rows) == 1
+        assert warnings == []

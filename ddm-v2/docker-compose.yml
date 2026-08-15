@@ -62,6 +62,12 @@ services:
       DDM_ADMIN_EMPLOYEE_NO: ${DDM_ADMIN_EMPLOYEE_NO:-IEC141289}
       # true＝開機自動種 rule-set + demo worksheet(5555) + 詞彙 + 範本（idempotent，過渡建議開）
       DDM_SEED_DEMO: ${DDM_SEED_DEMO:-false}
+      # ai_parse_jobs 背景 worker（語意與可調值見 .env.example）。程式端預設就是 true/3.0/4，
+      # 這裡把三個都顯式接出來的理由：compose 只會傳遞**列在這裡**的變數，少列一個，
+      # 部署者在 .env 設了它卻毫無作用，而 .env.example 又寫著可以設——那就是文件在說謊。
+      DDM_PARSE_WORKER_ENABLED: ${DDM_PARSE_WORKER_ENABLED:-true}
+      DDM_PARSE_WORKER_INTERVAL_S: ${DDM_PARSE_WORKER_INTERVAL_S:-3.0}
+      DDM_PARSE_WORKER_BATCH: ${DDM_PARSE_WORKER_BATCH:-4}
 
 volumes:
   ddm-v2-pgdata:

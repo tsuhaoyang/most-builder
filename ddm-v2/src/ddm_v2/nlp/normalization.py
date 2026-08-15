@@ -11,6 +11,19 @@ from difflib import SequenceMatcher
 
 logger = logging.getLogger(__name__)
 
+# 解析輸入長度上限（單一權威；apply_mapping 警告、parse 入口拒收都引用這個值）。
+#
+# 為什麼是 2000：
+# 1. `normalize_with_map` 用 SequenceMatcher(autojunk=False)，高重複輸入是最壞情況
+#    ——實測（2026-08-15，本機 3.11）病理輸入 800 字元 ≈ 0.18s、1600 字元 ≈ 1.4s，
+#    成長超過平方；Excel 單格上限 32,767 字元會把 event loop 卡住分鐘級。
+#    2000 字元把病理最壞情況鎖在 ≈2–3s，落在 PARSE_CPU_TIMEOUT_S 內。
+# 2. 與既有對外契約一致：互動端點 NLDraftIn.text 的 max_length 本來就是 2000，
+#    批次路徑沿用同一上限，不另立第二個數字。
+# 3. 真實 WI 步驟描述遠低於 200 字元；2000 已是 10 倍以上的餘裕，擋下的只有
+#    病理輸入與貼錯欄位的整段文章。
+MAX_PARSE_TEXT_CHARS = 2000
+
 try:
     import opencc as _opencc_mod
 

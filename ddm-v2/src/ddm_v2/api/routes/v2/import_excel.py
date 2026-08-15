@@ -28,6 +28,12 @@ router = APIRouter(prefix="/api/v2/imports", tags=["v2-imports"])
 
 _PREVIEW_ROWS = 30  # 回應只帶前 N 列供選表頭/欄位（staging 存完整）
 
+# 上傳位元組上限（security F2）：`file.read()` 整份進記憶體，無上限＝任何 analyst
+# 一支請求就能打爆 RAM。10 MiB 的依據：真實 WI 工時表實測 <1 MiB（純儲存格資料，
+# _MAX_ROWS=1000×_MAX_COLS=60 也只會取用到前面一小段），10 MiB 已是 10 倍餘裕；
+# 再大的檔幾乎必然是貼了圖片/嵌入物件的工作簿，本功能只讀 cell 值，收下也沒意義。
+_MAX_UPLOAD_BYTES = 10 * 1024 * 1024
+
 
 def _profile_out(p: ImportProfile) -> ProfileOut:
     return ProfileOut(id=p.id, name=p.name, sheet_hint=p.sheet_hint, header_row=p.header_row,
@@ -38,7 +44,14 @@ def _profile_out(p: ImportProfile) -> ProfileOut:
 async def upload(file: UploadFile = File(...), worksheet_id: uuid.UUID | None = None,
                  session: AsyncSession = Depends(get_db_session, scope="function"),
                  actor: CurrentUser = Depends(require_role("analyst"))) -> UploadOut:
-    content = await file.read()
+    # 讀上限+1 位元組即可判斷超限，不把整份超大檔吸進記憶體才檢查。
+    content = await file.read(_MAX_UPLOAD_BYTES + 1)
+    if len(content) > _MAX_UPLOAD_BYTES:
+        raise HTTPException(
+            status_code=413,
+            detail=f"檔案超過上限 {_MAX_UPLOAD_BYTES // (1024 * 1024)} MiB，"
+                   "請移除圖片/嵌入物件或拆分工作簿後重試",
+        )
     try:
         raw = import_service.parse_workbook(content)
     except Exception as e:  # noqa: BLE001

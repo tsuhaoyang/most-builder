@@ -20,6 +20,18 @@ from __future__ import annotations
 
 import os
 
+# 背景 parse worker 在測試中一律關閉（必須在任何 ddm_v2 import 之前設，
+# 因為 ddm_v2.settings 於 import 時就會填 get_settings() 的 lru_cache）：
+# 1. 確定性——測試以顯式 tick／run_worker_pass 驅動 job，不容許背景任務
+#    在斷言之間偷跑改狀態；
+# 2. 隔離——httpx ASGITransport 目前不執行 lifespan，worker 本來不會啟動，
+#    但若未來測試改用 `with TestClient(...)`／LifespanManager，worker 會用
+#    自己的 engine 連真實 DB，繞過 conftest 的 savepoint 隔離（吃掉測試建的
+#    queued jobs、在隔離 transaction 外寫入）。此處顯式關閉是保險絲。
+# 直接賦值（不用 setdefault）：保險絲不容許被外部環境變數翻開——殼層恰好帶著
+# DDM_PARSE_WORKER_ENABLED=1 跑測試時，setdefault 會靜默讓 worker 開著。
+os.environ["DDM_PARSE_WORKER_ENABLED"] = "0"
+
 import httpx
 import pytest
 import pytest_asyncio

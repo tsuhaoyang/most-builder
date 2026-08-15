@@ -8,6 +8,7 @@
 
 from __future__ import annotations
 
+import asyncio
 import logging
 import os
 from contextlib import asynccontextmanager
@@ -46,16 +47,60 @@ _DEFAULT_SECRET = "ddm-v2-release-candidate-202603-rc1-secure-key"
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    """啟動初始化 async engine + 驗證安全設定；關閉時釋放連線。"""
+    """啟動初始化 async engine + 背景 parse worker + 驗證安全設定；關閉時乾淨收尾。"""
     settings = get_settings()
     _validate_startup_security(settings)
 
     engine = get_engine()
     app.state.engine = engine
 
-    yield
+    # ai_parse_jobs 背景 worker（預設開啟；DDM_PARSE_WORKER_ENABLED=0 可關）。
+    # 經 module attribute 呼叫（不 from-import 函式）讓測試可 monkeypatch。
+    worker_task: asyncio.Task | None = None
+    if settings.parse_worker_enabled:
+        from ddm_v2.services.v2 import parse_job_worker
 
-    await engine.dispose()
+        worker_task = asyncio.create_task(
+            parse_job_worker.run_worker_loop(
+                interval_s=settings.parse_worker_interval_s,
+                batch=settings.parse_worker_batch,
+            ),
+            name="ddm-parse-job-worker",
+        )
+        # 死亡不得靜默：worker 是無限迴圈，「非 cancel 的結束」一律是異常事件。
+        # 沒有這個 callback 的話 task 例外無人 retrieve，app 看起來健康、job 永遠
+        # 不動。ERROR/WARNING 級——uvicorn 預設 root logger 無 handler 時 INFO 會
+        # 被丟（docker logs 實測看不見）。
+        worker_task.add_done_callback(_log_worker_task_exit)
+        app.state.parse_worker_task = worker_task
+
+    try:
+        yield
+    finally:
+        if worker_task is not None:
+            worker_task.cancel()
+            try:
+                await worker_task
+            except asyncio.CancelledError:
+                pass  # 自己 cancel 的，屬預期
+            except Exception:
+                # worker 在 shutdown 前已死：task 完成後 cancel() 是 no-op，await
+                # 會重拋它死時的例外——不接住的話 engine.dispose() 永遠不會執行、
+                # shutdown 本身也會炸。死因已由 done callback 記錄過，這裡確保
+                # dispose 必達。
+                logger.exception("parse worker 於 shutdown 前已異常終止")
+        await engine.dispose()
+
+
+def _log_worker_task_exit(task: asyncio.Task) -> None:
+    """背景 worker task 結束時記錄非預期死亡（並 retrieve 例外，避免靜默）。"""
+    if task.cancelled():
+        return  # shutdown 的正常路徑
+    exc = task.exception()
+    if exc is not None:
+        logger.error("parse worker 意外終止（背景 job 已停擺，需重啟服務）", exc_info=exc)
+    else:
+        logger.warning("parse worker 迴圈非預期結束（無例外；背景 job 已停擺）")
 
 
 def _validate_startup_security(settings) -> None:

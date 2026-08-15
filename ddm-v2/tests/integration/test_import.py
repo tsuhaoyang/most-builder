@@ -373,3 +373,28 @@ async def test_preview_no_active_rule_set_yields_null_tmu_no_fallback(client, db
     assert m0["computed_tmu"] is None         # 不猜版本、不 fallback（≠29）
     assert m0["computed_seconds"] is None
     assert m0["error"] is not None            # 帶可辨識錯誤
+
+
+# ── security F2/code-reviewer #9：上傳位元組上限 ────────────────────────────────
+# mutation：拿掉 upload 的大小檢查 → test_upload_over_size_limit_413 紅
+
+async def test_upload_over_size_limit_413(client, monkeypatch):
+    from ddm_v2.api.routes.v2 import import_excel as route_mod
+
+    monkeypatch.setattr(route_mod, "_MAX_UPLOAD_BYTES", 1024)
+    junk = {"file": ("Touchtime.xlsx", b"x" * 2048,
+                     "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")}
+    r = await client.post("/api/v2/imports/upload", files=junk)
+    assert r.status_code == 413, r.text
+    assert "上限" in r.json()["detail"]
+
+
+async def test_upload_at_size_limit_not_rejected(client, monkeypatch):
+    """恰好等於上限不觸發 413（會走到 Excel 解析，非法內容回 422 而非 413）。"""
+    from ddm_v2.api.routes.v2 import import_excel as route_mod
+
+    monkeypatch.setattr(route_mod, "_MAX_UPLOAD_BYTES", 2048)
+    junk = {"file": ("Touchtime.xlsx", b"x" * 2048,
+                     "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")}
+    r = await client.post("/api/v2/imports/upload", files=junk)
+    assert r.status_code == 422, r.text

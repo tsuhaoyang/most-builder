@@ -69,6 +69,9 @@ class Settings:
     llm_model: str
     llm_timeout_s: float
     wi_ai_bundle_code: str
+    parse_worker_enabled: bool
+    parse_worker_interval_s: float
+    parse_worker_batch: int
 
 
 @lru_cache(maxsize=1)
@@ -95,6 +98,15 @@ def get_settings() -> Settings:
         llm_model=os.getenv("DDM_LLM_MODEL", "qwen2.5:32b-instruct"),
         llm_timeout_s=float(os.getenv("DDM_LLM_TIMEOUT_S", "8.0")),
         wi_ai_bundle_code=os.getenv("DDM_WI_AI_BUNDLE_CODE", "wi-ai-dev-000"),
+        # ai_parse_jobs 背景 worker（services/v2/parse_job_worker.py）。
+        # 預設**開啟**：compose 部署不另設環境變數，預設關閉的 worker 等於沒做
+        # （守門存在≠守門有在跑）。測試在 tests/conftest.py 顯式關閉以保確定性。
+        parse_worker_enabled=_parse_bool(os.getenv("DDM_PARSE_WORKER_ENABLED"), True),
+        parse_worker_interval_s=float(os.getenv("DDM_PARSE_WORKER_INTERVAL_S", "3.0")),
+        # 實際上限＝parse_job_service.MAX_TICK_LIMIT（4）：tick 為保 lease 窗
+        # （LEASE_SECONDS=60 vs 批次 LLM 耗時）而封頂。設超過時 worker 啟動會
+        # WARNING 並以上限執行，不會靜默照單全收。
+        parse_worker_batch=int(os.getenv("DDM_PARSE_WORKER_BATCH", "4")),
     )
 
 

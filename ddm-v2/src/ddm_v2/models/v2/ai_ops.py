@@ -1,6 +1,6 @@
-"""AI operational tables（WI AI Parser L0）。
+"""AI operational tables（WI AI Parser L0＋L4 批次）。
 
-Spec：docs/llm/wi-ai-parser-implementation-spec.md §12
+Spec：docs/llm/wi-ai-parser-implementation-spec.md §12（AI 表）／§13（L4 批次邊界）
 """
 from __future__ import annotations
 
@@ -183,7 +183,7 @@ class AiFeedbackCandidate(Base):
 
 
 class AiParseJob(Base):
-    """批次 parse job（ADR-027 §12.4）。"""
+    """批次 parse job（spec §13；schema 佈局同 §12 的 AI 表批次）。"""
 
     __tablename__ = "ai_parse_jobs"
 
@@ -225,12 +225,25 @@ class AiParseJob(Base):
     )
 
     __table_args__ = (
-        UniqueConstraint("idempotency_key", name="uq_ai_parse_jobs_idempotency_key"),
+        # idempotency 以 import 為範圍（security F3）：key 是 client 可控字串，
+        # 全域唯一會讓跨 import 撞 key 的人拿到（或擋掉）別人的 job。
+        UniqueConstraint(
+            "import_id",
+            "idempotency_key",
+            name="uq_ai_parse_jobs_import_idempotency_key",
+        ),
         CheckConstraint(
             "status IN ('queued','running','partial','completed','failed','cancelled')",
             name="status",
         ),
         sa.Index("ix_ai_parse_jobs_import_id", "import_id"),
+        # worker 的 _runnable_jobs 掃描（status IN runnable ORDER BY created_at）：
+        # partial index 只收在途列，終態列堆積不拖慢輪詢。
+        sa.Index(
+            "ix_ai_parse_jobs_active_created",
+            "created_at",
+            postgresql_where=sa.text("status IN ('queued','running')"),
+        ),
     )
 
 
