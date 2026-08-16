@@ -84,6 +84,25 @@
 
 其餘 10 個 component 各只含 1 筆草稿。
 
+## v3 結構回填（D3-014：v3 結構＝IE 的切分裁決；hint 是證據不是判決）
+
+帶切分旗標（配對／likely_multi）的草稿逐筆對回 v3 遷移資料的結構（module/cycle 邊界）；有結構答案的配對題已改為**確認題**（預設依 v3 結構，IE 可推翻），缺失/矛盾者維持開放題：
+
+| 旗標 | 筆數 | single_cycle | multi_cycle_n | ambiguous |
+|---|---|---|---|---|
+| 取＋放配對（GM） | 16 | 13 | 2 | 1 |
+| 取/觸＋推/拉配對（CM） | 3 | 3 | 0 | 0 |
+| likely_multi | 22 | 17 | 4 | 1 |
+
+ambiguous 逐筆（維持開放題；矛盾/缺失證據已列在草稿與覆核表）：
+
+- `d026_1c27dc35`（conflicting_v3_structures）：「雙手抓握主板組至機箱」
+- `d045_35372a96`（no_v3_structure_signal）：「拿取排線並對準接頭」
+
+likely_multi 中 **17 筆**因 v3 結構顯示單一 cycle，「幾乎必然低估」警語已對該筆**降級**（覆核表逐筆標示）。
+
+「取必有放」lint（D3-014 裁決 2）：**0 筆**命中 `acquire_without_place`（plan 有 acquire 而同 plan 內其後無收尾；WARN 標給 IE，非 BLOCK）。
+
 ## 未入選候選（31 筆；多樣性選擇額度用罄，非品質淘汰）
 
 coverage-optimized 取樣會把同維度重複的候選排到額度外——以下清單供 IE 檢視是否有應優先的真實案例（用 `--limit` 放寬或手動指定補進下一輪）：

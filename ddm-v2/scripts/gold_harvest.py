@@ -35,6 +35,15 @@
   例外二：恰好「取/觸＋推/拉」兩動詞且無連接詞同理（CM 序列的 G 與 M 同一
   cycle：`docs/core-logic/minimost-sequence-model-core-logic-spec.md` §2，
   CM＝A B G M X I A），改標中性旗標 `take_move_pair_may_be_single_cm`。
+- v3 結構回填（D3-014 裁決 3）：帶上述三種切分旗標的草稿附
+  `v3_structure_hint`＋`v3_structure_evidence`——v3 遷移資料是 IE 驗證過並
+  提供的生產資料，其結構（module/cycle 邊界）就是 IE 的切分裁決，據此把
+  「取＋放怎麼建」從開放題改成確認題（預設依 v3 結構）。誠實邊界：hint 是
+  **證據不是判決**——IE 可推翻，且絕不寫進 `expected.*`。
+- 「取必有放」lint（D3-014 裁決 2）：plan 含 acquire 而其後同 plan 內無收尾
+  （move_place／release_return／controlled_move）→ 標 `acquire_without_place`。
+  WARN 不 BLOCK：單句 acquire 可能合法（放在下一句/下一列，如 gold g01），
+  所以只在**同 plan 內**判；判定用 action_type 序列，不用文字啟發式。
 - dev DB 的 `rule_option_synonyms` 若為空，slot 全部無候選，草稿標
   `empty_lexicon_no_slot_candidates`。
 - 9 個可判維度的 `false` 同為啟發式輸出（quantity/tool/simo 的漏標已有實證，
@@ -285,6 +294,40 @@ def detect_challenge_tags(raw: str, norm: str) -> dict[str, Any]:
     return tags
 
 
+# ── 「取必有放」lint（D3-014 裁決 2）────────────────────────────────────────
+
+# acquire 的收尾 action 類型（消耗掉「取」的抓握者）：
+# - move_place／release_return：字面上的「放」。
+# - controlled_move：CM 序列**沒有 P 參數**（A B G M X I A；
+#   `docs/core-logic/minimost-sequence-model-core-logic-spec.md` §2）——推/拉到
+#   定位即完成取的閉合。且裁決 1 明言 acquire＋controlled_move 兩個 action 是
+#   合法建模，把它標成「取而無放」會跟裁決 1 打架。
+# - composite_unknown **不算**收尾：判不出型的 action 不能拿來宣稱「有放」。
+_ACQUIRE_CLOSER_TYPES = ("move_place", "release_return", "controlled_move")
+
+
+def acquire_without_place(actions: list[dict]) -> bool:
+    """plan 內「取而無放」lint（裁決 2：取最後一定有放）。
+
+    判定用 plan 的 action_type 序列（依 sequence_order），**不用文字啟發式**——
+    R1 的教訓：動詞面會被名詞擊穿。任何 acquire 之後（同 plan 內）沒有收尾
+    action（`_ACQUIRE_CLOSER_TYPES`）即命中。
+
+    旗標語意＝WARN 標給 IE，不是 BLOCK：只在**同 plan 內**判——單句 acquire
+    可能合法（「放」在下一句/下一列的 plan 裡，正式 gold g01「拿起DIMM」即此型），
+    所以問題是「這句的放在哪？被截斷了還是描述缺漏？」，不是「本句必錯」。
+
+    preannotate（發旗標）、`_questions_for`（覆核表提問）、schema 守門測試
+    共用本函式——單一判定，不允許條件漂移。"""
+    ordered = sorted(actions, key=lambda a: (a.get("sequence_order") or 0))
+    for i, a in enumerate(ordered):
+        if a.get("action_type") != "acquire":
+            continue
+        if not any(b.get("action_type") in _ACQUIRE_CLOSER_TYPES for b in ordered[i + 1:]):
+            return True
+    return False
+
+
 # ── 來源採集（唯讀）─────────────────────────────────────────────────────────
 
 
@@ -325,6 +368,148 @@ class Candidate:
         return sorted({s.group_key for s in self.sources})
 
 
+# ── v3 結構回填（D3-014 裁決 3 → 裁決 1 的逐案化）───────────────────────────
+#
+# 來源單位的「cycle 容器」語意（2026-08-16 查證於 src/ddm_v2/models/v2 與
+# scripts/migrate_v3_user_data.py）：
+# - `wi_rows` 一列 ↔ 至多一個 MostCycle（most_cycles.wi_row_id UNIQUE）＝一個
+#   cycle 容器；但 v3 搬遷**不寫 wi_rows**（只寫 motion_modules／versions／
+#   WI Set／vocab）——此表的列不是 v3 遷移資料，不餵 hint。
+# - `motion_module_versions.rows[]` 一列＝一個 cycle（rows[*].cycle 為單一
+#   CycleIn）；一個 module 幾列＝IE 把這段話切成幾個 cycle。
+# - `motion_modules.name_zh` 對應其發布版（current_version）的 rows 列數；
+#   無發布版（current_version=0）＝結構訊號缺失。
+# - `motion_templates.cycle_template`＝單一 CycleIn＝一個 cycle；本表由
+#   dev_seed_templates.py 種入、v3 搬遷不寫——同樣不餵 hint。
+#
+# 證據力定位（裁決 3）：v3 遷移資料（keywords 帶 'v3-import' 的 module 及其
+# 版本列）是 IE 驗證過並提供的生產資料——**結構（module/cycle 邊界）就是 IE
+# 的切分裁決**，不只文字。誠實邊界：hint 是**證據不是判決**——覆核表預設依
+# v3 結構、IE 可推翻；hint 絕不寫進 `expected.*`（守門在
+# tests/unit/test_gold_draft_schema.py）。
+
+STRUCTURE_HINT_SINGLE = "single_cycle"
+STRUCTURE_HINT_AMBIGUOUS = "ambiguous"
+_V3_IMPORT_KEYWORD = "v3-import"
+# 帶這三種切分旗標的草稿才回填（配對題／切分題的裁決對象）；其餘草稿無切分
+# 爭點，不加欄位（scope 守門在 schema 測試）
+SEGMENTATION_CAVEATS = (
+    "likely_multi_action_undercounted",
+    "take_place_pair_may_be_single_gm",
+    "take_move_pair_may_be_single_cm",
+)
+
+
+def structure_hint_multi(n: int) -> str:
+    return f"multi_cycle_{n}"
+
+
+def _module_id_from_group_key(group_key: str) -> str | None:
+    prefix = "module:"
+    return group_key[len(prefix):] if group_key.startswith(prefix) else None
+
+
+def _structure_evidence_for_source(
+    rec: SourceRecord, module_structure: dict[str, dict[str, Any]]
+) -> dict[str, Any]:
+    """單一來源的結構證據：{table, id, detail, cycles, v3_migrated, basis}。
+
+    `cycles=None`＝該來源給不出 cycle 數（如 module 無發布版）；
+    `v3_migrated=False` 的來源**不餵 hint**（結構語意仍成立，但不是 IE 的
+    v3 裁決——wi_rows 在本 DB 是 dev seed，motion_templates 是 seed 腳本）。"""
+    if rec.table == "motion_module_versions":
+        module_id = _module_id_from_group_key(rec.group_key)
+        info = module_structure.get(module_id or "", {})
+        return {
+            "table": rec.table,
+            "id": rec.row_id,
+            "detail": rec.detail,
+            "cycles": 1,
+            "v3_migrated": bool(info.get("v3_import")),
+            "basis": "版本 rows[] 一列＝一個 cycle（rows[*].cycle 為單一 CycleIn）",
+        }
+    if rec.table == "motion_modules":
+        info = module_structure.get(rec.row_id, {})
+        n = info.get("n_rows")
+        if n is None:
+            basis = "module 無發布版（current_version=0）——結構訊號缺失"
+        else:
+            basis = (
+                f"module 名稱句對應發布版 v{info.get('current_version')} 共 {n} 列"
+                f"＝IE 把這段話切成 {n} 個 cycle"
+            )
+        return {
+            "table": rec.table,
+            "id": rec.row_id,
+            "detail": rec.detail,
+            "cycles": n,
+            "v3_migrated": bool(info.get("v3_import")),
+            "basis": basis,
+        }
+    if rec.table == "wi_rows":
+        return {
+            "table": rec.table,
+            "id": rec.row_id,
+            "detail": rec.detail,
+            "cycles": 1,
+            "v3_migrated": False,
+            "basis": (
+                "wi_rows 一列＝一個 cycle 容器（most_cycles.wi_row_id UNIQUE）；"
+                "但 v3 搬遷不寫 wi_rows——非 v3 遷移資料，不餵 hint"
+            ),
+        }
+    # motion_templates
+    return {
+        "table": rec.table,
+        "id": rec.row_id,
+        "detail": rec.detail,
+        "cycles": 1,
+        "v3_migrated": False,
+        "basis": (
+            "cycle_template＝單一 CycleIn＝一個 cycle；但本表為 seed 腳本種入、"
+            "v3 搬遷不寫——非 v3 遷移資料，不餵 hint"
+        ),
+    }
+
+
+def v3_structure_backfill(
+    cand: Candidate, module_structure: dict[str, dict[str, Any]]
+) -> tuple[str, dict[str, Any]]:
+    """該候選的 v3 結構 hint 與證據。
+
+    決策規則（單一出處；schema 測試對 repo 草稿重驗同一不變式）：
+    - v3 來源（v3_migrated=True 且 cycles 已知）全數同 n → n==1 ⇒ single_cycle、
+      n>1 ⇒ multi_cycle_n。
+    - v3 來源彼此矛盾（同句出現在不同結構的多個來源）⇒ ambiguous
+      （reason=conflicting_v3_structures，矛盾證據全列）。
+    - 無任何 v3 結構訊號（來源全非 v3、或 module 無發布版）⇒ ambiguous
+      （reason=no_v3_structure_signal）。"""
+    sources = [_structure_evidence_for_source(s, module_structure) for s in cand.sources]
+    v3_counts = sorted({
+        e["cycles"] for e in sources if e["v3_migrated"] and e["cycles"] is not None
+    })
+    reason: str | None = None
+    if not v3_counts:
+        hint = STRUCTURE_HINT_AMBIGUOUS
+        reason = "no_v3_structure_signal"
+    elif len(v3_counts) > 1:
+        hint = STRUCTURE_HINT_AMBIGUOUS
+        reason = "conflicting_v3_structures"
+    else:
+        hint = STRUCTURE_HINT_SINGLE if v3_counts[0] == 1 else structure_hint_multi(v3_counts[0])
+    evidence: dict[str, Any] = {
+        "note": (
+            "hint 是證據不是判決：來源＝IE 驗證過的 v3 生產資料的結構"
+            "（module/cycle 邊界）；覆核表預設依 v3 結構、IE 可推翻；"
+            "本欄位絕不寫進 expected.*"
+        ),
+        "sources": sources,
+    }
+    if reason is not None:
+        evidence["reason"] = reason
+    return hint, evidence
+
+
 async def fetch_source_records(database_url: str) -> tuple[list[SourceRecord], dict[str, int]]:
     """撈四個來源表的原文（SELECT-only；不開 transaction 寫入路徑）。"""
     from sqlalchemy import text as sql_text
@@ -360,6 +545,34 @@ async def fetch_source_records(database_url: str) -> tuple[list[SourceRecord], d
                         raw=r.name_zh,
                     )
                 )
+
+            # v3 結構回填素材：module → (category, v3-import?, 發布版列數)。
+            # LEFT JOIN：無發布版（current_version=0）的 module 也要進表——
+            # n_rows=None＝結構訊號缺失，不是「沒這個 module」。
+            struct_rows = (
+                await conn.execute(
+                    sql_text(
+                        "SELECT mm.id::text AS id, mm.category, "
+                        "       (mm.keywords @> ARRAY[:kw]::text[]) AS v3_import, "
+                        "       mm.current_version, "
+                        "       jsonb_array_length(v.rows) AS n_rows "
+                        "FROM motion_modules mm "
+                        "LEFT JOIN motion_module_versions v "
+                        "  ON v.module_id = mm.id AND v.version_no = mm.current_version "
+                        "ORDER BY mm.id"
+                    ),
+                    {"kw": _V3_IMPORT_KEYWORD},
+                )
+            ).all()
+            _MODULE_STRUCTURE_HOLDER["rows"] = {
+                r.id: {
+                    "category": r.category,
+                    "v3_import": bool(r.v3_import),
+                    "current_version": r.current_version,
+                    "n_rows": r.n_rows,
+                }
+                for r in struct_rows
+            }
 
             rows = (
                 await conn.execute(
@@ -479,6 +692,7 @@ async def fetch_source_records(database_url: str) -> tuple[list[SourceRecord], d
 # module-level holders：讓 fetch 一次連線讀完（避免多引擎）；main() 設定
 _RULE_SET_CODE_HOLDER: dict[str, str] = {"code": DEFAULT_RULE_SET_CODE}
 _SYNONYMS_HOLDER: dict[str, list[dict]] = {"rows": []}
+_MODULE_STRUCTURE_HOLDER: dict[str, dict[str, dict[str, Any]]] = {"rows": {}}
 
 
 def existing_gold_norms(gold_dir: Path | None = None) -> set[str]:
@@ -689,8 +903,10 @@ async def preannotate(
     draft_id: str,
     rs: Any,
     split_component: str,
+    module_structure: dict[str, dict[str, Any]],
 ) -> dict[str, Any]:
     plan, _candidates, drafts, status, reasons = await run_pipeline(cand.raw, synonyms, rs)
+    plan_json = plan.model_dump(mode="json")
 
     caveats: list[str] = []
     if cand.tags.get("multi_action") is True:
@@ -702,6 +918,10 @@ async def preannotate(
     elif take_move_pair(cand.norm):
         # 取/觸＋推/拉配對同理（CM＝G 與 M 同 cycle）；中性旗標，IE 裁決方向
         caveats.append("take_move_pair_may_be_single_cm")
+    if acquire_without_place(plan_json["actions"]):
+        # 裁決 2「取最後一定有放」：plan 有 acquire 而同 plan 內其後無收尾。
+        # WARN 不 BLOCK——語意見 acquire_without_place docstring
+        caveats.append("acquire_without_place")
     if not synonyms:
         caveats.append("empty_lexicon_no_slot_candidates")
     if any(d.complete and d.engine_result is None for d in drafts):
@@ -710,7 +930,7 @@ async def preannotate(
         # expected_incomplete_reason）
         caveats.append("engine_rejected_cycle")
 
-    return {
+    out: dict[str, Any] = {
         "id": draft_id,
         "source_text": cand.raw,
         "notes": (
@@ -732,6 +952,13 @@ async def preannotate(
         # 這幾維的 false 也是啟發式輸出（未覆核）——不是「已確認沒有」
         "heuristic_tags_unverified": list(HEURISTIC_UNVERIFIED_DIMS),
         "preannotation_caveat": caveats,
+    }
+    if any(c in caveats for c in SEGMENTATION_CAVEATS):
+        # D3-014 裁決 3：只對有切分爭點的草稿回填 v3 結構（hint 是證據不是判決）
+        hint, evidence = v3_structure_backfill(cand, module_structure)
+        out["v3_structure_hint"] = hint
+        out["v3_structure_evidence"] = evidence
+    out.update({
         "preannotation": {
             "pipeline": PIPELINE_DESC,
             "planner": RULE_PLANNER_NAME,
@@ -740,7 +967,7 @@ async def preannotate(
             "lexicon_size": len(synonyms),
             "routing_reasons": list(reasons),
         },
-        "plan": plan.model_dump(mode="json"),
+        "plan": plan_json,
         "synthetic_synonyms": used_lexicon_entries(plan.normalized_text, synonyms),
         "expected_cycles": [expected_cycle_from_draft(d) for d in drafts],
         "gold_schema_version": GOLD_SCHEMA_VERSION,
@@ -748,7 +975,8 @@ async def preannotate(
             "action_count": len(plan.actions),
             "routing_status": status,
         },
-    }
+    })
+    return out
 
 
 # ── IE 覆核表 ────────────────────────────────────────────────────────────────
@@ -779,6 +1007,14 @@ _CAVEAT_ZH = {
         "（G 與 M 各取值）還是 acquire＋controlled_move **兩個 action**"
         "（見下方「取移建模」題；不預設方向）"
     ),
+    "acquire_without_place": (
+        "本 plan 含 acquire（取）而其後**同 plan 內**沒有任何收尾 action"
+        "（move_place／release_return／controlled_move）——裁決 2：「取最後一定有放」。"
+        "**這句的「放」在哪？是句子被截斷了，還是描述缺漏？**"
+        "邊界：本旗標只在同 plan 內判，是 WARN 不是 BLOCK——單句 acquire 可能"
+        "合法（「放」在下一句/下一列，如正式 gold g01「拿起DIMM」不發明後續步驟）；"
+        "判定用 action_type 序列，不用文字啟發式"
+    ),
     "empty_lexicon_no_slot_candidates": (
         "dev DB 的 rule_option_synonyms 目前是空的：所有 slot 都沒有候選，"
         "option code 需 IE 自填（並考慮順手登記同義詞）"
@@ -792,6 +1028,50 @@ _CAVEAT_ZH = {
 }
 
 
+# likely_multi 的降級版警語（D3-014：結構若顯示單一 cycle，「幾乎必然低估」
+# 對該筆要降級——v3 結構是 IE 的切分裁決，不再預設切分是錯的）
+_LIKELY_MULTI_DOWNGRADED_ZH = (
+    "本句含多動詞/連接詞，rule planner 只出 1 個 action——但 **v3 結構顯示 IE "
+    "當初把這句建為單一 cycle**（證據見本節「v3 結構」與草稿 `v3_structure_evidence`），"
+    "「幾乎必然低估」對本筆**降級**：預設依 v3 結構（單一 cycle），除非你認定 "
+    "v3 的切分本身有誤（hint 是證據不是判決，可推翻）"
+)
+
+
+def _caveat_line_zh(caveat: str, draft: dict[str, Any]) -> str:
+    """單筆草稿的旗標說明文字（覆核表用）。
+
+    likely_multi_action_undercounted＋v3 結構 single_cycle ⇒ 警語降級
+    （D3-014 裁決 3）；其餘照 `_CAVEAT_ZH`。與 preannotate 的旗標共用同一
+    hint 欄位——不另判一次。"""
+    if (
+        caveat == "likely_multi_action_undercounted"
+        and draft.get("v3_structure_hint") == STRUCTURE_HINT_SINGLE
+    ):
+        return _LIKELY_MULTI_DOWNGRADED_ZH
+    return _CAVEAT_ZH.get(caveat, caveat)
+
+
+def _structure_evidence_brief(draft: dict[str, Any]) -> str:
+    """v3 結構證據的一行摘要（覆核表用；完整證據在草稿 JSON）。"""
+    sources = (draft.get("v3_structure_evidence") or {}).get("sources") or []
+    parts = []
+    for s in sources:
+        cyc = "cycle 數未知（無發布版）" if s.get("cycles") is None else f"{s['cycles']} cycle"
+        weight = "v3" if s.get("v3_migrated") else "非 v3，不餵 hint"
+        parts.append(f"`{s['table']}/{str(s['id'])[:8]}…`（{s['detail']}；{cyc}；{weight}）")
+    return "；".join(parts) or "（無來源證據）"
+
+
+def _structure_hint_cycles(hint: str | None) -> int | None:
+    """hint 字串 → cycle 數（single_cycle=1、multi_cycle_n=n、其他=None）。"""
+    if hint == STRUCTURE_HINT_SINGLE:
+        return 1
+    if hint and hint.startswith("multi_cycle_"):
+        return int(hint.rsplit("_", 1)[1])
+    return None
+
+
 def _mark_evidence(norm: str, start: int, end: int) -> str:
     return norm[:start] + "【" + norm[start:end] + "】" + norm[end:]
 
@@ -799,12 +1079,32 @@ def _mark_evidence(norm: str, start: int, end: int) -> str:
 def _questions_for(draft: dict[str, Any]) -> list[str]:
     plan = draft["plan"]
     tags = draft["challenge_tags"]
+    hint = draft.get("v3_structure_hint")
+    hint_n = _structure_hint_cycles(hint)
     qs: list[str] = []
     n = len(plan["actions"])
-    qs.append(
+    split_q = (
         f"切分：預測 action 數 = {n}。本句實際應拆成幾個 action？"
         "若不同，請在 plan.actions 增列並各給 evidence（原文子字串與 offset）。"
     )
+    # D3-014 裁決 3：v3 結構回填——有結構答案的預填、缺失/矛盾的維持開放題
+    if hint_n == 1:
+        split_q += (
+            "【v3 結構】IE 當初把這句建為**單一 cycle**"
+            f"（證據：{_structure_evidence_brief(draft)}），預設依此；不同意再改。"
+        )
+    elif hint_n is not None:
+        split_q += (
+            f"【v3 結構】IE 當初把這句切成 **{hint_n} 個 cycle**"
+            f"（證據：{_structure_evidence_brief(draft)}），預設依此切分；不同意再改。"
+        )
+    elif hint == STRUCTURE_HINT_AMBIGUOUS:
+        reason = (draft.get("v3_structure_evidence") or {}).get("reason", "")
+        split_q += (
+            f"【v3 結構】結構訊號缺失或矛盾（{reason}；"
+            f"證據：{_structure_evidence_brief(draft)}）——維持開放題，請逐動詞裁決。"
+        )
+    qs.append(split_q)
     for a in plan["actions"]:
         if a["action_type"] == "composite_unknown":
             qs.append(
@@ -820,18 +1120,69 @@ def _questions_for(draft: dict[str, Any]) -> list[str]:
     # 配對題與草稿旗標**共用同一判定**（take_place_pair / take_move_pair）：
     # 兩邊條件各寫一份曾經自相矛盾（掛「幾乎必然低估」的節同時出「多半建單一
     # GM cycle」的題）——單一出處，宣稱即事實。
+    # D3-014 裁決 1＋3：「取+放怎麼建」逐案裁決，答案優先用 v3 結構回填——
+    # 有結構答案時從開放題改成**確認題**（預設依 v3 結構，IE 可推翻）；
+    # 缺失/矛盾時維持開放題並列出證據。
     norm_text = plan["normalized_text"]
     if take_place_pair(norm_text):
-        qs.append(
-            "取放建模：此句是「取＋放」動詞配對——應建成**一個 GM cycle（G 與 P 各取值）**，"
-            "還是 acquire + move_place **兩個 action**？（v3 對此句型多半建單一 GM cycle）"
-        )
+        if hint_n == 1:
+            qs.append(
+                "取放建模（確認題）：v3 結構顯示 IE 當初把這句建為**單一 cycle**"
+                f"（證據：{_structure_evidence_brief(draft)}）——**預設建成單一 GM "
+                "cycle（G 與 P 各取值）**；不同意再改成 acquire + move_place 兩個 "
+                "action（hint 是證據不是判決，可推翻）。"
+            )
+        elif hint_n is not None:
+            qs.append(
+                f"取放建模（確認題）：v3 結構顯示 IE 當初把這句切成 **{hint_n} 個 "
+                f"cycle**（證據：{_structure_evidence_brief(draft)}）——**預設依此切成 "
+                f"{hint_n} 個 action/cycle**；不同意再改（hint 是證據不是判決，可推翻）。"
+            )
+        else:
+            open_q = (
+                "取放建模：此句是「取＋放」動詞配對——應建成**一個 GM cycle（G 與 P 各取值）**，"
+                "還是 acquire + move_place **兩個 action**？（裁決 1：看動作逐案裁決，不預設方向）"
+            )
+            if hint == STRUCTURE_HINT_AMBIGUOUS:
+                reason = (draft.get("v3_structure_evidence") or {}).get("reason", "")
+                open_q += (
+                    f"【v3 結構訊號缺失或矛盾（{reason}）：{_structure_evidence_brief(draft)}】"
+                )
+            qs.append(open_q)
     elif take_move_pair(norm_text):
+        if hint_n == 1:
+            qs.append(
+                "取移建模（確認題）：v3 結構顯示 IE 當初把這句建為**單一 cycle**"
+                f"（證據：{_structure_evidence_brief(draft)}）——**預設建成單一 CM "
+                "cycle（G 與 M 各取值）**；不同意再改成 acquire + controlled_move "
+                "兩個 action（hint 是證據不是判決，可推翻）。"
+            )
+        elif hint_n is not None:
+            qs.append(
+                f"取移建模（確認題）：v3 結構顯示 IE 當初把這句切成 **{hint_n} 個 "
+                f"cycle**（證據：{_structure_evidence_brief(draft)}）——**預設依此切成 "
+                f"{hint_n} 個 action/cycle**；不同意再改（hint 是證據不是判決，可推翻）。"
+            )
+        else:
+            open_q = (
+                "取移建模：此句是「取/觸＋推/拉」動詞配對——應建成**一個 CM cycle"
+                "（G 與 M 各取值）**，還是 acquire + controlled_move **兩個 action**？"
+                "（CM 序列的 G 與 M 本來就在同一 cycle：`docs/core-logic/"
+                "minimost-sequence-model-core-logic-spec.md` §2；裁決 1：逐案裁決）"
+            )
+            if hint == STRUCTURE_HINT_AMBIGUOUS:
+                reason = (draft.get("v3_structure_evidence") or {}).get("reason", "")
+                open_q += (
+                    f"【v3 結構訊號缺失或矛盾（{reason}）：{_structure_evidence_brief(draft)}】"
+                )
+            qs.append(open_q)
+    # 「取必有放」提問與旗標共用同一判定（acquire_without_place）——單一出處
+    if acquire_without_place(plan["actions"]):
         qs.append(
-            "取移建模：此句是「取/觸＋推/拉」動詞配對——應建成**一個 CM cycle"
-            "（G 與 M 各取值）**，還是 acquire + controlled_move **兩個 action**？"
-            "（CM 序列的 G 與 M 本來就在同一 cycle：`docs/core-logic/"
-            "minimost-sequence-model-core-logic-spec.md` §2）"
+            "取而無放（裁決 2）：plan 有 acquire 而其後同 plan 內無任何收尾"
+            "（move_place／release_return／controlled_move）——**這句的「放」在哪？"
+            "是被截斷了還是描述缺漏？**若「放」在下一句/下一列，請在 notes 註明"
+            "（單句 acquire 合法，如 g01）；若本句就該有「放」，請補 action。"
         )
     if tags.get("quantity") is True:
         qs.append("數量：句中的數量應掛在哪個 action？frequency=N 還是 repeat？（現行 QuantityPolicyV1 保守處理並標 quantity_policy_review）")
@@ -863,11 +1214,18 @@ def build_review_checklist(drafts: list[dict[str, Any]]) -> str:
     lines.append(
         "**先讀這個——預標註的系統性偏差**：現行 rule planner 對任何輸入都只會產生"
         "**1 個 action、evidence=整句**。所以「預測 action 數=1」不是模型判斷，是結構限制；"
-        "帶 `likely_multi_action_undercounted` 的每一筆都請假設切分是錯的，逐動詞重切。"
+        "帶 `likely_multi_action_undercounted` 的每一筆都請假設切分是錯的，逐動詞重切"
+        "（**例外**：該筆若有 `v3_structure_hint: single_cycle`，警語降級——v3 結構顯示 "
+        "IE 當初建為單一 cycle，預設依此）。"
         "帶 `take_place_pair_may_be_single_gm` 的是「取＋放」配對——GM 本來就是 G＋P 同 "
         "cycle，**不預設低估**，請用該筆的「取放建模」題裁決單一 GM 或兩個 action。"
         "帶 `take_move_pair_may_be_single_cm` 的是「取/觸＋推/拉」配對——CM 的 G 與 M "
         "同一 cycle，同樣**不預設低估**，請用該筆的「取移建模」題裁決單一 CM 或兩個 action。"
+        "配對題與切分題已用 **v3 結構回填**（D3-014 裁決 3：v3 遷移資料是 IE 驗證過"
+        "並提供的，結構＝IE 的切分裁決）：有結構答案的是**確認題**（預設依 v3 結構，"
+        "不同意再改），缺失/矛盾的維持開放題——hint 是證據不是判決，IE 可推翻。"
+        "帶 `acquire_without_place` 的是「取而無放」（裁決 2：取最後一定有放）——"
+        "請回答該筆的「放」在哪（WARN 不 BLOCK；單句 acquire 可能合法）。"
         "另外：`challenge_tags` 裡 9 個可判維度的 `false` 也是啟發式輸出"
         "（`heuristic_tags_unverified` 點名的維度已有實證漏標），true/false 請一併確認。"
     )
@@ -894,8 +1252,13 @@ def build_review_checklist(drafts: list[dict[str, Any]]) -> str:
         lines.append(f"**來源**：{srcs}")
         true_dims = [DIM_ZH[k] for k in DIM_KEYS if d["challenge_tags"].get(k) is True]
         lines.append(f"**挑戰維度（規則式判定）**：{'、'.join(true_dims) or '（無命中）'}")
+        if d.get("v3_structure_hint"):
+            lines.append(
+                f"**v3 結構**：`{d['v3_structure_hint']}`——{_structure_evidence_brief(d)}"
+                "（hint 是證據不是判決；預設依 v3 結構，IE 可推翻）"
+            )
         for c in d["preannotation_caveat"]:
-            lines.append(f"**⚠️ {c}**：{_CAVEAT_ZH.get(c, c)}")
+            lines.append(f"**⚠️ {c}**：{_caveat_line_zh(c, d)}")
         lines.append("")
         lines.append(f"**預測 action 數**：{len(plan['actions'])}")
         lines.append("**預測切分（evidence 以【】標在正規化原文上）**：")
@@ -1046,6 +1409,73 @@ def build_summary(
             f"\n其餘 {len(comp_drafts) - len(multi)} 個 component 各只含 1 筆草稿。"
         )
         lines.append("")
+        # D3-014 裁決 3：v3 結構回填統計（有切分爭點的草稿才回填）
+        lines.append("## v3 結構回填（D3-014：v3 結構＝IE 的切分裁決；hint 是證據不是判決）")
+        lines.append("")
+        lines.append(
+            "帶切分旗標（配對／likely_multi）的草稿逐筆對回 v3 遷移資料的結構"
+            "（module/cycle 邊界）；有結構答案的配對題已改為**確認題**（預設依 v3 "
+            "結構，IE 可推翻），缺失/矛盾者維持開放題："
+        )
+        lines.append("")
+        lines.append("| 旗標 | 筆數 | single_cycle | multi_cycle_n | ambiguous |")
+        lines.append("|---|---|---|---|---|")
+        flag_zh = {
+            "take_place_pair_may_be_single_gm": "取＋放配對（GM）",
+            "take_move_pair_may_be_single_cm": "取/觸＋推/拉配對（CM）",
+            "likely_multi_action_undercounted": "likely_multi",
+        }
+        for flag in (
+            "take_place_pair_may_be_single_gm",
+            "take_move_pair_may_be_single_cm",
+            "likely_multi_action_undercounted",
+        ):
+            group = [d for d in drafts if flag in d["preannotation_caveat"]]
+            n_single = sum(
+                1 for d in group if d.get("v3_structure_hint") == STRUCTURE_HINT_SINGLE
+            )
+            n_multi = sum(
+                1
+                for d in group
+                if str(d.get("v3_structure_hint") or "").startswith("multi_cycle_")
+            )
+            n_amb = sum(
+                1 for d in group if d.get("v3_structure_hint") == STRUCTURE_HINT_AMBIGUOUS
+            )
+            lines.append(
+                f"| {flag_zh[flag]} | {len(group)} | {n_single} | {n_multi} | {n_amb} |"
+            )
+        lines.append("")
+        ambiguous = [
+            d for d in drafts if d.get("v3_structure_hint") == STRUCTURE_HINT_AMBIGUOUS
+        ]
+        if ambiguous:
+            lines.append("ambiguous 逐筆（維持開放題；矛盾/缺失證據已列在草稿與覆核表）：")
+            lines.append("")
+            for d in ambiguous:
+                reason = (d.get("v3_structure_evidence") or {}).get("reason", "")
+                lines.append(f"- `{d['id']}`（{reason}）：「{d['source_text']}」")
+            lines.append("")
+        downgraded = [
+            d
+            for d in drafts
+            if "likely_multi_action_undercounted" in d["preannotation_caveat"]
+            and d.get("v3_structure_hint") == STRUCTURE_HINT_SINGLE
+        ]
+        lines.append(
+            f"likely_multi 中 **{len(downgraded)} 筆**因 v3 結構顯示單一 cycle，"
+            "「幾乎必然低估」警語已對該筆**降級**（覆核表逐筆標示）。"
+        )
+        n_awp = sum(
+            1 for d in drafts if "acquire_without_place" in d["preannotation_caveat"]
+        )
+        lines.append("")
+        lines.append(
+            f"「取必有放」lint（D3-014 裁決 2）：**{n_awp} 筆**命中 "
+            "`acquire_without_place`（plan 有 acquire 而同 plan 內其後無收尾；"
+            "WARN 標給 IE，非 BLOCK）。"
+        )
+        lines.append("")
     dropped = [c for c in all_candidates if c not in selected]
     lines.append(f"## 未入選候選（{len(dropped)} 筆；多樣性選擇額度用罄，非品質淘汰）")
     lines.append("")
@@ -1151,6 +1581,7 @@ async def cmd_harvest(args: argparse.Namespace) -> int:
                 draft_id,
                 rs,
                 split_component=component_of[cand.split_groups[0]],
+                module_structure=_MODULE_STRUCTURE_HOLDER["rows"],
             )
         )
 
@@ -1238,6 +1669,15 @@ async def cmd_recompile(
         data["expected"] = {"action_count": len(plan.actions), "routing_status": status}
         if isinstance(data.get("preannotation"), dict):
             data["preannotation"]["routing_reasons"] = list(reasons)
+        caveats = data.get("preannotation_caveat")
+        if isinstance(caveats, list):
+            # acquire_without_place 是 plan 的函數（裁決 2）：IE 改完 plan 重算時
+            # 同步——補了「放」旗標就摘掉、改出「取而無放」就掛上；不動其他旗標
+            has_lint = acquire_without_place(data["plan"]["actions"])
+            if has_lint and "acquire_without_place" not in caveats:
+                caveats.append("acquire_without_place")
+            elif not has_lint and "acquire_without_place" in caveats:
+                caveats.remove("acquire_without_place")
         if relock_approved and is_formal_gold_path(path):
             prev = data.get("notes") or ""
             data["notes"] = (prev + "\n" if prev else "") + f"relock_approved: {reason}"

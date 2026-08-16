@@ -6,6 +6,8 @@
    （排序穩定、輸出無 timestamp）——草稿要能 diff、IE 重看不被雜訊淹沒。
 2. 產出可載入：兩段 eval 的 loader 對草稿零 load error。
 3. `--force` 守衛：out 目錄已有草稿時拒絕覆蓋（IE 編輯不被清掉）。
+4. D3-014：帶切分旗標的草稿 ⇔ 回填 `v3_structure_hint`＋證據（scope 雙向）；
+   `acquire_without_place` 旗標與 plan 的 action_type 序列判定同進同出。
 
 測試自足（CI_GATES 規則 7）：不斷言任何來源筆數／候選數——CI DB 的 seed 與本機
 不同（CI 沒跑 dev_seed_30rows / migrate_v3_user_data，候選可能是 0 筆）。
@@ -30,6 +32,9 @@ pytestmark = pytest.mark.integration
 
 ROOT = Path(__file__).resolve().parents[2]
 SCRIPT = ROOT / "scripts" / "gold_harvest.py"
+
+sys.path.insert(0, str(ROOT / "scripts"))
+from gold_harvest import SEGMENTATION_CAVEATS, acquire_without_place  # noqa: E402
 
 
 def _run_harvest(out_dir: Path, review_dir: Path, *extra: str) -> subprocess.CompletedProcess:
@@ -86,6 +91,19 @@ def test_harvest_deterministic_and_loadable(tmp_path: Path):
     for _p, data in cases:
         assert data["approved_by"] is None
         assert data["review_status"] == "pending_ie"
+        # D3-014：帶切分旗標 ⇔ 回填 v3 結構 hint＋證據（scope 守門同 schema 測試，
+        # 這裡驗的是「新鮮 harvest 的輸出」而非 repo 既有草稿）
+        caveats = data["preannotation_caveat"]
+        has_seg = any(c in SEGMENTATION_CAVEATS for c in caveats)
+        assert (data.get("v3_structure_hint") is not None) == has_seg
+        if has_seg:
+            assert (data.get("v3_structure_evidence") or {}).get("sources"), (
+                f"{data['id']}：hint 無證據——hint 是證據不是判決，證據必須落在草稿上"
+            )
+        # D3-014 裁決 2：lint 與旗標同進同出（單一判定函式）
+        assert ("acquire_without_place" in caveats) == acquire_without_place(
+            data["plan"]["actions"]
+        )
 
     # stdout 的摘要段也應一致（前三行印的是 tmp 路徑，不在比對範圍）
     marker = "# Harvest 摘要"

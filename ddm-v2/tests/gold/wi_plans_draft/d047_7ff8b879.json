@@ -56,6 +56,28 @@
     "likely_multi_action_undercounted",
     "empty_lexicon_no_slot_candidates"
   ],
+  "v3_structure_hint": "single_cycle",
+  "v3_structure_evidence": {
+    "note": "hint 是證據不是判決：來源＝IE 驗證過的 v3 生產資料的結構（module/cycle 邊界）；覆核表預設依 v3 結構、IE 可推翻；本欄位絕不寫進 expected.*",
+    "sources": [
+      {
+        "table": "motion_module_versions",
+        "id": "a4b7f7b7-0ce5-4595-9d46-528bffb2dcc1",
+        "detail": "rows[0].sub_activity",
+        "cycles": 1,
+        "v3_migrated": true,
+        "basis": "版本 rows[] 一列＝一個 cycle（rows[*].cycle 為單一 CycleIn）"
+      },
+      {
+        "table": "motion_modules",
+        "id": "c7c55293-1d31-4fab-84cc-7c7f26c8864f",
+        "detail": "name_zh (category=action)",
+        "cycles": 1,
+        "v3_migrated": true,
+        "basis": "module 名稱句對應發布版 v1 共 1 列＝IE 把這段話切成 1 個 cycle"
+      }
+    ]
+  },
   "preannotation": {
     "pipeline": "rule_based_v1 -> plan_from_rule_result -> SlotLinker(no-db) -> compile_plan -> engine_gate(most_engine) -> compute_routing(auto=off)",
     "planner": "rule_based_v1",

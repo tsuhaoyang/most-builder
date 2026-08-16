@@ -98,3 +98,49 @@ def test_recompile_draft_dir_needs_no_flags(tmp_path: Path):
     assert proc.returncode == 0, proc.stdout + proc.stderr
     data = json.loads(draft.read_text(encoding="utf-8"))
     assert "relock_approved" not in (data.get("notes") or ""), "非 gold 路徑不寫 relock 留痕"
+
+
+def test_recompile_syncs_acquire_without_place_flag(tmp_path: Path):
+    """D3-014 裁決 2：`acquire_without_place` 是 plan 的函數——IE 改完 plan 跑
+    --recompile 時同步（補了「放」旗標摘掉、改出「取而無放」旗標掛上），
+    不留過時 WARN 誤導覆核。mutation：把 cmd_recompile 的同步段拆掉 → 本測試紅。"""
+    draft = _copy_g01_into(tmp_path / "drafts")
+    data = json.loads(draft.read_text(encoding="utf-8"))
+    assert data["plan"]["actions"][0]["action_type"] == "acquire", "前提：g01 是 acquire-only"
+    data["preannotation_caveat"] = []  # 模擬草稿欄位存在但旗標缺漏
+    draft.write_text(json.dumps(data, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+
+    proc = _run("--recompile", str(draft))
+    assert proc.returncode == 0, proc.stdout + proc.stderr
+    data = json.loads(draft.read_text(encoding="utf-8"))
+    assert "acquire_without_place" in data["preannotation_caveat"], (
+        "acquire 無下游收尾——recompile 必須掛上旗標"
+    )
+
+    # IE 補上 move_place 收尾 → 再 recompile → 旗標摘掉
+    a1 = data["plan"]["actions"][0]
+    data["plan"]["actions"].append({
+        "action_id": "a2",
+        "action_type": "move_place",
+        "sequence_order": 2,
+        "roles": {},
+        "evidence": list(a1["evidence"]),
+        "notes": None,
+    })
+    draft.write_text(json.dumps(data, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+    proc = _run("--recompile", str(draft))
+    assert proc.returncode == 0, proc.stdout + proc.stderr
+    data = json.loads(draft.read_text(encoding="utf-8"))
+    assert "acquire_without_place" not in data["preannotation_caveat"], (
+        "已有 move_place 收尾——旗標必須摘掉"
+    )
+
+
+def test_recompile_does_not_invent_caveat_key(tmp_path: Path):
+    """檔案本無 `preannotation_caveat`（如正式 gold 形狀）→ recompile 不憑空加 key
+    （lint 同步只作用於草稿工作流的旗標清單）。"""
+    draft = _copy_g01_into(tmp_path / "drafts")
+    assert "preannotation_caveat" not in json.loads(draft.read_text(encoding="utf-8"))
+    proc = _run("--recompile", str(draft))
+    assert proc.returncode == 0, proc.stdout + proc.stderr
+    assert "preannotation_caveat" not in json.loads(draft.read_text(encoding="utf-8"))

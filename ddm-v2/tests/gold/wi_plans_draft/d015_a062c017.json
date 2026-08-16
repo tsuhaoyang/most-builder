@@ -65,6 +65,36 @@
     "take_place_pair_may_be_single_gm",
     "empty_lexicon_no_slot_candidates"
   ],
+  "v3_structure_hint": "single_cycle",
+  "v3_structure_evidence": {
+    "note": "hint 是證據不是判決：來源＝IE 驗證過的 v3 生產資料的結構（module/cycle 邊界）；覆核表預設依 v3 結構、IE 可推翻；本欄位絕不寫進 expected.*",
+    "sources": [
+      {
+        "table": "motion_module_versions",
+        "id": "687ed233-54bd-4b49-ab1c-2f39e39fc9d3",
+        "detail": "rows[0].sub_activity",
+        "cycles": 1,
+        "v3_migrated": true,
+        "basis": "版本 rows[] 一列＝一個 cycle（rows[*].cycle 為單一 CycleIn）"
+      },
+      {
+        "table": "motion_module_versions",
+        "id": "f799f56e-f581-4603-95c5-79b593b63ebb",
+        "detail": "rows[0].sub_activity",
+        "cycles": 1,
+        "v3_migrated": true,
+        "basis": "版本 rows[] 一列＝一個 cycle（rows[*].cycle 為單一 CycleIn）"
+      },
+      {
+        "table": "motion_modules",
+        "id": "b09813d6-7bc8-4036-8453-367cc0f9ef8a",
+        "detail": "name_zh (category=action)",
+        "cycles": 1,
+        "v3_migrated": true,
+        "basis": "module 名稱句對應發布版 v1 共 1 列＝IE 把這段話切成 1 個 cycle"
+      }
+    ]
+  },
   "preannotation": {
     "pipeline": "rule_based_v1 -> plan_from_rule_result -> SlotLinker(no-db) -> compile_plan -> engine_gate(most_engine) -> compute_routing(auto=off)",
     "planner": "rule_based_v1",

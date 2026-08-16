@@ -48,6 +48,20 @@
     "likely_multi_action_undercounted",
     "empty_lexicon_no_slot_candidates"
   ],
+  "v3_structure_hint": "multi_cycle_5",
+  "v3_structure_evidence": {
+    "note": "hint 是證據不是判決：來源＝IE 驗證過的 v3 生產資料的結構（module/cycle 邊界）；覆核表預設依 v3 結構、IE 可推翻；本欄位絕不寫進 expected.*",
+    "sources": [
+      {
+        "table": "motion_modules",
+        "id": "8451efa7-7536-48f7-b579-b56d21608c02",
+        "detail": "name_zh (category=wi-template)",
+        "cycles": 5,
+        "v3_migrated": true,
+        "basis": "module 名稱句對應發布版 v1 共 5 列＝IE 把這段話切成 5 個 cycle"
+      }
+    ]
+  },
   "preannotation": {
     "pipeline": "rule_based_v1 -> plan_from_rule_result -> SlotLinker(no-db) -> compile_plan -> engine_gate(most_engine) -> compute_routing(auto=off)",
     "planner": "rule_based_v1",

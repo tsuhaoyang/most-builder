@@ -15,6 +15,35 @@
 草稿位置：`tests/gold/wi_plans_draft/`（**非 gold**；評測掃不到，守門在
 `tests/unit/test_gold_draft_isolation.py`）。
 
+## User/IE 三條裁決（D3-014，2026-08-16；User/IE 裁決）
+
+1. **「取＋放」看動作**：單一 cycle 與兩個 action 都可能，**不能全域定死**，
+   逐案裁決。落地：配對旗標維持中性（不預設方向），每筆的裁決答案優先用
+   裁決 3 的 v3 結構回填（見下）。
+2. **不變式「取最後一定有放」**：plan 裡有 acquire 而下游無收尾＝錯。落地：
+   `acquire_without_place` lint（見「先讀（二）」第 4 點；WARN 標給 IE，
+   非 BLOCK——單句 acquire 可能合法，「放」在下一句/下一列，如 gold g01）。
+3. **v3 遷移資料是 IE 驗證過並提供的**：不只文字，**結構（module/cycle 邊界）
+   就是 IE 的切分裁決**。落地：帶切分旗標的草稿逐筆回填
+   `v3_structure_hint`＋`v3_structure_evidence`，配對題從開放題改成**確認題**
+   （預設依 v3 結構；不同意再改）。
+
+**Provenance 證據力定位**（裁決 3 的查證結果，2026-08-16）：
+
+- `motion_modules`／`motion_module_versions`（keywords 帶 `v3-import`）＝
+  `scripts/migrate_v3_user_data.py` 從 v3 生產 DB 搬入、**IE 驗證過並提供**的
+  資料——結構語意：版本 `rows[]` 一列＝一個 cycle（`rows[*].cycle` 單一
+  CycleIn）；module 名稱句對應發布版 rows 列數＝IE 把這段話切成幾個 cycle。
+  **這是 hint 的唯一餵入來源。**
+- `wi_rows`（本 dev DB 為 `dev_seed_30rows.py` 種入）與 `motion_templates`
+  （`dev_seed_templates.py` 種入）：結構語意成立（`wi_rows` 一列＝一個 cycle
+  容器，`most_cycles.wi_row_id` UNIQUE；`cycle_template`＝單一 CycleIn），
+  但 **v3 搬遷不寫這兩個表**——非 IE 驗證的 v3 資料，**不餵 hint**（證據
+  條目標 `v3_migrated: false`）。
+- 誠實邊界：**hint 是證據不是判決**——欄位名就叫 hint，覆核表明寫「預設依
+  v3 結構，IE 可推翻」；hint 絕不寫進 `expected.*`（守門在
+  `tests/unit/test_gold_draft_schema.py`）。
+
 ## 先讀（一）：草稿的 plan 就是 rule planner 的輸出——自我指涉警告
 
 每筆草稿標 `plan_origin: "rule_based_v1_preannotation"`：**草稿的 `plan` 不是
@@ -40,33 +69,55 @@
    action、evidence=整句**。多動作句（≥3 動詞、或含順序連接詞）的預測切分
    幾乎必然低估。覆核這類草稿時，請把「預測 action 數=1」當作未標註，逐動詞重切。
    動詞偵測已排除**名詞內幽靈命中**（「DIMM壓合治具」的「壓合」不再算動詞——
-   先前 8 筆因此誤掛本旗標）。
+   先前 8 筆因此誤掛本旗標）。**D3-014 降級例外**：該筆若有
+   `v3_structure_hint: single_cycle`（v3 結構顯示 IE 當初建為單一 cycle，
+   本輪 22 筆中 17 筆），「幾乎必然低估」對該筆**降級**——預設依 v3 結構，
+   除非 IE 認定 v3 切分本身有誤（覆核表逐筆標示降級版警語）。
 2. `take_place_pair_may_be_single_gm` — 恰好「取＋放」兩動詞且無連接詞的句子
    **不算 multi_action**：MiniMOST 的 GM 序列本來就是 G＋P 同一 cycle，單
    action 不必然是低估。請用該筆覆核表的「取放建模」題裁決：建成**單一 GM
    cycle**（G 與 P 各取值）還是 acquire＋move_place **兩個 action**——中性
    旗標，不預設方向（先前把配對也標成「必然低估」會系統性推向過度切分；
-   本輪 16 筆）。
+   本輪 16 筆）。**D3-014**：有 v3 結構答案的（16 筆中 15 筆），「取放建模」
+   題已改成**確認題**（預設依 v3 結構）；矛盾者（1 筆）維持開放題並列證據。
 3. `take_move_pair_may_be_single_cm` — 恰好「取/觸＋推/拉」兩動詞且無連接詞
    （如「接觸…推至/拉至」）同理：CM 序列的 G 與 M 本來就在同一 cycle
    （`docs/core-logic/minimost-sequence-model-core-logic-spec.md` §2：
    A B G M X I A）。請用該筆的「取移建模」題裁決：建成**單一 CM cycle**
    （G 與 M 各取值）還是 acquire＋controlled_move **兩個 action**——中性旗標，
-   不預設方向（本輪 3 筆）。覆核表的配對題與旗標**共用同一判定函式**
-   （`take_place_pair`／`take_move_pair`），不會再出現「掛必然低估又問
-   要不要建單一 GM」的自相矛盾節。
-4. `empty_lexicon_no_slot_candidates` — dev DB 的 `rule_option_synonyms` 目前為空，
+   不預設方向（本輪 3 筆，v3 結構全部顯示單一 cycle → 皆為確認題）。覆核表
+   的配對題與旗標**共用同一判定函式**（`take_place_pair`／`take_move_pair`），
+   不會再出現「掛必然低估又問要不要建單一 GM」的自相矛盾節。
+4. `acquire_without_place` — D3-014 裁決 2「取最後一定有放」：plan 含 acquire
+   而其後**同 plan 內**無任何收尾 action（move_place／release_return／
+   controlled_move——CM 無 P 參數，M 即閉合，且裁決 1 明言 acquire＋
+   controlled_move 是合法建模）。覆核表醒目提問：**這句的「放」在哪？被截斷
+   了還是描述缺漏？** WARN 不 BLOCK：只在同 plan 內判——單句 acquire 可能
+   合法（「放」在下一句/下一列，如 g01「拿起DIMM」不發明後續步驟）。判定用
+   plan 的 action_type 序列，**不用文字啟發式**（R1 教訓：動詞面會被名詞
+   擊穿）。本輪 60 筆 0 命中——**結構使然，非 lint 失效**：rule planner 的
+   adapter 只產 move_place／controlled_move／composite_unknown，永遠不出
+   acquire；lint 的作用點是 IE 改完 plan 之後（`--recompile` 會同步本旗標）。
+5. `empty_lexicon_no_slot_candidates` — dev DB 的 `rule_option_synonyms` 目前為空，
    所以所有 slot 都沒有候選、cycle 全部 incomplete。IE 需自填 option code；
    同義詞順手登記進字典（`POST /api/v2/rule-sets/{code}/synonyms`），下一輪
    harvest 的預標註品質會直接提升。
-5. `engine_rejected_cycle` — 引擎拒絕的 complete cycle。期望端寫的是
+6. `engine_rejected_cycle` — 引擎拒絕的 complete cycle。期望端寫的是
    `expected_engine_rejected: true`（重放驗「引擎仍拒絕」，草稿不會產出即紅）；
    但**轉正前必須修正 cycle 值**——原樣轉正沒有 TMU，會撞空殼守門
    （除非顯式寫 `expected_incomplete_reason`）。
-6. `challenge_tags` 的 9 個可判維度：**`false` 也是啟發式輸出，不是「已確認
+7. `challenge_tags` 的 9 個可判維度：**`false` 也是啟發式輸出，不是「已確認
    沒有」**——`heuristic_tags_unverified` 點名的 `quantity`／`tool_handling`／
    `simo_both_hands` 已有實證漏標（如「電動鎖附(多顆)」無數字，quantity 誤標
    false）。覆核時 true/false 請一併確認，不要只看 true 的。
+
+**v3 結構回填統計（本輪）**：19 筆配對旗標中 **18 筆**拿到結構答案
+（GM：13 single＋2 multi_cycle_2；CM：3 single）、**1 筆 ambiguous**
+（d026「雙手抓握主板組至機箱」——同句同時是 3 列 wi-template 名稱與單列
+action module，conflicting）；22 筆 likely_multi 中 **21 筆**拿到結構答案
+（17 single→警語降級、4 multi_cycle_n）、**1 筆 ambiguous**（d045「拿取排線
+並對準接頭」——唯一來源是 dev seed 的 wi_rows，no_v3_structure_signal）。
+逐筆明細見 `harvest-summary.md`「v3 結構回填」節。
 
 ## 覆核一筆草稿的步驟
 

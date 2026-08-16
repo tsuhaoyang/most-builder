@@ -21,6 +21,10 @@
    `heuristic_tags_unverified` 必須點名 false 也未覆核的維度。
    `engine_rejected_cycle` 旗標與 `expected_cycles[].expected_engine_rejected`
    期望必須同進同出（旗標無期望＝話沒說完；期望無旗標＝IE 看不到警示）。
+   D3-014 追加：帶切分旗標者必有 `v3_structure_hint`＋自洽證據（5b；hint 與
+   v3 證據 cycle 數對不上＝決策規則壞了）、hint 絕不寫進 `expected.*`（誠實
+   邊界）、`acquire_without_place` 旗標與 plan 的 action_type 序列判定同進同出
+   （5c；單一判定函式）。
 6. 重放自洽：compile 段（plan → link/compile/engine）與 planner 段
    （source_text → rule planner）都能重放且與檔內期望一致——保證核准後
    移入正式 gold 時不會立刻紅。
@@ -61,6 +65,10 @@ from gold_harvest import (  # noqa: E402
     DIM_KEYS,
     HEURISTIC_UNVERIFIED_DIMS,
     PLAN_ORIGIN_PREANNOTATION,
+    SEGMENTATION_CAVEATS,
+    STRUCTURE_HINT_AMBIGUOUS,
+    STRUCTURE_HINT_SINGLE,
+    acquire_without_place,
 )
 
 
@@ -178,6 +186,62 @@ async def test_draft_case(fname: str, drafts: list[tuple[Path, dict]]):
     assert isinstance(unverified, list) and set(unverified) == set(HEURISTIC_UNVERIFIED_DIMS), (
         "heuristic_tags_unverified 必須點名 false 也未覆核的維度（quantity/tool/simo 有實證漏標）"
     )
+
+    # 5b. D3-014 裁決 3：v3 結構回填的不變式（帶切分旗標者必有 hint＋證據；
+    # hint 與證據內的 v3 cycle 數必須自洽——決策規則壞掉就在這裡紅）
+    hint = data.get("v3_structure_hint")
+    evidence = data.get("v3_structure_evidence")
+    if any(c in SEGMENTATION_CAVEATS for c in caveats):
+        assert isinstance(hint, str), f"{fname}：切分旗標草稿必須回填 v3_structure_hint"
+        assert isinstance(evidence, dict) and evidence.get("sources"), (
+            f"{fname}：hint 必須附結構證據（哪個表哪筆幾列）——hint 是證據不是判決"
+        )
+        for s in evidence["sources"]:
+            assert {"table", "id", "detail", "cycles", "v3_migrated", "basis"} <= set(s)
+        # 證據 ↔ provenance 對齊：結構證據逐筆對應 source_provenance 的來源
+        # （證據是從同一組 sources 導出的——指向 provenance 之外＝造假）
+        prov_keys = {(p["table"], p["id"]) for p in prov}
+        for s in evidence["sources"]:
+            assert (s["table"], s["id"]) in prov_keys, (
+                f"{fname}：結構證據 {s['table']}/{s['id']} 不在 source_provenance 內"
+            )
+        v3_counts = sorted({
+            s["cycles"]
+            for s in evidence["sources"]
+            if s["v3_migrated"] and s["cycles"] is not None
+        })
+        if hint == STRUCTURE_HINT_SINGLE:
+            assert v3_counts == [1], f"{fname}：single_cycle 但 v3 證據 cycle 數={v3_counts}"
+        elif hint.startswith("multi_cycle_"):
+            n = int(hint.rsplit("_", 1)[1])
+            assert n >= 2 and v3_counts == [n], (
+                f"{fname}：{hint} 但 v3 證據 cycle 數={v3_counts}"
+            )
+        else:
+            assert hint == STRUCTURE_HINT_AMBIGUOUS, f"{fname}：未知 hint 值 {hint!r}"
+            assert not v3_counts or len(v3_counts) > 1, (
+                f"{fname}：v3 證據一致（{v3_counts}）卻標 ambiguous——決策規則壞了"
+            )
+            assert evidence.get("reason") in {
+                "no_v3_structure_signal",
+                "conflicting_v3_structures",
+            }
+    else:
+        # scope 守門：無切分爭點的草稿不加欄位（hint 只服務配對題/切分題）
+        assert hint is None and evidence is None, (
+            f"{fname}：無切分旗標卻帶 v3_structure_hint——scope 漂移"
+        )
+    # 誠實邊界：hint 絕不寫進期望值（expected 只有 pipeline 的預測，形狀不變）
+    assert set(data["expected"]) == {"action_count", "routing_status"}, (
+        f"{fname}：expected 出現額外欄位——結構 hint 不得寫進期望值"
+    )
+    assert data["expected"]["action_count"] == len(data["plan"]["actions"])
+
+    # 5c. D3-014 裁決 2：「取必有放」lint 與旗標同進同出（單一判定函式；
+    # 把 preannotate 的 lint 拆掉再重產草稿 → 這裡必紅）
+    assert ("acquire_without_place" in caveats) == acquire_without_place(
+        data["plan"]["actions"]
+    ), f"{fname}：acquire_without_place 旗標與 plan 的 action_type 序列判定不一致"
 
     # 2+6. planner 段重放：offset 守衛（gold_* 具名錯誤＝標註缺損）永遠檢查；
     # 「與 rule planner 重放整份 plan 相等」只對 pending_ie（原樣草稿）要求——

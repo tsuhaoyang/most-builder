@@ -73,6 +73,45 @@
     "take_place_pair_may_be_single_gm",
     "empty_lexicon_no_slot_candidates"
   ],
+  "v3_structure_hint": "ambiguous",
+  "v3_structure_evidence": {
+    "note": "hint 是證據不是判決：來源＝IE 驗證過的 v3 生產資料的結構（module/cycle 邊界）；覆核表預設依 v3 結構、IE 可推翻；本欄位絕不寫進 expected.*",
+    "sources": [
+      {
+        "table": "motion_modules",
+        "id": "dcbb30a8-44f0-4218-aafb-b6882a66aca0",
+        "detail": "name_zh (category=wi-template)",
+        "cycles": 3,
+        "v3_migrated": true,
+        "basis": "module 名稱句對應發布版 v1 共 3 列＝IE 把這段話切成 3 個 cycle"
+      },
+      {
+        "table": "motion_module_versions",
+        "id": "34b10cd8-2e30-4a16-a887-8f4d28356d5e",
+        "detail": "rows[0].sub_activity",
+        "cycles": 1,
+        "v3_migrated": true,
+        "basis": "版本 rows[] 一列＝一個 cycle（rows[*].cycle 為單一 CycleIn）"
+      },
+      {
+        "table": "motion_module_versions",
+        "id": "b91e9fca-a311-496a-bbdb-db6f76f460c2",
+        "detail": "rows[2].sub_activity",
+        "cycles": 1,
+        "v3_migrated": true,
+        "basis": "版本 rows[] 一列＝一個 cycle（rows[*].cycle 為單一 CycleIn）"
+      },
+      {
+        "table": "motion_modules",
+        "id": "32a29bba-fabe-4332-baee-9785d4c2525d",
+        "detail": "name_zh (category=action)",
+        "cycles": 1,
+        "v3_migrated": true,
+        "basis": "module 名稱句對應發布版 v1 共 1 列＝IE 把這段話切成 1 個 cycle"
+      }
+    ],
+    "reason": "conflicting_v3_structures"
+  },
   "preannotation": {
     "pipeline": "rule_based_v1 -> plan_from_rule_result -> SlotLinker(no-db) -> compile_plan -> engine_gate(most_engine) -> compute_routing(auto=off)",
     "planner": "rule_based_v1",
