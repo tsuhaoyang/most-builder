@@ -10,8 +10,9 @@ draft 目錄是 sibling）。「沒看過它紅過的守門不算守門」——
 - 正式 gold 目錄不得混入 pending 草稿（tripwire：有人真把草稿複製進
   `tests/gold/wi_plans/`，這裡立刻紅——mutation 證據見 CI_GATES 規則 7 流程，
   複製 `wi_plans_draft/d001_*.json` 進 `wi_plans/` 本測試必紅）。
-- 「IE 核准」要有實質門檻（P1-3）：非 seed 的正式 gold 不得是空殼——必須至少
-  一個 `complete=true` 帶 `total_tmu` 的 cycle，**或**顯式
+- 「IE 核准」要有實質門檻（P1-3；D3-018 M1 收緊）：非 seed 的正式 gold 不得是
+  空殼——必須至少一個 `complete=true` 帶 `total_tmu > 0` 的 cycle（**0.0 不是
+  實質內容**：距離未述的引擎口徑輸出，TMU=0.0 非真值），**或**顯式
   `expected_incomplete_reason`（誠實記錄資訊不足也可以，但要寫出來）；且必填
   `plan_origin` 與 `ie_modified`（bool）——自我指涉排除（planner_eval）靠這兩欄。
   mutation 證據：`test_empty_shell_approved_case_is_rejected` 用自建空殼證明
@@ -147,10 +148,12 @@ def approved_case_defects(data: dict) -> list[str]:
     """「IE 核准」的實質門檻（P1-3）：非 seed 的正式 gold 不得是空殼。
 
     空殼＝roles 空、cycle 全 incomplete、無 TMU——填個名字就計入 50 筆等於
-    P0 退出條件可以用零工作量達成。要求：至少一個 complete=true 帶 total_tmu
-    的 cycle，或顯式 expected_incomplete_reason（誠實記錄資訊不足也可以，但要
-    寫出來）。另必填 plan_origin 與 ie_modified（bool）——planner 段的自我指涉
-    排除靠這兩欄，缺欄＝未修改的預標註可能混進 Plan 層指標。
+    P0 退出條件可以用零工作量達成。要求：至少一個 complete=true 帶
+    **total_tmu > 0** 的 cycle（D3-018 M1：0.0 不是實質內容——距離未述＝0cm
+    的引擎口徑輸出會產生 complete 且 TMU=0.0 的 cycle，原樣轉正＝把非真值
+    寫進標準答案），或顯式 expected_incomplete_reason（誠實記錄資訊不足也
+    可以，但要寫出來）。另必填 plan_origin 與 ie_modified（bool）——planner
+    段的自我指涉排除靠這兩欄，缺欄＝未修改的預標註可能混進 Plan 層指標。
 
     seed 豁免只認 `SEED_GOLD_IDS` 白名單（R6）：只比對字串 "seed" 的話，
     任何案例都能自標 seed 同時穿透本守門與自我指涉排除。
@@ -173,14 +176,17 @@ def approved_case_defects(data: dict) -> list[str]:
     if not isinstance(data.get("ie_modified"), bool):
         defects.append("缺 ie_modified（轉正必填 true|false——自我指涉排除靠這欄）")
     cycles = data.get("expected_cycles") or []
+    # D3-018 M1：> 0 而非 is not None——TMU=0.0 是「距離未述」的引擎口徑輸出，
+    # 不是實質內容；資訊不足的正路是顯式 expected_incomplete_reason
     has_substance = any(
-        c.get("complete") is True and c.get("total_tmu") is not None for c in cycles
+        c.get("complete") is True and (c.get("total_tmu") or 0) > 0 for c in cycles
     )
     reason = data.get("expected_incomplete_reason")
     if not has_substance and not (isinstance(reason, str) and reason.strip()):
         defects.append(
-            "空殼核准：無任何 complete=true 帶 total_tmu 的 cycle，也沒有 "
-            "expected_incomplete_reason——資訊不足可以誠實記錄，但要寫出來"
+            "空殼核准：無任何 complete=true 帶 total_tmu > 0 的 cycle（TMU=0.0 "
+            "非真值，不算實質內容），也沒有 expected_incomplete_reason——"
+            "資訊不足可以誠實記錄，但要寫出來"
         )
     return defects
 
@@ -211,6 +217,22 @@ def test_empty_shell_approved_case_is_rejected():
         {"action_id": "a1", "complete": True, "seq": "GM", "total_tmu": 28.0}
     ]
     assert approved_case_defects(shell) == []
+
+    # D3-018 M1 mutation：complete 但 TMU=0.0（距離未述的引擎口徑輸出）不是
+    # 實質內容——守門若改回 `total_tmu is not None`，這裡必紅
+    shell["expected_cycles"] = [
+        {"action_id": "a1", "complete": True, "seq": "CM", "total_tmu": 0.0}
+    ]
+    defects = approved_case_defects(shell)
+    assert any("空殼核准" in d for d in defects), (
+        "TMU=0.0 穿透空殼守門：0.0 不是實質內容，必須補距離或顯式 "
+        "expected_incomplete_reason"
+    )
+
+    # 帶 expected_incomplete_reason 的照樣放行（誠實記錄資訊不足仍合法）
+    shell["expected_incomplete_reason"] = "此句未述距離，TMU=0.0 非真值——IE 判定資訊不足"
+    assert approved_case_defects(shell) == []
+    del shell["expected_incomplete_reason"]
 
     # 或誠實記錄資訊不足（expected_incomplete_reason 路徑）→ 也綠
     shell["expected_cycles"] = [{"action_id": "a1", "complete": False, "cycle": None}]

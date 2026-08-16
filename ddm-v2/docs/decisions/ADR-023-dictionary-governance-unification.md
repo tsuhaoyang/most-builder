@@ -73,6 +73,29 @@ ADR-014 約束的是**「認證版本的值」**，不是「禁止一切線上�
 
 同義詞那格是 ADR-014 白紙黑字授權：「published rule-set 唯一可後補資料＝同義詞（僅影響建議層不影響工時）」。
 
+**規則 1 補節 — 同義詞的鍵與偏好序（v2_0038 / D3-017；2026-08-16 補記）**
+
+- **UNIQUE 新定義**：`UNIQUE(rule_set_id, parameter, synonym_norm, option_code)`（migration
+  v2_0038，取代原 `UNIQUE(rule_set_id, parameter, synonym_norm)`）。放寬動機＝D3-017 的 IE
+  情境裁決：「放至/放置」一個詞面需掛兩個變體 code（`p_place_single`／`p_place_none`），
+  舊鍵下第二個變體登不進去、`priority` 欄形同虛設。
+- **priority 語意**：偏好位次——**數字小者優先，0＝預設**。parser 端 tie-break
+  （`nlp/lexicon.py` build_lexicon：同 norm 以 (priority, option_code) 升冪）與
+  `list_synonyms` 排序同一語意；同 priority 時以 option_code 字母序收尾保證決定性。
+- **H1 的殘留風險與本次補救（D3-018）**：放寬後「同面兩個 code 撞同一 priority」DB 不再
+  擋——parser 會按 option_code 字母序**靜默擇一且不標 review**（審查實測：g_grasp／g_touch
+  同掛「握住」priority 0 → 永遠選 g_grasp、g_touch 不進 top_k、TMU 錯且無旗標）。補救＝
+  service 層 `create_synonym` 擋「同 (rule_set, parameter, synonym_norm) 已存在**其他**
+  option_code 且 priority 相同」→ 409 `SYNONYM_PRIORITY_COLLISION`（一面多 code 必須以
+  不同 priority 顯式宣告偏好序；手滑撞面被擋、刻意變體放行）。**已知邊界**：service 層
+  守門無 DB 約束背書（並發雙寫可穿透）；同面變體整組注入 top_k 的通則化（目前僅 P 方向
+  變體有情境規則處理，其他面第二變體不進 top_k）記後續票（worklog D3-018）。
+- **P 方向名詞清單暫住程式碼的理由與畢業條件**：機構件／盤面分類清單（`nlp/linking.py`）
+  是 IE 情境裁決的單一出處，暫以程式碼常數承載——語料 60 筆、成員穩定、逐項附證據，且
+  單一出處供生產 nl-draft／gold_eval 重放／harvest 三方共用。**畢業條件**：清單成為 IE
+  常態維護對象（新增站別／料件需 IE 自行增修）時，遷進 rule-set 子表走本 ADR 治理
+  （值版本化＋clone-on-write）。
+
 **規則 2 — clone-on-write（照抄 v3 最好的設計）**
 使用者在 published/active 版按編輯 → 確認對話框「是否建立草稿版本後編輯？」→ 自動 clone → 切到 draft 續編。**使用者從不撞 409**，凍結規則透過 UI 流程自然滿足。
 

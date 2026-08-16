@@ -46,6 +46,9 @@
   所以只在**同 plan 內**判；判定用 action_type 序列，不用文字啟發式。
 - dev DB 的 `rule_option_synonyms` 若為空，slot 全部無候選，草稿標
   `empty_lexicon_no_slot_candidates`。
+- complete 但 TMU=0.0（距離未述＝0cm 的引擎口徑輸出）標
+  `zero_tmu_distance_unstated`（D3-018 M1）：TMU=0.0 非真值，覆核表逐筆問
+  「補距離或判定句子資訊不足」；原樣轉正撞空殼守門（total_tmu > 0）。
 - 9 個可判維度的 `false` 同為啟發式輸出（quantity/tool/simo 的漏標已有實證，
   如「多顆」無數字不命中 quantity）——每筆草稿標 `heuristic_tags_unverified`
   點名這幾維，IE 覆核時 true/false 都要確認。
@@ -92,11 +95,18 @@ from ddm_v2.most_engine.providers import build_from_seed_v2  # noqa: E402
 from ddm_v2.nlp.contracts import SourceRef, WorkInstructionPlan  # noqa: E402
 from ddm_v2.nlp.gold_eval import DEFAULT_RULE_SET_CODE, case_rule_set_code  # noqa: E402
 from ddm_v2.nlp.lexicon import build_lexicon, match_all  # noqa: E402
-from ddm_v2.nlp.linking import SlotLinker  # noqa: E402
+from ddm_v2.nlp.linking import (  # noqa: E402
+    P_DEST_MECHANISM,
+    P_DEST_SURFACE,
+    P_VARIANT_DEFAULT,
+    P_VARIANT_SURFACE,
+    SlotLinker,
+    classify_p_destination,
+)
 from ddm_v2.nlp.normalization import normalize  # noqa: E402
 from ddm_v2.nlp.planner_eval import RULE_PLANNER_NAME, planner_preannotation_origin  # noqa: E402
 from ddm_v2.nlp.routing import compute_routing  # noqa: E402
-from ddm_v2.nlp.rule_based import RuleBasedParser  # noqa: E402
+from ddm_v2.nlp.rule_based import RuleBasedParser, classify_seq  # noqa: E402
 from ddm_v2.nlp.rule_plan_adapter import plan_from_rule_result  # noqa: E402
 
 GOLD_SCHEMA_VERSION = "wi-gold-v1"
@@ -169,6 +179,44 @@ _VERB_COMPOUND_NOUNS = ("治具", "冶具", "機台", "機臺", "夾具", "模�
 # 啟發式輸出的 false 也未經覆核（quantity 的「多顆」無數字不命中是實證漏標）；
 # 這幾維的 false 特別容易被 IE 誤讀成「已確認沒有」——逐筆寫進草稿點名。
 HEURISTIC_UNVERIFIED_DIMS = ["quantity", "tool_handling", "simo_both_hands"]
+
+# ── D3-017：判型變更標注 + P 方向數旗標 ─────────────────────────────────────
+#
+# 判型變更（第三輪）：rule parser 的 GM/CM 判型自本輪起吃動詞字典
+# （nlp/rule_based.py classify_seq；衝突矩陣見該 docstring）。與「僅名詞」
+# 舊判型（＝classify_seq 傳空詞典）不同者掛本旗標，覆核表標
+# 「第三輪判型已修正，請確認」——舊/新值存草稿 `typing_change` 欄。
+TYPING_CHANGED_CAVEAT = "typing_changed_by_verb_lexicon"
+_ACTION_TYPE_TO_SEQ = {"move_place": "GM", "controlled_move": "CM"}
+
+# P 方向數（IE 裁決 D3-017）：「放至/放置」按賓語情境擇變體——機構件→對準
+# （p_place_single，方向數 IE 未指定、預設一種）；盤面→無方向（p_place_none）；
+# 判不出→維持預設並交 IE。名詞分類清單的**單一出處**＝nlp/linking.py
+# （生產 nl-draft、gold_eval 重放與本腳本同一套；此處只做旗標與提問）。
+P_DIRECTION_CAVEATS = {
+    P_DEST_MECHANISM: "p_direction_single_default",
+    P_DEST_SURFACE: "p_direction_none_by_context",
+    # unclassified 與防禦性 None 都落此旗標（判不出＝交 IE 裁決）
+    None: "p_direction_unclassified_default_single",
+}
+P_DIRECTION_CAVEAT_NAMES = frozenset(P_DIRECTION_CAVEATS.values())
+
+# D3-018 M1：TMU=0.0 不是真值——「complete」是結構完成度不是 TMU 可信度。
+# 引擎口徑下距離未述＝0cm（M 階梯 0→0）且 linker 只掛 core 參數（CM 的 G、
+# GM 的 G 等伴隨 slot 不填），會產出 complete 且 TMU=0.0 的 cycle。轉正空殼
+# 守門（tests/unit/test_gold_draft_isolation.py approved_case_defects）要求
+# total_tmu > 0 或顯式 expected_incomplete_reason——原樣轉正會被擋。
+# 旗標逐筆掛草稿＋覆核表逐筆提問，不只摘要一句話。
+ZERO_TMU_CAVEAT = "zero_tmu_distance_unstated"
+
+
+def has_zero_tmu_complete_cycle(expected_cycles: list[dict[str, Any]]) -> bool:
+    """任一 complete 期望 cycle 的 total_tmu == 0？（D3-018 M1 單一出處：
+    preannotate 的旗標、schema 守門（test_gold_draft_schema 5g）、summary
+    統計共用本函式——不允許三邊條件漂移。）"""
+    return any(
+        ec.get("complete") and ec.get("total_tmu") == 0 for ec in expected_cycles
+    )
 
 try:
     import opencc as _opencc_mod
@@ -671,11 +719,14 @@ async def fetch_source_records(database_url: str) -> tuple[list[SourceRecord], d
             syn_rows = (
                 await conn.execute(
                     sql_text(
+                        # priority＝偏好位次（數字小者優先，0＝預設；D3-017）。
+                        # 選擇順序實際由 nlp.lexicon.build_lexicon 的 tie-break 決定，
+                        # 此處排序只求輸出決定性且與該語意一致。
                         "SELECT s.parameter, s.option_code, s.synonym_norm, s.priority "
                         "FROM rule_option_synonyms s "
                         "JOIN rule_sets r ON r.id = s.rule_set_id "
                         "WHERE r.code = :code "
-                        "ORDER BY s.parameter, s.priority DESC, s.synonym_norm, s.option_code"
+                        "ORDER BY s.parameter, s.priority ASC, s.synonym_norm, s.option_code"
                     ),
                     {"code": code},
                 )
@@ -827,6 +878,16 @@ def used_lexicon_entries(norm: str, synonyms: list[dict]) -> list[dict]:
     for p in params:  # SlotLinker 視角：逐參數池（無跨參數遮蔽）
         _collect([s for s in synonyms if s["parameter"] == p])
 
+    # 同 (parameter, norm) 的變體整組帶上（v2_0038 一面多 code）：match_all 的
+    # 位置覆蓋只讓偏好序第一的變體出現在命中清單，但 P 方向情境規則
+    # （nlp.linking）與重放都需要完整變體組——缺了 p_place_none，gold 檔重放
+    # 時規則配不出盤面變體，expected 會與 harvest 當下不一致。
+    for key in list(used):
+        param, _code, norm = key
+        for s in synonyms:
+            if s["parameter"] == param and s["synonym_norm"] == norm:
+                used[(s["parameter"], s["option_code"], s["synonym_norm"])] = s
+
     return [
         {
             "parameter": s["parameter"],
@@ -914,6 +975,30 @@ async def preannotate(
     plan_json = plan.model_dump(mode="json")
 
     caveats: list[str] = []
+
+    # D3-017 判型變更：新判型直接讀 plan（單一出處＝管線輸出，不重推一次），
+    # 舊判型＝「僅名詞」classify_seq（空詞典）；不同者掛旗標＋留舊/新值。
+    new_seq = _ACTION_TYPE_TO_SEQ.get(plan_json["actions"][0]["action_type"])
+    old_seq = classify_seq(plan.normalized_text, cand.raw, frozenset())
+    typing_change: dict[str, Any] | None = None
+    if new_seq != old_seq:
+        caveats.append(TYPING_CHANGED_CAVEAT)
+        typing_change = {"noun_only_seq": old_seq, "lexicon_seq": new_seq}
+
+    # D3-017 P 方向數旗標：本草稿的 cycle 實際選了方向變體才發（composite_unknown
+    # 沒有 P slot，發了也沒有可覆核的值）；outcome 由單一出處
+    # nlp.linking.classify_p_destination 判（生產/重放/harvest 同一套）。
+    lex = build_lexicon(synonyms)
+    p_chosen = {
+        ((d.cycle or {}).get("p5") or {}).get("p_base_code")
+        for d in drafts
+        if d.cycle is not None
+    }
+    if p_chosen & {P_VARIANT_DEFAULT, P_VARIANT_SURFACE}:
+        outcome = classify_p_destination(plan.normalized_text, lex)
+        caveats.append(
+            P_DIRECTION_CAVEATS.get(outcome, "p_direction_unclassified_default_single")
+        )
     if cand.tags.get("multi_action") is True:
         # rule planner 結構上永遠單 action——多動作候選的切分幾乎必然低估
         caveats.append("likely_multi_action_undercounted")
@@ -934,6 +1019,12 @@ async def preannotate(
         # 旗標提醒 IE：轉正前必須修 cycle 值，否則撞空殼守門（無 TMU 需顯式
         # expected_incomplete_reason）
         caveats.append("engine_rejected_cycle")
+    expected_cycles_json = [expected_cycle_from_draft(d) for d in drafts]
+    if has_zero_tmu_complete_cycle(expected_cycles_json):
+        # D3-018 M1：complete 但 TMU=0.0（距離未述）——逐筆旗標＋覆核表逐筆
+        # 提問；原樣轉正會撞空殼守門（total_tmu > 0 或顯式
+        # expected_incomplete_reason）
+        caveats.append(ZERO_TMU_CAVEAT)
 
     out: dict[str, Any] = {
         "id": draft_id,
@@ -958,6 +1049,10 @@ async def preannotate(
         "heuristic_tags_unverified": list(HEURISTIC_UNVERIFIED_DIMS),
         "preannotation_caveat": caveats,
     }
+    if typing_change is not None:
+        # 與 TYPING_CHANGED_CAVEAT 同進同出（schema 守門）：舊/新判型留在草稿上，
+        # 覆核表據此標「第三輪判型已修正，請確認」
+        out["typing_change"] = typing_change
     if any(c in caveats for c in SEGMENTATION_CAVEATS):
         # D3-014 裁決 3：只對有切分爭點的草稿回填 v3 結構（hint 是證據不是判決）
         hint, evidence = v3_structure_backfill(cand, module_structure)
@@ -974,7 +1069,7 @@ async def preannotate(
         },
         "plan": plan_json,
         "synthetic_synonyms": used_lexicon_entries(plan.normalized_text, synonyms),
-        "expected_cycles": [expected_cycle_from_draft(d) for d in drafts],
+        "expected_cycles": expected_cycles_json,
         "gold_schema_version": GOLD_SCHEMA_VERSION,
         "expected": {
             "action_count": len(plan.actions),
@@ -1030,6 +1125,27 @@ _CAVEAT_ZH = {
         "核准轉正前必須修正 cycle 值——原樣轉正沒有 TMU，會被空殼守門擋下"
         "（除非顯式寫 expected_incomplete_reason）"
     ),
+    "p_direction_single_default": (
+        "P 方向數（IE 情境規則 D3-017）：賓語屬**機構件類**（治具/卡槽/機箱/"
+        "接頭/點位）→ 必對準，已預設 `p_place_single`。**方向數預設一種，"
+        "不對請改**（p_place_multi 多種方向／p_place_none 無方向）"
+    ),
+    "p_direction_none_by_context": (
+        "P 方向數（IE 情境規則 D3-017）：賓語屬**盤面類**（流水線/工作台/"
+        "垃圾桶/料盒/材料盒/料架）→ 無方向，已套用 `p_place_none`。請確認"
+    ),
+    "p_direction_unclassified_default_single": (
+        "P 方向數（IE 情境規則 D3-017）：賓語**不屬機構件/盤面名單**，判不出"
+        "情境——暫用預設 `p_place_single`（方向數預設一種）。**請 IE 裁決**"
+        "（single/multi/none）"
+    ),
+    ZERO_TMU_CAVEAT: (
+        "此句未述距離，**TMU=0.0 非真值**（引擎口徑：距離未述＝0cm、M 階梯 "
+        "0→0；linker 只掛 core 參數，伴隨 slot 未填）——complete 是結構完成度"
+        "不是 TMU 可信度。**請補距離（改 plan/cycle 後 `--recompile` 重算）或"
+        "判定句子資訊不足**（轉正時顯式寫 expected_incomplete_reason；"
+        "空殼守門要求 total_tmu > 0，原樣轉正會被擋）"
+    ),
 }
 
 
@@ -1043,17 +1159,30 @@ _LIKELY_MULTI_DOWNGRADED_ZH = (
 )
 
 
+def _seq_zh(seq: str | None) -> str:
+    return {"GM": "GM（一般移動）", "CM": "CM（控制移動）"}.get(seq or "", "未定（composite_unknown）")
+
+
 def _caveat_line_zh(caveat: str, draft: dict[str, Any]) -> str:
     """單筆草稿的旗標說明文字（覆核表用）。
 
     likely_multi_action_undercounted＋v3 結構 single_cycle ⇒ 警語降級
-    （D3-014 裁決 3）；其餘照 `_CAVEAT_ZH`。與 preannotate 的旗標共用同一
-    hint 欄位——不另判一次。"""
+    （D3-014 裁決 3）；typing_changed 讀草稿 `typing_change` 欄組動態文字；
+    其餘照 `_CAVEAT_ZH`。與 preannotate 的旗標共用同一欄位——不另判一次。"""
     if (
         caveat == "likely_multi_action_undercounted"
         and draft.get("v3_structure_hint") == STRUCTURE_HINT_SINGLE
     ):
         return _LIKELY_MULTI_DOWNGRADED_ZH
+    if caveat == TYPING_CHANGED_CAVEAT:
+        tc = draft.get("typing_change") or {}
+        return (
+            "**第三輪判型已修正，請確認**：動詞字典自本輪參與 GM/CM 判型"
+            "（D3-017，衝突矩陣見 nlp/rule_based.py classify_seq）——"
+            f"舊判型（僅名詞觸發）＝{_seq_zh(tc.get('noun_only_seq'))}，"
+            f"新判型（動詞字典參與）＝{_seq_zh(tc.get('lexicon_seq'))}。"
+            "不同意新判型請在本筆「判型」題回答"
+        )
     return _CAVEAT_ZH.get(caveat, caveat)
 
 
@@ -1113,15 +1242,31 @@ def _questions_for(draft: dict[str, Any]) -> list[str]:
     for a in plan["actions"]:
         if a["action_type"] == "composite_unknown":
             qs.append(
-                f"判型（{a['action_id']}）：預測為 composite_unknown（判型詞典僅認「治具/機台/壓合」類詞）。"
+                f"判型（{a['action_id']}）：預測為 composite_unknown"
+                "（第三輪起動詞字典已參與判型——仍未定＝動詞未登記/單一動詞不足/"
+                "訊號衝突棄權，逐類統計見 harvest-summary）。"
                 "實際動作類型是哪個：acquire / move_place / controlled_move / process / inspect？"
             )
         else:
             core = _CORE_PARAM_ZH.get(a["action_type"], "?")
-            qs.append(
+            q = (
                 f"判型（{a['action_id']}）：預測為 {a['action_type']}，對嗎？"
                 f"若對，core 參數 {core} 的 option code 是什麼？（預標註無候選時請直接填）"
             )
+            if TYPING_CHANGED_CAVEAT in (draft.get("preannotation_caveat") or []):
+                tc = draft.get("typing_change") or {}
+                q += (
+                    f"【第三輪判型已修正：{_seq_zh(tc.get('noun_only_seq'))} → "
+                    f"{_seq_zh(tc.get('lexicon_seq'))}，請確認】"
+                )
+            qs.append(q)
+    # D3-017 P 方向數：cycle 實際選了方向變體的草稿逐筆問（旗標與提問同一出處）
+    for c in draft.get("preannotation_caveat") or []:
+        if c in P_DIRECTION_CAVEAT_NAMES:
+            qs.append(f"P 方向數：{_CAVEAT_ZH[c]}")
+    # D3-018 M1：TMU=0.0 的草稿逐筆問（旗標與提問同一出處；不只摘要一句話）
+    if ZERO_TMU_CAVEAT in (draft.get("preannotation_caveat") or []):
+        qs.append(f"TMU=0.0：{_CAVEAT_ZH[ZERO_TMU_CAVEAT]}。")
     # 配對題與草稿旗標**共用同一判定**（take_place_pair / take_move_pair）：
     # 兩邊條件各寫一份曾經自相矛盾（掛「幾乎必然低估」的節同時出「多半建單一
     # GM cycle」的題）——單一出處，宣稱即事實。
@@ -1349,6 +1494,136 @@ def build_review_checklist(drafts: list[dict[str, Any]]) -> str:
     return "\n".join(lines) + "\n"
 
 
+# ── D3-017：第三輪判型統計（僅名詞 vs 動詞字典參與）與 unknown 卡點分類 ─────
+
+# composite_unknown 卡點分類（決定性；每筆恰一類，優先序＝列出順序）：
+# 1. verb_mixed_abstain     M＋P 同句（跨模型混合＝多 cycle 證據）→ 設計上棄權
+# 2. noun_cm_verb_gm_abstain 名詞 CM × 動詞 GM（衝突矩陣 ※2）→ 設計上棄權
+# 3. unregistered_verbs     句面有動詞面但（部分）未登記（`?` 待 IE 裁決）
+# 4. single_verb_insufficient 已登記動詞只有 G 或 P 單獨（單一動詞不足以定型）
+# 5. no_verb_face           句面完全無動詞面命中 → 需 IE 改 plan 或補描述
+_UNKNOWN_BLOCK_ZH = {
+    "verb_mixed_abstain": "動詞跨模型混合（M＋P 同句）→ 棄權（多 cycle 證據，設計如此）",
+    "noun_cm_verb_gm_abstain": "名詞 CM × 動詞 GM 衝突 → 棄權（無 IE 裁決，設計如此）",
+    "unregistered_verbs": "句面動詞（部分）未登記——卡 `?` 動詞，IE 裁決後可解",
+    "single_verb_insufficient": "已登記動詞僅 G 或 P 單獨——單一動詞不足以定型",
+    "no_verb_face": "句面無動詞面命中——需 IE 改 plan／補描述（非同義詞可解）",
+}
+
+
+def unknown_block_reason(
+    norm: str, raw: str, synonyms: list[dict]
+) -> tuple[str, list[str]]:
+    """composite_unknown 草稿的卡點分類（單一出處；summary 與測試共用）。
+
+    回傳 (類別, 未登記動詞面清單——僅 unregistered_verbs 類非空)。
+    """
+    lex = build_lexicon(synonyms)
+    params_hit = frozenset(e.parameter for _, _, e in match_all(norm, lex))
+    has_m = "M" in params_hit
+    has_p = "P" in params_hit
+    has_g = "G" in params_hit
+    if has_m and has_p:
+        return "verb_mixed_abstain", []
+    if classify_seq(norm, raw, frozenset()) == "CM" and has_g and has_p:
+        return "noun_cm_verb_gm_abstain", []
+    registered = {s["synonym_norm"] for s in synonyms}
+    unregistered = sorted({v for v in _action_verb_hits(norm) if v not in registered})
+    if unregistered:
+        return "unregistered_verbs", unregistered
+    if has_g or has_p:
+        return "single_verb_insufficient", []
+    return "no_verb_face", []
+
+
+def _round3_typing_lines(drafts: list[dict[str, Any]], synonyms: list[dict]) -> list[str]:
+    """「第三輪判型」摘要節：僅名詞 vs 動詞字典參與的分佈對比＋unknown 卡點逐類。"""
+    lines: list[str] = []
+    lines.append("## 第三輪判型（D3-017：動詞字典參與 GM/CM 判型）")
+    lines.append("")
+    lines.append(
+        "判型自本輪起吃動詞字典（M 命中＝CM 訊號、G+P 組合＝GM 訊號；衝突矩陣與"
+        "棄權路徑見 `src/ddm_v2/nlp/rule_based.py` classify_seq）。「舊」欄＝"
+        "僅名詞觸發詞的第二輪行為（同一函式傳空詞典重算，非手抄數字）："
+    )
+    lines.append("")
+    dist: dict[str, dict[str, int]] = {
+        "GM": {"old": 0, "new": 0},
+        "CM": {"old": 0, "new": 0},
+        "unknown": {"old": 0, "new": 0},
+    }
+    changed: list[dict[str, Any]] = []
+    for d in drafts:
+        new_seq = _ACTION_TYPE_TO_SEQ.get(d["plan"]["actions"][0]["action_type"])
+        old_seq = classify_seq(d["plan"]["normalized_text"], d["source_text"], frozenset())
+        dist[new_seq or "unknown"]["new"] += 1
+        dist[old_seq or "unknown"]["old"] += 1
+        if new_seq != old_seq:
+            changed.append(d)
+    lines.append("| 判型 | 舊（僅名詞） | 新（動詞字典參與） |")
+    lines.append("|---|---|---|")
+    for key, zh in (("GM", "GM（move_place）"), ("CM", "CM（controlled_move）"),
+                    ("unknown", "未定（composite_unknown）")):
+        lines.append(f"| {zh} | {dist[key]['old']} | {dist[key]['new']} |")
+    lines.append("")
+    lines.append(
+        f"判型變更 **{len(changed)} 筆**（草稿帶 `{TYPING_CHANGED_CAVEAT}`＋"
+        "`typing_change` 舊/新值；覆核表逐筆標「第三輪判型已修正，請確認」）："
+    )
+    lines.append("")
+    for d in changed:
+        tc = d.get("typing_change") or {}
+        lines.append(
+            f"- `{d['id']}`：{_seq_zh(tc.get('noun_only_seq'))} → "
+            f"{_seq_zh(tc.get('lexicon_seq'))}——「{d['source_text']}」"
+        )
+    lines.append("")
+    # unknown 卡點逐類
+    unknowns = [
+        d for d in drafts
+        if d["plan"]["actions"][0]["action_type"] == "composite_unknown"
+    ]
+    lines.append(f"### 判型仍未定的 {len(unknowns)} 筆——卡點逐類")
+    lines.append("")
+    by_reason: dict[str, list[tuple[dict[str, Any], list[str]]]] = {}
+    for d in unknowns:
+        reason, missing = unknown_block_reason(
+            d["plan"]["normalized_text"], d["source_text"], synonyms
+        )
+        by_reason.setdefault(reason, []).append((d, missing))
+    for reason in _UNKNOWN_BLOCK_ZH:
+        group = by_reason.get(reason, [])
+        if not group:
+            continue
+        lines.append(f"- **{_UNKNOWN_BLOCK_ZH[reason]}**：{len(group)} 筆")
+        for d, missing in group:
+            extra = f"（未登記：{'、'.join(missing)}）" if missing else ""
+            lines.append(f"  - `{d['id']}`{extra}：「{d['source_text']}」")
+    lines.append("")
+    # P 方向數旗標統計（IE 情境規則）
+    p_counts = {name: 0 for name in sorted(P_DIRECTION_CAVEAT_NAMES)}
+    for d in drafts:
+        for c in d["preannotation_caveat"]:
+            if c in p_counts:
+                p_counts[c] += 1
+    lines.append(
+        "### P 方向數（IE 情境規則：機構件→對準 single／盤面→無方向 none；"
+        "名詞分類單一出處＝`src/ddm_v2/nlp/linking.py`）"
+    )
+    lines.append("")
+    lines.append(
+        f"- 機構件→`p_place_single`（方向數預設一種，不對請改）：{p_counts['p_direction_single_default']} 筆"
+    )
+    lines.append(
+        f"- 盤面→`p_place_none`（已套用，請確認）：{p_counts['p_direction_none_by_context']} 筆"
+    )
+    lines.append(
+        f"- 判不出→預設 single＋交 IE 裁決：{p_counts['p_direction_unclassified_default_single']} 筆"
+    )
+    lines.append("")
+    return lines
+
+
 def build_summary(
     counts: dict[str, int],
     all_candidates: list[Candidate],
@@ -1416,6 +1691,9 @@ def build_summary(
                 for ec in d["expected_cycles"]
             )
         ]
+        # D3-018 M1 單一出處：TMU=0.0 統計＝per-draft 旗標（ZERO_TMU_CAVEAT），
+        # 不在此另判一次
+        zero_tmu = [d for d in drafts if ZERO_TMU_CAVEAT in d["preannotation_caveat"]]
         lines.append("")
         lines.append(
             f"Cycle 完成度：**{len(with_tmu)}／{len(drafts)} 筆**至少一個 cycle "
@@ -1423,6 +1701,18 @@ def build_summary(
             f"{len(drafts) - len(with_tmu)} 筆全部 incomplete"
             "（缺 slot 候選或判型未定——逐筆原因見草稿 `expected_cycles[].issues_contain`）。"
         )
+        if zero_tmu:
+            lines.append("")
+            lines.append(
+                f"**誠實旗標**：complete 之中 **{len(zero_tmu)} 筆 TMU＝0.0**"
+                f"（{'、'.join('`' + d['id'] + '`' for d in zero_tmu)}）——引擎口徑下"
+                "距離未述＝0cm（M 階梯 0→0）且核心參數以外的 slot（如 CM 的 G、"
+                "GM 的 G）未由 linker 掛值（per-action linking 只掛 core 參數）。"
+                "complete≠可信 TMU：TMU=0.0 非真值——每筆已掛 "
+                f"`{ZERO_TMU_CAVEAT}` 旗標，覆核表逐筆問「補距離或判定句子資訊"
+                "不足」；原樣轉正會撞空殼守門（total_tmu > 0 或顯式 "
+                "expected_incomplete_reason）。"
+            )
     lines.append("")
     lines.append("## 挑戰維度覆蓋（spec §14.3 的 16 維度）")
     lines.append("")
@@ -1472,6 +1762,7 @@ def build_summary(
         for t in sorted(type_counts):
             lines.append(f"| {t} | {type_counts[t]} |")
         lines.append("")
+        lines.extend(_round3_typing_lines(drafts, synonyms))
         lines.append("## Split 分組（傳遞閉包已算好；同 component 必同 split）")
         lines.append("")
         comp_drafts: dict[str, list[str]] = {}

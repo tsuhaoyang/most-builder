@@ -4,7 +4,11 @@ GET    /api/v2/rule-sets/{code}/synonyms          → list（viewer+）
 POST   /api/v2/rule-sets/{code}/synonyms          → 201 created（analyst+）
 DELETE /api/v2/rule-sets/{code}/synonyms/{syn_id} → 204（analyst+）
 
-409 衝突回應：{"detail": {"code": "SYNONYM_CONFLICT", "existing": {...}}}
+409 衝突回應：
+- 同 (parameter, synonym_norm, option_code) 重複（v2_0038 UNIQUE）：
+  {"detail": {"code": "SYNONYM_CONFLICT", "existing": {...}}}
+- 同面其他 code 撞同一 priority（D3-018 H1）：
+  {"detail": {"code": "SYNONYM_PRIORITY_COLLISION", "message": ..., "existing": {...}}}
 """
 from __future__ import annotations
 
@@ -70,6 +74,20 @@ async def create_synonym(
         raise HTTPException(
             status_code=409,
             detail={"code": "SYNONYM_CONFLICT", "existing": e.existing},
+        )
+    except svc.SynonymPriorityCollision as e:
+        raise HTTPException(
+            status_code=409,
+            detail={
+                "code": "SYNONYM_PRIORITY_COLLISION",
+                "message": (
+                    f"「{payload.synonym_raw}」在參數 {payload.parameter} 已映射到 "
+                    f"{e.existing.get('option_code')}（priority {e.priority}）——"
+                    "一面多 code 需以不同 priority 顯式宣告偏好序"
+                    "（數字小者優先，0＝預設）"
+                ),
+                "existing": e.existing,
+            },
         )
 
 

@@ -17,9 +17,11 @@
 
 另有 **1 筆**與正式 gold（tests/gold/wi_plans/）既有案例同句，已排除不重複進草稿：「拿取電動起子，依圖示鎖附兩顆螺絲」。
 
-詞典（rule_option_synonyms @ MINIMOST_FACTORY_V2）：**11 條**。
+詞典（rule_option_synonyms @ MINIMOST_FACTORY_V2）：**15 條**。
 
-Cycle 完成度：**0／60 筆**至少一個 cycle complete 帶 TMU（TMU 唯一出處＝most_engine）；其餘 60 筆全部 incomplete（缺 slot 候選或判型未定——逐筆原因見草稿 `expected_cycles[].issues_contain`）。
+Cycle 完成度：**27／60 筆**至少一個 cycle complete 帶 TMU（TMU 唯一出處＝most_engine）；其餘 33 筆全部 incomplete（缺 slot 候選或判型未定——逐筆原因見草稿 `expected_cycles[].issues_contain`）。
+
+**誠實旗標**：complete 之中 **9 筆 TMU＝0.0**（`d008_72dc0511`、`d011_7e40706c`、`d019_d9190952`、`d020_a00f4953`、`d027_f721bbfc`、`d033_51518399`、`d035_e55d16c7`、`d037_6ae5a84f`、`d040_4765e5f2`）——引擎口徑下距離未述＝0cm（M 階梯 0→0）且核心參數以外的 slot（如 CM 的 G、GM 的 G）未由 linker 掛值（per-action linking 只掛 core 參數）。complete≠可信 TMU：TMU=0.0 非真值——每筆已掛 `zero_tmu_distance_unstated` 旗標，覆核表逐筆問「補距離或判定句子資訊不足」；原樣轉正會撞空殼守門（total_tmu > 0 或顯式 expected_incomplete_reason）。
 
 ## 挑戰維度覆蓋（spec §14.3 的 16 維度）
 
@@ -61,8 +63,90 @@ Cycle 完成度：**0／60 筆**至少一個 cycle complete 帶 TMU（TMU 唯一
 
 | action_type | 筆數 |
 |---|---|
-| composite_unknown | 50 |
-| move_place | 10 |
+| composite_unknown | 31 |
+| controlled_move | 16 |
+| move_place | 13 |
+
+## 第三輪判型（D3-017：動詞字典參與 GM/CM 判型）
+
+判型自本輪起吃動詞字典（M 命中＝CM 訊號、G+P 組合＝GM 訊號；衝突矩陣與棄權路徑見 `src/ddm_v2/nlp/rule_based.py` classify_seq）。「舊」欄＝僅名詞觸發詞的第二輪行為（同一函式傳空詞典重算，非手抄數字）：
+
+| 判型 | 舊（僅名詞） | 新（動詞字典參與） |
+|---|---|---|
+| GM（move_place） | 10 | 13 |
+| CM（controlled_move） | 0 | 16 |
+| 未定（composite_unknown） | 50 | 31 |
+
+判型變更 **24 筆**（草稿帶 `typing_changed_by_verb_lexicon`＋`typing_change` 舊/新值；覆核表逐筆標「第三輪判型已修正，請確認」）：
+
+- `d001_6fa45cdb`：GM（一般移動） → CM（控制移動）——「確認DIMM點位，並按壓DIMM壓合治具的把手 (依據配置要求-16個DIMM)」
+- `d003_0acd56df`：未定（composite_unknown） → CM（控制移動）——「雙手接觸×16DIMM卡槽的左右卡扣按壓×16並確認卡扣按壓規定位置」
+- `d007_3ba13f82`：未定（composite_unknown） → GM（一般移動）——「右手抓握电动起子保持住至機箱」
+- `d008_72dc0511`：未定（composite_unknown） → CM（控制移動）——「從料架上拿取假DIMM，去除其包裝袋」
+- `d010_30d9b858`：未定（composite_unknown） → GM（一般移動）——「雙手抓握主板保持住至流水線」
+- `d011_7e40706c`：GM（一般移動） → CM（控制移動）——「雙手接觸DIMM壓合治具推至規定位置」
+- `d019_d9190952`：GM（一般移動） → CM（控制移動）——「雙手接觸DIMM壓合治具拉至規定位置」
+- `d020_a00f4953`：未定（composite_unknown） → CM（控制移動）——「雙手接觸DIMM卡槽的左右卡扣推至規定位置並確認到位」
+- `d021_3eab7c3e`：未定（composite_unknown） → CM（控制移動）——「右手抓握風槍按動按鈕並吹風清潔DIMM卡槽」
+- `d022_9f3d6515`：未定（composite_unknown） → CM（控制移動）——「雙手接觸DIMM卡槽的左右卡扣按壓並確認卡扣按壓規定位置」
+- `d023_f8b21a01`：未定（composite_unknown） → CM（控制移動）——「右手抓握風槍按動按鈕並吹風清潔DIMM」
+- `d024_813bca06`：未定（composite_unknown） → GM（一般移動）——「雙手重新抓握主板放至潔淨棚的工作台」
+- `d027_f721bbfc`：未定（composite_unknown） → CM（控制移動）——「左手抓握主板的包装袋去除」
+- `d031_c6add069`：未定（composite_unknown） → GM（一般移動）——「右手抓握風槍保持住至規定位置處」
+- `d033_51518399`：未定（composite_unknown） → CM（控制移動）——「貼附Label到主板規定位置處」
+- `d035_e55d16c7`：未定（composite_unknown） → CM（控制移動）——「右手從DIMM材料盒拿取Label貼附至主板」
+- `d037_6ae5a84f`：GM（一般移動） → CM（控制移動）——「右手接觸DIMM壓合治具的底板拉至對應的點位」
+- `d038_aa72871a`：未定（composite_unknown） → GM（一般移動）——「左手抓握DIMM材料盒保持住」
+- `d040_4765e5f2`：未定（composite_unknown） → CM（控制移動）——「右手抓握假DIMM的包裝袋撕除」
+- `d042_1dd7c1d5`：GM（一般移動） → CM（控制移動）——「按壓功能測試治具」
+- `d043_5cd079e8`：未定（composite_unknown） → GM（一般移動）——「左手重新抓握主板的包装袋放至料架」
+- `d049_6be614c5`：未定（composite_unknown） → CM（控制移動）——「按壓 DIMM 卡扣到定位」
+- `d052_d58a53a7`：未定（composite_unknown） → GM（一般移動）——「左手抓握假DIMM的包裝袋丟至垃圾桶」
+- `d053_631c3ece`：未定（composite_unknown） → GM（一般移動）——「左手抓握DIMM材料盒放至規定位置處」
+
+### 判型仍未定的 31 筆——卡點逐類
+
+- **動詞跨模型混合（M＋P 同句）→ 棄權（多 cycle 證據，設計如此）**：1 筆
+  - `d005_5cb719bb`：「拿取主板，去除包裝袋，將主板放置工作台」
+- **句面動詞（部分）未登記——卡 `?` 動詞，IE 裁決後可解**：27 筆
+  - `d004_7c6eb8af`（未登記：拿取、插入）：「雙手從DIMM材料盒拿取×16DIMM插入×16至主板」
+  - `d006_b49a90ee`（未登記：確認）：「雙手接觸DIMM卡槽的左右卡扣推×16至規定位置並確認到位」
+  - `d009_ee5c168e`（未登記：鎖附）：「電動起子鎖附 CPU 散熱片螺絲 x4」
+  - `d013_b6ee694d`（未登記：拿取、組於）：「雙手拿取DIMM組於DIMM卡槽 (依據配置要求-16個DIMM)」
+  - `d015_a062c017`（未登記：拿取）：「雙手從料架拿取DIMM材料盒放至潔淨棚的工作台」
+  - `d016_d0350279`（未登記：拿取、清潔）：「拿取風槍清潔放置DIMM材料盒的DIMM」
+  - `d017_af172fd9`（未登記：拿取、組至）：「雙手從DIMM材料盒拿取DIMM組至主板」
+  - `d018_51077fd1`（未登記：拿取、清潔）：「拿取風槍清潔DIMM卡槽」
+  - `d025_bc473698`（未登記：鎖附）：「鎖附主機板固定螺絲 x6」
+  - `d026_1c27dc35`（未登記：組至）：「雙手抓握主板組至機箱」
+  - `d028_28f9ed7e`（未登記：拿取）：「拿取螺絲 x1」
+  - `d029_650ee42f`（未登記：拿取）：「右手從料架拿取主板保持住」
+  - `d030_fe1f3a90`（未登記：拿取、組於）：「拿取假DIMM組於DIMM卡槽 (依據配置要求-16個假DIMM)」
+  - `d032_e945e29e`（未登記：拿取、插入）：「右手拿取×16假DIMM插入×16至DIMM卡槽」
+  - `d036_633b52bb`（未登記：掰開）：「雙手掰開DIMM卡槽的卡扣」
+  - `d039_0423b4e8`（未登記：拿取）：「左手從料架拿取假DIMM保持住至流水線」
+  - `d045_35372a96`（未登記：對準、拿取）：「拿取排線並對準接頭」
+  - `d046_3791550c`（未登記：確認、鎖附）：「右手並鎖附固定並確認螺絲到位」
+  - `d047_7ff8b879`（未登記：確認、鎖附）：「並鎖附固定並確認螺絲到位」
+  - `d050_0461f75d`（未登記：拿取）：「拿取 M.2 SSD」
+  - `d051_ac155900`（未登記：拿取）：「拿取 DIMM 記憶體模組」
+  - `d054_b2618d31`（未登記：拿取）：「小範圍拿取(≤50cm)」
+  - `d055_9c1a987f`（未登記：拿取、組至）：「右手拿取假DIMM組至DIMM卡槽」
+  - `d056_2f0cb396`（未登記：確認）：「並確認DIMM點位」
+  - `d057_0e83128f`（未登記：下壓）：「下壓 CPU 拉桿鎖定」
+  - `d058_130bb1ad`（未登記：鎖附）：「電動鎖附(多顆)」
+  - `d059_323b04c1`（未登記：鎖附）：「鎖附螺絲」
+- **已登記動詞僅 G 或 P 單獨——單一動詞不足以定型**：1 筆
+  - `d048_37fbd2a6`：「放置散熱片於 CPU 上」
+- **句面無動詞面命中——需 IE 改 plan／補描述（非同義詞可解）**：2 筆
+  - `d041_8dfafd2e`：「折合上蓋扣合」
+  - `d060_995f5d45`：「貼標籤」
+
+### P 方向數（IE 情境規則：機構件→對準 single／盤面→無方向 none；名詞分類單一出處＝`src/ddm_v2/nlp/linking.py`）
+
+- 機構件→`p_place_single`（方向數預設一種，不對請改）：3 筆
+- 盤面→`p_place_none`（已套用，請確認）：2 筆
+- 判不出→預設 single＋交 IE 裁決：1 筆
 
 ## Split 分組（傳遞閉包已算好；同 component 必同 split）
 

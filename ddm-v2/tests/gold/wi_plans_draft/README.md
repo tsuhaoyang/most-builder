@@ -37,7 +37,8 @@ wi-gold-v1 相容（見 `tests/gold/wi_plans/README.md`），外加草稿欄位�
 | `source_provenance` | 來源表/id/欄位/DB 時間戳/原文（同句多來源全列） |
 | `challenge_tags` | spec §14.3 的 16 維度；規則式判不動的標 `"unknown"`（不硬湊） |
 | `heuristic_tags_unverified` | `false` 也未覆核的維度清單（quantity/tool/simo 有實證漏標）——true/false 都要確認 |
-| `preannotation_caveat` | 該筆預標註的已知系統性偏差（清單） |
+| `preannotation_caveat` | 該筆預標註的已知系統性偏差（清單）。第三輪（D3-017）新增：`typing_changed_by_verb_lexicon`（判型與僅名詞舊行為不同——請確認）與 `p_direction_*` 三種（「放至/放置」方向數依 IE 情境規則預選：機構件→single／盤面→none／判不出→預設 single 交 IE）。D3-018 M1 新增：`zero_tmu_distance_unstated`（complete 但 **TMU=0.0 非真值**——距離未述＝0cm 的引擎口徑輸出；覆核表逐筆問「補距離或判定句子資訊不足」，原樣轉正撞空殼守門 total_tmu > 0） |
+| `typing_change` | 僅判型變更草稿：`{noun_only_seq, lexicon_seq}` 舊/新判型（與 `typing_changed_by_verb_lexicon` 同進同出；schema 測試重算比對，宣稱不可漂移） |
 | `v3_structure_hint` / `v3_structure_evidence` | 僅切分旗標草稿：v3 結構回填（`single_cycle` / `multi_cycle_n` / `ambiguous`＋逐來源證據：哪個表哪筆幾列、是否 v3 遷移）。hint 是證據不是判決，絕不寫進 `expected.*` |
 | `preannotation` | pipeline/planner/詞典大小/routing 理由（重現資訊；無 timestamp） |
 

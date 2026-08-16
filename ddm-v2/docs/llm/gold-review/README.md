@@ -103,12 +103,24 @@
    adapter 只產 move_place／controlled_move／composite_unknown，永遠不出
    acquire；lint 的作用點是 IE 改完 plan 之後（`--recompile` 會同步本旗標）。
 5. `empty_lexicon_no_slot_candidates` — **第二輪起本旗標已消失**（2026-08-16
-   IE 核可 11 條同字直配同義詞後字典非空，60 筆草稿全數不再帶此旗標；
-   32/60 筆拿到 slot 命中，見 `harvest-summary.md`）。誠實邊界：**cycle 完成度
-   仍 0/60**——rule_based_v1 的 GM/CM 判型只認名詞觸發詞（治具/機台），
-   不吃詞典，50 筆卡在 `composite_unknown`；10 筆 typed GM 全部
-   `missing_core_p`（其中 3 筆卡在未裁決的 `?` P 動詞「放至/放置」）。
-   剩餘 13 個 `?` 動詞面維持候選待 IE 裁決：`synonym-candidates.md`。
+   IE 核可 11 條同字直配同義詞後字典非空）。第二輪誠實記錄（歷史）：cycle
+   完成度 0/60——當時 GM/CM 判型只認名詞觸發詞、不吃詞典。**第三輪
+   （D3-017）判型已吃字典**：typed 10→29 筆（GM 13＋CM 16）、complete 帶 TMU
+   0→27 筆（其中 9 筆 TMU=0.0——距離未述＝0cm＋非核心 slot 未掛，
+   complete≠可信 TMU，見 `harvest-summary.md`「誠實旗標」）；判型仍未定的
+   31 筆卡點逐類見 `harvest-summary.md`「第三輪判型」節（27 筆卡未登記
+   `?` 動詞、1 筆跨模型混合棄權、1 筆單動詞不足、2 筆無動詞面）。
+   剩餘 11 個 `?` 動詞面維持候選待 IE 裁決：`synonym-candidates.md`。
+5b. **第三輪新旗標（D3-017）**：
+   - `typing_changed_by_verb_lexicon` — 本筆判型與「僅名詞」舊行為不同
+     （草稿 `typing_change` 欄存舊/新值），覆核表標
+     「**第三輪判型已修正，請確認**」（本輪 24 筆）。
+   - `p_direction_single_default`／`p_direction_none_by_context`／
+     `p_direction_unclassified_default_single` — 「放至/放置」的方向數已依
+     IE 情境規則預選（機構件→`p_place_single` 一種方向、盤面→`p_place_none`
+     無方向、判不出→預設 single 交 IE）；**每筆覆核表都問「方向數預設一種，
+     不對請改」**。名詞分類清單單一出處＝`src/ddm_v2/nlp/linking.py`
+     （逐項附語料證據；生產 nl-draft、gold_eval 重放、harvest 同一套）。
 6. `engine_rejected_cycle` — 引擎拒絕的 complete cycle。期望端寫的是
    `expected_engine_rejected: true`（重放驗「引擎仍拒絕」，草稿不會產出即紅）；
    但**轉正前必須修正 cycle 值**——原樣轉正沒有 TMU，會撞空殼守門

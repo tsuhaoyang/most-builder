@@ -84,3 +84,69 @@ def test_engines_disagree_marks_reason():
     assert reason == "engines_disagree"
     assert chosen and chosen.option_code == "g_grasp"
     assert {c.option_code for c in top} >= {"g_grasp", "g_touch"}
+
+
+# ── P 方向數情境規則（IE 裁決 D3-017：放入機構件→對準／放上盤面→無方向）──────
+
+_P_VARIANTS = [
+    {"parameter": "P", "option_code": "p_place_single", "synonym_norm": "放至", "priority": 0},
+    {"parameter": "P", "option_code": "p_place_none", "synonym_norm": "放至", "priority": 1},
+    {"parameter": "P", "option_code": "p_place_single", "synonym_norm": "放置", "priority": 0},
+    {"parameter": "P", "option_code": "p_place_none", "synonym_norm": "放置", "priority": 1},
+    {"parameter": "P", "option_code": "p_hold", "synonym_norm": "保持住", "priority": 0},
+]
+
+
+def _p_set(sets):
+    return next(s for s in sets if s.parameter == "P")
+
+
+@pytest.mark.asyncio
+async def test_p_direction_mechanism_defaults_single():
+    """機構件賓語（治具）→ p_place_single（方向數預設一種）；另一變體進 top_k。"""
+    linker = SlotLinker(_P_VARIANTS)
+    sets = await linker.link(_plan("move_place", "雙手抓握主板放至DIMM壓合治具"))
+    p = _p_set(sets)
+    assert p.chosen and p.chosen.option_code == "p_place_single"
+    assert [c.option_code for c in p.top_k[:2]] == ["p_place_single", "p_place_none"]
+
+
+@pytest.mark.asyncio
+async def test_p_direction_surface_picks_none():
+    """盤面賓語（工作台）→ p_place_none（IE 情境規則：無方向）。"""
+    linker = SlotLinker(_P_VARIANTS)
+    sets = await linker.link(_plan("move_place", "雙手重新抓握主板放至潔淨棚的工作台"))
+    p = _p_set(sets)
+    assert p.chosen and p.chosen.option_code == "p_place_none"
+    assert [c.option_code for c in p.top_k[:2]] == ["p_place_none", "p_place_single"]
+
+
+@pytest.mark.asyncio
+async def test_p_direction_unclassified_keeps_default_flags_review():
+    """賓語不在兩類名單（規定位置處）→ 維持預設 single＋needs_review（IE 裁決）。"""
+    linker = SlotLinker(_P_VARIANTS)
+    sets = await linker.link(_plan("move_place", "左手抓握DIMM材料盒放至規定位置處"))
+    p = _p_set(sets)
+    assert p.chosen and p.chosen.option_code == "p_place_single"
+    assert p.needs_review is True
+    assert p.review_reason == "p_direction_unclassified"
+
+
+@pytest.mark.asyncio
+async def test_p_direction_tail_bounded_by_clause():
+    """賓語擷取止於子句標點：「放至定位,再從料架取料」不得跨子句配到料架（盤面）。"""
+    linker = SlotLinker(_P_VARIANTS)
+    sets = await linker.link(_plan("move_place", "放至定位,再從料架取料"))
+    p = _p_set(sets)
+    assert p.chosen and p.chosen.option_code == "p_place_single"
+    assert p.review_reason == "p_direction_unclassified"
+
+
+@pytest.mark.asyncio
+async def test_p_direction_rule_skips_non_variant_faces():
+    """非方向變體面（保持住→p_hold）原樣通過，不被規則改寫。"""
+    linker = SlotLinker(_P_VARIANTS)
+    sets = await linker.link(_plan("move_place", "雙手抓握主板保持住至流水線"))
+    p = _p_set(sets)
+    assert p.chosen and p.chosen.option_code == "p_hold"
+    assert p.review_reason is None

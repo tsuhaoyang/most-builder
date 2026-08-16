@@ -17,6 +17,7 @@ class LexEntry:
     option_code: str   # 對應的選項 code
     score: float       # 信心分：exact=0.95
     source: str        # "exact"
+    priority: int = 0  # 偏好位次：數字小者優先，0＝預設（同面多 code 變體用；D3-017）
 
 
 def build_lexicon(synonyms: list[dict]) -> list[LexEntry]:
@@ -27,6 +28,14 @@ def build_lexicon(synonyms: list[dict]) -> list[LexEntry]:
 
     Returns:
         依 len(norm) 降冪排序的 LexEntry list。
+
+    排序不變量（決定性，不依賴呼叫方傳入順序）：
+    - 主鍵＝(len(norm), norm) 降冪：長詞先匹配（防子字串遮蔽）。
+    - **同 norm 的變體以 (priority, option_code) 升冪決勝**：v2_0038 起同一詞面
+      可掛多個 code（IE 裁決的方向變體，如「放至」→ p_place_single(0)/
+      p_place_none(1)）；match_all 的位置覆蓋讓先到者得，故排前者＝預設。
+      priority 數字小者優先（0＝預設，D3-017 定調）；option_code 收尾保證
+      同 priority 也決定性。
 
     NOTE(impl-05 P4): 第一版所有 DB 同義詞均視為 exact(0.95)。
     "longest_match"(0.8) / "default"(0.3) 信心分層在 Stage 2（retrieval.py）實作。
@@ -41,10 +50,15 @@ def build_lexicon(synonyms: list[dict]) -> list[LexEntry]:
                 option_code=s["option_code"],
                 score=0.95,
                 source="exact",
+                # priority 缺欄視同 0（與 DB server_default、SynonymIn 預設一致）
+                priority=int(s.get("priority") or 0),
             )
         )
-    # 長詞優先（防止子字串遮蔽），priority 相同時以長度決勝
-    return sorted(entries, key=lambda e: (len(e.norm), e.norm), reverse=True)
+    # 兩段 stable sort：先以 (priority, option_code) 升冪定同 norm 內順序，
+    # 再以 (len, norm) 降冪定跨 norm 順序——後者 tie 時保留前者結果。
+    entries.sort(key=lambda e: (e.priority, e.option_code))
+    entries.sort(key=lambda e: (len(e.norm), e.norm), reverse=True)
+    return entries
 
 
 def match_all(

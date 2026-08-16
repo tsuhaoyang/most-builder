@@ -66,7 +66,7 @@
     "planner": "rule_based_v1",
     "rule_set_code": "MINIMOST_FACTORY_V2",
     "lexicon_source": "rule_option_synonyms",
-    "lexicon_size": 11,
+    "lexicon_size": 15,
     "routing_reasons": [
       "composite_unknown"
     ]
@@ -108,6 +108,18 @@
       "parameter": "M",
       "option_code": "m_remove",
       "synonym_norm": "去除",
+      "priority": 0
+    },
+    {
+      "parameter": "P",
+      "option_code": "p_place_none",
+      "synonym_norm": "放置",
+      "priority": 1
+    },
+    {
+      "parameter": "P",
+      "option_code": "p_place_single",
+      "synonym_norm": "放置",
       "priority": 0
     }
   ],

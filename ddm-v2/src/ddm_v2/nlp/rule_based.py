@@ -6,6 +6,13 @@
 3. 全路徑過 normalization.normalize()
 4. context 以介詞框架抽取，抽不出留空而非硬猜
 5. 信心排序：exact=0.95 > longest_match=0.8 > default=0.3（v3 default=1.0 反置）
+
+D3-017（IE 核可）：GM/CM 判型從「只認名詞觸發詞」擴成「動詞字典命中參與判型」
+——M 動詞命中是 CM 訊號、G+P 動詞組合是 GM 訊號；衝突矩陣與棄權路徑見
+`classify_seq`。判型與 slot 填充共用**同一次** lexicon 掃描（同一份傳入的
+synonyms，無平行查詢路徑）。VERSION 維持 rule_based_v1：此名是 planner 路徑
+身分（plan_origin／自我指涉排除的配對鍵），不是行為雜湊；行為變更由
+worklog D3-017 與本 docstring 留痕。
 """
 from __future__ import annotations
 
@@ -16,11 +23,102 @@ from .lexicon import LexEntry, build_lexicon, match_all
 from .normalization import normalize
 from .ports import NLDraftResult, SlotCandidate, SlotSuggestion
 
-# GM/CM 判型關鍵字（v3 治具案例認證）
+# GM/CM 判型關鍵字（v3 治具案例認證）——名詞/片語訊號源
 # CM：在「機台」上執行的動作（並壓合機台、進行壓合、執行壓合）
 # GM：操作「治具/工具」的一般手工動作
 _CM_TRIGGERS = frozenset({"並壓合機台", "並壓合機臺", "進行壓合", "執行壓合", "機台", "機臺"})
 _GM_NOUNS = frozenset({"治具", "壓合站", "壓合位置", "壓合夾具", "壓合治具"})
+
+
+def _noun_seq(norm: str, raw: str) -> str | None:
+    """名詞觸發詞判型（v3 認證行為原樣保留）。
+
+    同時檢查 norm（NFKC+OpenCC 後）與原文（防 OpenCC 轉換改變觸發詞）；
+    CM 觸發詞優先於 GM 名詞（v3 治具防護：治具+機台→CM）。
+    """
+    for kw in _CM_TRIGGERS:
+        if kw in norm or kw in raw:
+            return "CM"
+    for kw in _GM_NOUNS:
+        if kw in norm or kw in raw:
+            return "GM"
+    return None
+
+
+def _verb_seq(params_hit: frozenset[str]) -> str | None:
+    """動詞字典訊號（D3-017：判型吃字典，IE 核可）。
+
+    輸入＝lexicon 命中的 parameter 集合（與 slot 填充**同一次** match_all 的
+    結果——判型不另開查詢路徑）。訊號定義：
+
+    - "CM"：M 動詞命中且無 P——M 是 CM 專屬核心參數（CM＝A B G M X I A，
+      `docs/core-logic/minimost-sequence-model-core-logic-spec.md` §2）；
+      G 可伴隨（CM 自己有 G 格：「接觸＋推/拉」＝IE 已裁的單一 CM）。
+    - "GM"：G 與 P 同時命中且無 M——IE 核可的 GM 訊號（GM＝G＋P 同 cycle）。
+    - "mixed"：M 與 P 同時命中——跨模型混合（M 只存在 CM、P 只存在 GM，
+      不可能同 cycle）＝「≥2 個 cycle」的證據，單 action 判型必棄權。
+    - None：G 單獨或 P 單獨或無命中——單一動詞不足以定序列模型
+      （G 兩型皆有；P 單獨可能是多動作句的殘片），寧可不給訊號、
+      交回名詞判（不硬判）。
+    """
+    has_m = "M" in params_hit
+    has_p = "P" in params_hit
+    has_g = "G" in params_hit
+    if has_m and has_p:
+        return "mixed"
+    if has_m:
+        return "CM"
+    if has_g and has_p:
+        return "GM"
+    return None
+
+
+def classify_seq(norm: str, raw: str, params_hit: frozenset[str]) -> str | None:
+    """GM/CM 判型：名詞觸發詞 × 動詞字典訊號的衝突矩陣（D3-017）。
+
+    ::
+
+        noun\\verb │ None │  GM  │  CM  │ mixed
+        ──────────┼──────┼──────┼──────┼──────
+           None   │ None │  GM  │  CM  │ None
+           GM     │  GM  │  GM  │ CM※1 │ None
+           CM     │  CM  │None※2│  CM  │ None
+
+    衝突優先序與理由：
+
+    - ※1 名詞 GM × 動詞 CM → **CM**（動詞勝）：IE 已裁「接觸＋推/拉」是單一
+      CM（d019「接觸治具拉至定位」型——名詞觸發誤判 GM、動詞 m_pull 才對）。
+      原理：治具/夾具名詞只是「操作對象」證據，不排除對它做控制移動；
+      M 動詞是「序列參數」證據——M 參數只存在 CM，直接對應序列模型。
+      **這不是全域「動詞壓名詞」**，見 ※2。
+    - ※2 名詞 CM × 動詞 GM → **None**（棄權）：無 IE 裁決。機台語境的
+      G+P（「放至機台…」）很可能是「上料（GM）＋機台製程（CM/X）」兩個
+      action——硬判任一型都有一半機率錯，維持 composite_unknown 交 IE。
+      （行為變更點：舊行為此象限由名詞判 CM；動詞證據出現後誠實降級。）
+    - mixed（M+P 同句）→ **None**（棄權，蓋過名詞）：跨模型混合＝多 cycle
+      證據（如「拿取主板,去除包裝袋,將主板放置工作台」M 去除＋P 放置），
+      單 action 判成任何一型都是把多動作硬塞一格。
+    - 動詞無訊號 → 名詞判（既有 v3 認證行為原樣保留，含空詞典路徑）。
+
+    邊界假設（誠實記錄）：動詞命中取自 lexicon 對 norm 的最長匹配，未做
+    「設備名詞內幽靈命中」排除（scripts/gold_harvest.py `_VERB_COMPOUND_NOUNS`
+    是語料統計端的啟發式）——現行已登記動詞面（抓握/接觸/推至/拉至/按壓…）
+    無一是語料設備名（DIMM壓合治具等）的子字串；若未來登記會內嵌於設備名的
+    動詞面（如「壓合」），須先補此排除，否則判型會被名詞內動詞擊穿。
+    """
+    verb = _verb_seq(params_hit)
+    if verb == "mixed":
+        return None
+    noun = _noun_seq(norm, raw)
+    if verb is None:
+        return noun
+    if noun is None or noun == verb:
+        return verb
+    if noun == "GM" and verb == "CM":
+        return "CM"
+    # noun == "CM" and verb == "GM"
+    return None
+
 
 # 距離數值 regex（context 抽取用）
 _DIST_RE = re.compile(r"(\d+(?:\.\d+)?)\s*(?:cm|公分|mm|毫米|吋|英寸|inch)")
@@ -50,27 +148,18 @@ class RuleBasedParser:
         t0 = time.perf_counter()
         norm = normalize(text)
 
-        # ── GM/CM 判型 ──────────────────────────────────────────────────
-        # 同時檢查 norm（NFKC+OpenCC 後）與原文（防 OpenCC 轉換改變觸發詞）
-        seq: str | None = None
-        for kw in _CM_TRIGGERS:
-            if kw in norm or kw in text:
-                seq = "CM"
-                break
-        if seq is None:
-            for kw in _GM_NOUNS:
-                if kw in norm or kw in text:
-                    seq = "GM"
-                    break
+        # ── 最長匹配（slot 填充與判型共用同一次掃描；不另開查詢路徑）──────
+        matches = match_all(norm, self._lexicon)
+
+        # ── GM/CM 判型（名詞觸發詞 × 動詞字典訊號；衝突矩陣見 classify_seq）──
+        params_hit = frozenset(entry.parameter for _, _, entry in matches)
+        seq = classify_seq(norm, text, params_hit)
 
         # ── context 抽取 ─────────────────────────────────────────────────
         context: dict = {"hand": None, "object": None, "from": None, "to": None}
         dist_m = _DIST_RE.search(norm)
         if dist_m:
             context["reach_cm"] = float(dist_m.group(1))
-
-        # ── 最長匹配 ────────────────────────────────────────────────────
-        matches = match_all(norm, self._lexicon)
 
         # 按 parameter 分組，保持匹配出現順序
         by_param: dict[str, list[LexEntry]] = {}

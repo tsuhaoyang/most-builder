@@ -76,7 +76,7 @@ IE 在 UI 審核、修正、採用；**每一筆人工修正都落庫**成 appen
 | `CycleIn` + `cycle_in_to_engine()` | `src/ddm_v2/schemas/v2/most.py` | compiler 輸出目標；**不修改此檔案的既有欄位** |
 | `compute_cycle()` / `load_rule_set_from_db()` | `src/ddm_v2/most_engine/` | draft 驗證與 TMU 唯一來源 |
 | `get_active_rule_set_code()` | `src/ddm_v2/services/v2/rule_set_service.py` | rule_set_code 未指定時解析 active |
-| `rule_option_synonyms`（UNIQUE(rule_set, param, syn_norm)） | `src/ddm_v2/models/v2/synonym.py` | L1 linking 候選池 |
+| `rule_option_synonyms`（UNIQUE(rule_set, param, syn_norm, **option_code**)——v2_0038 放寬為一面多 code；priority＝偏好位次（小者優先、0＝預設），同面撞 priority 由 service 層擋 409（D3-018 H1）） | `src/ddm_v2/models/v2/synonym.py` | L1 linking 候選池 |
 | `motion_templates.keywords/cycle_template` + `score_keywords()` | `models/v2/motion_template.py`、`services/v2/template_matching.py` | L0 完整 cycle 候選（ADR-025 邊界不變） |
 | `SearchService`（L2 trgm、L3 embedding via `EmbeddingProvider`） | `src/ddm_v2/search/` | L2/L3 linking 的既有基建；bge-m3 HTTP adapter 已存在 |
 | Excel staging（`excel_imports`、`staged_rows` JSONB） | `models/v2/import_staging.py`、`services/v2/import_service.py` | Phase L4 批次入口；本 spec 不改其 submit 語意 |

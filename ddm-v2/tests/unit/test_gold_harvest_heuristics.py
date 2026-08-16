@@ -37,11 +37,13 @@ ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(ROOT / "scripts"))
 from gold_harvest import (  # noqa: E402
     _ACTION_VERBS,
+    ZERO_TMU_CAVEAT,
     _action_verb_hits,
     _longest_first_hits,
     _questions_for,
     detect_challenge_tags,
     expected_cycle_from_draft,
+    has_zero_tmu_complete_cycle,
     take_move_pair,
     take_place_pair,
 )
@@ -155,6 +157,49 @@ def test_pair_question_shares_predicate():
     )
     assert "取放建模" not in qs
     assert "取移建模" not in qs
+
+
+# ── D3-018 M1：TMU=0.0 非真值——判定單一出處＋覆核表逐筆提問 ─────────────────
+
+
+def test_zero_tmu_predicate_only_fires_on_complete_zero():
+    """has_zero_tmu_complete_cycle：complete＋TMU=0.0 才觸發——真值 TMU、
+    incomplete、引擎拒絕（無 total_tmu 鍵）都不觸發。"""
+    assert has_zero_tmu_complete_cycle(
+        [{"action_id": "a1", "complete": True, "seq": "CM", "total_tmu": 0.0}]
+    )
+    assert not has_zero_tmu_complete_cycle(
+        [{"action_id": "a1", "complete": True, "seq": "GM", "total_tmu": 28.0}]
+    )
+    assert not has_zero_tmu_complete_cycle(
+        [{"action_id": "a1", "complete": False, "cycle": None}]
+    )
+    # 引擎拒絕的期望（expected_engine_rejected）沒有 total_tmu 鍵——不觸發
+    assert not has_zero_tmu_complete_cycle(
+        [{"action_id": "a1", "complete": True, "expected_engine_rejected": True}]
+    )
+    # 混合：任一 complete cycle 為 0.0 即觸發（一個 0.0 就是一個非真值）
+    assert has_zero_tmu_complete_cycle(
+        [
+            {"action_id": "a1", "complete": True, "seq": "GM", "total_tmu": 28.0},
+            {"action_id": "a2", "complete": True, "seq": "CM", "total_tmu": 0.0},
+        ]
+    )
+
+
+def test_zero_tmu_caveat_gets_per_draft_question():
+    """覆核表逐筆問（M1）：帶 zero_tmu 旗標的草稿必出「補距離或判定資訊不足」
+    的具體問題；無旗標不出——把 `_questions_for` 的提問拆掉即紅。"""
+    draft = _draft_stub_for_questions("雙手接觸DIMM壓合治具推至規定位置")
+    draft["preannotation_caveat"] = [ZERO_TMU_CAVEAT]
+    qs = "\n".join(_questions_for(draft))
+    assert "TMU=0.0" in qs
+    assert "非真值" in qs
+    assert "補距離" in qs and "資訊不足" in qs
+
+    draft["preannotation_caveat"] = []
+    qs = "\n".join(_questions_for(draft))
+    assert "TMU=0.0" not in qs
 
 
 # ── R3：引擎拒絕的期望形狀（stub 複現踩雷情境） ──────────────────────────────

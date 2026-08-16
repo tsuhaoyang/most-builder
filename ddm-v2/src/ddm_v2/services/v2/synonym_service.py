@@ -59,11 +59,28 @@ def _assert_not_retired(rs: RuleSet) -> None:
 
 
 class SynonymConflict(Exception):
-    """UNIQUE(rule_set_id, parameter, synonym_norm) 衝突。"""
+    """UNIQUE(rule_set_id, parameter, synonym_norm, option_code) 衝突（v2_0038）。"""
 
     def __init__(self, existing: dict[str, Any]) -> None:
         super().__init__("synonym_conflict")
         self.existing = existing
+
+
+class SynonymPriorityCollision(Exception):
+    """同 (rule_set, parameter, synonym_norm) 的**其他** option_code 已佔用同一 priority。
+
+    D3-018 H1：v2_0038 放寬 UNIQUE 為含 option_code 後，「同面兩個 code 撞同一
+    priority」DB 不再擋，而 parser 端 tie-break（nlp/lexicon.py build_lexicon：
+    (priority, option_code) 升冪）會按字母序**靜默擇一且不標 review**——未宣告
+    偏好序的撞面是事故（審查實測：g_grasp/g_touch 同掛「握住」priority 0 →
+    永遠選 g_grasp、g_touch 不進 top_k、TMU 錯且無旗標）。一面多 code 是刻意的
+    變體宣告，必須以**不同 priority 顯式宣告偏好序**（數字小者優先，0＝預設）。
+    """
+
+    def __init__(self, existing: dict[str, Any], priority: int) -> None:
+        super().__init__("synonym_priority_collision")
+        self.existing = existing
+        self.priority = priority
 
 
 class SynonymNotFound(Exception):
@@ -107,7 +124,13 @@ async def _get_rule_set(session: AsyncSession, rule_set_code: str) -> RuleSet:
 async def list_synonyms(
     session: AsyncSession, rule_set_code: str
 ) -> list[dict[str, Any]]:
-    """列出指定 rule-set 的所有同義詞，依 parameter + priority 排序。"""
+    """列出指定 rule-set 的所有同義詞，依 parameter + priority 排序。
+
+    priority＝偏好位次（**數字小者優先，0＝預設**；D3-017 定調——同面多 code
+    的變體如「放至」→ p_place_single(0)/p_place_none(1) 以此排序）。列表順序
+    與 parser 端 tie-break（nlp/lexicon.py build_lexicon）同一語意；option_code
+    收尾保證同 priority 時輸出決定性。
+    """
     rs = await _get_rule_set(session, rule_set_code)
     rows = (
         await session.execute(
@@ -115,8 +138,9 @@ async def list_synonyms(
             .where(RuleOptionSynonym.rule_set_id == rs.id)
             .order_by(
                 RuleOptionSynonym.parameter,
-                RuleOptionSynonym.priority.desc(),
+                RuleOptionSynonym.priority,
                 RuleOptionSynonym.synonym_norm,
+                RuleOptionSynonym.option_code,
             )
         )
     ).scalars().all()
@@ -130,6 +154,10 @@ async def create_synonym(
     created_by: str,
 ) -> dict[str, Any]:
     """新增同義詞；UNIQUE 衝突時 raise SynonymConflict（含既有映射）。
+
+    同面（同 parameter+synonym_norm）其他 code 撞同一 priority 時 raise
+    SynonymPriorityCollision（D3-018 H1——一面多 code 需以不同 priority 顯式
+    宣告偏好序）。
 
     data keys: parameter, option_code, synonym_raw, priority(optional)
     """
@@ -170,6 +198,26 @@ async def create_synonym(
             raise OptionCodeNotFound(param_val, option_code_val)
     # A: band-based, no option code table — validation skipped by design
 
+    # D3-018 H1：同面撞 priority 守門。同 (rule_set, parameter, synonym_norm) 已有
+    # **其他** option_code 佔用同一 priority → 409（偏好序未宣告＝parser 端會按
+    # option_code 字母序靜默擇一且無 review 旗標，是事故不是變體）。刻意的變體
+    # （如 p_place 的「放至」→ single(0)/none(1)）以不同 priority 顯式宣告即放行；
+    # 同 code 的重複交給 UNIQUE → SynonymConflict。已知邊界：service 層守門無 DB
+    # 約束背書（並發雙寫可穿透）——見 ADR-023 §3.3 規則 1 補節。
+    collision = (
+        await session.execute(
+            select(RuleOptionSynonym).where(
+                RuleOptionSynonym.rule_set_id == rs_id_val,
+                RuleOptionSynonym.parameter == param_val,
+                RuleOptionSynonym.synonym_norm == synonym_norm_val,
+                RuleOptionSynonym.option_code != option_code_val,
+                RuleOptionSynonym.priority == priority_val,
+            )
+        )
+    ).scalars().first()
+    if collision is not None:
+        raise SynonymPriorityCollision(existing=_to_dict(collision), priority=priority_val)
+
     obj = RuleOptionSynonym(
         id=uuid.uuid4(),
         rule_set_id=rs_id_val,
@@ -185,13 +233,16 @@ async def create_synonym(
         await session.flush()
     except IntegrityError:
         await session.rollback()
-        # Fix-H1: rollback 後只用純值查詢，不碰已過期的 ORM 屬性
+        # Fix-H1: rollback 後只用純值查詢，不碰已過期的 ORM 屬性。
+        # v2_0038 後 UNIQUE 含 option_code：同面可有多 code 變體，衝突對象必須
+        # 以完整鍵回查（只查 (rs, param, norm) 會撈到多列 → MultipleResultsFound）。
         existing = (
             await session.execute(
                 select(RuleOptionSynonym).where(
                     RuleOptionSynonym.rule_set_id == rs_id_val,
                     RuleOptionSynonym.parameter == param_val,
                     RuleOptionSynonym.synonym_norm == synonym_norm_val,
+                    RuleOptionSynonym.option_code == option_code_val,
                 )
             )
         ).scalar_one_or_none()

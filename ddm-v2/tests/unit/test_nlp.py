@@ -304,3 +304,125 @@ def test_parser_cm_trigger_machine_table():
     """
     r = _make_parser().parse("卡合壓合機台作業")
     assert r.suggested_seq == "CM"
+
+
+# ─── D3-017：判型吃字典（動詞訊號源 × 衝突矩陣 × 棄權路徑）──────────────────
+#
+# 動詞面採用實際已登記的 15 條映射之子集；判型與 slot 填充共用同一次
+# match_all（無平行查詢路徑），故測試以 RuleBasedParser 端到端驗 suggested_seq。
+
+_G_GRASP = _syn("G", "g_grasp", "抓握")
+_G_TOUCH = _syn("G", "g_touch", "接觸")
+_M_PULL = _syn("M", "m_pull", "拉至")
+_M_PRESS = _syn("M", "m_press", "按壓")
+_M_REMOVE = _syn("M", "m_remove", "去除")
+_P_HOLD = _syn("P", "p_hold", "保持住")
+_P_PLACE_S = _syn("P", "p_place_single", "放至")
+_P_PLACE_ZHI_S = _syn("P", "p_place_single", "放置")
+
+
+def test_verb_cm_signal_m_alone():
+    """訊號源①：M 動詞命中（無名詞觸發、無 P）→ CM。"""
+    r = _make_parser(_M_PRESS).parse("按壓dimm卡扣到定位")
+    assert r.suggested_seq == "CM"
+
+
+def test_verb_cm_signal_g_plus_m():
+    """訊號源①（G 伴隨）：接觸＋拉至（CM 自己有 G 格）→ CM。"""
+    r = _make_parser(_G_TOUCH, _M_PULL).parse("雙手接觸左右卡扣拉至規定位置")
+    assert r.suggested_seq == "CM"
+
+
+def test_verb_gm_signal_g_plus_p():
+    """訊號源②：G＋P 動詞組合命中（無名詞觸發、無 M）→ GM。"""
+    r = _make_parser(_G_GRASP, _P_HOLD).parse("雙手抓握主板保持住至流水線")
+    assert r.suggested_seq == "GM"
+
+
+def test_verb_cm_overrides_gm_noun():
+    """衝突 ※1：名詞說 GM（治具）、動詞說 CM（m_pull）→ CM。
+
+    d019「接觸治具拉至定位」正是此型——IE 已裁「接觸＋推/拉」是單一 CM，
+    名詞觸發在此象限是誤判（治具只是操作對象）。
+    """
+    r = _make_parser(_G_TOUCH, _M_PULL).parse("雙手接觸DIMM壓合治具拉至規定位置")
+    assert r.suggested_seq == "CM"
+
+
+def test_gm_verbs_with_cm_noun_abstain():
+    """衝突 ※2：名詞說 CM（機台）、動詞說 GM（G+P）→ 棄權（None）。
+
+    非全域「動詞壓名詞」：此象限無 IE 裁決（可能是上料＋機台製程兩個
+    action），硬判必有一半機率錯——寧可棄權。
+    """
+    r = _make_parser(_G_GRASP, _P_PLACE_S).parse("雙手抓握主板放至機台")
+    assert r.suggested_seq is None
+
+
+def test_mixed_verbs_abstain_even_with_noun():
+    """棄權路徑：M＋P 同句（跨模型混合＝多 cycle 證據）→ None，名詞在場也不救。
+
+    「去除（M）＋放置（P）」不可能同 cycle（M 只在 CM、P 只在 GM）；
+    這正是多動作句（d005 型），單 action 判任何型都是硬塞。
+    """
+    r = _make_parser(_M_REMOVE, _P_PLACE_ZHI_S).parse(
+        "拿取主板,去除包裝袋,將主板放置壓合治具"
+    )
+    assert r.suggested_seq is None
+
+
+def test_p_alone_gives_no_verb_signal():
+    """P 單獨命中＝無動詞訊號（單一動詞不足以定序列）→ 無名詞則 None。"""
+    r = _make_parser(_P_PLACE_ZHI_S).parse("放置散熱片於cpu上")
+    assert r.suggested_seq is None
+
+
+def test_g_alone_falls_back_to_noun():
+    """G 單獨命中＝無動詞訊號 → 回名詞判（治具→GM）；無名詞→None。"""
+    with_noun = _make_parser(_G_GRASP).parse("雙手抓握主板放進DIMM壓合治具")
+    assert with_noun.suggested_seq == "GM"
+    without_noun = _make_parser(_G_GRASP).parse("雙手抓握主板")
+    assert without_noun.suggested_seq is None
+
+
+def test_empty_lexicon_preserves_noun_only_behavior():
+    """空詞典＝動詞訊號恆無 → 與舊（僅名詞）行為完全一致（回歸保護）。"""
+    r1 = _make_parser().parse("雙手接觸DIMM壓合治具拉至規定位置")
+    assert r1.suggested_seq == "GM"  # 舊行為：名詞觸發（動詞不參與）
+    r2 = _make_parser().parse("按壓dimm卡扣到定位")
+    assert r2.suggested_seq is None
+
+
+# ─── v2_0038：同 norm 多 code 的決定性 tie-break（priority 0＝預設先匹配）────
+
+
+def test_build_lexicon_same_norm_priority_zero_wins():
+    """同 norm 兩變體：priority 0（預設）排前——與輸入順序無關。"""
+    # 故意以 priority 1 在前的順序輸入
+    lex = build_lexicon([
+        _syn("P", "p_place_none", "放至", priority=1),
+        _syn("P", "p_place_single", "放至", priority=0),
+    ])
+    codes = [e.option_code for e in lex]
+    assert codes == ["p_place_single", "p_place_none"]
+    # match_all 位置覆蓋 → 只有預設變體出現在命中清單
+    hits = [e.option_code for _, _, e in match_all("雙手抓握主板放至治具", lex)]
+    assert hits == ["p_place_single"]
+
+
+def test_build_lexicon_same_norm_same_priority_code_tiebreak():
+    """同 norm 同 priority：以 option_code 升冪決勝（完全決定性）。"""
+    lex = build_lexicon([
+        _syn("P", "p_b", "放至", priority=0),
+        _syn("P", "p_a", "放至", priority=0),
+    ])
+    assert [e.option_code for e in lex] == ["p_a", "p_b"]
+
+
+def test_build_lexicon_cross_norm_order_unchanged():
+    """跨 norm 排序不變量：仍以 (len, norm) 降冪（長詞先；priority 不跨面比較）。"""
+    lex = build_lexicon([
+        _syn("G", "G1", "拿取", priority=9),
+        _syn("G", "G2", "拿取小型零件", priority=0),
+    ])
+    assert [e.option_code for e in lex] == ["G2", "G1"]

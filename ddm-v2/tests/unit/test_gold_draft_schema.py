@@ -25,6 +25,9 @@
    v3 證據 cycle 數對不上＝決策規則壞了）、hint 絕不寫進 `expected.*`（誠實
    邊界）、`acquire_without_place` 旗標與 plan 的 action_type 序列判定同進同出
    （5c；單一判定函式）。
+   D3-018 追加（5g）：`zero_tmu_distance_unstated` 旗標與 expected_cycles 的
+   complete＋TMU=0.0 同進同出（單一出處 `has_zero_tmu_complete_cycle`）——
+   TMU=0.0 非真值，IE 覆核表必須逐筆看到。
    D3-015 追加（5d）：`ie_review` 的單一出處＝`review-state.json`——草稿區塊
    必須等於對應 entry 的投影（`review_block_from_entry` 同一函式）；
    `ie_ruling_rejected` 證據標記與 entry 的 `ie_rejected_evidence` 同進同出；
@@ -66,15 +69,21 @@ DRAFT_DIR = ROOT / "tests" / "gold" / "wi_plans_draft"
 # 挑戰維度定義的唯一出處是 harvest 腳本（tests 與 scripts 共用，不複製清單）
 sys.path.insert(0, str(ROOT / "scripts"))
 from gold_harvest import (  # noqa: E402
+    _ACTION_TYPE_TO_SEQ,
     DIM_KEYS,
     HEURISTIC_UNVERIFIED_DIMS,
+    P_DIRECTION_CAVEAT_NAMES,
+    P_DIRECTION_CAVEATS,
     PLAN_ORIGIN_PREANNOTATION,
     REVIEW_STATE_FILENAME,
     SEGMENTATION_CAVEATS,
     STRUCTURE_HINT_AMBIGUOUS,
     STRUCTURE_HINT_SINGLE,
+    TYPING_CHANGED_CAVEAT,
+    ZERO_TMU_CAVEAT,
     acquire_without_place,
     draft_sha8,
+    has_zero_tmu_complete_cycle,
     load_review_state,
     review_block_from_entry,
 )
@@ -264,6 +273,63 @@ async def test_draft_case(
         data["plan"]["actions"]
     ), f"{fname}：acquire_without_place 旗標與 plan 的 action_type 序列判定不一致"
 
+    # 5e. D3-017：判型變更旗標 ⟺ typing_change 欄同進同出，且欄值與單一出處
+    # 一致（舊＝classify_seq 空詞典重算；新＝plan 的 action_type 直讀）——
+    # 覆核表「第三輪判型已修正」的宣稱必須可重算，不是手抄
+    from ddm_v2.nlp.rule_based import classify_seq
+
+    tc = data.get("typing_change")
+    assert (TYPING_CHANGED_CAVEAT in caveats) == (tc is not None), (
+        f"{fname}：{TYPING_CHANGED_CAVEAT} 旗標與 typing_change 欄不同進同出"
+    )
+    if tc is not None:
+        old_seq = classify_seq(
+            data["plan"]["normalized_text"], str(data["source_text"]), frozenset()
+        )
+        new_seq = _ACTION_TYPE_TO_SEQ.get(data["plan"]["actions"][0]["action_type"])
+        assert tc == {"noun_only_seq": old_seq, "lexicon_seq": new_seq}, (
+            f"{fname}：typing_change 欄與重算不一致（宣稱漂移）"
+        )
+        assert old_seq != new_seq, f"{fname}：typing_change 掛旗但舊/新判型相同"
+
+    # 5f. D3-017：P 方向數旗標與單一出處（nlp.linking.classify_p_destination）
+    # 一致——cycle 實際選了方向變體才發旗標，且旗標名對應分類結果
+    from ddm_v2.nlp.lexicon import build_lexicon
+    from ddm_v2.nlp.linking import (
+        P_VARIANT_DEFAULT,
+        P_VARIANT_SURFACE,
+        classify_p_destination,
+    )
+
+    p_flags = [c for c in caveats if c in P_DIRECTION_CAVEAT_NAMES]
+    p_chosen = {
+        ec.get("p_base_code") for ec in data.get("expected_cycles") or []
+    } - {None}
+    has_variant = bool(p_chosen & {P_VARIANT_DEFAULT, P_VARIANT_SURFACE})
+    assert bool(p_flags) == has_variant, (
+        f"{fname}：P 方向數旗標（{p_flags}）與 cycle 的方向變體選擇（{p_chosen}）不同進同出"
+    )
+    if p_flags:
+        assert len(p_flags) == 1, f"{fname}：P 方向數旗標必須恰一個：{p_flags}"
+        lex = build_lexicon(data.get("synthetic_synonyms") or [])
+        outcome = classify_p_destination(data["plan"]["normalized_text"], lex)
+        expected_flag = P_DIRECTION_CAVEATS.get(
+            outcome, "p_direction_unclassified_default_single"
+        )
+        assert p_flags[0] == expected_flag, (
+            f"{fname}：P 方向數旗標 {p_flags[0]} 與分類結果 {outcome} 不一致"
+        )
+
+    # 5g. D3-018 M1：TMU=0.0 旗標與期望 cycle 同進同出（單一出處＝
+    # has_zero_tmu_complete_cycle；preannotate 的旗標拆掉再重產草稿 → 這裡必紅）。
+    # complete 是結構完成度不是 TMU 可信度——TMU=0.0 非真值必須逐筆點名。
+    assert (ZERO_TMU_CAVEAT in caveats) == has_zero_tmu_complete_cycle(
+        data.get("expected_cycles") or []
+    ), (
+        f"{fname}：{ZERO_TMU_CAVEAT} 旗標與 expected_cycles 的 TMU=0.0 不同進同出"
+        "（旗標無 0.0＝誤報；0.0 無旗標＝IE 看不到警示）"
+    )
+
     # 5d. D3-015：ie_review（IE 覆核狀態）的單一出處＝review-state.json——
     # 草稿上的區塊必須是對應 entry 的投影（review_block_from_entry 同一函式），
     # 不許草稿單方面長出/漂移覆核狀態（沒有 entry 的 ie_review 下一輪 --force
@@ -355,7 +421,7 @@ def test_provenance_mutation_detected(drafts: list[tuple[Path, dict]]):
     )
 
 
-# ── 第二輪基線（2026-08-16：同義詞 11 條登記後的 harvest 既成事實）──────────
+# ── 第三輪基線（2026-08-16：D3-017 放至/放置登記＋判型吃字典後的既成事實）───
 #
 # 為什麼要釘：同義詞登記後，草稿的 slot 命中（synthetic_synonyms）與 cycle
 # 完成度是「已達成的管線能力」——下一輪 harvest 若因 DB 同義詞被誤刪/改壞而
@@ -363,10 +429,12 @@ def test_provenance_mutation_detected(drafts: list[tuple[Path, dict]]):
 # 必須紅燈，不准靜默。基線是**既成事實的記錄**，更新它必須是有意識的編輯
 # （新一輪 harvest 後 coverage 只增不減：superset 斷言下增長自動綠）。
 #
-# 誠實記錄：第二輪 complete＝**0 筆**。11 條同字直配同義詞讓 32 筆草稿拿到
-# slot 命中，但 rule_based_v1 的 GM/CM 判型只認名詞觸發詞（治具/機台），
-# 不吃詞典——50 筆 composite_unknown 卡在判型；10 筆 typed GM 全部
-# missing_core_p（其中 3 筆卡在未裁決的 `?` P 動詞「放至/放置」）。
+# 第三輪記錄（前值：第二輪 complete＝0、slot 命中 32 筆）：
+# - 「放至/放置」各掛兩變體（p_place_single 預設／p_place_none 盤面；v2_0038
+#   一面多 code），同 norm 變體整組進 synthetic_synonyms（重放等價）。
+# - 判型吃字典（rule_based.classify_seq）後 typed 60→29 筆（GM 13＋CM 16），
+#   complete 帶 TMU＝27 筆——其中 9 筆 TMU=0.0（距離未述＋非核心 slot 未掛，
+#   見 harvest-summary 誠實旗標），complete≠可信 TMU。
 # COMPLETE_TMU_SHA8_BASELINE 是**等值釘**：complete 集合任何變動（增或減）
 # 都必須有意識地更新本常數——IE 覆核工作量的數字不准漂移。
 SYN_COVERAGE_SHA8_BASELINE: dict[str, frozenset[str]] = {
@@ -377,15 +445,16 @@ SYN_COVERAGE_SHA8_BASELINE: dict[str, frozenset[str]] = {
         "1c27dc35": ["G:g_grasp"],
         "1dd7c1d5": ["M:m_press"],
         "30d9b858": ["G:g_grasp", "P:p_hold"],
-        "314f0644": ["G:g_grasp"],
+        "314f0644": ["G:g_grasp", "P:p_place_none", "P:p_place_single"],
+        "37fbd2a6": ["P:p_place_none", "P:p_place_single"],
         "3ba13f82": ["G:g_grasp", "P:p_hold"],
         "3eab7c3e": ["G:g_grasp", "M:m_btn"],
         "4765e5f2": ["G:g_grasp", "M:m_teartape"],
         "51518399": ["M:m_attach"],
-        "5cb719bb": ["M:m_remove"],
-        "5cd079e8": ["G:g_grasp"],
-        "6017ab5e": ["G:g_grasp"],
-        "631c3ece": ["G:g_grasp"],
+        "5cb719bb": ["M:m_remove", "P:p_place_none", "P:p_place_single"],
+        "5cd079e8": ["G:g_grasp", "P:p_place_none", "P:p_place_single"],
+        "6017ab5e": ["G:g_grasp", "P:p_place_none", "P:p_place_single"],
+        "631c3ece": ["G:g_grasp", "P:p_place_none", "P:p_place_single"],
         "650ee42f": ["P:p_hold"],
         "6678c378": ["G:g_grasp"],
         "6ae5a84f": ["G:g_touch", "M:m_pull"],
@@ -393,22 +462,31 @@ SYN_COVERAGE_SHA8_BASELINE: dict[str, frozenset[str]] = {
         "6fa45cdb": ["M:m_press"],
         "72dc0511": ["M:m_remove"],
         "7e40706c": ["G:g_touch", "M:m_push"],
-        "813bca06": ["G:g_grasp"],
+        "813bca06": ["G:g_grasp", "P:p_place_none", "P:p_place_single"],
         "9f3d6515": ["G:g_touch", "M:m_press"],
         "a00f4953": ["G:g_touch", "M:m_push"],
+        "a062c017": ["P:p_place_none", "P:p_place_single"],
         "aa72871a": ["G:g_grasp", "P:p_hold"],
         "b49a90ee": ["G:g_touch"],
         "c6add069": ["G:g_grasp", "P:p_hold"],
+        "d0350279": ["P:p_place_none", "P:p_place_single"],
         "d58a53a7": ["G:g_grasp", "P:p_toss"],
         "d9190952": ["G:g_touch", "M:m_pull"],
         "e55d16c7": ["M:m_attach"],
         "f721bbfc": ["G:g_grasp", "M:m_remove"],
         "f8b21a01": ["G:g_grasp", "M:m_btn"],
+        "fe5391c6": ["P:p_place_none", "P:p_place_single"],
     }.items()
 }
-# 第二輪 complete＝0 筆（誠實記錄，不美化）；未來輪 complete 出現時必須把
-# 該 sha8 加進來（等值釘會紅，逼出有意識的更新）。
-COMPLETE_TMU_SHA8_BASELINE: frozenset[str] = frozenset()
+# 第三輪 complete＝27 筆（等值釘；13 GM＋16 CM 中 core 參數有值者；
+# 9 筆 TMU=0.0 也在列——「complete」是結構完成度，不是 TMU 可信度）。
+COMPLETE_TMU_SHA8_BASELINE: frozenset[str] = frozenset({
+    "0acd56df", "1dd7c1d5", "30d9b858", "314f0644", "3ba13f82", "3eab7c3e",
+    "4765e5f2", "51518399", "5cd079e8", "6017ab5e", "631c3ece", "6ae5a84f",
+    "6be614c5", "6fa45cdb", "72dc0511", "7e40706c", "813bca06", "9f3d6515",
+    "a00f4953", "aa72871a", "c6add069", "d58a53a7", "d9190952", "e55d16c7",
+    "f721bbfc", "f8b21a01", "fe5391c6",
+})
 
 
 def _has_complete_tmu(data: dict) -> bool:

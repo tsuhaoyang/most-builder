@@ -2,7 +2,8 @@
 
 涵蓋：
 - synonyms CRUD：list(200) / create IE(201) / duplicate(409+SYNONYM_CONFLICT) /
-  viewer 403 / delete(204)
+  同面撞 priority(409+SYNONYM_PRIORITY_COLLISION，D3-018 H1) / viewer 403 /
+  delete(204)
 - nl-draft：POST → 200，回傳 normalized_text + slots（7 個）+ F-05 GM 判型驗收
 
 對應規格：
@@ -90,6 +91,110 @@ async def test_create_synonym_duplicate_returns_409(client):
     assert "detail" in body
     assert body["detail"]["code"] == "SYNONYM_CONFLICT"
     assert "existing" in body["detail"]
+
+
+async def test_create_synonym_same_norm_two_codes_variant_group(client):
+    """同一詞面掛兩個 option code（v2_0038 一面多 code；D3-017 方向變體型）。
+
+    Given 同 parameter/synonym_norm、不同 option_code、priority 0/1，
+    Then 兩條都 201；list 兩條都在；同 (norm, code) 重複才 409。
+    """
+    code = await _get_rs_code(client)
+    sfx = uuid.uuid4().hex[:8]
+    raw = f"變體測試放至{sfx}"
+    first = await client.post(
+        f"/api/v2/rule-sets/{code}/synonyms",
+        json={"parameter": "P", "option_code": "p_place_single", "synonym_raw": raw, "priority": 0},
+    )
+    assert first.status_code == 201, first.text
+    second = await client.post(
+        f"/api/v2/rule-sets/{code}/synonyms",
+        json={"parameter": "P", "option_code": "p_place_none", "synonym_raw": raw, "priority": 1},
+    )
+    assert second.status_code == 201, second.text
+
+    lst = await client.get(f"/api/v2/rule-sets/{code}/synonyms")
+    assert lst.status_code == 200
+    mine = [s for s in lst.json() if s["synonym_raw"] == raw]
+    assert {(s["option_code"], s["priority"]) for s in mine} == {
+        ("p_place_single", 0),
+        ("p_place_none", 1),
+    }
+
+    # 同 (norm, code) 重複＝仍然 409（新 UNIQUE 的邊界）
+    dup = await client.post(
+        f"/api/v2/rule-sets/{code}/synonyms",
+        json={"parameter": "P", "option_code": "p_place_none", "synonym_raw": raw, "priority": 2},
+    )
+    assert dup.status_code == 409, dup.text
+    assert dup.json()["detail"]["code"] == "SYNONYM_CONFLICT"
+    assert dup.json()["detail"]["existing"]["option_code"] == "p_place_none"
+
+    # 清理（不污染 dev DB 詞典——變體測試面不留在正式詞典裡）
+    for s in mine:
+        d = await client.delete(f"/api/v2/rule-sets/{code}/synonyms/{s['id']}")
+        assert d.status_code == 204, d.text
+
+
+async def test_create_synonym_same_norm_same_priority_other_code_rejected(client):
+    """D3-018 H1：同面（同 param+norm）其他 code 撞同一 priority → 409。
+
+    審查實測的事故型態：IE 對 g_grasp 加「握住」、又對 g_touch 加同一個
+    「握住」（前端不送 priority、預設 0）→ 兩列 priority 0 → parser 按
+    (priority, option_code) 字母序**靜默選 g_grasp、無 review 旗標**，TMU 錯
+    且 g_touch 不進 top_k。守門：未宣告偏好序的撞面 4xx；顯式不同 priority
+    （刻意變體）放行。把 service 層守門拆掉 → 本測試紅（mutation 證據）。
+    """
+    code = await _get_rs_code(client)
+    sfx = uuid.uuid4().hex[:8]
+    raw = f"握住{sfx}"
+    first = await client.post(
+        f"/api/v2/rule-sets/{code}/synonyms",
+        json={"parameter": "G", "option_code": "g_grasp", "synonym_raw": raw, "priority": 0},
+    )
+    assert first.status_code == 201, first.text
+
+    # 同 norm、同 priority、不同 code → 409 SYNONYM_PRIORITY_COLLISION
+    clash = await client.post(
+        f"/api/v2/rule-sets/{code}/synonyms",
+        json={"parameter": "G", "option_code": "g_touch", "synonym_raw": raw, "priority": 0},
+    )
+    assert clash.status_code == 409, clash.text
+    detail = clash.json()["detail"]
+    assert detail["code"] == "SYNONYM_PRIORITY_COLLISION"
+    assert "priority" in detail["message"] and "偏好序" in detail["message"]
+    assert detail["existing"]["option_code"] == "g_grasp"
+
+    # 顯式宣告偏好序（不同 priority）→ 201（刻意變體放行）
+    variant = await client.post(
+        f"/api/v2/rule-sets/{code}/synonyms",
+        json={"parameter": "G", "option_code": "g_touch", "synonym_raw": raw, "priority": 1},
+    )
+    assert variant.status_code == 201, variant.text
+
+    # 清理（H1 測試自己清理——DB 詞典維持既有條數）
+    lst = await client.get(f"/api/v2/rule-sets/{code}/synonyms")
+    for s in lst.json():
+        if s["synonym_raw"] == raw:
+            d = await client.delete(f"/api/v2/rule-sets/{code}/synonyms/{s['id']}")
+            assert d.status_code == 204, d.text
+
+
+async def test_existing_dictionary_has_no_priority_collision(client):
+    """D3-018 H1 資料前提：既有詞典無「同面多 code 撞同一 priority」——
+    (parameter, synonym_norm, priority) 在不同 option_code 間不得重複
+    （p_place 的兩變體是 priority 0/1，不違反）。"""
+    code = await _get_rs_code(client)
+    lst = await client.get(f"/api/v2/rule-sets/{code}/synonyms")
+    assert lst.status_code == 200
+    seen: dict[tuple[str, str, int], str] = {}
+    for s in lst.json():
+        key = (s["parameter"], s["synonym_norm"], s["priority"])
+        prev = seen.setdefault(key, s["option_code"])
+        assert prev == s["option_code"], (
+            f"既有詞典同面撞 priority：{key} → {prev} 與 {s['option_code']}——"
+            "偏好序未宣告，parser 會靜默擇一（需 IE 以不同 priority 排序）"
+        )
 
 
 async def test_create_synonym_non_ie_returns_403(client):

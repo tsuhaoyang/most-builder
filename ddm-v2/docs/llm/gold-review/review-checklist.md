@@ -6,7 +6,7 @@
 
 **先讀這個——預標註的系統性偏差**：現行 rule planner 對任何輸入都只會產生**1 個 action、evidence=整句**。所以「預測 action 數=1」不是模型判斷，是結構限制；帶 `likely_multi_action_undercounted` 的每一筆都請假設切分是錯的，逐動詞重切（**例外**：該筆若有 `v3_structure_hint: single_cycle`，警語降級——v3 結構顯示 IE 當初建為單一 cycle，預設依此）。帶 `take_place_pair_may_be_single_gm` 的是「取＋放」配對——GM 本來就是 G＋P 同 cycle，**不預設低估**，請用該筆的「取放建模」題裁決單一 GM 或兩個 action。帶 `take_move_pair_may_be_single_cm` 的是「取/觸＋推/拉」配對——CM 的 G 與 M 同一 cycle，同樣**不預設低估**，請用該筆的「取移建模」題裁決單一 CM 或兩個 action。配對題與切分題已用 **v3 結構回填**（D3-014 裁決 3：v3 遷移資料是 IE 驗證過並提供的，結構＝IE 的切分裁決）：有結構答案的是**確認題**（預設依 v3 結構，不同意再改），缺失/矛盾的維持開放題——hint 是證據不是判決，IE 可推翻。帶 `acquire_without_place` 的是「取而無放」（裁決 2：取最後一定有放）——請回答該筆的「放」在哪（WARN 不 BLOCK；單句 acquire 可能合法）。另外：`challenge_tags` 裡 9 個可判維度的 `false` 也是啟發式輸出（`heuristic_tags_unverified` 點名的維度已有實證漏標），true/false 請一併確認。
 
-共 60 筆，其中 41 筆帶 ⚠️ 旗標。
+共 60 筆，其中 44 筆帶 ⚠️ 旗標。
 
 其中 **41 筆**已由 `review-state.json` 合併 IE 覆核狀態（各節「IE 覆核狀態」行）。注意：那是**切分維度**的確認/裁決，**不是整筆 gold 核准**——cycle 仍 incomplete 的照樣要覆核 option code，轉正另有流程（`docs/llm/gold-review/README.md`）。
 
@@ -20,22 +20,23 @@
 **挑戰維度（規則式判定）**：全形字元、中英混合、多 action、數量、工具持有
 **v3 結構**：`multi_cycle_3`——`motion_modules/d630108e…`（name_zh (category=wi-template)；3 cycle；v3）（hint 是證據不是判決；預設依 v3 結構，IE 可推翻）
 **✅ IE 覆核狀態（切分維度）**：已確認照 v3 結構預設（IEC141289，2026-08-16）。僅確認切分，不是整筆 gold 核准；`ie_modified: false`（確認≠修改——本筆不計入 planner 段 Plan 層證據力）。
+**⚠️ typing_changed_by_verb_lexicon**：**第三輪判型已修正，請確認**：動詞字典自本輪參與 GM/CM 判型（D3-017，衝突矩陣見 nlp/rule_based.py classify_seq）——舊判型（僅名詞觸發）＝GM（一般移動），新判型（動詞字典參與）＝CM（控制移動）。不同意新判型請在本筆「判型」題回答
 **⚠️ likely_multi_action_undercounted**：rule planner 結構上永遠只出 1 個 action；本句含多動詞/連接詞，**切分幾乎必然低估**——請務必逐動詞檢查
 
 **預測 action 數**：1
 **預測切分（evidence 以【】標在正規化原文上）**：
-- `a1` move_place：【確認dimm點位,並按壓dimm壓合治具的把手 (依據配置要求-16個dimm)】
+- `a1` controlled_move：【確認dimm點位,並按壓dimm壓合治具的把手 (依據配置要求-16個dimm)】
 
 **預測 TMU / tech line**：
-- `a1`：未編譯（missing_core_p）
+- `a1`：TMU=3.0，tech line=`A0 B0 G0 M3 X0 I0 A0`
 **預測 routing**：`review`
 
 **IE 請回答**：
 1. 切分：預測 action 數 = 1。本句實際應拆成幾個 action？若不同，請在 plan.actions 增列並各給 evidence（原文子字串與 offset）。【v3 結構】IE 當初把這句切成 **3 個 cycle**（證據：`motion_modules/d630108e…`（name_zh (category=wi-template)；3 cycle；v3）），預設依此切分；不同意再改。
-2. 判型（a1）：預測為 move_place，對嗎？若對，core 參數 P（放置） 的 option code 是什麼？（預標註無候選時請直接填）
+2. 判型（a1）：預測為 controlled_move，對嗎？若對，core 參數 M（控制移動） 的 option code 是什麼？（預標註無候選時請直接填）【第三輪判型已修正：GM（一般移動） → CM（控制移動），請確認】
 3. 數量：句中的數量應掛在哪個 action？frequency=N 還是 repeat？（現行 QuantityPolicyV1 保守處理並標 quantity_policy_review）
 4. 工具持有：工具是否跨動作持有？若是，後續動作 G 應留空並在 dependencies 標 tool_held_for。
-5. routing：預測 routing_status = review（理由：no_candidate_p、missing_core_p）。核准後應維持這個值嗎？
+5. routing：預測 routing_status = review（理由：無）。核准後應維持這個值嗎？
 
 ---
 
@@ -47,6 +48,7 @@
 **挑戰維度（規則式判定）**：繁簡（簡體字/大陸用語）、中英混合、工具持有、SIMO／雙手
 **v3 結構**：`single_cycle`——`motion_module_versions/62d5bebb…`（rows[0].sub_activity；1 cycle；v3）；`motion_module_versions/89add432…`（rows[0].sub_activity；1 cycle；v3）；`motion_modules/310981d5…`（name_zh (category=action)；1 cycle；v3）（hint 是證據不是判決；預設依 v3 結構，IE 可推翻）
 **✅ IE 覆核狀態（切分維度）**：已確認照 v3 結構預設（IEC141289，2026-08-16）。僅確認切分，不是整筆 gold 核准；`ie_modified: false`（確認≠修改——本筆不計入 planner 段 Plan 層證據力）。
+**⚠️ p_direction_single_default**：P 方向數（IE 情境規則 D3-017）：賓語屬**機構件類**（治具/卡槽/機箱/接頭/點位）→ 必對準，已預設 `p_place_single`。**方向數預設一種，不對請改**（p_place_multi 多種方向／p_place_none 無方向）
 **⚠️ take_place_pair_may_be_single_gm**：本句是「取＋放」動詞配對（無連接詞）——MiniMOST 的 GM 序列本來就是 G＋P 同一 cycle，單 action 不必然是低估。請裁決：建成**單一 GM cycle**（G 與 P 各取值）還是 acquire＋move_place **兩個 action**（見下方「取放建模」題；不預設方向）
 
 **預測 action 數**：1
@@ -54,16 +56,17 @@
 - `a1` move_place：【雙手抓握主機板放至dimm壓合治具】
 
 **預測 TMU / tech line**：
-- `a1`：未編譯（missing_core_p）
+- `a1`：TMU=16.0，tech line=`A0 B0 G0 A0 B0 P16 A0`
 **預測 routing**：`review`
 
 **IE 請回答**：
 1. 切分：預測 action 數 = 1。本句實際應拆成幾個 action？若不同，請在 plan.actions 增列並各給 evidence（原文子字串與 offset）。【v3 結構】IE 當初把這句建為**單一 cycle**（證據：`motion_module_versions/62d5bebb…`（rows[0].sub_activity；1 cycle；v3）；`motion_module_versions/89add432…`（rows[0].sub_activity；1 cycle；v3）；`motion_modules/310981d5…`（name_zh (category=action)；1 cycle；v3）），預設依此；不同意再改。
 2. 判型（a1）：預測為 move_place，對嗎？若對，core 參數 P（放置） 的 option code 是什麼？（預標註無候選時請直接填）
-3. 取放建模（確認題）：v3 結構顯示 IE 當初把這句建為**單一 cycle**（證據：`motion_module_versions/62d5bebb…`（rows[0].sub_activity；1 cycle；v3）；`motion_module_versions/89add432…`（rows[0].sub_activity；1 cycle；v3）；`motion_modules/310981d5…`（name_zh (category=action)；1 cycle；v3））——**預設建成單一 GM cycle（G 與 P 各取值）**；不同意再改成 acquire + move_place 兩個 action（hint 是證據不是判決，可推翻）。
-4. 工具持有：工具是否跨動作持有？若是，後續動作 G 應留空並在 dependencies 標 tool_held_for。
-5. SIMO/雙手：左右手是否同時動作？是否需標 hand 與 SIMO 群組？（現行 plan 契約未表達 SIMO——若需要請註記）
-6. routing：預測 routing_status = review（理由：no_candidate_p、missing_core_p）。核准後應維持這個值嗎？
+3. P 方向數：P 方向數（IE 情境規則 D3-017）：賓語屬**機構件類**（治具/卡槽/機箱/接頭/點位）→ 必對準，已預設 `p_place_single`。**方向數預設一種，不對請改**（p_place_multi 多種方向／p_place_none 無方向）
+4. 取放建模（確認題）：v3 結構顯示 IE 當初把這句建為**單一 cycle**（證據：`motion_module_versions/62d5bebb…`（rows[0].sub_activity；1 cycle；v3）；`motion_module_versions/89add432…`（rows[0].sub_activity；1 cycle；v3）；`motion_modules/310981d5…`（name_zh (category=action)；1 cycle；v3））——**預設建成單一 GM cycle（G 與 P 各取值）**；不同意再改成 acquire + move_place 兩個 action（hint 是證據不是判決，可推翻）。
+5. 工具持有：工具是否跨動作持有？若是，後續動作 G 應留空並在 dependencies 標 tool_held_for。
+6. SIMO/雙手：左右手是否同時動作？是否需標 hand 與 SIMO 群組？（現行 plan 契約未表達 SIMO——若需要請註記）
+7. routing：預測 routing_status = review（理由：無）。核准後應維持這個值嗎？
 
 ---
 
@@ -75,22 +78,23 @@
 **挑戰維度（規則式判定）**：中英混合、多 action、數量、SIMO／雙手
 **v3 結構**：`single_cycle`——`motion_module_versions/6e6f8d3d…`（rows[0].sub_activity；1 cycle；v3）（hint 是證據不是判決；預設依 v3 結構，IE 可推翻）
 **✅ IE 覆核狀態（切分維度）**：已確認照 v3 結構預設（IEC141289，2026-08-16）。僅確認切分，不是整筆 gold 核准；`ie_modified: false`（確認≠修改——本筆不計入 planner 段 Plan 層證據力）。
+**⚠️ typing_changed_by_verb_lexicon**：**第三輪判型已修正，請確認**：動詞字典自本輪參與 GM/CM 判型（D3-017，衝突矩陣見 nlp/rule_based.py classify_seq）——舊判型（僅名詞觸發）＝未定（composite_unknown），新判型（動詞字典參與）＝CM（控制移動）。不同意新判型請在本筆「判型」題回答
 **⚠️ likely_multi_action_undercounted**：本句含多動詞/連接詞，rule planner 只出 1 個 action——但 **v3 結構顯示 IE 當初把這句建為單一 cycle**（證據見本節「v3 結構」與草稿 `v3_structure_evidence`），「幾乎必然低估」對本筆**降級**：預設依 v3 結構（單一 cycle），除非你認定 v3 的切分本身有誤（hint 是證據不是判決，可推翻）
 
 **預測 action 數**：1
 **預測切分（evidence 以【】標在正規化原文上）**：
-- `a1` composite_unknown：【雙手接觸×16dimm卡槽的左右卡扣按壓×16並確認卡扣按壓規定位置】
+- `a1` controlled_move：【雙手接觸×16dimm卡槽的左右卡扣按壓×16並確認卡扣按壓規定位置】
 
 **預測 TMU / tech line**：
-- `a1`：未編譯（composite_unknown）
-**預測 routing**：`abstain`
+- `a1`：TMU=3.0，tech line=`A0 B0 G0 M3 X0 I0 A0`
+**預測 routing**：`review`
 
 **IE 請回答**：
 1. 切分：預測 action 數 = 1。本句實際應拆成幾個 action？若不同，請在 plan.actions 增列並各給 evidence（原文子字串與 offset）。【v3 結構】IE 當初把這句建為**單一 cycle**（證據：`motion_module_versions/6e6f8d3d…`（rows[0].sub_activity；1 cycle；v3）），預設依此；不同意再改。
-2. 判型（a1）：預測為 composite_unknown（判型詞典僅認「治具/機台/壓合」類詞）。實際動作類型是哪個：acquire / move_place / controlled_move / process / inspect？
+2. 判型（a1）：預測為 controlled_move，對嗎？若對，core 參數 M（控制移動） 的 option code 是什麼？（預標註無候選時請直接填）【第三輪判型已修正：未定（composite_unknown） → CM（控制移動），請確認】
 3. 數量：句中的數量應掛在哪個 action？frequency=N 還是 repeat？（現行 QuantityPolicyV1 保守處理並標 quantity_policy_review）
 4. SIMO/雙手：左右手是否同時動作？是否需標 hand 與 SIMO 群組？（現行 plan 契約未表達 SIMO——若需要請註記）
-5. routing：預測 routing_status = abstain（理由：composite_unknown）。核准後應維持這個值嗎？
+5. routing：預測 routing_status = review（理由：無）。核准後應維持這個值嗎？
 
 ---
 
@@ -114,7 +118,7 @@
 
 **IE 請回答**：
 1. 切分：預測 action 數 = 1。本句實際應拆成幾個 action？若不同，請在 plan.actions 增列並各給 evidence（原文子字串與 offset）。【v3 結構】IE 當初把這句建為**單一 cycle**（證據：`motion_module_versions/255beb05…`（rows[0].sub_activity；1 cycle；v3）），預設依此；不同意再改。
-2. 判型（a1）：預測為 composite_unknown（判型詞典僅認「治具/機台/壓合」類詞）。實際動作類型是哪個：acquire / move_place / controlled_move / process / inspect？
+2. 判型（a1）：預測為 composite_unknown（第三輪起動詞字典已參與判型——仍未定＝動詞未登記/單一動詞不足/訊號衝突棄權，逐類統計見 harvest-summary）。實際動作類型是哪個：acquire / move_place / controlled_move / process / inspect？
 3. 取放建模（確認題）：v3 結構顯示 IE 當初把這句建為**單一 cycle**（證據：`motion_module_versions/255beb05…`（rows[0].sub_activity；1 cycle；v3））——**預設建成單一 GM cycle（G 與 P 各取值）**；不同意再改成 acquire + move_place 兩個 action（hint 是證據不是判決，可推翻）。
 4. 數量：句中的數量應掛在哪個 action？frequency=N 還是 repeat？（現行 QuantityPolicyV1 保守處理並標 quantity_policy_review）
 5. SIMO/雙手：左右手是否同時動作？是否需標 hand 與 SIMO 群組？（現行 plan 契約未表達 SIMO——若需要請註記）
@@ -142,7 +146,7 @@
 
 **IE 請回答**：
 1. 切分：預測 action 數 = 1。本句實際應拆成幾個 action？若不同，請在 plan.actions 增列並各給 evidence（原文子字串與 offset）。【v3 結構】IE 當初把這句切成 **4 個 cycle**（證據：`motion_modules/8436a0d0…`（name_zh (category=wi-template)；4 cycle；v3）），預設依此切分；不同意再改。
-2. 判型（a1）：預測為 composite_unknown（判型詞典僅認「治具/機台/壓合」類詞）。實際動作類型是哪個：acquire / move_place / controlled_move / process / inspect？
+2. 判型（a1）：預測為 composite_unknown（第三輪起動詞字典已參與判型——仍未定＝動詞未登記/單一動詞不足/訊號衝突棄權，逐類統計見 harvest-summary）。實際動作類型是哪個：acquire / move_place / controlled_move / process / inspect？
 3. routing：預測 routing_status = abstain（理由：composite_unknown）。核准後應維持這個值嗎？
 
 ---
@@ -167,7 +171,7 @@
 
 **IE 請回答**：
 1. 切分：預測 action 數 = 1。本句實際應拆成幾個 action？若不同，請在 plan.actions 增列並各給 evidence（原文子字串與 offset）。【v3 結構】IE 當初把這句建為**單一 cycle**（證據：`motion_module_versions/2b40d576…`（rows[0].sub_activity；1 cycle；v3）），預設依此；不同意再改。
-2. 判型（a1）：預測為 composite_unknown（判型詞典僅認「治具/機台/壓合」類詞）。實際動作類型是哪個：acquire / move_place / controlled_move / process / inspect？
+2. 判型（a1）：預測為 composite_unknown（第三輪起動詞字典已參與判型——仍未定＝動詞未登記/單一動詞不足/訊號衝突棄權，逐類統計見 harvest-summary）。實際動作類型是哪個：acquire / move_place / controlled_move / process / inspect？
 3. 數量：句中的數量應掛在哪個 action？frequency=N 還是 repeat？（現行 QuantityPolicyV1 保守處理並標 quantity_policy_review）
 4. SIMO/雙手：左右手是否同時動作？是否需標 hand 與 SIMO 群組？（現行 plan 契約未表達 SIMO——若需要請註記）
 5. routing：預測 routing_status = abstain（理由：composite_unknown）。核准後應維持這個值嗎？
@@ -182,21 +186,22 @@
 **挑戰維度（規則式判定）**：繁簡（簡體字/大陸用語）、多 action、工具持有
 **v3 結構**：`single_cycle`——`motion_module_versions/9569aeaf…`（rows[1].sub_activity；1 cycle；v3）；`motion_module_versions/b66a74ed…`（rows[0].sub_activity；1 cycle；v3）；`motion_modules/2ea27e92…`（name_zh (category=action)；1 cycle；v3）（hint 是證據不是判決；預設依 v3 結構，IE 可推翻）
 **✅ IE 覆核狀態（切分維度）**：已確認照 v3 結構預設（IEC141289，2026-08-16）。僅確認切分，不是整筆 gold 核准；`ie_modified: false`（確認≠修改——本筆不計入 planner 段 Plan 層證據力）。
+**⚠️ typing_changed_by_verb_lexicon**：**第三輪判型已修正，請確認**：動詞字典自本輪參與 GM/CM 判型（D3-017，衝突矩陣見 nlp/rule_based.py classify_seq）——舊判型（僅名詞觸發）＝未定（composite_unknown），新判型（動詞字典參與）＝GM（一般移動）。不同意新判型請在本筆「判型」題回答
 **⚠️ likely_multi_action_undercounted**：本句含多動詞/連接詞，rule planner 只出 1 個 action——但 **v3 結構顯示 IE 當初把這句建為單一 cycle**（證據見本節「v3 結構」與草稿 `v3_structure_evidence`），「幾乎必然低估」對本筆**降級**：預設依 v3 結構（單一 cycle），除非你認定 v3 的切分本身有誤（hint 是證據不是判決，可推翻）
 
 **預測 action 數**：1
 **預測切分（evidence 以【】標在正規化原文上）**：
-- `a1` composite_unknown：【右手抓握電動起子保持住至機箱】
+- `a1` move_place：【右手抓握電動起子保持住至機箱】
 
 **預測 TMU / tech line**：
-- `a1`：未編譯（composite_unknown）
-**預測 routing**：`abstain`
+- `a1`：TMU=3.0，tech line=`A0 B0 G0 A0 B0 P3 A0`
+**預測 routing**：`review`
 
 **IE 請回答**：
 1. 切分：預測 action 數 = 1。本句實際應拆成幾個 action？若不同，請在 plan.actions 增列並各給 evidence（原文子字串與 offset）。【v3 結構】IE 當初把這句建為**單一 cycle**（證據：`motion_module_versions/9569aeaf…`（rows[1].sub_activity；1 cycle；v3）；`motion_module_versions/b66a74ed…`（rows[0].sub_activity；1 cycle；v3）；`motion_modules/2ea27e92…`（name_zh (category=action)；1 cycle；v3）），預設依此；不同意再改。
-2. 判型（a1）：預測為 composite_unknown（判型詞典僅認「治具/機台/壓合」類詞）。實際動作類型是哪個：acquire / move_place / controlled_move / process / inspect？
+2. 判型（a1）：預測為 move_place，對嗎？若對，core 參數 P（放置） 的 option code 是什麼？（預標註無候選時請直接填）【第三輪判型已修正：未定（composite_unknown） → GM（一般移動），請確認】
 3. 工具持有：工具是否跨動作持有？若是，後續動作 G 應留空並在 dependencies 標 tool_held_for。
-4. routing：預測 routing_status = abstain（理由：composite_unknown）。核准後應維持這個值嗎？
+4. routing：預測 routing_status = review（理由：無）。核准後應維持這個值嗎？
 
 ---
 
@@ -208,20 +213,23 @@
 **挑戰維度（規則式判定）**：全形字元、中英混合、多 action
 **v3 結構**：`multi_cycle_2`——`motion_modules/d9203ed2…`（name_zh (category=wi-template)；2 cycle；v3）（hint 是證據不是判決；預設依 v3 結構，IE 可推翻）
 **✅ IE 覆核狀態（切分維度）**：已確認照 v3 結構預設（IEC141289，2026-08-16）。僅確認切分，不是整筆 gold 核准；`ie_modified: false`（確認≠修改——本筆不計入 planner 段 Plan 層證據力）。
+**⚠️ typing_changed_by_verb_lexicon**：**第三輪判型已修正，請確認**：動詞字典自本輪參與 GM/CM 判型（D3-017，衝突矩陣見 nlp/rule_based.py classify_seq）——舊判型（僅名詞觸發）＝未定（composite_unknown），新判型（動詞字典參與）＝CM（控制移動）。不同意新判型請在本筆「判型」題回答
 **⚠️ likely_multi_action_undercounted**：rule planner 結構上永遠只出 1 個 action；本句含多動詞/連接詞，**切分幾乎必然低估**——請務必逐動詞檢查
+**⚠️ zero_tmu_distance_unstated**：此句未述距離，**TMU=0.0 非真值**（引擎口徑：距離未述＝0cm、M 階梯 0→0；linker 只掛 core 參數，伴隨 slot 未填）——complete 是結構完成度不是 TMU 可信度。**請補距離（改 plan/cycle 後 `--recompile` 重算）或判定句子資訊不足**（轉正時顯式寫 expected_incomplete_reason；空殼守門要求 total_tmu > 0，原樣轉正會被擋）
 
 **預測 action 數**：1
 **預測切分（evidence 以【】標在正規化原文上）**：
-- `a1` composite_unknown：【從料架上拿取假dimm,去除其包裝袋】
+- `a1` controlled_move：【從料架上拿取假dimm,去除其包裝袋】
 
 **預測 TMU / tech line**：
-- `a1`：未編譯（composite_unknown）
-**預測 routing**：`abstain`
+- `a1`：TMU=0.0，tech line=`A0 B0 G0 M0 X0 I0 A0`
+**預測 routing**：`review`
 
 **IE 請回答**：
 1. 切分：預測 action 數 = 1。本句實際應拆成幾個 action？若不同，請在 plan.actions 增列並各給 evidence（原文子字串與 offset）。【v3 結構】IE 當初把這句切成 **2 個 cycle**（證據：`motion_modules/d9203ed2…`（name_zh (category=wi-template)；2 cycle；v3）），預設依此切分；不同意再改。
-2. 判型（a1）：預測為 composite_unknown（判型詞典僅認「治具/機台/壓合」類詞）。實際動作類型是哪個：acquire / move_place / controlled_move / process / inspect？
-3. routing：預測 routing_status = abstain（理由：composite_unknown）。核准後應維持這個值嗎？
+2. 判型（a1）：預測為 controlled_move，對嗎？若對，core 參數 M（控制移動） 的 option code 是什麼？（預標註無候選時請直接填）【第三輪判型已修正：未定（composite_unknown） → CM（控制移動），請確認】
+3. TMU=0.0：此句未述距離，**TMU=0.0 非真值**（引擎口徑：距離未述＝0cm、M 階梯 0→0；linker 只掛 core 參數，伴隨 slot 未填）——complete 是結構完成度不是 TMU 可信度。**請補距離（改 plan/cycle 後 `--recompile` 重算）或判定句子資訊不足**（轉正時顯式寫 expected_incomplete_reason；空殼守門要求 total_tmu > 0，原樣轉正會被擋）。
+4. routing：預測 routing_status = review（理由：無）。核准後應維持這個值嗎？
 
 ---
 
@@ -242,7 +250,7 @@
 
 **IE 請回答**：
 1. 切分：預測 action 數 = 1。本句實際應拆成幾個 action？若不同，請在 plan.actions 增列並各給 evidence（原文子字串與 offset）。
-2. 判型（a1）：預測為 composite_unknown（判型詞典僅認「治具/機台/壓合」類詞）。實際動作類型是哪個：acquire / move_place / controlled_move / process / inspect？
+2. 判型（a1）：預測為 composite_unknown（第三輪起動詞字典已參與判型——仍未定＝動詞未登記/單一動詞不足/訊號衝突棄權，逐類統計見 harvest-summary）。實際動作類型是哪個：acquire / move_place / controlled_move / process / inspect？
 3. 數量：句中的數量應掛在哪個 action？frequency=N 還是 repeat？（現行 QuantityPolicyV1 保守處理並標 quantity_policy_review）
 4. 工具持有：工具是否跨動作持有？若是，後續動作 G 應留空並在 dependencies 標 tool_held_for。
 5. routing：預測 routing_status = abstain（理由：composite_unknown）。核准後應維持這個值嗎？
@@ -257,21 +265,22 @@
 **挑戰維度（規則式判定）**：繁簡（簡體字/大陸用語）、多 action、SIMO／雙手
 **v3 結構**：`single_cycle`——`motion_module_versions/55e93ed7…`（rows[0].sub_activity；1 cycle；v3）；`motion_module_versions/b91e9fca…`（rows[1].sub_activity；1 cycle；v3）；`motion_modules/ea8ebe0c…`（name_zh (category=action)；1 cycle；v3）（hint 是證據不是判決；預設依 v3 結構，IE 可推翻）
 **✅ IE 覆核狀態（切分維度）**：已確認照 v3 結構預設（IEC141289，2026-08-16）。僅確認切分，不是整筆 gold 核准；`ie_modified: false`（確認≠修改——本筆不計入 planner 段 Plan 層證據力）。
+**⚠️ typing_changed_by_verb_lexicon**：**第三輪判型已修正，請確認**：動詞字典自本輪參與 GM/CM 判型（D3-017，衝突矩陣見 nlp/rule_based.py classify_seq）——舊判型（僅名詞觸發）＝未定（composite_unknown），新判型（動詞字典參與）＝GM（一般移動）。不同意新判型請在本筆「判型」題回答
 **⚠️ likely_multi_action_undercounted**：本句含多動詞/連接詞，rule planner 只出 1 個 action——但 **v3 結構顯示 IE 當初把這句建為單一 cycle**（證據見本節「v3 結構」與草稿 `v3_structure_evidence`），「幾乎必然低估」對本筆**降級**：預設依 v3 結構（單一 cycle），除非你認定 v3 的切分本身有誤（hint 是證據不是判決，可推翻）
 
 **預測 action 數**：1
 **預測切分（evidence 以【】標在正規化原文上）**：
-- `a1` composite_unknown：【雙手抓握主機板保持住至流水線】
+- `a1` move_place：【雙手抓握主機板保持住至流水線】
 
 **預測 TMU / tech line**：
-- `a1`：未編譯（composite_unknown）
-**預測 routing**：`abstain`
+- `a1`：TMU=3.0，tech line=`A0 B0 G0 A0 B0 P3 A0`
+**預測 routing**：`review`
 
 **IE 請回答**：
 1. 切分：預測 action 數 = 1。本句實際應拆成幾個 action？若不同，請在 plan.actions 增列並各給 evidence（原文子字串與 offset）。【v3 結構】IE 當初把這句建為**單一 cycle**（證據：`motion_module_versions/55e93ed7…`（rows[0].sub_activity；1 cycle；v3）；`motion_module_versions/b91e9fca…`（rows[1].sub_activity；1 cycle；v3）；`motion_modules/ea8ebe0c…`（name_zh (category=action)；1 cycle；v3）），預設依此；不同意再改。
-2. 判型（a1）：預測為 composite_unknown（判型詞典僅認「治具/機台/壓合」類詞）。實際動作類型是哪個：acquire / move_place / controlled_move / process / inspect？
+2. 判型（a1）：預測為 move_place，對嗎？若對，core 參數 P（放置） 的 option code 是什麼？（預標註無候選時請直接填）【第三輪判型已修正：未定（composite_unknown） → GM（一般移動），請確認】
 3. SIMO/雙手：左右手是否同時動作？是否需標 hand 與 SIMO 群組？（現行 plan 契約未表達 SIMO——若需要請註記）
-4. routing：預測 routing_status = abstain（理由：composite_unknown）。核准後應維持這個值嗎？
+4. routing：預測 routing_status = review（理由：無）。核准後應維持這個值嗎？
 
 ---
 
@@ -283,23 +292,26 @@
 **挑戰維度（規則式判定）**：中英混合、工具持有、SIMO／雙手
 **v3 結構**：`single_cycle`——`motion_module_versions/62d5bebb…`（rows[1].sub_activity；1 cycle；v3）；`motion_module_versions/b7eefdb5…`（rows[0].sub_activity；1 cycle；v3）；`motion_modules/8028b635…`（name_zh (category=action)；1 cycle；v3）（hint 是證據不是判決；預設依 v3 結構，IE 可推翻）
 **✅ IE 覆核狀態（切分維度）**：已確認照 v3 結構預設（IEC141289，2026-08-16）。僅確認切分，不是整筆 gold 核准；`ie_modified: false`（確認≠修改——本筆不計入 planner 段 Plan 層證據力）。
+**⚠️ typing_changed_by_verb_lexicon**：**第三輪判型已修正，請確認**：動詞字典自本輪參與 GM/CM 判型（D3-017，衝突矩陣見 nlp/rule_based.py classify_seq）——舊判型（僅名詞觸發）＝GM（一般移動），新判型（動詞字典參與）＝CM（控制移動）。不同意新判型請在本筆「判型」題回答
 **⚠️ take_move_pair_may_be_single_cm**：本句是「取/觸＋推/拉」動詞配對（無連接詞）——MiniMOST 的 CM 序列本來就是 G 與 M 同一 cycle（`docs/core-logic/minimost-sequence-model-core-logic-spec.md` §2：A B G M X I A），單 action 不必然是低估。請裁決：建成**單一 CM cycle**（G 與 M 各取值）還是 acquire＋controlled_move **兩個 action**（見下方「取移建模」題；不預設方向）
+**⚠️ zero_tmu_distance_unstated**：此句未述距離，**TMU=0.0 非真值**（引擎口徑：距離未述＝0cm、M 階梯 0→0；linker 只掛 core 參數，伴隨 slot 未填）——complete 是結構完成度不是 TMU 可信度。**請補距離（改 plan/cycle 後 `--recompile` 重算）或判定句子資訊不足**（轉正時顯式寫 expected_incomplete_reason；空殼守門要求 total_tmu > 0，原樣轉正會被擋）
 
 **預測 action 數**：1
 **預測切分（evidence 以【】標在正規化原文上）**：
-- `a1` move_place：【雙手接觸dimm壓合治具推至規定位置】
+- `a1` controlled_move：【雙手接觸dimm壓合治具推至規定位置】
 
 **預測 TMU / tech line**：
-- `a1`：未編譯（missing_core_p）
+- `a1`：TMU=0.0，tech line=`A0 B0 G0 M0 X0 I0 A0`
 **預測 routing**：`review`
 
 **IE 請回答**：
 1. 切分：預測 action 數 = 1。本句實際應拆成幾個 action？若不同，請在 plan.actions 增列並各給 evidence（原文子字串與 offset）。【v3 結構】IE 當初把這句建為**單一 cycle**（證據：`motion_module_versions/62d5bebb…`（rows[1].sub_activity；1 cycle；v3）；`motion_module_versions/b7eefdb5…`（rows[0].sub_activity；1 cycle；v3）；`motion_modules/8028b635…`（name_zh (category=action)；1 cycle；v3）），預設依此；不同意再改。
-2. 判型（a1）：預測為 move_place，對嗎？若對，core 參數 P（放置） 的 option code 是什麼？（預標註無候選時請直接填）
-3. 取移建模（確認題）：v3 結構顯示 IE 當初把這句建為**單一 cycle**（證據：`motion_module_versions/62d5bebb…`（rows[1].sub_activity；1 cycle；v3）；`motion_module_versions/b7eefdb5…`（rows[0].sub_activity；1 cycle；v3）；`motion_modules/8028b635…`（name_zh (category=action)；1 cycle；v3））——**預設建成單一 CM cycle（G 與 M 各取值）**；不同意再改成 acquire + controlled_move 兩個 action（hint 是證據不是判決，可推翻）。
-4. 工具持有：工具是否跨動作持有？若是，後續動作 G 應留空並在 dependencies 標 tool_held_for。
-5. SIMO/雙手：左右手是否同時動作？是否需標 hand 與 SIMO 群組？（現行 plan 契約未表達 SIMO——若需要請註記）
-6. routing：預測 routing_status = review（理由：no_candidate_p、missing_core_p）。核准後應維持這個值嗎？
+2. 判型（a1）：預測為 controlled_move，對嗎？若對，core 參數 M（控制移動） 的 option code 是什麼？（預標註無候選時請直接填）【第三輪判型已修正：GM（一般移動） → CM（控制移動），請確認】
+3. TMU=0.0：此句未述距離，**TMU=0.0 非真值**（引擎口徑：距離未述＝0cm、M 階梯 0→0；linker 只掛 core 參數，伴隨 slot 未填）——complete 是結構完成度不是 TMU 可信度。**請補距離（改 plan/cycle 後 `--recompile` 重算）或判定句子資訊不足**（轉正時顯式寫 expected_incomplete_reason；空殼守門要求 total_tmu > 0，原樣轉正會被擋）。
+4. 取移建模（確認題）：v3 結構顯示 IE 當初把這句建為**單一 cycle**（證據：`motion_module_versions/62d5bebb…`（rows[1].sub_activity；1 cycle；v3）；`motion_module_versions/b7eefdb5…`（rows[0].sub_activity；1 cycle；v3）；`motion_modules/8028b635…`（name_zh (category=action)；1 cycle；v3））——**預設建成單一 CM cycle（G 與 M 各取值）**；不同意再改成 acquire + controlled_move 兩個 action（hint 是證據不是判決，可推翻）。
+5. 工具持有：工具是否跨動作持有？若是，後續動作 G 應留空並在 dependencies 標 tool_held_for。
+6. SIMO/雙手：左右手是否同時動作？是否需標 hand 與 SIMO 群組？（現行 plan 契約未表達 SIMO——若需要請註記）
+7. routing：預測 routing_status = review（理由：無）。核准後應維持這個值嗎？
 
 ---
 
@@ -311,6 +323,7 @@
 **挑戰維度（規則式判定）**：繁簡（簡體字/大陸用語）、中英混合、工具持有
 **v3 結構**：`multi_cycle_2`——`motion_modules/b5666b80…`（name_zh (category=wi-template)；2 cycle；v3）（hint 是證據不是判決；預設依 v3 結構，IE 可推翻）
 **✅ IE 覆核狀態（切分維度）**：已確認照 v3 結構預設（IEC141289，2026-08-16）。僅確認切分，不是整筆 gold 核准；`ie_modified: false`（確認≠修改——本筆不計入 planner 段 Plan 層證據力）。
+**⚠️ p_direction_single_default**：P 方向數（IE 情境規則 D3-017）：賓語屬**機構件類**（治具/卡槽/機箱/接頭/點位）→ 必對準，已預設 `p_place_single`。**方向數預設一種，不對請改**（p_place_multi 多種方向／p_place_none 無方向）
 **⚠️ take_place_pair_may_be_single_gm**：本句是「取＋放」動詞配對（無連接詞）——MiniMOST 的 GM 序列本來就是 G＋P 同一 cycle，單 action 不必然是低估。請裁決：建成**單一 GM cycle**（G 與 P 各取值）還是 acquire＋move_place **兩個 action**（見下方「取放建模」題；不預設方向）
 
 **預測 action 數**：1
@@ -318,15 +331,16 @@
 - `a1` move_place：【拿取主機板放置於dimm壓合治具】
 
 **預測 TMU / tech line**：
-- `a1`：未編譯（missing_core_p）
+- `a1`：TMU=16.0，tech line=`A0 B0 G0 A0 B0 P16 A0`
 **預測 routing**：`review`
 
 **IE 請回答**：
 1. 切分：預測 action 數 = 1。本句實際應拆成幾個 action？若不同，請在 plan.actions 增列並各給 evidence（原文子字串與 offset）。【v3 結構】IE 當初把這句切成 **2 個 cycle**（證據：`motion_modules/b5666b80…`（name_zh (category=wi-template)；2 cycle；v3）），預設依此切分；不同意再改。
 2. 判型（a1）：預測為 move_place，對嗎？若對，core 參數 P（放置） 的 option code 是什麼？（預標註無候選時請直接填）
-3. 取放建模（確認題）：v3 結構顯示 IE 當初把這句切成 **2 個 cycle**（證據：`motion_modules/b5666b80…`（name_zh (category=wi-template)；2 cycle；v3））——**預設依此切成 2 個 action/cycle**；不同意再改（hint 是證據不是判決，可推翻）。
-4. 工具持有：工具是否跨動作持有？若是，後續動作 G 應留空並在 dependencies 標 tool_held_for。
-5. routing：預測 routing_status = review（理由：no_candidate_p、missing_core_p）。核准後應維持這個值嗎？
+3. P 方向數：P 方向數（IE 情境規則 D3-017）：賓語屬**機構件類**（治具/卡槽/機箱/接頭/點位）→ 必對準，已預設 `p_place_single`。**方向數預設一種，不對請改**（p_place_multi 多種方向／p_place_none 無方向）
+4. 取放建模（確認題）：v3 結構顯示 IE 當初把這句切成 **2 個 cycle**（證據：`motion_modules/b5666b80…`（name_zh (category=wi-template)；2 cycle；v3））——**預設依此切成 2 個 action/cycle**；不同意再改（hint 是證據不是判決，可推翻）。
+5. 工具持有：工具是否跨動作持有？若是，後續動作 G 應留空並在 dependencies 標 tool_held_for。
+6. routing：預測 routing_status = review（理由：無）。核准後應維持這個值嗎？
 
 ---
 
@@ -350,7 +364,7 @@
 
 **IE 請回答**：
 1. 切分：預測 action 數 = 1。本句實際應拆成幾個 action？若不同，請在 plan.actions 增列並各給 evidence（原文子字串與 offset）。【v3 結構】IE 當初把這句建為**單一 cycle**（證據：`motion_modules/12ce967e…`（name_zh (category=wi-template)；1 cycle；v3）），預設依此；不同意再改。
-2. 判型（a1）：預測為 composite_unknown（判型詞典僅認「治具/機台/壓合」類詞）。實際動作類型是哪個：acquire / move_place / controlled_move / process / inspect？
+2. 判型（a1）：預測為 composite_unknown（第三輪起動詞字典已參與判型——仍未定＝動詞未登記/單一動詞不足/訊號衝突棄權，逐類統計見 harvest-summary）。實際動作類型是哪個：acquire / move_place / controlled_move / process / inspect？
 3. 取放建模（確認題）：v3 結構顯示 IE 當初把這句建為**單一 cycle**（證據：`motion_modules/12ce967e…`（name_zh (category=wi-template)；1 cycle；v3））——**預設建成單一 GM cycle（G 與 P 各取值）**；不同意再改成 acquire + move_place 兩個 action（hint 是證據不是判決，可推翻）。
 4. 數量：句中的數量應掛在哪個 action？frequency=N 還是 repeat？（現行 QuantityPolicyV1 保守處理並標 quantity_policy_review）
 5. SIMO/雙手：左右手是否同時動作？是否需標 hand 與 SIMO 群組？（現行 plan 契約未表達 SIMO——若需要請註記）
@@ -402,7 +416,7 @@
 
 **IE 請回答**：
 1. 切分：預測 action 數 = 1。本句實際應拆成幾個 action？若不同，請在 plan.actions 增列並各給 evidence（原文子字串與 offset）。【v3 結構】IE 當初把這句建為**單一 cycle**（證據：`motion_module_versions/687ed233…`（rows[0].sub_activity；1 cycle；v3）；`motion_module_versions/f799f56e…`（rows[0].sub_activity；1 cycle；v3）；`motion_modules/b09813d6…`（name_zh (category=action)；1 cycle；v3）），預設依此；不同意再改。
-2. 判型（a1）：預測為 composite_unknown（判型詞典僅認「治具/機台/壓合」類詞）。實際動作類型是哪個：acquire / move_place / controlled_move / process / inspect？
+2. 判型（a1）：預測為 composite_unknown（第三輪起動詞字典已參與判型——仍未定＝動詞未登記/單一動詞不足/訊號衝突棄權，逐類統計見 harvest-summary）。實際動作類型是哪個：acquire / move_place / controlled_move / process / inspect？
 3. 取放建模（確認題）：v3 結構顯示 IE 當初把這句建為**單一 cycle**（證據：`motion_module_versions/687ed233…`（rows[0].sub_activity；1 cycle；v3）；`motion_module_versions/f799f56e…`（rows[0].sub_activity；1 cycle；v3）；`motion_modules/b09813d6…`（name_zh (category=action)；1 cycle；v3））——**預設建成單一 GM cycle（G 與 P 各取值）**；不同意再改成 acquire + move_place 兩個 action（hint 是證據不是判決，可推翻）。
 4. SIMO/雙手：左右手是否同時動作？是否需標 hand 與 SIMO 群組？（現行 plan 契約未表達 SIMO——若需要請註記）
 5. routing：預測 routing_status = abstain（理由：composite_unknown）。核准後應維持這個值嗎？
@@ -429,7 +443,7 @@
 
 **IE 請回答**：
 1. 切分：預測 action 數 = 1。本句實際應拆成幾個 action？若不同，請在 plan.actions 增列並各給 evidence（原文子字串與 offset）。【v3 結構】IE 當初把這句切成 **5 個 cycle**（證據：`motion_modules/8451efa7…`（name_zh (category=wi-template)；5 cycle；v3）），預設依此切分；不同意再改。
-2. 判型（a1）：預測為 composite_unknown（判型詞典僅認「治具/機台/壓合」類詞）。實際動作類型是哪個：acquire / move_place / controlled_move / process / inspect？
+2. 判型（a1）：預測為 composite_unknown（第三輪起動詞字典已參與判型——仍未定＝動詞未登記/單一動詞不足/訊號衝突棄權，逐類統計見 harvest-summary）。實際動作類型是哪個：acquire / move_place / controlled_move / process / inspect？
 3. 工具持有：工具是否跨動作持有？若是，後續動作 G 應留空並在 dependencies 標 tool_held_for。
 4. routing：預測 routing_status = abstain（理由：composite_unknown）。核准後應維持這個值嗎？
 
@@ -455,7 +469,7 @@
 
 **IE 請回答**：
 1. 切分：預測 action 數 = 1。本句實際應拆成幾個 action？若不同，請在 plan.actions 增列並各給 evidence（原文子字串與 offset）。【v3 結構】IE 當初把這句建為**單一 cycle**（證據：`motion_module_versions/77097e44…`（rows[0].sub_activity；1 cycle；v3）；`motion_modules/61f49bcc…`（name_zh (category=action)；1 cycle；v3）），預設依此；不同意再改。
-2. 判型（a1）：預測為 composite_unknown（判型詞典僅認「治具/機台/壓合」類詞）。實際動作類型是哪個：acquire / move_place / controlled_move / process / inspect？
+2. 判型（a1）：預測為 composite_unknown（第三輪起動詞字典已參與判型——仍未定＝動詞未登記/單一動詞不足/訊號衝突棄權，逐類統計見 harvest-summary）。實際動作類型是哪個：acquire / move_place / controlled_move / process / inspect？
 3. 取放建模（確認題）：v3 結構顯示 IE 當初把這句建為**單一 cycle**（證據：`motion_module_versions/77097e44…`（rows[0].sub_activity；1 cycle；v3）；`motion_modules/61f49bcc…`（name_zh (category=action)；1 cycle；v3））——**預設建成單一 GM cycle（G 與 P 各取值）**；不同意再改成 acquire + move_place 兩個 action（hint 是證據不是判決，可推翻）。
 4. SIMO/雙手：左右手是否同時動作？是否需標 hand 與 SIMO 群組？（現行 plan 契約未表達 SIMO——若需要請註記）
 5. routing：預測 routing_status = abstain（理由：composite_unknown）。核准後應維持這個值嗎？
@@ -482,7 +496,7 @@
 
 **IE 請回答**：
 1. 切分：預測 action 數 = 1。本句實際應拆成幾個 action？若不同，請在 plan.actions 增列並各給 evidence（原文子字串與 offset）。【v3 結構】IE 當初把這句建為**單一 cycle**（證據：`motion_modules/83a0868f…`（name_zh (category=wi-template)；1 cycle；v3）），預設依此；不同意再改。
-2. 判型（a1）：預測為 composite_unknown（判型詞典僅認「治具/機台/壓合」類詞）。實際動作類型是哪個：acquire / move_place / controlled_move / process / inspect？
+2. 判型（a1）：預測為 composite_unknown（第三輪起動詞字典已參與判型——仍未定＝動詞未登記/單一動詞不足/訊號衝突棄權，逐類統計見 harvest-summary）。實際動作類型是哪個：acquire / move_place / controlled_move / process / inspect？
 3. 工具持有：工具是否跨動作持有？若是，後續動作 G 應留空並在 dependencies 標 tool_held_for。
 4. routing：預測 routing_status = abstain（理由：composite_unknown）。核准後應維持這個值嗎？
 
@@ -496,23 +510,26 @@
 **挑戰維度（規則式判定）**：中英混合、工具持有、SIMO／雙手
 **v3 結構**：`single_cycle`——`motion_module_versions/437a60f0…`（rows[0].sub_activity；1 cycle；v3）；`motion_module_versions/b91e9fca…`（rows[0].sub_activity；1 cycle；v3）；`motion_modules/3725c049…`（name_zh (category=action)；1 cycle；v3）（hint 是證據不是判決；預設依 v3 結構，IE 可推翻）
 **✅ IE 覆核狀態（切分維度）**：已確認照 v3 結構預設（IEC141289，2026-08-16）。僅確認切分，不是整筆 gold 核准；`ie_modified: false`（確認≠修改——本筆不計入 planner 段 Plan 層證據力）。
+**⚠️ typing_changed_by_verb_lexicon**：**第三輪判型已修正，請確認**：動詞字典自本輪參與 GM/CM 判型（D3-017，衝突矩陣見 nlp/rule_based.py classify_seq）——舊判型（僅名詞觸發）＝GM（一般移動），新判型（動詞字典參與）＝CM（控制移動）。不同意新判型請在本筆「判型」題回答
 **⚠️ take_move_pair_may_be_single_cm**：本句是「取/觸＋推/拉」動詞配對（無連接詞）——MiniMOST 的 CM 序列本來就是 G 與 M 同一 cycle（`docs/core-logic/minimost-sequence-model-core-logic-spec.md` §2：A B G M X I A），單 action 不必然是低估。請裁決：建成**單一 CM cycle**（G 與 M 各取值）還是 acquire＋controlled_move **兩個 action**（見下方「取移建模」題；不預設方向）
+**⚠️ zero_tmu_distance_unstated**：此句未述距離，**TMU=0.0 非真值**（引擎口徑：距離未述＝0cm、M 階梯 0→0；linker 只掛 core 參數，伴隨 slot 未填）——complete 是結構完成度不是 TMU 可信度。**請補距離（改 plan/cycle 後 `--recompile` 重算）或判定句子資訊不足**（轉正時顯式寫 expected_incomplete_reason；空殼守門要求 total_tmu > 0，原樣轉正會被擋）
 
 **預測 action 數**：1
 **預測切分（evidence 以【】標在正規化原文上）**：
-- `a1` move_place：【雙手接觸dimm壓合治具拉至規定位置】
+- `a1` controlled_move：【雙手接觸dimm壓合治具拉至規定位置】
 
 **預測 TMU / tech line**：
-- `a1`：未編譯（missing_core_p）
+- `a1`：TMU=0.0，tech line=`A0 B0 G0 M0 X0 I0 A0`
 **預測 routing**：`review`
 
 **IE 請回答**：
 1. 切分：預測 action 數 = 1。本句實際應拆成幾個 action？若不同，請在 plan.actions 增列並各給 evidence（原文子字串與 offset）。【v3 結構】IE 當初把這句建為**單一 cycle**（證據：`motion_module_versions/437a60f0…`（rows[0].sub_activity；1 cycle；v3）；`motion_module_versions/b91e9fca…`（rows[0].sub_activity；1 cycle；v3）；`motion_modules/3725c049…`（name_zh (category=action)；1 cycle；v3）），預設依此；不同意再改。
-2. 判型（a1）：預測為 move_place，對嗎？若對，core 參數 P（放置） 的 option code 是什麼？（預標註無候選時請直接填）
-3. 取移建模（確認題）：v3 結構顯示 IE 當初把這句建為**單一 cycle**（證據：`motion_module_versions/437a60f0…`（rows[0].sub_activity；1 cycle；v3）；`motion_module_versions/b91e9fca…`（rows[0].sub_activity；1 cycle；v3）；`motion_modules/3725c049…`（name_zh (category=action)；1 cycle；v3））——**預設建成單一 CM cycle（G 與 M 各取值）**；不同意再改成 acquire + controlled_move 兩個 action（hint 是證據不是判決，可推翻）。
-4. 工具持有：工具是否跨動作持有？若是，後續動作 G 應留空並在 dependencies 標 tool_held_for。
-5. SIMO/雙手：左右手是否同時動作？是否需標 hand 與 SIMO 群組？（現行 plan 契約未表達 SIMO——若需要請註記）
-6. routing：預測 routing_status = review（理由：no_candidate_p、missing_core_p）。核准後應維持這個值嗎？
+2. 判型（a1）：預測為 controlled_move，對嗎？若對，core 參數 M（控制移動） 的 option code 是什麼？（預標註無候選時請直接填）【第三輪判型已修正：GM（一般移動） → CM（控制移動），請確認】
+3. TMU=0.0：此句未述距離，**TMU=0.0 非真值**（引擎口徑：距離未述＝0cm、M 階梯 0→0；linker 只掛 core 參數，伴隨 slot 未填）——complete 是結構完成度不是 TMU 可信度。**請補距離（改 plan/cycle 後 `--recompile` 重算）或判定句子資訊不足**（轉正時顯式寫 expected_incomplete_reason；空殼守門要求 total_tmu > 0，原樣轉正會被擋）。
+4. 取移建模（確認題）：v3 結構顯示 IE 當初把這句建為**單一 cycle**（證據：`motion_module_versions/437a60f0…`（rows[0].sub_activity；1 cycle；v3）；`motion_module_versions/b91e9fca…`（rows[0].sub_activity；1 cycle；v3）；`motion_modules/3725c049…`（name_zh (category=action)；1 cycle；v3））——**預設建成單一 CM cycle（G 與 M 各取值）**；不同意再改成 acquire + controlled_move 兩個 action（hint 是證據不是判決，可推翻）。
+5. 工具持有：工具是否跨動作持有？若是，後續動作 G 應留空並在 dependencies 標 tool_held_for。
+6. SIMO/雙手：左右手是否同時動作？是否需標 hand 與 SIMO 群組？（現行 plan 契約未表達 SIMO——若需要請註記）
+7. routing：預測 routing_status = review（理由：無）。核准後應維持這個值嗎？
 
 ---
 
@@ -524,21 +541,24 @@
 **挑戰維度（規則式判定）**：中英混合、多 action、SIMO／雙手
 **v3 結構**：`single_cycle`——`motion_module_versions/ab031277…`（rows[0].sub_activity；1 cycle；v3）；`motion_modules/b55f8099…`（name_zh (category=action)；1 cycle；v3）（hint 是證據不是判決；預設依 v3 結構，IE 可推翻）
 **✅ IE 覆核狀態（切分維度）**：已確認照 v3 結構預設（IEC141289，2026-08-16）。僅確認切分，不是整筆 gold 核准；`ie_modified: false`（確認≠修改——本筆不計入 planner 段 Plan 層證據力）。
+**⚠️ typing_changed_by_verb_lexicon**：**第三輪判型已修正，請確認**：動詞字典自本輪參與 GM/CM 判型（D3-017，衝突矩陣見 nlp/rule_based.py classify_seq）——舊判型（僅名詞觸發）＝未定（composite_unknown），新判型（動詞字典參與）＝CM（控制移動）。不同意新判型請在本筆「判型」題回答
 **⚠️ likely_multi_action_undercounted**：本句含多動詞/連接詞，rule planner 只出 1 個 action——但 **v3 結構顯示 IE 當初把這句建為單一 cycle**（證據見本節「v3 結構」與草稿 `v3_structure_evidence`），「幾乎必然低估」對本筆**降級**：預設依 v3 結構（單一 cycle），除非你認定 v3 的切分本身有誤（hint 是證據不是判決，可推翻）
+**⚠️ zero_tmu_distance_unstated**：此句未述距離，**TMU=0.0 非真值**（引擎口徑：距離未述＝0cm、M 階梯 0→0；linker 只掛 core 參數，伴隨 slot 未填）——complete 是結構完成度不是 TMU 可信度。**請補距離（改 plan/cycle 後 `--recompile` 重算）或判定句子資訊不足**（轉正時顯式寫 expected_incomplete_reason；空殼守門要求 total_tmu > 0，原樣轉正會被擋）
 
 **預測 action 數**：1
 **預測切分（evidence 以【】標在正規化原文上）**：
-- `a1` composite_unknown：【雙手接觸dimm卡槽的左右卡扣推至規定位置並確認到位】
+- `a1` controlled_move：【雙手接觸dimm卡槽的左右卡扣推至規定位置並確認到位】
 
 **預測 TMU / tech line**：
-- `a1`：未編譯（composite_unknown）
-**預測 routing**：`abstain`
+- `a1`：TMU=0.0，tech line=`A0 B0 G0 M0 X0 I0 A0`
+**預測 routing**：`review`
 
 **IE 請回答**：
 1. 切分：預測 action 數 = 1。本句實際應拆成幾個 action？若不同，請在 plan.actions 增列並各給 evidence（原文子字串與 offset）。【v3 結構】IE 當初把這句建為**單一 cycle**（證據：`motion_module_versions/ab031277…`（rows[0].sub_activity；1 cycle；v3）；`motion_modules/b55f8099…`（name_zh (category=action)；1 cycle；v3）），預設依此；不同意再改。
-2. 判型（a1）：預測為 composite_unknown（判型詞典僅認「治具/機台/壓合」類詞）。實際動作類型是哪個：acquire / move_place / controlled_move / process / inspect？
-3. SIMO/雙手：左右手是否同時動作？是否需標 hand 與 SIMO 群組？（現行 plan 契約未表達 SIMO——若需要請註記）
-4. routing：預測 routing_status = abstain（理由：composite_unknown）。核准後應維持這個值嗎？
+2. 判型（a1）：預測為 controlled_move，對嗎？若對，core 參數 M（控制移動） 的 option code 是什麼？（預標註無候選時請直接填）【第三輪判型已修正：未定（composite_unknown） → CM（控制移動），請確認】
+3. TMU=0.0：此句未述距離，**TMU=0.0 非真值**（引擎口徑：距離未述＝0cm、M 階梯 0→0；linker 只掛 core 參數，伴隨 slot 未填）——complete 是結構完成度不是 TMU 可信度。**請補距離（改 plan/cycle 後 `--recompile` 重算）或判定句子資訊不足**（轉正時顯式寫 expected_incomplete_reason；空殼守門要求 total_tmu > 0，原樣轉正會被擋）。
+4. SIMO/雙手：左右手是否同時動作？是否需標 hand 與 SIMO 群組？（現行 plan 契約未表達 SIMO——若需要請註記）
+5. routing：預測 routing_status = review（理由：無）。核准後應維持這個值嗎？
 
 ---
 
@@ -550,21 +570,22 @@
 **挑戰維度（規則式判定）**：中英混合、多 action、工具持有
 **v3 結構**：`single_cycle`——`motion_module_versions/3c2d739e…`（rows[0].sub_activity；1 cycle；v3）；`motion_module_versions/76d8c950…`（rows[0].sub_activity；1 cycle；v3）；`motion_modules/39a7b9db…`（name_zh (category=action)；1 cycle；v3）（hint 是證據不是判決；預設依 v3 結構，IE 可推翻）
 **✅ IE 覆核狀態（切分維度）**：已確認照 v3 結構預設（IEC141289，2026-08-16）。僅確認切分，不是整筆 gold 核准；`ie_modified: false`（確認≠修改——本筆不計入 planner 段 Plan 層證據力）。
+**⚠️ typing_changed_by_verb_lexicon**：**第三輪判型已修正，請確認**：動詞字典自本輪參與 GM/CM 判型（D3-017，衝突矩陣見 nlp/rule_based.py classify_seq）——舊判型（僅名詞觸發）＝未定（composite_unknown），新判型（動詞字典參與）＝CM（控制移動）。不同意新判型請在本筆「判型」題回答
 **⚠️ likely_multi_action_undercounted**：本句含多動詞/連接詞，rule planner 只出 1 個 action——但 **v3 結構顯示 IE 當初把這句建為單一 cycle**（證據見本節「v3 結構」與草稿 `v3_structure_evidence`），「幾乎必然低估」對本筆**降級**：預設依 v3 結構（單一 cycle），除非你認定 v3 的切分本身有誤（hint 是證據不是判決，可推翻）
 
 **預測 action 數**：1
 **預測切分（evidence 以【】標在正規化原文上）**：
-- `a1` composite_unknown：【右手抓握風槍按動按鈕並吹風清潔dimm卡槽】
+- `a1` controlled_move：【右手抓握風槍按動按鈕並吹風清潔dimm卡槽】
 
 **預測 TMU / tech line**：
-- `a1`：未編譯（composite_unknown）
-**預測 routing**：`abstain`
+- `a1`：TMU=3.0，tech line=`A0 B0 G0 M3 X0 I0 A0`
+**預測 routing**：`review`
 
 **IE 請回答**：
 1. 切分：預測 action 數 = 1。本句實際應拆成幾個 action？若不同，請在 plan.actions 增列並各給 evidence（原文子字串與 offset）。【v3 結構】IE 當初把這句建為**單一 cycle**（證據：`motion_module_versions/3c2d739e…`（rows[0].sub_activity；1 cycle；v3）；`motion_module_versions/76d8c950…`（rows[0].sub_activity；1 cycle；v3）；`motion_modules/39a7b9db…`（name_zh (category=action)；1 cycle；v3）），預設依此；不同意再改。
-2. 判型（a1）：預測為 composite_unknown（判型詞典僅認「治具/機台/壓合」類詞）。實際動作類型是哪個：acquire / move_place / controlled_move / process / inspect？
+2. 判型（a1）：預測為 controlled_move，對嗎？若對，core 參數 M（控制移動） 的 option code 是什麼？（預標註無候選時請直接填）【第三輪判型已修正：未定（composite_unknown） → CM（控制移動），請確認】
 3. 工具持有：工具是否跨動作持有？若是，後續動作 G 應留空並在 dependencies 標 tool_held_for。
-4. routing：預測 routing_status = abstain（理由：composite_unknown）。核准後應維持這個值嗎？
+4. routing：預測 routing_status = review（理由：無）。核准後應維持這個值嗎？
 
 ---
 
@@ -576,21 +597,22 @@
 **挑戰維度（規則式判定）**：中英混合、多 action、SIMO／雙手
 **v3 結構**：`single_cycle`——`motion_modules/45915347…`（name_zh (category=wi-template)；1 cycle；v3）；`motion_module_versions/fc8b5371…`（rows[0].sub_activity；1 cycle；v3）；`motion_modules/f495f90c…`（name_zh (category=action)；1 cycle；v3）（hint 是證據不是判決；預設依 v3 結構，IE 可推翻）
 **✅ IE 覆核狀態（切分維度）**：已確認照 v3 結構預設（IEC141289，2026-08-16）。僅確認切分，不是整筆 gold 核准；`ie_modified: false`（確認≠修改——本筆不計入 planner 段 Plan 層證據力）。
+**⚠️ typing_changed_by_verb_lexicon**：**第三輪判型已修正，請確認**：動詞字典自本輪參與 GM/CM 判型（D3-017，衝突矩陣見 nlp/rule_based.py classify_seq）——舊判型（僅名詞觸發）＝未定（composite_unknown），新判型（動詞字典參與）＝CM（控制移動）。不同意新判型請在本筆「判型」題回答
 **⚠️ likely_multi_action_undercounted**：本句含多動詞/連接詞，rule planner 只出 1 個 action——但 **v3 結構顯示 IE 當初把這句建為單一 cycle**（證據見本節「v3 結構」與草稿 `v3_structure_evidence`），「幾乎必然低估」對本筆**降級**：預設依 v3 結構（單一 cycle），除非你認定 v3 的切分本身有誤（hint 是證據不是判決，可推翻）
 
 **預測 action 數**：1
 **預測切分（evidence 以【】標在正規化原文上）**：
-- `a1` composite_unknown：【雙手接觸dimm卡槽的左右卡扣按壓並確認卡扣按壓規定位置】
+- `a1` controlled_move：【雙手接觸dimm卡槽的左右卡扣按壓並確認卡扣按壓規定位置】
 
 **預測 TMU / tech line**：
-- `a1`：未編譯（composite_unknown）
-**預測 routing**：`abstain`
+- `a1`：TMU=3.0，tech line=`A0 B0 G0 M3 X0 I0 A0`
+**預測 routing**：`review`
 
 **IE 請回答**：
 1. 切分：預測 action 數 = 1。本句實際應拆成幾個 action？若不同，請在 plan.actions 增列並各給 evidence（原文子字串與 offset）。【v3 結構】IE 當初把這句建為**單一 cycle**（證據：`motion_modules/45915347…`（name_zh (category=wi-template)；1 cycle；v3）；`motion_module_versions/fc8b5371…`（rows[0].sub_activity；1 cycle；v3）；`motion_modules/f495f90c…`（name_zh (category=action)；1 cycle；v3）），預設依此；不同意再改。
-2. 判型（a1）：預測為 composite_unknown（判型詞典僅認「治具/機台/壓合」類詞）。實際動作類型是哪個：acquire / move_place / controlled_move / process / inspect？
+2. 判型（a1）：預測為 controlled_move，對嗎？若對，core 參數 M（控制移動） 的 option code 是什麼？（預標註無候選時請直接填）【第三輪判型已修正：未定（composite_unknown） → CM（控制移動），請確認】
 3. SIMO/雙手：左右手是否同時動作？是否需標 hand 與 SIMO 群組？（現行 plan 契約未表達 SIMO——若需要請註記）
-4. routing：預測 routing_status = abstain（理由：composite_unknown）。核准後應維持這個值嗎？
+4. routing：預測 routing_status = review（理由：無）。核准後應維持這個值嗎？
 
 ---
 
@@ -602,21 +624,22 @@
 **挑戰維度（規則式判定）**：中英混合、多 action、工具持有
 **v3 結構**：`single_cycle`——`motion_module_versions/687ed233…`（rows[4].sub_activity；1 cycle；v3）；`motion_module_versions/83f8be04…`（rows[0].sub_activity；1 cycle；v3）；`motion_modules/7b395f7d…`（name_zh (category=action)；1 cycle；v3）（hint 是證據不是判決；預設依 v3 結構，IE 可推翻）
 **✅ IE 覆核狀態（切分維度）**：已確認照 v3 結構預設（IEC141289，2026-08-16）。僅確認切分，不是整筆 gold 核准；`ie_modified: false`（確認≠修改——本筆不計入 planner 段 Plan 層證據力）。
+**⚠️ typing_changed_by_verb_lexicon**：**第三輪判型已修正，請確認**：動詞字典自本輪參與 GM/CM 判型（D3-017，衝突矩陣見 nlp/rule_based.py classify_seq）——舊判型（僅名詞觸發）＝未定（composite_unknown），新判型（動詞字典參與）＝CM（控制移動）。不同意新判型請在本筆「判型」題回答
 **⚠️ likely_multi_action_undercounted**：本句含多動詞/連接詞，rule planner 只出 1 個 action——但 **v3 結構顯示 IE 當初把這句建為單一 cycle**（證據見本節「v3 結構」與草稿 `v3_structure_evidence`），「幾乎必然低估」對本筆**降級**：預設依 v3 結構（單一 cycle），除非你認定 v3 的切分本身有誤（hint 是證據不是判決，可推翻）
 
 **預測 action 數**：1
 **預測切分（evidence 以【】標在正規化原文上）**：
-- `a1` composite_unknown：【右手抓握風槍按動按鈕並吹風清潔dimm】
+- `a1` controlled_move：【右手抓握風槍按動按鈕並吹風清潔dimm】
 
 **預測 TMU / tech line**：
-- `a1`：未編譯（composite_unknown）
-**預測 routing**：`abstain`
+- `a1`：TMU=3.0，tech line=`A0 B0 G0 M3 X0 I0 A0`
+**預測 routing**：`review`
 
 **IE 請回答**：
 1. 切分：預測 action 數 = 1。本句實際應拆成幾個 action？若不同，請在 plan.actions 增列並各給 evidence（原文子字串與 offset）。【v3 結構】IE 當初把這句建為**單一 cycle**（證據：`motion_module_versions/687ed233…`（rows[4].sub_activity；1 cycle；v3）；`motion_module_versions/83f8be04…`（rows[0].sub_activity；1 cycle；v3）；`motion_modules/7b395f7d…`（name_zh (category=action)；1 cycle；v3）），預設依此；不同意再改。
-2. 判型（a1）：預測為 composite_unknown（判型詞典僅認「治具/機台/壓合」類詞）。實際動作類型是哪個：acquire / move_place / controlled_move / process / inspect？
+2. 判型（a1）：預測為 controlled_move，對嗎？若對，core 參數 M（控制移動） 的 option code 是什麼？（預標註無候選時請直接填）【第三輪判型已修正：未定（composite_unknown） → CM（控制移動），請確認】
 3. 工具持有：工具是否跨動作持有？若是，後續動作 G 應留空並在 dependencies 標 tool_held_for。
-4. routing：預測 routing_status = abstain（理由：composite_unknown）。核准後應維持這個值嗎？
+4. routing：預測 routing_status = review（理由：無）。核准後應維持這個值嗎？
 
 ---
 
@@ -628,22 +651,25 @@
 **挑戰維度（規則式判定）**：繁簡（簡體字/大陸用語）、SIMO／雙手
 **v3 結構**：`single_cycle`——`motion_module_versions/47007c24…`（rows[0].sub_activity；1 cycle；v3）；`motion_module_versions/fb1bde71…`（rows[3].sub_activity；1 cycle；v3）；`motion_modules/d4106090…`（name_zh (category=action)；1 cycle；v3）（hint 是證據不是判決；預設依 v3 結構，IE 可推翻）
 **✅ IE 覆核狀態（切分維度）**：已確認照 v3 結構預設（IEC141289，2026-08-16）。僅確認切分，不是整筆 gold 核准；`ie_modified: false`（確認≠修改——本筆不計入 planner 段 Plan 層證據力）。
+**⚠️ typing_changed_by_verb_lexicon**：**第三輪判型已修正，請確認**：動詞字典自本輪參與 GM/CM 判型（D3-017，衝突矩陣見 nlp/rule_based.py classify_seq）——舊判型（僅名詞觸發）＝未定（composite_unknown），新判型（動詞字典參與）＝GM（一般移動）。不同意新判型請在本筆「判型」題回答
+**⚠️ p_direction_none_by_context**：P 方向數（IE 情境規則 D3-017）：賓語屬**盤面類**（流水線/工作台/垃圾桶/料盒/材料盒/料架）→ 無方向，已套用 `p_place_none`。請確認
 **⚠️ take_place_pair_may_be_single_gm**：本句是「取＋放」動詞配對（無連接詞）——MiniMOST 的 GM 序列本來就是 G＋P 同一 cycle，單 action 不必然是低估。請裁決：建成**單一 GM cycle**（G 與 P 各取值）還是 acquire＋move_place **兩個 action**（見下方「取放建模」題；不預設方向）
 
 **預測 action 數**：1
 **預測切分（evidence 以【】標在正規化原文上）**：
-- `a1` composite_unknown：【雙手重新抓握主機板放至潔淨棚的工作臺】
+- `a1` move_place：【雙手重新抓握主機板放至潔淨棚的工作臺】
 
 **預測 TMU / tech line**：
-- `a1`：未編譯（composite_unknown）
-**預測 routing**：`abstain`
+- `a1`：TMU=6.0，tech line=`A0 B0 G0 A0 B0 P6 A0`
+**預測 routing**：`review`
 
 **IE 請回答**：
 1. 切分：預測 action 數 = 1。本句實際應拆成幾個 action？若不同，請在 plan.actions 增列並各給 evidence（原文子字串與 offset）。【v3 結構】IE 當初把這句建為**單一 cycle**（證據：`motion_module_versions/47007c24…`（rows[0].sub_activity；1 cycle；v3）；`motion_module_versions/fb1bde71…`（rows[3].sub_activity；1 cycle；v3）；`motion_modules/d4106090…`（name_zh (category=action)；1 cycle；v3）），預設依此；不同意再改。
-2. 判型（a1）：預測為 composite_unknown（判型詞典僅認「治具/機台/壓合」類詞）。實際動作類型是哪個：acquire / move_place / controlled_move / process / inspect？
-3. 取放建模（確認題）：v3 結構顯示 IE 當初把這句建為**單一 cycle**（證據：`motion_module_versions/47007c24…`（rows[0].sub_activity；1 cycle；v3）；`motion_module_versions/fb1bde71…`（rows[3].sub_activity；1 cycle；v3）；`motion_modules/d4106090…`（name_zh (category=action)；1 cycle；v3））——**預設建成單一 GM cycle（G 與 P 各取值）**；不同意再改成 acquire + move_place 兩個 action（hint 是證據不是判決，可推翻）。
-4. SIMO/雙手：左右手是否同時動作？是否需標 hand 與 SIMO 群組？（現行 plan 契約未表達 SIMO——若需要請註記）
-5. routing：預測 routing_status = abstain（理由：composite_unknown）。核准後應維持這個值嗎？
+2. 判型（a1）：預測為 move_place，對嗎？若對，core 參數 P（放置） 的 option code 是什麼？（預標註無候選時請直接填）【第三輪判型已修正：未定（composite_unknown） → GM（一般移動），請確認】
+3. P 方向數：P 方向數（IE 情境規則 D3-017）：賓語屬**盤面類**（流水線/工作台/垃圾桶/料盒/材料盒/料架）→ 無方向，已套用 `p_place_none`。請確認
+4. 取放建模（確認題）：v3 結構顯示 IE 當初把這句建為**單一 cycle**（證據：`motion_module_versions/47007c24…`（rows[0].sub_activity；1 cycle；v3）；`motion_module_versions/fb1bde71…`（rows[3].sub_activity；1 cycle；v3）；`motion_modules/d4106090…`（name_zh (category=action)；1 cycle；v3））——**預設建成單一 GM cycle（G 與 P 各取值）**；不同意再改成 acquire + move_place 兩個 action（hint 是證據不是判決，可推翻）。
+5. SIMO/雙手：左右手是否同時動作？是否需標 hand 與 SIMO 群組？（現行 plan 契約未表達 SIMO——若需要請註記）
+6. routing：預測 routing_status = review（理由：無）。核准後應維持這個值嗎？
 
 ---
 
@@ -663,7 +689,7 @@
 
 **IE 請回答**：
 1. 切分：預測 action 數 = 1。本句實際應拆成幾個 action？若不同，請在 plan.actions 增列並各給 evidence（原文子字串與 offset）。
-2. 判型（a1）：預測為 composite_unknown（判型詞典僅認「治具/機台/壓合」類詞）。實際動作類型是哪個：acquire / move_place / controlled_move / process / inspect？
+2. 判型（a1）：預測為 composite_unknown（第三輪起動詞字典已參與判型——仍未定＝動詞未登記/單一動詞不足/訊號衝突棄權，逐類統計見 harvest-summary）。實際動作類型是哪個：acquire / move_place / controlled_move / process / inspect？
 3. 數量：句中的數量應掛在哪個 action？frequency=N 還是 repeat？（現行 QuantityPolicyV1 保守處理並標 quantity_policy_review）
 4. routing：預測 routing_status = abstain（理由：composite_unknown）。核准後應維持這個值嗎？
 
@@ -691,7 +717,7 @@
 
 **IE 請回答**：
 1. 切分：預測 action 數 = 1。本句實際應拆成幾個 action？若不同，請在 plan.actions 增列並各給 evidence（原文子字串與 offset）。【v3 結構】結構訊號缺失或矛盾（conflicting_v3_structures；證據：`motion_modules/dcbb30a8…`（name_zh (category=wi-template)；3 cycle；v3）；`motion_module_versions/34b10cd8…`（rows[0].sub_activity；1 cycle；v3）；`motion_module_versions/b91e9fca…`（rows[2].sub_activity；1 cycle；v3）；`motion_modules/32a29bba…`（name_zh (category=action)；1 cycle；v3））——維持開放題，請逐動詞裁決。
-2. 判型（a1）：預測為 composite_unknown（判型詞典僅認「治具/機台/壓合」類詞）。實際動作類型是哪個：acquire / move_place / controlled_move / process / inspect？
+2. 判型（a1）：預測為 composite_unknown（第三輪起動詞字典已參與判型——仍未定＝動詞未登記/單一動詞不足/訊號衝突棄權，逐類統計見 harvest-summary）。實際動作類型是哪個：acquire / move_place / controlled_move / process / inspect？
 3. 取放建模：此句是「取＋放」動詞配對——應建成**一個 GM cycle（G 與 P 各取值）**，還是 acquire + move_place **兩個 action**？（裁決 1：看動作逐案裁決，不預設方向）【v3 結構訊號缺失或矛盾（conflicting_v3_structures）：`motion_modules/dcbb30a8…`（name_zh (category=wi-template)；3 cycle；v3）；`motion_module_versions/34b10cd8…`（rows[0].sub_activity；1 cycle；v3）；`motion_module_versions/b91e9fca…`（rows[2].sub_activity；1 cycle；v3）；`motion_modules/32a29bba…`（name_zh (category=action)；1 cycle；v3）】
 4. SIMO/雙手：左右手是否同時動作？是否需標 hand 與 SIMO 群組？（現行 plan 契約未表達 SIMO——若需要請註記）
 5. routing：預測 routing_status = abstain（理由：composite_unknown）。核准後應維持這個值嗎？
@@ -706,20 +732,23 @@
 **挑戰維度（規則式判定）**：繁簡（簡體字/大陸用語）、多 action
 **v3 結構**：`single_cycle`——`motion_module_versions/549e17e8…`（rows[0].sub_activity；1 cycle；v3）；`motion_module_versions/fb1bde71…`（rows[1].sub_activity；1 cycle；v3）；`motion_modules/8a2348c0…`（name_zh (category=action)；1 cycle；v3）（hint 是證據不是判決；預設依 v3 結構，IE 可推翻）
 **✅ IE 覆核狀態（切分維度）**：已確認照 v3 結構預設（IEC141289，2026-08-16）。僅確認切分，不是整筆 gold 核准；`ie_modified: false`（確認≠修改——本筆不計入 planner 段 Plan 層證據力）。
+**⚠️ typing_changed_by_verb_lexicon**：**第三輪判型已修正，請確認**：動詞字典自本輪參與 GM/CM 判型（D3-017，衝突矩陣見 nlp/rule_based.py classify_seq）——舊判型（僅名詞觸發）＝未定（composite_unknown），新判型（動詞字典參與）＝CM（控制移動）。不同意新判型請在本筆「判型」題回答
 **⚠️ likely_multi_action_undercounted**：本句含多動詞/連接詞，rule planner 只出 1 個 action——但 **v3 結構顯示 IE 當初把這句建為單一 cycle**（證據見本節「v3 結構」與草稿 `v3_structure_evidence`），「幾乎必然低估」對本筆**降級**：預設依 v3 結構（單一 cycle），除非你認定 v3 的切分本身有誤（hint 是證據不是判決，可推翻）
+**⚠️ zero_tmu_distance_unstated**：此句未述距離，**TMU=0.0 非真值**（引擎口徑：距離未述＝0cm、M 階梯 0→0；linker 只掛 core 參數，伴隨 slot 未填）——complete 是結構完成度不是 TMU 可信度。**請補距離（改 plan/cycle 後 `--recompile` 重算）或判定句子資訊不足**（轉正時顯式寫 expected_incomplete_reason；空殼守門要求 total_tmu > 0，原樣轉正會被擋）
 
 **預測 action 數**：1
 **預測切分（evidence 以【】標在正規化原文上）**：
-- `a1` composite_unknown：【左手抓握主機板的包裝袋去除】
+- `a1` controlled_move：【左手抓握主機板的包裝袋去除】
 
 **預測 TMU / tech line**：
-- `a1`：未編譯（composite_unknown）
-**預測 routing**：`abstain`
+- `a1`：TMU=0.0，tech line=`A0 B0 G0 M0 X0 I0 A0`
+**預測 routing**：`review`
 
 **IE 請回答**：
 1. 切分：預測 action 數 = 1。本句實際應拆成幾個 action？若不同，請在 plan.actions 增列並各給 evidence（原文子字串與 offset）。【v3 結構】IE 當初把這句建為**單一 cycle**（證據：`motion_module_versions/549e17e8…`（rows[0].sub_activity；1 cycle；v3）；`motion_module_versions/fb1bde71…`（rows[1].sub_activity；1 cycle；v3）；`motion_modules/8a2348c0…`（name_zh (category=action)；1 cycle；v3）），預設依此；不同意再改。
-2. 判型（a1）：預測為 composite_unknown（判型詞典僅認「治具/機台/壓合」類詞）。實際動作類型是哪個：acquire / move_place / controlled_move / process / inspect？
-3. routing：預測 routing_status = abstain（理由：composite_unknown）。核准後應維持這個值嗎？
+2. 判型（a1）：預測為 controlled_move，對嗎？若對，core 參數 M（控制移動） 的 option code 是什麼？（預標註無候選時請直接填）【第三輪判型已修正：未定（composite_unknown） → CM（控制移動），請確認】
+3. TMU=0.0：此句未述距離，**TMU=0.0 非真值**（引擎口徑：距離未述＝0cm、M 階梯 0→0；linker 只掛 core 參數，伴隨 slot 未填）——complete 是結構完成度不是 TMU 可信度。**請補距離（改 plan/cycle 後 `--recompile` 重算）或判定句子資訊不足**（轉正時顯式寫 expected_incomplete_reason；空殼守門要求 total_tmu > 0，原樣轉正會被擋）。
+4. routing：預測 routing_status = review（理由：無）。核准後應維持這個值嗎？
 
 ---
 
@@ -739,7 +768,7 @@
 
 **IE 請回答**：
 1. 切分：預測 action 數 = 1。本句實際應拆成幾個 action？若不同，請在 plan.actions 增列並各給 evidence（原文子字串與 offset）。
-2. 判型（a1）：預測為 composite_unknown（判型詞典僅認「治具/機台/壓合」類詞）。實際動作類型是哪個：acquire / move_place / controlled_move / process / inspect？
+2. 判型（a1）：預測為 composite_unknown（第三輪起動詞字典已參與判型——仍未定＝動詞未登記/單一動詞不足/訊號衝突棄權，逐類統計見 harvest-summary）。實際動作類型是哪個：acquire / move_place / controlled_move / process / inspect？
 3. 數量：句中的數量應掛在哪個 action？frequency=N 還是 repeat？（現行 QuantityPolicyV1 保守處理並標 quantity_policy_review）
 4. routing：預測 routing_status = abstain（理由：composite_unknown）。核准後應維持這個值嗎？
 
@@ -765,7 +794,7 @@
 
 **IE 請回答**：
 1. 切分：預測 action 數 = 1。本句實際應拆成幾個 action？若不同，請在 plan.actions 增列並各給 evidence（原文子字串與 offset）。【v3 結構】IE 當初把這句建為**單一 cycle**（證據：`motion_module_versions/334b6d42…`（rows[0].sub_activity；1 cycle；v3）；`motion_module_versions/fb1bde71…`（rows[0].sub_activity；1 cycle；v3）；`motion_modules/979b51cb…`（name_zh (category=action)；1 cycle；v3）），預設依此；不同意再改。
-2. 判型（a1）：預測為 composite_unknown（判型詞典僅認「治具/機台/壓合」類詞）。實際動作類型是哪個：acquire / move_place / controlled_move / process / inspect？
+2. 判型（a1）：預測為 composite_unknown（第三輪起動詞字典已參與判型——仍未定＝動詞未登記/單一動詞不足/訊號衝突棄權，逐類統計見 harvest-summary）。實際動作類型是哪個：acquire / move_place / controlled_move / process / inspect？
 3. routing：預測 routing_status = abstain（理由：composite_unknown）。核准後應維持這個值嗎？
 
 ---
@@ -790,7 +819,7 @@
 
 **IE 請回答**：
 1. 切分：預測 action 數 = 1。本句實際應拆成幾個 action？若不同，請在 plan.actions 增列並各給 evidence（原文子字串與 offset）。【v3 結構】IE 當初把這句切成 **2 個 cycle**（證據：`motion_modules/6366f744…`（name_zh (category=wi-template)；2 cycle；v3）），預設依此切分；不同意再改。
-2. 判型（a1）：預測為 composite_unknown（判型詞典僅認「治具/機台/壓合」類詞）。實際動作類型是哪個：acquire / move_place / controlled_move / process / inspect？
+2. 判型（a1）：預測為 composite_unknown（第三輪起動詞字典已參與判型——仍未定＝動詞未登記/單一動詞不足/訊號衝突棄權，逐類統計見 harvest-summary）。實際動作類型是哪個：acquire / move_place / controlled_move / process / inspect？
 3. 取放建模（確認題）：v3 結構顯示 IE 當初把這句切成 **2 個 cycle**（證據：`motion_modules/6366f744…`（name_zh (category=wi-template)；2 cycle；v3））——**預設依此切成 2 個 action/cycle**；不同意再改（hint 是證據不是判決，可推翻）。
 4. 數量：句中的數量應掛在哪個 action？frequency=N 還是 repeat？（現行 QuantityPolicyV1 保守處理並標 quantity_policy_review）
 5. routing：預測 routing_status = abstain（理由：composite_unknown）。核准後應維持這個值嗎？
@@ -804,21 +833,22 @@
 **挑戰維度（規則式判定）**：多 action、工具持有
 **v3 結構**：`single_cycle`——`motion_module_versions/1ec11b2a…`（rows[0].sub_activity；1 cycle；v3）；`motion_module_versions/687ed233…`（rows[2].sub_activity；1 cycle；v3）；`motion_modules/0c944bee…`（name_zh (category=action)；1 cycle；v3）（hint 是證據不是判決；預設依 v3 結構，IE 可推翻）
 **✅ IE 覆核狀態（切分維度）**：已確認照 v3 結構預設（IEC141289，2026-08-16）。僅確認切分，不是整筆 gold 核准；`ie_modified: false`（確認≠修改——本筆不計入 planner 段 Plan 層證據力）。
+**⚠️ typing_changed_by_verb_lexicon**：**第三輪判型已修正，請確認**：動詞字典自本輪參與 GM/CM 判型（D3-017，衝突矩陣見 nlp/rule_based.py classify_seq）——舊判型（僅名詞觸發）＝未定（composite_unknown），新判型（動詞字典參與）＝GM（一般移動）。不同意新判型請在本筆「判型」題回答
 **⚠️ likely_multi_action_undercounted**：本句含多動詞/連接詞，rule planner 只出 1 個 action——但 **v3 結構顯示 IE 當初把這句建為單一 cycle**（證據見本節「v3 結構」與草稿 `v3_structure_evidence`），「幾乎必然低估」對本筆**降級**：預設依 v3 結構（單一 cycle），除非你認定 v3 的切分本身有誤（hint 是證據不是判決，可推翻）
 
 **預測 action 數**：1
 **預測切分（evidence 以【】標在正規化原文上）**：
-- `a1` composite_unknown：【右手抓握風槍保持住至規定位置處】
+- `a1` move_place：【右手抓握風槍保持住至規定位置處】
 
 **預測 TMU / tech line**：
-- `a1`：未編譯（composite_unknown）
-**預測 routing**：`abstain`
+- `a1`：TMU=3.0，tech line=`A0 B0 G0 A0 B0 P3 A0`
+**預測 routing**：`review`
 
 **IE 請回答**：
 1. 切分：預測 action 數 = 1。本句實際應拆成幾個 action？若不同，請在 plan.actions 增列並各給 evidence（原文子字串與 offset）。【v3 結構】IE 當初把這句建為**單一 cycle**（證據：`motion_module_versions/1ec11b2a…`（rows[0].sub_activity；1 cycle；v3）；`motion_module_versions/687ed233…`（rows[2].sub_activity；1 cycle；v3）；`motion_modules/0c944bee…`（name_zh (category=action)；1 cycle；v3）），預設依此；不同意再改。
-2. 判型（a1）：預測為 composite_unknown（判型詞典僅認「治具/機台/壓合」類詞）。實際動作類型是哪個：acquire / move_place / controlled_move / process / inspect？
+2. 判型（a1）：預測為 move_place，對嗎？若對，core 參數 P（放置） 的 option code 是什麼？（預標註無候選時請直接填）【第三輪判型已修正：未定（composite_unknown） → GM（一般移動），請確認】
 3. 工具持有：工具是否跨動作持有？若是，後續動作 G 應留空並在 dependencies 標 tool_held_for。
-4. routing：預測 routing_status = abstain（理由：composite_unknown）。核准後應維持這個值嗎？
+4. routing：預測 routing_status = review（理由：無）。核准後應維持這個值嗎？
 
 ---
 
@@ -842,7 +872,7 @@
 
 **IE 請回答**：
 1. 切分：預測 action 數 = 1。本句實際應拆成幾個 action？若不同，請在 plan.actions 增列並各給 evidence（原文子字串與 offset）。【v3 結構】IE 當初把這句建為**單一 cycle**（證據：`motion_module_versions/0be9daab…`（rows[0].sub_activity；1 cycle；v3）），預設依此；不同意再改。
-2. 判型（a1）：預測為 composite_unknown（判型詞典僅認「治具/機台/壓合」類詞）。實際動作類型是哪個：acquire / move_place / controlled_move / process / inspect？
+2. 判型（a1）：預測為 composite_unknown（第三輪起動詞字典已參與判型——仍未定＝動詞未登記/單一動詞不足/訊號衝突棄權，逐類統計見 harvest-summary）。實際動作類型是哪個：acquire / move_place / controlled_move / process / inspect？
 3. 取放建模（確認題）：v3 結構顯示 IE 當初把這句建為**單一 cycle**（證據：`motion_module_versions/0be9daab…`（rows[0].sub_activity；1 cycle；v3））——**預設建成單一 GM cycle（G 與 P 各取值）**；不同意再改成 acquire + move_place 兩個 action（hint 是證據不是判決，可推翻）。
 4. 數量：句中的數量應掛在哪個 action？frequency=N 還是 repeat？（現行 QuantityPolicyV1 保守處理並標 quantity_policy_review）
 5. routing：預測 routing_status = abstain（理由：composite_unknown）。核准後應維持這個值嗎？
@@ -855,19 +885,22 @@
 **正規化**：貼附label到主機板規定位置處
 **來源**：`motion_modules/9f61331e…`（name_zh (category=wi-template)）
 **挑戰維度（規則式判定）**：繁簡（簡體字/大陸用語）、中英混合
+**⚠️ typing_changed_by_verb_lexicon**：**第三輪判型已修正，請確認**：動詞字典自本輪參與 GM/CM 判型（D3-017，衝突矩陣見 nlp/rule_based.py classify_seq）——舊判型（僅名詞觸發）＝未定（composite_unknown），新判型（動詞字典參與）＝CM（控制移動）。不同意新判型請在本筆「判型」題回答
+**⚠️ zero_tmu_distance_unstated**：此句未述距離，**TMU=0.0 非真值**（引擎口徑：距離未述＝0cm、M 階梯 0→0；linker 只掛 core 參數，伴隨 slot 未填）——complete 是結構完成度不是 TMU 可信度。**請補距離（改 plan/cycle 後 `--recompile` 重算）或判定句子資訊不足**（轉正時顯式寫 expected_incomplete_reason；空殼守門要求 total_tmu > 0，原樣轉正會被擋）
 
 **預測 action 數**：1
 **預測切分（evidence 以【】標在正規化原文上）**：
-- `a1` composite_unknown：【貼附label到主機板規定位置處】
+- `a1` controlled_move：【貼附label到主機板規定位置處】
 
 **預測 TMU / tech line**：
-- `a1`：未編譯（composite_unknown）
-**預測 routing**：`abstain`
+- `a1`：TMU=0.0，tech line=`A0 B0 G0 M0 X0 I0 A0`
+**預測 routing**：`review`
 
 **IE 請回答**：
 1. 切分：預測 action 數 = 1。本句實際應拆成幾個 action？若不同，請在 plan.actions 增列並各給 evidence（原文子字串與 offset）。
-2. 判型（a1）：預測為 composite_unknown（判型詞典僅認「治具/機台/壓合」類詞）。實際動作類型是哪個：acquire / move_place / controlled_move / process / inspect？
-3. routing：預測 routing_status = abstain（理由：composite_unknown）。核准後應維持這個值嗎？
+2. 判型（a1）：預測為 controlled_move，對嗎？若對，core 參數 M（控制移動） 的 option code 是什麼？（預標註無候選時請直接填）【第三輪判型已修正：未定（composite_unknown） → CM（控制移動），請確認】
+3. TMU=0.0：此句未述距離，**TMU=0.0 非真值**（引擎口徑：距離未述＝0cm、M 階梯 0→0；linker 只掛 core 參數，伴隨 slot 未填）——complete 是結構完成度不是 TMU 可信度。**請補距離（改 plan/cycle 後 `--recompile` 重算）或判定句子資訊不足**（轉正時顯式寫 expected_incomplete_reason；空殼守門要求 total_tmu > 0，原樣轉正會被擋）。
+4. routing：預測 routing_status = review（理由：無）。核准後應維持這個值嗎？
 
 ---
 
@@ -879,6 +912,7 @@
 **挑戰維度（規則式判定）**：中英混合、工具持有
 **v3 結構**：`single_cycle`——`motion_module_versions/61b92e7e…`（rows[0].sub_activity；1 cycle；v3）；`motion_modules/a6e06c10…`（name_zh (category=action)；1 cycle；v3）（hint 是證據不是判決；預設依 v3 結構，IE 可推翻）
 **✅ IE 覆核狀態（切分維度）**：已確認照 v3 結構預設（IEC141289，2026-08-16）。僅確認切分，不是整筆 gold 核准；`ie_modified: false`（確認≠修改——本筆不計入 planner 段 Plan 層證據力）。
+**⚠️ p_direction_single_default**：P 方向數（IE 情境規則 D3-017）：賓語屬**機構件類**（治具/卡槽/機箱/接頭/點位）→ 必對準，已預設 `p_place_single`。**方向數預設一種，不對請改**（p_place_multi 多種方向／p_place_none 無方向）
 **⚠️ take_place_pair_may_be_single_gm**：本句是「取＋放」動詞配對（無連接詞）——MiniMOST 的 GM 序列本來就是 G＋P 同一 cycle，單 action 不必然是低估。請裁決：建成**單一 GM cycle**（G 與 P 各取值）還是 acquire＋move_place **兩個 action**（見下方「取放建模」題；不預設方向）
 
 **預測 action 數**：1
@@ -886,15 +920,16 @@
 - `a1` move_place：【左手抓握dimm壓合治具的把手放至對應的點位】
 
 **預測 TMU / tech line**：
-- `a1`：未編譯（missing_core_p）
+- `a1`：TMU=16.0，tech line=`A0 B0 G0 A0 B0 P16 A0`
 **預測 routing**：`review`
 
 **IE 請回答**：
 1. 切分：預測 action 數 = 1。本句實際應拆成幾個 action？若不同，請在 plan.actions 增列並各給 evidence（原文子字串與 offset）。【v3 結構】IE 當初把這句建為**單一 cycle**（證據：`motion_module_versions/61b92e7e…`（rows[0].sub_activity；1 cycle；v3）；`motion_modules/a6e06c10…`（name_zh (category=action)；1 cycle；v3）），預設依此；不同意再改。
 2. 判型（a1）：預測為 move_place，對嗎？若對，core 參數 P（放置） 的 option code 是什麼？（預標註無候選時請直接填）
-3. 取放建模（確認題）：v3 結構顯示 IE 當初把這句建為**單一 cycle**（證據：`motion_module_versions/61b92e7e…`（rows[0].sub_activity；1 cycle；v3）；`motion_modules/a6e06c10…`（name_zh (category=action)；1 cycle；v3））——**預設建成單一 GM cycle（G 與 P 各取值）**；不同意再改成 acquire + move_place 兩個 action（hint 是證據不是判決，可推翻）。
-4. 工具持有：工具是否跨動作持有？若是，後續動作 G 應留空並在 dependencies 標 tool_held_for。
-5. routing：預測 routing_status = review（理由：no_candidate_p、missing_core_p）。核准後應維持這個值嗎？
+3. P 方向數：P 方向數（IE 情境規則 D3-017）：賓語屬**機構件類**（治具/卡槽/機箱/接頭/點位）→ 必對準，已預設 `p_place_single`。**方向數預設一種，不對請改**（p_place_multi 多種方向／p_place_none 無方向）
+4. 取放建模（確認題）：v3 結構顯示 IE 當初把這句建為**單一 cycle**（證據：`motion_module_versions/61b92e7e…`（rows[0].sub_activity；1 cycle；v3）；`motion_modules/a6e06c10…`（name_zh (category=action)；1 cycle；v3））——**預設建成單一 GM cycle（G 與 P 各取值）**；不同意再改成 acquire + move_place 兩個 action（hint 是證據不是判決，可推翻）。
+5. 工具持有：工具是否跨動作持有？若是，後續動作 G 應留空並在 dependencies 標 tool_held_for。
+6. routing：預測 routing_status = review（理由：無）。核准後應維持這個值嗎？
 
 ---
 
@@ -906,21 +941,24 @@
 **挑戰維度（規則式判定）**：繁簡（簡體字/大陸用語）、中英混合
 **v3 結構**：`single_cycle`——`motion_module_versions/2a1ba08c…`（rows[0].sub_activity；1 cycle；v3）；`motion_module_versions/4495bd92…`（rows[0].sub_activity；1 cycle；v3）；`motion_modules/d8232ea2…`（name_zh (category=action)；1 cycle；v3）（hint 是證據不是判決；預設依 v3 結構，IE 可推翻）
 **✅ IE 覆核狀態（切分維度）**：已確認照 v3 結構預設（IEC141289，2026-08-16）。僅確認切分，不是整筆 gold 核准；`ie_modified: false`（確認≠修改——本筆不計入 planner 段 Plan 層證據力）。
+**⚠️ typing_changed_by_verb_lexicon**：**第三輪判型已修正，請確認**：動詞字典自本輪參與 GM/CM 判型（D3-017，衝突矩陣見 nlp/rule_based.py classify_seq）——舊判型（僅名詞觸發）＝未定（composite_unknown），新判型（動詞字典參與）＝CM（控制移動）。不同意新判型請在本筆「判型」題回答
 **⚠️ take_place_pair_may_be_single_gm**：本句是「取＋放」動詞配對（無連接詞）——MiniMOST 的 GM 序列本來就是 G＋P 同一 cycle，單 action 不必然是低估。請裁決：建成**單一 GM cycle**（G 與 P 各取值）還是 acquire＋move_place **兩個 action**（見下方「取放建模」題；不預設方向）
+**⚠️ zero_tmu_distance_unstated**：此句未述距離，**TMU=0.0 非真值**（引擎口徑：距離未述＝0cm、M 階梯 0→0；linker 只掛 core 參數，伴隨 slot 未填）——complete 是結構完成度不是 TMU 可信度。**請補距離（改 plan/cycle 後 `--recompile` 重算）或判定句子資訊不足**（轉正時顯式寫 expected_incomplete_reason；空殼守門要求 total_tmu > 0，原樣轉正會被擋）
 
 **預測 action 數**：1
 **預測切分（evidence 以【】標在正規化原文上）**：
-- `a1` composite_unknown：【右手從dimm材料盒拿取label貼附至主機板】
+- `a1` controlled_move：【右手從dimm材料盒拿取label貼附至主機板】
 
 **預測 TMU / tech line**：
-- `a1`：未編譯（composite_unknown）
-**預測 routing**：`abstain`
+- `a1`：TMU=0.0，tech line=`A0 B0 G0 M0 X0 I0 A0`
+**預測 routing**：`review`
 
 **IE 請回答**：
 1. 切分：預測 action 數 = 1。本句實際應拆成幾個 action？若不同，請在 plan.actions 增列並各給 evidence（原文子字串與 offset）。【v3 結構】IE 當初把這句建為**單一 cycle**（證據：`motion_module_versions/2a1ba08c…`（rows[0].sub_activity；1 cycle；v3）；`motion_module_versions/4495bd92…`（rows[0].sub_activity；1 cycle；v3）；`motion_modules/d8232ea2…`（name_zh (category=action)；1 cycle；v3）），預設依此；不同意再改。
-2. 判型（a1）：預測為 composite_unknown（判型詞典僅認「治具/機台/壓合」類詞）。實際動作類型是哪個：acquire / move_place / controlled_move / process / inspect？
-3. 取放建模（確認題）：v3 結構顯示 IE 當初把這句建為**單一 cycle**（證據：`motion_module_versions/2a1ba08c…`（rows[0].sub_activity；1 cycle；v3）；`motion_module_versions/4495bd92…`（rows[0].sub_activity；1 cycle；v3）；`motion_modules/d8232ea2…`（name_zh (category=action)；1 cycle；v3））——**預設建成單一 GM cycle（G 與 P 各取值）**；不同意再改成 acquire + move_place 兩個 action（hint 是證據不是判決，可推翻）。
-4. routing：預測 routing_status = abstain（理由：composite_unknown）。核准後應維持這個值嗎？
+2. 判型（a1）：預測為 controlled_move，對嗎？若對，core 參數 M（控制移動） 的 option code 是什麼？（預標註無候選時請直接填）【第三輪判型已修正：未定（composite_unknown） → CM（控制移動），請確認】
+3. TMU=0.0：此句未述距離，**TMU=0.0 非真值**（引擎口徑：距離未述＝0cm、M 階梯 0→0；linker 只掛 core 參數，伴隨 slot 未填）——complete 是結構完成度不是 TMU 可信度。**請補距離（改 plan/cycle 後 `--recompile` 重算）或判定句子資訊不足**（轉正時顯式寫 expected_incomplete_reason；空殼守門要求 total_tmu > 0，原樣轉正會被擋）。
+4. 取放建模（確認題）：v3 結構顯示 IE 當初把這句建為**單一 cycle**（證據：`motion_module_versions/2a1ba08c…`（rows[0].sub_activity；1 cycle；v3）；`motion_module_versions/4495bd92…`（rows[0].sub_activity；1 cycle；v3）；`motion_modules/d8232ea2…`（name_zh (category=action)；1 cycle；v3））——**預設建成單一 GM cycle（G 與 P 各取值）**；不同意再改成 acquire + move_place 兩個 action（hint 是證據不是判決，可推翻）。
+5. routing：預測 routing_status = review（理由：無）。核准後應維持這個值嗎？
 
 ---
 
@@ -941,7 +979,7 @@
 
 **IE 請回答**：
 1. 切分：預測 action 數 = 1。本句實際應拆成幾個 action？若不同，請在 plan.actions 增列並各給 evidence（原文子字串與 offset）。
-2. 判型（a1）：預測為 composite_unknown（判型詞典僅認「治具/機台/壓合」類詞）。實際動作類型是哪個：acquire / move_place / controlled_move / process / inspect？
+2. 判型（a1）：預測為 composite_unknown（第三輪起動詞字典已參與判型——仍未定＝動詞未登記/單一動詞不足/訊號衝突棄權，逐類統計見 harvest-summary）。實際動作類型是哪個：acquire / move_place / controlled_move / process / inspect？
 3. SIMO/雙手：左右手是否同時動作？是否需標 hand 與 SIMO 群組？（現行 plan 契約未表達 SIMO——若需要請註記）
 4. routing：預測 routing_status = abstain（理由：composite_unknown）。核准後應維持這個值嗎？
 
@@ -955,22 +993,25 @@
 **挑戰維度（規則式判定）**：中英混合、工具持有
 **v3 結構**：`single_cycle`——`motion_module_versions/40bb7624…`（rows[2].sub_activity；1 cycle；v3）；`motion_module_versions/739d25e9…`（rows[0].sub_activity；1 cycle；v3）；`motion_modules/9af1d144…`（name_zh (category=action)；1 cycle；v3）（hint 是證據不是判決；預設依 v3 結構，IE 可推翻）
 **✅ IE 覆核狀態（切分維度）**：已確認照 v3 結構預設（IEC141289，2026-08-16）。僅確認切分，不是整筆 gold 核准；`ie_modified: false`（確認≠修改——本筆不計入 planner 段 Plan 層證據力）。
+**⚠️ typing_changed_by_verb_lexicon**：**第三輪判型已修正，請確認**：動詞字典自本輪參與 GM/CM 判型（D3-017，衝突矩陣見 nlp/rule_based.py classify_seq）——舊判型（僅名詞觸發）＝GM（一般移動），新判型（動詞字典參與）＝CM（控制移動）。不同意新判型請在本筆「判型」題回答
 **⚠️ take_move_pair_may_be_single_cm**：本句是「取/觸＋推/拉」動詞配對（無連接詞）——MiniMOST 的 CM 序列本來就是 G 與 M 同一 cycle（`docs/core-logic/minimost-sequence-model-core-logic-spec.md` §2：A B G M X I A），單 action 不必然是低估。請裁決：建成**單一 CM cycle**（G 與 M 各取值）還是 acquire＋controlled_move **兩個 action**（見下方「取移建模」題；不預設方向）
+**⚠️ zero_tmu_distance_unstated**：此句未述距離，**TMU=0.0 非真值**（引擎口徑：距離未述＝0cm、M 階梯 0→0；linker 只掛 core 參數，伴隨 slot 未填）——complete 是結構完成度不是 TMU 可信度。**請補距離（改 plan/cycle 後 `--recompile` 重算）或判定句子資訊不足**（轉正時顯式寫 expected_incomplete_reason；空殼守門要求 total_tmu > 0，原樣轉正會被擋）
 
 **預測 action 數**：1
 **預測切分（evidence 以【】標在正規化原文上）**：
-- `a1` move_place：【右手接觸dimm壓合治具的底板拉至對應的點位】
+- `a1` controlled_move：【右手接觸dimm壓合治具的底板拉至對應的點位】
 
 **預測 TMU / tech line**：
-- `a1`：未編譯（missing_core_p）
+- `a1`：TMU=0.0，tech line=`A0 B0 G0 M0 X0 I0 A0`
 **預測 routing**：`review`
 
 **IE 請回答**：
 1. 切分：預測 action 數 = 1。本句實際應拆成幾個 action？若不同，請在 plan.actions 增列並各給 evidence（原文子字串與 offset）。【v3 結構】IE 當初把這句建為**單一 cycle**（證據：`motion_module_versions/40bb7624…`（rows[2].sub_activity；1 cycle；v3）；`motion_module_versions/739d25e9…`（rows[0].sub_activity；1 cycle；v3）；`motion_modules/9af1d144…`（name_zh (category=action)；1 cycle；v3）），預設依此；不同意再改。
-2. 判型（a1）：預測為 move_place，對嗎？若對，core 參數 P（放置） 的 option code 是什麼？（預標註無候選時請直接填）
-3. 取移建模（確認題）：v3 結構顯示 IE 當初把這句建為**單一 cycle**（證據：`motion_module_versions/40bb7624…`（rows[2].sub_activity；1 cycle；v3）；`motion_module_versions/739d25e9…`（rows[0].sub_activity；1 cycle；v3）；`motion_modules/9af1d144…`（name_zh (category=action)；1 cycle；v3））——**預設建成單一 CM cycle（G 與 M 各取值）**；不同意再改成 acquire + controlled_move 兩個 action（hint 是證據不是判決，可推翻）。
-4. 工具持有：工具是否跨動作持有？若是，後續動作 G 應留空並在 dependencies 標 tool_held_for。
-5. routing：預測 routing_status = review（理由：no_candidate_p、missing_core_p）。核准後應維持這個值嗎？
+2. 判型（a1）：預測為 controlled_move，對嗎？若對，core 參數 M（控制移動） 的 option code 是什麼？（預標註無候選時請直接填）【第三輪判型已修正：GM（一般移動） → CM（控制移動），請確認】
+3. TMU=0.0：此句未述距離，**TMU=0.0 非真值**（引擎口徑：距離未述＝0cm、M 階梯 0→0；linker 只掛 core 參數，伴隨 slot 未填）——complete 是結構完成度不是 TMU 可信度。**請補距離（改 plan/cycle 後 `--recompile` 重算）或判定句子資訊不足**（轉正時顯式寫 expected_incomplete_reason；空殼守門要求 total_tmu > 0，原樣轉正會被擋）。
+4. 取移建模（確認題）：v3 結構顯示 IE 當初把這句建為**單一 cycle**（證據：`motion_module_versions/40bb7624…`（rows[2].sub_activity；1 cycle；v3）；`motion_module_versions/739d25e9…`（rows[0].sub_activity；1 cycle；v3）；`motion_modules/9af1d144…`（name_zh (category=action)；1 cycle；v3））——**預設建成單一 CM cycle（G 與 M 各取值）**；不同意再改成 acquire + controlled_move 兩個 action（hint 是證據不是判決，可推翻）。
+5. 工具持有：工具是否跨動作持有？若是，後續動作 G 應留空並在 dependencies 標 tool_held_for。
+6. routing：預測 routing_status = review（理由：無）。核准後應維持這個值嗎？
 
 ---
 
@@ -982,20 +1023,21 @@
 **挑戰維度（規則式判定）**：中英混合、多 action
 **v3 結構**：`single_cycle`——`motion_module_versions/687ed233…`（rows[3].sub_activity；1 cycle；v3）；`motion_module_versions/87f0fddc…`（rows[0].sub_activity；1 cycle；v3）；`motion_modules/ef3a2924…`（name_zh (category=action)；1 cycle；v3）（hint 是證據不是判決；預設依 v3 結構，IE 可推翻）
 **✅ IE 覆核狀態（切分維度）**：已確認照 v3 結構預設（IEC141289，2026-08-16）。僅確認切分，不是整筆 gold 核准；`ie_modified: false`（確認≠修改——本筆不計入 planner 段 Plan 層證據力）。
+**⚠️ typing_changed_by_verb_lexicon**：**第三輪判型已修正，請確認**：動詞字典自本輪參與 GM/CM 判型（D3-017，衝突矩陣見 nlp/rule_based.py classify_seq）——舊判型（僅名詞觸發）＝未定（composite_unknown），新判型（動詞字典參與）＝GM（一般移動）。不同意新判型請在本筆「判型」題回答
 **⚠️ likely_multi_action_undercounted**：本句含多動詞/連接詞，rule planner 只出 1 個 action——但 **v3 結構顯示 IE 當初把這句建為單一 cycle**（證據見本節「v3 結構」與草稿 `v3_structure_evidence`），「幾乎必然低估」對本筆**降級**：預設依 v3 結構（單一 cycle），除非你認定 v3 的切分本身有誤（hint 是證據不是判決，可推翻）
 
 **預測 action 數**：1
 **預測切分（evidence 以【】標在正規化原文上）**：
-- `a1` composite_unknown：【左手抓握dimm材料盒保持住】
+- `a1` move_place：【左手抓握dimm材料盒保持住】
 
 **預測 TMU / tech line**：
-- `a1`：未編譯（composite_unknown）
-**預測 routing**：`abstain`
+- `a1`：TMU=3.0，tech line=`A0 B0 G0 A0 B0 P3 A0`
+**預測 routing**：`review`
 
 **IE 請回答**：
 1. 切分：預測 action 數 = 1。本句實際應拆成幾個 action？若不同，請在 plan.actions 增列並各給 evidence（原文子字串與 offset）。【v3 結構】IE 當初把這句建為**單一 cycle**（證據：`motion_module_versions/687ed233…`（rows[3].sub_activity；1 cycle；v3）；`motion_module_versions/87f0fddc…`（rows[0].sub_activity；1 cycle；v3）；`motion_modules/ef3a2924…`（name_zh (category=action)；1 cycle；v3）），預設依此；不同意再改。
-2. 判型（a1）：預測為 composite_unknown（判型詞典僅認「治具/機台/壓合」類詞）。實際動作類型是哪個：acquire / move_place / controlled_move / process / inspect？
-3. routing：預測 routing_status = abstain（理由：composite_unknown）。核准後應維持這個值嗎？
+2. 判型（a1）：預測為 move_place，對嗎？若對，core 參數 P（放置） 的 option code 是什麼？（預標註無候選時請直接填）【第三輪判型已修正：未定（composite_unknown） → GM（一般移動），請確認】
+3. routing：預測 routing_status = review（理由：無）。核准後應維持這個值嗎？
 
 ---
 
@@ -1019,7 +1061,7 @@
 
 **IE 請回答**：
 1. 切分：預測 action 數 = 1。本句實際應拆成幾個 action？若不同，請在 plan.actions 增列並各給 evidence（原文子字串與 offset）。【v3 結構】IE 當初把這句建為**單一 cycle**（證據：`motion_module_versions/7fc58b77…`（rows[0].sub_activity；1 cycle；v3）；`motion_module_versions/93b2939c…`（rows[0].sub_activity；1 cycle；v3）；`motion_modules/ac3ce9bb…`（name_zh (category=action)；1 cycle；v3）），預設依此；不同意再改。
-2. 判型（a1）：預測為 composite_unknown（判型詞典僅認「治具/機台/壓合」類詞）。實際動作類型是哪個：acquire / move_place / controlled_move / process / inspect？
+2. 判型（a1）：預測為 composite_unknown（第三輪起動詞字典已參與判型——仍未定＝動詞未登記/單一動詞不足/訊號衝突棄權，逐類統計見 harvest-summary）。實際動作類型是哪個：acquire / move_place / controlled_move / process / inspect？
 3. routing：預測 routing_status = abstain（理由：composite_unknown）。核准後應維持這個值嗎？
 
 ---
@@ -1032,20 +1074,23 @@
 **挑戰維度（規則式判定）**：中英混合、多 action
 **v3 結構**：`single_cycle`——`motion_module_versions/7fc58b77…`（rows[1].sub_activity；1 cycle；v3）；`motion_module_versions/b8e3690d…`（rows[0].sub_activity；1 cycle；v3）；`motion_modules/2b73646b…`（name_zh (category=action)；1 cycle；v3）（hint 是證據不是判決；預設依 v3 結構，IE 可推翻）
 **✅ IE 覆核狀態（切分維度）**：已確認照 v3 結構預設（IEC141289，2026-08-16）。僅確認切分，不是整筆 gold 核准；`ie_modified: false`（確認≠修改——本筆不計入 planner 段 Plan 層證據力）。
+**⚠️ typing_changed_by_verb_lexicon**：**第三輪判型已修正，請確認**：動詞字典自本輪參與 GM/CM 判型（D3-017，衝突矩陣見 nlp/rule_based.py classify_seq）——舊判型（僅名詞觸發）＝未定（composite_unknown），新判型（動詞字典參與）＝CM（控制移動）。不同意新判型請在本筆「判型」題回答
 **⚠️ likely_multi_action_undercounted**：本句含多動詞/連接詞，rule planner 只出 1 個 action——但 **v3 結構顯示 IE 當初把這句建為單一 cycle**（證據見本節「v3 結構」與草稿 `v3_structure_evidence`），「幾乎必然低估」對本筆**降級**：預設依 v3 結構（單一 cycle），除非你認定 v3 的切分本身有誤（hint 是證據不是判決，可推翻）
+**⚠️ zero_tmu_distance_unstated**：此句未述距離，**TMU=0.0 非真值**（引擎口徑：距離未述＝0cm、M 階梯 0→0；linker 只掛 core 參數，伴隨 slot 未填）——complete 是結構完成度不是 TMU 可信度。**請補距離（改 plan/cycle 後 `--recompile` 重算）或判定句子資訊不足**（轉正時顯式寫 expected_incomplete_reason；空殼守門要求 total_tmu > 0，原樣轉正會被擋）
 
 **預測 action 數**：1
 **預測切分（evidence 以【】標在正規化原文上）**：
-- `a1` composite_unknown：【右手抓握假dimm的包裝袋撕除】
+- `a1` controlled_move：【右手抓握假dimm的包裝袋撕除】
 
 **預測 TMU / tech line**：
-- `a1`：未編譯（composite_unknown）
-**預測 routing**：`abstain`
+- `a1`：TMU=0.0，tech line=`A0 B0 G0 M0 X0 I0 A0`
+**預測 routing**：`review`
 
 **IE 請回答**：
 1. 切分：預測 action 數 = 1。本句實際應拆成幾個 action？若不同，請在 plan.actions 增列並各給 evidence（原文子字串與 offset）。【v3 結構】IE 當初把這句建為**單一 cycle**（證據：`motion_module_versions/7fc58b77…`（rows[1].sub_activity；1 cycle；v3）；`motion_module_versions/b8e3690d…`（rows[0].sub_activity；1 cycle；v3）；`motion_modules/2b73646b…`（name_zh (category=action)；1 cycle；v3）），預設依此；不同意再改。
-2. 判型（a1）：預測為 composite_unknown（判型詞典僅認「治具/機台/壓合」類詞）。實際動作類型是哪個：acquire / move_place / controlled_move / process / inspect？
-3. routing：預測 routing_status = abstain（理由：composite_unknown）。核准後應維持這個值嗎？
+2. 判型（a1）：預測為 controlled_move，對嗎？若對，core 參數 M（控制移動） 的 option code 是什麼？（預標註無候選時請直接填）【第三輪判型已修正：未定（composite_unknown） → CM（控制移動），請確認】
+3. TMU=0.0：此句未述距離，**TMU=0.0 非真值**（引擎口徑：距離未述＝0cm、M 階梯 0→0；linker 只掛 core 參數，伴隨 slot 未填）——complete 是結構完成度不是 TMU 可信度。**請補距離（改 plan/cycle 後 `--recompile` 重算）或判定句子資訊不足**（轉正時顯式寫 expected_incomplete_reason；空殼守門要求 total_tmu > 0，原樣轉正會被擋）。
+4. routing：預測 routing_status = review（理由：無）。核准後應維持這個值嗎？
 
 ---
 
@@ -1066,7 +1111,7 @@
 
 **IE 請回答**：
 1. 切分：預測 action 數 = 1。本句實際應拆成幾個 action？若不同，請在 plan.actions 增列並各給 evidence（原文子字串與 offset）。
-2. 判型（a1）：預測為 composite_unknown（判型詞典僅認「治具/機台/壓合」類詞）。實際動作類型是哪個：acquire / move_place / controlled_move / process / inspect？
+2. 判型（a1）：預測為 composite_unknown（第三輪起動詞字典已參與判型——仍未定＝動詞未登記/單一動詞不足/訊號衝突棄權，逐類統計見 harvest-summary）。實際動作類型是哪個：acquire / move_place / controlled_move / process / inspect？
 3. routing：預測 routing_status = abstain（理由：composite_unknown）。核准後應維持這個值嗎？
 
 ---
@@ -1076,20 +1121,21 @@
 **原文**：按壓功能測試治具
 **來源**：`wi_rows/bd1da7bc…`（sub_activity）
 **挑戰維度（規則式判定）**：工具持有
+**⚠️ typing_changed_by_verb_lexicon**：**第三輪判型已修正，請確認**：動詞字典自本輪參與 GM/CM 判型（D3-017，衝突矩陣見 nlp/rule_based.py classify_seq）——舊判型（僅名詞觸發）＝GM（一般移動），新判型（動詞字典參與）＝CM（控制移動）。不同意新判型請在本筆「判型」題回答
 
 **預測 action 數**：1
 **預測切分（evidence 以【】標在正規化原文上）**：
-- `a1` move_place：【按壓功能測試治具】
+- `a1` controlled_move：【按壓功能測試治具】
 
 **預測 TMU / tech line**：
-- `a1`：未編譯（missing_core_p）
+- `a1`：TMU=3.0，tech line=`A0 B0 G0 M3 X0 I0 A0`
 **預測 routing**：`review`
 
 **IE 請回答**：
 1. 切分：預測 action 數 = 1。本句實際應拆成幾個 action？若不同，請在 plan.actions 增列並各給 evidence（原文子字串與 offset）。
-2. 判型（a1）：預測為 move_place，對嗎？若對，core 參數 P（放置） 的 option code 是什麼？（預標註無候選時請直接填）
+2. 判型（a1）：預測為 controlled_move，對嗎？若對，core 參數 M（控制移動） 的 option code 是什麼？（預標註無候選時請直接填）【第三輪判型已修正：GM（一般移動） → CM（控制移動），請確認】
 3. 工具持有：工具是否跨動作持有？若是，後續動作 G 應留空並在 dependencies 標 tool_held_for。
-4. routing：預測 routing_status = review（理由：no_candidate_p、missing_core_p）。核准後應維持這個值嗎？
+4. routing：預測 routing_status = review（理由：無）。核准後應維持這個值嗎？
 
 ---
 
@@ -1101,21 +1147,24 @@
 **挑戰維度（規則式判定）**：繁簡（簡體字/大陸用語）
 **v3 結構**：`single_cycle`——`motion_module_versions/37b5e479…`（rows[0].sub_activity；1 cycle；v3）；`motion_module_versions/fb1bde71…`（rows[2].sub_activity；1 cycle；v3）；`motion_modules/909142f5…`（name_zh (category=action)；1 cycle；v3）（hint 是證據不是判決；預設依 v3 結構，IE 可推翻）
 **✅ IE 覆核狀態（切分維度）**：已確認照 v3 結構預設（IEC141289，2026-08-16）。僅確認切分，不是整筆 gold 核准；`ie_modified: false`（確認≠修改——本筆不計入 planner 段 Plan 層證據力）。
+**⚠️ typing_changed_by_verb_lexicon**：**第三輪判型已修正，請確認**：動詞字典自本輪參與 GM/CM 判型（D3-017，衝突矩陣見 nlp/rule_based.py classify_seq）——舊判型（僅名詞觸發）＝未定（composite_unknown），新判型（動詞字典參與）＝GM（一般移動）。不同意新判型請在本筆「判型」題回答
+**⚠️ p_direction_none_by_context**：P 方向數（IE 情境規則 D3-017）：賓語屬**盤面類**（流水線/工作台/垃圾桶/料盒/材料盒/料架）→ 無方向，已套用 `p_place_none`。請確認
 **⚠️ take_place_pair_may_be_single_gm**：本句是「取＋放」動詞配對（無連接詞）——MiniMOST 的 GM 序列本來就是 G＋P 同一 cycle，單 action 不必然是低估。請裁決：建成**單一 GM cycle**（G 與 P 各取值）還是 acquire＋move_place **兩個 action**（見下方「取放建模」題；不預設方向）
 
 **預測 action 數**：1
 **預測切分（evidence 以【】標在正規化原文上）**：
-- `a1` composite_unknown：【左手重新抓握主機板的包裝袋放至料架】
+- `a1` move_place：【左手重新抓握主機板的包裝袋放至料架】
 
 **預測 TMU / tech line**：
-- `a1`：未編譯（composite_unknown）
-**預測 routing**：`abstain`
+- `a1`：TMU=6.0，tech line=`A0 B0 G0 A0 B0 P6 A0`
+**預測 routing**：`review`
 
 **IE 請回答**：
 1. 切分：預測 action 數 = 1。本句實際應拆成幾個 action？若不同，請在 plan.actions 增列並各給 evidence（原文子字串與 offset）。【v3 結構】IE 當初把這句建為**單一 cycle**（證據：`motion_module_versions/37b5e479…`（rows[0].sub_activity；1 cycle；v3）；`motion_module_versions/fb1bde71…`（rows[2].sub_activity；1 cycle；v3）；`motion_modules/909142f5…`（name_zh (category=action)；1 cycle；v3）），預設依此；不同意再改。
-2. 判型（a1）：預測為 composite_unknown（判型詞典僅認「治具/機台/壓合」類詞）。實際動作類型是哪個：acquire / move_place / controlled_move / process / inspect？
-3. 取放建模（確認題）：v3 結構顯示 IE 當初把這句建為**單一 cycle**（證據：`motion_module_versions/37b5e479…`（rows[0].sub_activity；1 cycle；v3）；`motion_module_versions/fb1bde71…`（rows[2].sub_activity；1 cycle；v3）；`motion_modules/909142f5…`（name_zh (category=action)；1 cycle；v3））——**預設建成單一 GM cycle（G 與 P 各取值）**；不同意再改成 acquire + move_place 兩個 action（hint 是證據不是判決，可推翻）。
-4. routing：預測 routing_status = abstain（理由：composite_unknown）。核准後應維持這個值嗎？
+2. 判型（a1）：預測為 move_place，對嗎？若對，core 參數 P（放置） 的 option code 是什麼？（預標註無候選時請直接填）【第三輪判型已修正：未定（composite_unknown） → GM（一般移動），請確認】
+3. P 方向數：P 方向數（IE 情境規則 D3-017）：賓語屬**盤面類**（流水線/工作台/垃圾桶/料盒/材料盒/料架）→ 無方向，已套用 `p_place_none`。請確認
+4. 取放建模（確認題）：v3 結構顯示 IE 當初把這句建為**單一 cycle**（證據：`motion_module_versions/37b5e479…`（rows[0].sub_activity；1 cycle；v3）；`motion_module_versions/fb1bde71…`（rows[2].sub_activity；1 cycle；v3）；`motion_modules/909142f5…`（name_zh (category=action)；1 cycle；v3））——**預設建成單一 GM cycle（G 與 P 各取值）**；不同意再改成 acquire + move_place 兩個 action（hint 是證據不是判決，可推翻）。
+5. routing：預測 routing_status = review（理由：無）。核准後應維持這個值嗎？
 
 ---
 
@@ -1161,7 +1210,7 @@
 
 **IE 請回答**：
 1. 切分：預測 action 數 = 1。本句實際應拆成幾個 action？若不同，請在 plan.actions 增列並各給 evidence（原文子字串與 offset）。【v3 結構】結構訊號缺失或矛盾（no_v3_structure_signal；證據：`wi_rows/26d9037d…`（sub_activity；1 cycle；非 v3，不餵 hint））——維持開放題，請逐動詞裁決。
-2. 判型（a1）：預測為 composite_unknown（判型詞典僅認「治具/機台/壓合」類詞）。實際動作類型是哪個：acquire / move_place / controlled_move / process / inspect？
+2. 判型（a1）：預測為 composite_unknown（第三輪起動詞字典已參與判型——仍未定＝動詞未登記/單一動詞不足/訊號衝突棄權，逐類統計見 harvest-summary）。實際動作類型是哪個：acquire / move_place / controlled_move / process / inspect？
 3. routing：預測 routing_status = abstain（理由：composite_unknown）。核准後應維持這個值嗎？
 
 ---
@@ -1185,7 +1234,7 @@
 
 **IE 請回答**：
 1. 切分：預測 action 數 = 1。本句實際應拆成幾個 action？若不同，請在 plan.actions 增列並各給 evidence（原文子字串與 offset）。【v3 結構】IE 當初把這句建為**單一 cycle**（證據：`motion_module_versions/9569aeaf…`（rows[2].sub_activity；1 cycle；v3）），預設依此；不同意再改。
-2. 判型（a1）：預測為 composite_unknown（判型詞典僅認「治具/機台/壓合」類詞）。實際動作類型是哪個：acquire / move_place / controlled_move / process / inspect？
+2. 判型（a1）：預測為 composite_unknown（第三輪起動詞字典已參與判型——仍未定＝動詞未登記/單一動詞不足/訊號衝突棄權，逐類統計見 harvest-summary）。實際動作類型是哪個：acquire / move_place / controlled_move / process / inspect？
 3. routing：預測 routing_status = abstain（理由：composite_unknown）。核准後應維持這個值嗎？
 
 ---
@@ -1209,7 +1258,7 @@
 
 **IE 請回答**：
 1. 切分：預測 action 數 = 1。本句實際應拆成幾個 action？若不同，請在 plan.actions 增列並各給 evidence（原文子字串與 offset）。【v3 結構】IE 當初把這句建為**單一 cycle**（證據：`motion_module_versions/a4b7f7b7…`（rows[0].sub_activity；1 cycle；v3）；`motion_modules/c7c55293…`（name_zh (category=action)；1 cycle；v3）），預設依此；不同意再改。
-2. 判型（a1）：預測為 composite_unknown（判型詞典僅認「治具/機台/壓合」類詞）。實際動作類型是哪個：acquire / move_place / controlled_move / process / inspect？
+2. 判型（a1）：預測為 composite_unknown（第三輪起動詞字典已參與判型——仍未定＝動詞未登記/單一動詞不足/訊號衝突棄權，逐類統計見 harvest-summary）。實際動作類型是哪個：acquire / move_place / controlled_move / process / inspect？
 3. routing：預測 routing_status = abstain（理由：composite_unknown）。核准後應維持這個值嗎？
 
 ---
@@ -1231,7 +1280,7 @@
 
 **IE 請回答**：
 1. 切分：預測 action 數 = 1。本句實際應拆成幾個 action？若不同，請在 plan.actions 增列並各給 evidence（原文子字串與 offset）。
-2. 判型（a1）：預測為 composite_unknown（判型詞典僅認「治具/機台/壓合」類詞）。實際動作類型是哪個：acquire / move_place / controlled_move / process / inspect？
+2. 判型（a1）：預測為 composite_unknown（第三輪起動詞字典已參與判型——仍未定＝動詞未登記/單一動詞不足/訊號衝突棄權，逐類統計見 harvest-summary）。實際動作類型是哪個：acquire / move_place / controlled_move / process / inspect？
 3. routing：預測 routing_status = abstain（理由：composite_unknown）。核准後應維持這個值嗎？
 
 ---
@@ -1242,19 +1291,20 @@
 **正規化**：按壓 dimm 卡扣到定位
 **來源**：`wi_rows/0c5b0f92…`（sub_activity）
 **挑戰維度（規則式判定）**：中英混合
+**⚠️ typing_changed_by_verb_lexicon**：**第三輪判型已修正，請確認**：動詞字典自本輪參與 GM/CM 判型（D3-017，衝突矩陣見 nlp/rule_based.py classify_seq）——舊判型（僅名詞觸發）＝未定（composite_unknown），新判型（動詞字典參與）＝CM（控制移動）。不同意新判型請在本筆「判型」題回答
 
 **預測 action 數**：1
 **預測切分（evidence 以【】標在正規化原文上）**：
-- `a1` composite_unknown：【按壓 dimm 卡扣到定位】
+- `a1` controlled_move：【按壓 dimm 卡扣到定位】
 
 **預測 TMU / tech line**：
-- `a1`：未編譯（composite_unknown）
-**預測 routing**：`abstain`
+- `a1`：TMU=3.0，tech line=`A0 B0 G0 M3 X0 I0 A0`
+**預測 routing**：`review`
 
 **IE 請回答**：
 1. 切分：預測 action 數 = 1。本句實際應拆成幾個 action？若不同，請在 plan.actions 增列並各給 evidence（原文子字串與 offset）。
-2. 判型（a1）：預測為 composite_unknown（判型詞典僅認「治具/機台/壓合」類詞）。實際動作類型是哪個：acquire / move_place / controlled_move / process / inspect？
-3. routing：預測 routing_status = abstain（理由：composite_unknown）。核准後應維持這個值嗎？
+2. 判型（a1）：預測為 controlled_move，對嗎？若對，core 參數 M（控制移動） 的 option code 是什麼？（預標註無候選時請直接填）【第三輪判型已修正：未定（composite_unknown） → CM（控制移動），請確認】
+3. routing：預測 routing_status = review（理由：無）。核准後應維持這個值嗎？
 
 ---
 
@@ -1275,7 +1325,7 @@
 
 **IE 請回答**：
 1. 切分：預測 action 數 = 1。本句實際應拆成幾個 action？若不同，請在 plan.actions 增列並各給 evidence（原文子字串與 offset）。
-2. 判型（a1）：預測為 composite_unknown（判型詞典僅認「治具/機台/壓合」類詞）。實際動作類型是哪個：acquire / move_place / controlled_move / process / inspect？
+2. 判型（a1）：預測為 composite_unknown（第三輪起動詞字典已參與判型——仍未定＝動詞未登記/單一動詞不足/訊號衝突棄權，逐類統計見 harvest-summary）。實際動作類型是哪個：acquire / move_place / controlled_move / process / inspect？
 3. routing：預測 routing_status = abstain（理由：composite_unknown）。核准後應維持這個值嗎？
 
 ---
@@ -1297,7 +1347,7 @@
 
 **IE 請回答**：
 1. 切分：預測 action 數 = 1。本句實際應拆成幾個 action？若不同，請在 plan.actions 增列並各給 evidence（原文子字串與 offset）。
-2. 判型（a1）：預測為 composite_unknown（判型詞典僅認「治具/機台/壓合」類詞）。實際動作類型是哪個：acquire / move_place / controlled_move / process / inspect？
+2. 判型（a1）：預測為 composite_unknown（第三輪起動詞字典已參與判型——仍未定＝動詞未登記/單一動詞不足/訊號衝突棄權，逐類統計見 harvest-summary）。實際動作類型是哪個：acquire / move_place / controlled_move / process / inspect？
 3. routing：預測 routing_status = abstain（理由：composite_unknown）。核准後應維持這個值嗎？
 
 ---
@@ -1310,21 +1360,22 @@
 **挑戰維度（規則式判定）**：中英混合
 **v3 結構**：`single_cycle`——`motion_module_versions/0be9daab…`（rows[1].sub_activity；1 cycle；v3）；`motion_module_versions/9a0c3806…`（rows[0].sub_activity；1 cycle；v3）；`motion_modules/c8728419…`（name_zh (category=action)；1 cycle；v3）（hint 是證據不是判決；預設依 v3 結構，IE 可推翻）
 **✅ IE 覆核狀態（切分維度）**：已確認照 v3 結構預設（IEC141289，2026-08-16）。僅確認切分，不是整筆 gold 核准；`ie_modified: false`（確認≠修改——本筆不計入 planner 段 Plan 層證據力）。
+**⚠️ typing_changed_by_verb_lexicon**：**第三輪判型已修正，請確認**：動詞字典自本輪參與 GM/CM 判型（D3-017，衝突矩陣見 nlp/rule_based.py classify_seq）——舊判型（僅名詞觸發）＝未定（composite_unknown），新判型（動詞字典參與）＝GM（一般移動）。不同意新判型請在本筆「判型」題回答
 **⚠️ take_place_pair_may_be_single_gm**：本句是「取＋放」動詞配對（無連接詞）——MiniMOST 的 GM 序列本來就是 G＋P 同一 cycle，單 action 不必然是低估。請裁決：建成**單一 GM cycle**（G 與 P 各取值）還是 acquire＋move_place **兩個 action**（見下方「取放建模」題；不預設方向）
 
 **預測 action 數**：1
 **預測切分（evidence 以【】標在正規化原文上）**：
-- `a1` composite_unknown：【左手抓握假dimm的包裝袋丟至垃圾桶】
+- `a1` move_place：【左手抓握假dimm的包裝袋丟至垃圾桶】
 
 **預測 TMU / tech line**：
-- `a1`：未編譯（composite_unknown）
-**預測 routing**：`abstain`
+- `a1`：TMU=3.0，tech line=`A0 B0 G0 A0 B0 P3 A0`
+**預測 routing**：`review`
 
 **IE 請回答**：
 1. 切分：預測 action 數 = 1。本句實際應拆成幾個 action？若不同，請在 plan.actions 增列並各給 evidence（原文子字串與 offset）。【v3 結構】IE 當初把這句建為**單一 cycle**（證據：`motion_module_versions/0be9daab…`（rows[1].sub_activity；1 cycle；v3）；`motion_module_versions/9a0c3806…`（rows[0].sub_activity；1 cycle；v3）；`motion_modules/c8728419…`（name_zh (category=action)；1 cycle；v3）），預設依此；不同意再改。
-2. 判型（a1）：預測為 composite_unknown（判型詞典僅認「治具/機台/壓合」類詞）。實際動作類型是哪個：acquire / move_place / controlled_move / process / inspect？
+2. 判型（a1）：預測為 move_place，對嗎？若對，core 參數 P（放置） 的 option code 是什麼？（預標註無候選時請直接填）【第三輪判型已修正：未定（composite_unknown） → GM（一般移動），請確認】
 3. 取放建模（確認題）：v3 結構顯示 IE 當初把這句建為**單一 cycle**（證據：`motion_module_versions/0be9daab…`（rows[1].sub_activity；1 cycle；v3）；`motion_module_versions/9a0c3806…`（rows[0].sub_activity；1 cycle；v3）；`motion_modules/c8728419…`（name_zh (category=action)；1 cycle；v3））——**預設建成單一 GM cycle（G 與 P 各取值）**；不同意再改成 acquire + move_place 兩個 action（hint 是證據不是判決，可推翻）。
-4. routing：預測 routing_status = abstain（理由：composite_unknown）。核准後應維持這個值嗎？
+4. routing：預測 routing_status = review（理由：無）。核准後應維持這個值嗎？
 
 ---
 
@@ -1336,21 +1387,24 @@
 **挑戰維度（規則式判定）**：中英混合
 **v3 結構**：`single_cycle`——`motion_module_versions/687ed233…`（rows[1].sub_activity；1 cycle；v3）；`motion_module_versions/b7ba9e33…`（rows[0].sub_activity；1 cycle；v3）；`motion_modules/c1fde19a…`（name_zh (category=action)；1 cycle；v3）（hint 是證據不是判決；預設依 v3 結構，IE 可推翻）
 **✅ IE 覆核狀態（切分維度）**：已確認照 v3 結構預設（IEC141289，2026-08-16）。僅確認切分，不是整筆 gold 核准；`ie_modified: false`（確認≠修改——本筆不計入 planner 段 Plan 層證據力）。
+**⚠️ typing_changed_by_verb_lexicon**：**第三輪判型已修正，請確認**：動詞字典自本輪參與 GM/CM 判型（D3-017，衝突矩陣見 nlp/rule_based.py classify_seq）——舊判型（僅名詞觸發）＝未定（composite_unknown），新判型（動詞字典參與）＝GM（一般移動）。不同意新判型請在本筆「判型」題回答
+**⚠️ p_direction_unclassified_default_single**：P 方向數（IE 情境規則 D3-017）：賓語**不屬機構件/盤面名單**，判不出情境——暫用預設 `p_place_single`（方向數預設一種）。**請 IE 裁決**（single/multi/none）
 **⚠️ take_place_pair_may_be_single_gm**：本句是「取＋放」動詞配對（無連接詞）——MiniMOST 的 GM 序列本來就是 G＋P 同一 cycle，單 action 不必然是低估。請裁決：建成**單一 GM cycle**（G 與 P 各取值）還是 acquire＋move_place **兩個 action**（見下方「取放建模」題；不預設方向）
 
 **預測 action 數**：1
 **預測切分（evidence 以【】標在正規化原文上）**：
-- `a1` composite_unknown：【左手抓握dimm材料盒放至規定位置處】
+- `a1` move_place：【左手抓握dimm材料盒放至規定位置處】
 
 **預測 TMU / tech line**：
-- `a1`：未編譯（composite_unknown）
-**預測 routing**：`abstain`
+- `a1`：TMU=16.0，tech line=`A0 B0 G0 A0 B0 P16 A0`
+**預測 routing**：`review`
 
 **IE 請回答**：
 1. 切分：預測 action 數 = 1。本句實際應拆成幾個 action？若不同，請在 plan.actions 增列並各給 evidence（原文子字串與 offset）。【v3 結構】IE 當初把這句建為**單一 cycle**（證據：`motion_module_versions/687ed233…`（rows[1].sub_activity；1 cycle；v3）；`motion_module_versions/b7ba9e33…`（rows[0].sub_activity；1 cycle；v3）；`motion_modules/c1fde19a…`（name_zh (category=action)；1 cycle；v3）），預設依此；不同意再改。
-2. 判型（a1）：預測為 composite_unknown（判型詞典僅認「治具/機台/壓合」類詞）。實際動作類型是哪個：acquire / move_place / controlled_move / process / inspect？
-3. 取放建模（確認題）：v3 結構顯示 IE 當初把這句建為**單一 cycle**（證據：`motion_module_versions/687ed233…`（rows[1].sub_activity；1 cycle；v3）；`motion_module_versions/b7ba9e33…`（rows[0].sub_activity；1 cycle；v3）；`motion_modules/c1fde19a…`（name_zh (category=action)；1 cycle；v3））——**預設建成單一 GM cycle（G 與 P 各取值）**；不同意再改成 acquire + move_place 兩個 action（hint 是證據不是判決，可推翻）。
-4. routing：預測 routing_status = abstain（理由：composite_unknown）。核准後應維持這個值嗎？
+2. 判型（a1）：預測為 move_place，對嗎？若對，core 參數 P（放置） 的 option code 是什麼？（預標註無候選時請直接填）【第三輪判型已修正：未定（composite_unknown） → GM（一般移動），請確認】
+3. P 方向數：P 方向數（IE 情境規則 D3-017）：賓語**不屬機構件/盤面名單**，判不出情境——暫用預設 `p_place_single`（方向數預設一種）。**請 IE 裁決**（single/multi/none）
+4. 取放建模（確認題）：v3 結構顯示 IE 當初把這句建為**單一 cycle**（證據：`motion_module_versions/687ed233…`（rows[1].sub_activity；1 cycle；v3）；`motion_module_versions/b7ba9e33…`（rows[0].sub_activity；1 cycle；v3）；`motion_modules/c1fde19a…`（name_zh (category=action)；1 cycle；v3））——**預設建成單一 GM cycle（G 與 P 各取值）**；不同意再改成 acquire + move_place 兩個 action（hint 是證據不是判決，可推翻）。
+5. routing：預測 routing_status = review（理由：無）。核准後應維持這個值嗎？
 
 ---
 
@@ -1370,7 +1424,7 @@
 
 **IE 請回答**：
 1. 切分：預測 action 數 = 1。本句實際應拆成幾個 action？若不同，請在 plan.actions 增列並各給 evidence（原文子字串與 offset）。
-2. 判型（a1）：預測為 composite_unknown（判型詞典僅認「治具/機台/壓合」類詞）。實際動作類型是哪個：acquire / move_place / controlled_move / process / inspect？
+2. 判型（a1）：預測為 composite_unknown（第三輪起動詞字典已參與判型——仍未定＝動詞未登記/單一動詞不足/訊號衝突棄權，逐類統計見 harvest-summary）。實際動作類型是哪個：acquire / move_place / controlled_move / process / inspect？
 3. routing：預測 routing_status = abstain（理由：composite_unknown）。核准後應維持這個值嗎？
 
 ---
@@ -1395,7 +1449,7 @@
 
 **IE 請回答**：
 1. 切分：預測 action 數 = 1。本句實際應拆成幾個 action？若不同，請在 plan.actions 增列並各給 evidence（原文子字串與 offset）。【v3 結構】IE 當初把這句建為**單一 cycle**（證據：`motion_module_versions/94ca55fd…`（rows[0].sub_activity；1 cycle；v3）；`motion_modules/f7f178a1…`（name_zh (category=action)；1 cycle；v3）），預設依此；不同意再改。
-2. 判型（a1）：預測為 composite_unknown（判型詞典僅認「治具/機台/壓合」類詞）。實際動作類型是哪個：acquire / move_place / controlled_move / process / inspect？
+2. 判型（a1）：預測為 composite_unknown（第三輪起動詞字典已參與判型——仍未定＝動詞未登記/單一動詞不足/訊號衝突棄權，逐類統計見 harvest-summary）。實際動作類型是哪個：acquire / move_place / controlled_move / process / inspect？
 3. 取放建模（確認題）：v3 結構顯示 IE 當初把這句建為**單一 cycle**（證據：`motion_module_versions/94ca55fd…`（rows[0].sub_activity；1 cycle；v3）；`motion_modules/f7f178a1…`（name_zh (category=action)；1 cycle；v3））——**預設建成單一 GM cycle（G 與 P 各取值）**；不同意再改成 acquire + move_place 兩個 action（hint 是證據不是判決，可推翻）。
 4. routing：預測 routing_status = abstain（理由：composite_unknown）。核准後應維持這個值嗎？
 
@@ -1418,7 +1472,7 @@
 
 **IE 請回答**：
 1. 切分：預測 action 數 = 1。本句實際應拆成幾個 action？若不同，請在 plan.actions 增列並各給 evidence（原文子字串與 offset）。
-2. 判型（a1）：預測為 composite_unknown（判型詞典僅認「治具/機台/壓合」類詞）。實際動作類型是哪個：acquire / move_place / controlled_move / process / inspect？
+2. 判型（a1）：預測為 composite_unknown（第三輪起動詞字典已參與判型——仍未定＝動詞未登記/單一動詞不足/訊號衝突棄權，逐類統計見 harvest-summary）。實際動作類型是哪個：acquire / move_place / controlled_move / process / inspect？
 3. routing：預測 routing_status = abstain（理由：composite_unknown）。核准後應維持這個值嗎？
 
 ---
@@ -1440,7 +1494,7 @@
 
 **IE 請回答**：
 1. 切分：預測 action 數 = 1。本句實際應拆成幾個 action？若不同，請在 plan.actions 增列並各給 evidence（原文子字串與 offset）。
-2. 判型（a1）：預測為 composite_unknown（判型詞典僅認「治具/機台/壓合」類詞）。實際動作類型是哪個：acquire / move_place / controlled_move / process / inspect？
+2. 判型（a1）：預測為 composite_unknown（第三輪起動詞字典已參與判型——仍未定＝動詞未登記/單一動詞不足/訊號衝突棄權，逐類統計見 harvest-summary）。實際動作類型是哪個：acquire / move_place / controlled_move / process / inspect？
 3. routing：預測 routing_status = abstain（理由：composite_unknown）。核准後應維持這個值嗎？
 
 ---
@@ -1461,7 +1515,7 @@
 
 **IE 請回答**：
 1. 切分：預測 action 數 = 1。本句實際應拆成幾個 action？若不同，請在 plan.actions 增列並各給 evidence（原文子字串與 offset）。
-2. 判型（a1）：預測為 composite_unknown（判型詞典僅認「治具/機台/壓合」類詞）。實際動作類型是哪個：acquire / move_place / controlled_move / process / inspect？
+2. 判型（a1）：預測為 composite_unknown（第三輪起動詞字典已參與判型——仍未定＝動詞未登記/單一動詞不足/訊號衝突棄權，逐類統計見 harvest-summary）。實際動作類型是哪個：acquire / move_place / controlled_move / process / inspect？
 3. routing：預測 routing_status = abstain（理由：composite_unknown）。核准後應維持這個值嗎？
 
 ---
@@ -1482,7 +1536,7 @@
 
 **IE 請回答**：
 1. 切分：預測 action 數 = 1。本句實際應拆成幾個 action？若不同，請在 plan.actions 增列並各給 evidence（原文子字串與 offset）。
-2. 判型（a1）：預測為 composite_unknown（判型詞典僅認「治具/機台/壓合」類詞）。實際動作類型是哪個：acquire / move_place / controlled_move / process / inspect？
+2. 判型（a1）：預測為 composite_unknown（第三輪起動詞字典已參與判型——仍未定＝動詞未登記/單一動詞不足/訊號衝突棄權，逐類統計見 harvest-summary）。實際動作類型是哪個：acquire / move_place / controlled_move / process / inspect？
 3. routing：預測 routing_status = abstain（理由：composite_unknown）。核准後應維持這個值嗎？
 
 ---
@@ -1503,6 +1557,6 @@
 
 **IE 請回答**：
 1. 切分：預測 action 數 = 1。本句實際應拆成幾個 action？若不同，請在 plan.actions 增列並各給 evidence（原文子字串與 offset）。
-2. 判型（a1）：預測為 composite_unknown（判型詞典僅認「治具/機台/壓合」類詞）。實際動作類型是哪個：acquire / move_place / controlled_move / process / inspect？
+2. 判型（a1）：預測為 composite_unknown（第三輪起動詞字典已參與判型——仍未定＝動詞未登記/單一動詞不足/訊號衝突棄權，逐類統計見 harvest-summary）。實際動作類型是哪個：acquire / move_place / controlled_move / process / inspect？
 3. routing：預測 routing_status = abstain（理由：composite_unknown）。核准後應維持這個值嗎？
 
