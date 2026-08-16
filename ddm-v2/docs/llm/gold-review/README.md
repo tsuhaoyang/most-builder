@@ -10,7 +10,7 @@
 |---|---|---|
 | `review-checklist.md` | `scripts/gold_harvest.py` 產生（重跑會整檔重寫） | 每筆草稿一節：原文、預測切分（evidence 以【】標示）、TMU/tech line、routing、⚠️ 旗標、**IE 覆核狀態**（review-state 合併）、IE 要回答的具體問題 |
 | `harvest-summary.md` | 同上 | 來源筆數、16 維度覆蓋表（全形英數/標點分列）、覆蓋缺口、預測 action type 分佈、split 分組（傳遞閉包）、**IE 覆核狀態合併結果（含 stale 清單）**、未入選候選清單、已知系統性偏差 |
-| `synonym-candidates.md` | 工程端整理（掃 60 句動詞面對照 rule-set 選項與 v3 字典） | **候選**同義詞清單——登記需 IE 核可（ADR-023 字典治理），未寫 DB |
+| `synonym-candidates.md` | 工程端整理（掃 60 句動詞面對照 rule-set 選項與 v3 字典） | 同義詞核可狀態：**同字直配 11 條映射已登記**（2026-08-16 IE 核可，`rule_option_synonyms`）；13 個 `?` 項維持候選待 IE 裁決（ADR-023 字典治理） |
 | `README.md`（本檔） | 手寫 | 覆核工作流、覆核狀態保留機制、split 分配原則、temporal_holdout 提案 |
 
 另有 `tests/gold/wi_plans_draft/review-state.json`（**IE 覆核狀態檔**，見下節
@@ -102,11 +102,13 @@
    擊穿）。本輪 60 筆 0 命中——**結構使然，非 lint 失效**：rule planner 的
    adapter 只產 move_place／controlled_move／composite_unknown，永遠不出
    acquire；lint 的作用點是 IE 改完 plan 之後（`--recompile` 會同步本旗標）。
-5. `empty_lexicon_no_slot_candidates` — dev DB 的 `rule_option_synonyms` 目前為空，
-   所以所有 slot 都沒有候選、cycle 全部 incomplete。IE 需自填 option code；
-   同義詞順手登記進字典（`POST /api/v2/rule-sets/{code}/synonyms`），下一輪
-   harvest 的預標註品質會直接提升。**候選清單已備好待核可**：
-   `synonym-candidates.md`（掃 60 句動詞面對照選項表；`?` 者需 IE 裁決）。
+5. `empty_lexicon_no_slot_candidates` — **第二輪起本旗標已消失**（2026-08-16
+   IE 核可 11 條同字直配同義詞後字典非空，60 筆草稿全數不再帶此旗標；
+   32/60 筆拿到 slot 命中，見 `harvest-summary.md`）。誠實邊界：**cycle 完成度
+   仍 0/60**——rule_based_v1 的 GM/CM 判型只認名詞觸發詞（治具/機台），
+   不吃詞典，50 筆卡在 `composite_unknown`；10 筆 typed GM 全部
+   `missing_core_p`（其中 3 筆卡在未裁決的 `?` P 動詞「放至/放置」）。
+   剩餘 13 個 `?` 動詞面維持候選待 IE 裁決：`synonym-candidates.md`。
 6. `engine_rejected_cycle` — 引擎拒絕的 complete cycle。期望端寫的是
    `expected_engine_rejected: true`（重放驗「引擎仍拒絕」，草稿不會產出即紅）；
    但**轉正前必須修正 cycle 值**——原樣轉正沒有 TMU，會撞空殼守門
@@ -130,7 +132,8 @@ action module，conflicting）；22 筆 likely_multi 中 **21 筆**拿到結構�
    `segmentation_confirmed_by: "IEC141289"`＋日期＋
    `segmentation_source: "v3_structure_confirmed"`，harvest 合併回草稿的
    `ie_review` 區塊。**這是切分維度的確認，不是整筆 gold 核准**——cycle 仍
-   incomplete（詞典為空），option code 覆核與轉正另有流程；`ie_modified`
+   incomplete（首輪時詞典為空；第二輪登記 11 條後仍 0/60 complete，
+   見「先讀（二）」第 5 點），option code 覆核與轉正另有流程；`ie_modified`
    維持 `false`（確認≠修改，依自我指涉設計不計 planner 段證據力）。
 2. **d045「拿取排線並對準接頭」＝1 列**（ambiguous → 裁決）。
    `ie_ruling: "single_cycle"`；plan 已是 1 action，內容不動。
@@ -142,6 +145,18 @@ action module，conflicting）；22 筆 likely_multi 中 **21 筆**拿到結構�
    獨立的完整子句，**不是原句的子字串**，原句切不出 3 段誠實的 evidence
    span（不編造）。記 `ie_ruling: "multi_cycle_3"`＋
    `plan_pending_resegmentation: true`，plan 重切等第二輪（需子句對應）。
+
+   **⚠️ 第二輪更正（2026-08-16 釐清並獲 User 確認）：d026 這句本身＝1 列**。
+   首輪「3 列」的答案是對**整個三步驟製程（那個 wi-template）**說的——提問時
+   把範本結構誤述為句子切分。更正落地：`ie_ruling: "single_cycle"`、
+   `plan_pending_resegmentation` 清除（單 cycle 沒有「等重切」，plan 本來就是
+   1 action、內容不動、`ie_modified` 維持 false）；被否定的結構改為
+   「wi-template 名稱句對應 3 列＝本句切 3 個 cycle」的推論
+   （`motion_modules/dcbb30a8` 的 name_zh 來源標 `ie_ruling_rejected`；範本
+   名稱是製程標題，其 3 列是各自獨立子句，本句自己就是其中 rows[2] 一列＝
+   一個 cycle）；首輪對單列 action module 的否定隨更正撤回。**更正軌跡保留**
+   在 state entry 的 `ruling_history`（先前答案全文＋為何更正）——標準答案集
+   的更正不是無痕覆寫。
 
 ## 覆核狀態怎麼在重產後存活（D3-015）
 

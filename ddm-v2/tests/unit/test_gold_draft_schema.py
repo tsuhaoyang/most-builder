@@ -355,6 +355,111 @@ def test_provenance_mutation_detected(drafts: list[tuple[Path, dict]]):
     )
 
 
+# ── 第二輪基線（2026-08-16：同義詞 11 條登記後的 harvest 既成事實）──────────
+#
+# 為什麼要釘：同義詞登記後，草稿的 slot 命中（synthetic_synonyms）與 cycle
+# 完成度是「已達成的管線能力」——下一輪 harvest 若因 DB 同義詞被誤刪/改壞而
+# 靜默退回（曾有命中的草稿失去命中、曾 complete 的草稿退回 incomplete），
+# 必須紅燈，不准靜默。基線是**既成事實的記錄**，更新它必須是有意識的編輯
+# （新一輪 harvest 後 coverage 只增不減：superset 斷言下增長自動綠）。
+#
+# 誠實記錄：第二輪 complete＝**0 筆**。11 條同字直配同義詞讓 32 筆草稿拿到
+# slot 命中，但 rule_based_v1 的 GM/CM 判型只認名詞觸發詞（治具/機台），
+# 不吃詞典——50 筆 composite_unknown 卡在判型；10 筆 typed GM 全部
+# missing_core_p（其中 3 筆卡在未裁決的 `?` P 動詞「放至/放置」）。
+# COMPLETE_TMU_SHA8_BASELINE 是**等值釘**：complete 集合任何變動（增或減）
+# 都必須有意識地更新本常數——IE 覆核工作量的數字不准漂移。
+SYN_COVERAGE_SHA8_BASELINE: dict[str, frozenset[str]] = {
+    sha8: frozenset(pairs)
+    for sha8, pairs in {
+        "0423b4e8": ["P:p_hold"],
+        "0acd56df": ["G:g_touch", "M:m_press"],
+        "1c27dc35": ["G:g_grasp"],
+        "1dd7c1d5": ["M:m_press"],
+        "30d9b858": ["G:g_grasp", "P:p_hold"],
+        "314f0644": ["G:g_grasp"],
+        "3ba13f82": ["G:g_grasp", "P:p_hold"],
+        "3eab7c3e": ["G:g_grasp", "M:m_btn"],
+        "4765e5f2": ["G:g_grasp", "M:m_teartape"],
+        "51518399": ["M:m_attach"],
+        "5cb719bb": ["M:m_remove"],
+        "5cd079e8": ["G:g_grasp"],
+        "6017ab5e": ["G:g_grasp"],
+        "631c3ece": ["G:g_grasp"],
+        "650ee42f": ["P:p_hold"],
+        "6678c378": ["G:g_grasp"],
+        "6ae5a84f": ["G:g_touch", "M:m_pull"],
+        "6be614c5": ["M:m_press"],
+        "6fa45cdb": ["M:m_press"],
+        "72dc0511": ["M:m_remove"],
+        "7e40706c": ["G:g_touch", "M:m_push"],
+        "813bca06": ["G:g_grasp"],
+        "9f3d6515": ["G:g_touch", "M:m_press"],
+        "a00f4953": ["G:g_touch", "M:m_push"],
+        "aa72871a": ["G:g_grasp", "P:p_hold"],
+        "b49a90ee": ["G:g_touch"],
+        "c6add069": ["G:g_grasp", "P:p_hold"],
+        "d58a53a7": ["G:g_grasp", "P:p_toss"],
+        "d9190952": ["G:g_touch", "M:m_pull"],
+        "e55d16c7": ["M:m_attach"],
+        "f721bbfc": ["G:g_grasp", "M:m_remove"],
+        "f8b21a01": ["G:g_grasp", "M:m_btn"],
+    }.items()
+}
+# 第二輪 complete＝0 筆（誠實記錄，不美化）；未來輪 complete 出現時必須把
+# 該 sha8 加進來（等值釘會紅，逼出有意識的更新）。
+COMPLETE_TMU_SHA8_BASELINE: frozenset[str] = frozenset()
+
+
+def _has_complete_tmu(data: dict) -> bool:
+    return any(
+        ec.get("complete") and ec.get("total_tmu") is not None
+        for ec in data.get("expected_cycles") or []
+    )
+
+
+def test_lexicon_coverage_does_not_silently_regress(drafts: list[tuple[Path, dict]]):
+    """同義詞已登記後，曾有 slot 命中的草稿不得靜默失去命中（DB 同義詞被誤刪/
+    改壞後重跑 harvest 就會在這裡紅）。superset 斷言：新增同義詞讓命中變多＝綠。"""
+    by_sha8 = {draft_sha8(d): d for _p, d in drafts}
+    missing: list[str] = []
+    for sha8, expected_pairs in SYN_COVERAGE_SHA8_BASELINE.items():
+        d = by_sha8.get(sha8)
+        if d is None:
+            # 句子已轉正或退出取樣——不在草稿集就不構成「靜默退回」
+            continue
+        got = {
+            f"{s['parameter']}:{s['option_code']}"
+            for s in d.get("synthetic_synonyms") or []
+        }
+        if not got >= expected_pairs:
+            missing.append(f"{d['id']}：缺 {sorted(expected_pairs - got)}")
+    assert not missing, (
+        "第二輪已達成的 slot 命中在重跑後消失（同義詞被刪/改壞？）：\n" + "\n".join(missing)
+    )
+
+
+def test_complete_drafts_pinned_no_silent_regression(drafts: list[tuple[Path, dict]]):
+    """cycle 完成度等值釘：complete 帶 TMU 的草稿集合＝基線（增減都要有意識更新）。
+
+    第二輪基線＝空集合（0 筆 complete——誠實記錄）；曾 complete 的草稿退回
+    incomplete、或新一輪讓草稿轉 complete，都必須更新 COMPLETE_TMU_SHA8_BASELINE
+    才會綠。"""
+    current = {
+        draft_sha8(d) for _p, d in drafts if _has_complete_tmu(d)
+    }
+    regressed = COMPLETE_TMU_SHA8_BASELINE - current
+    # 基線內但已不在草稿集（轉正移出）不算退回
+    present = {draft_sha8(d) for _p, d in drafts}
+    regressed &= present
+    assert not regressed, f"曾 complete 帶 TMU 的草稿退回 incomplete：{sorted(regressed)}"
+    new_complete = current - COMPLETE_TMU_SHA8_BASELINE
+    assert not new_complete, (
+        f"草稿轉 complete（好事）但基線未更新：{sorted(new_complete)}——"
+        "請把 sha8 加進 COMPLETE_TMU_SHA8_BASELINE（完成度數字不准漂移）"
+    )
+
+
 def test_drafts_do_not_duplicate_formal_gold(drafts: list[tuple[Path, dict]]):
     """同一句話不得同時存在於草稿與正式 gold（重複覆核＝浪費 IE、轉正＝撞名）。"""
     from ddm_v2.nlp.normalization import normalize

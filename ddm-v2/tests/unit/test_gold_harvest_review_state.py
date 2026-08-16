@@ -15,14 +15,22 @@
 4. state 檔驗證是硬的（SystemExit）：格式錯誤被吞掉＝IE 裁決靜默漏套。
 5. review-state.json 不是草稿：`draft_json_files` 排除它（--force 不刪、
    覆蓋守衛不計入）。
-6. repo 現況自洽：41 筆 entry 全部配對到現有草稿且非 stale（首輪覆核結果，
-   IE 2026-08-16 親答：39 確認＋d045 單 cycle 裁決＋d026 三 cycle 裁決）。
+6. repo 現況自洽：41 筆 entry 全部配對到現有草稿且非 stale。首輪
+   （IE 2026-08-16 親答）：39 確認＋d045 單 cycle 裁決＋d026 三 cycle 裁決；
+   **第二輪更正**（2026-08-16 釐清並獲 User 確認）：d026 這句本身＝1 列——
+   首輪「3 列」是對整個 wi-template 三步驟製程的回答（提問誤述範本結構為
+   句子切分）。更正軌跡保留在該 entry 的 `ruling_history`（先前答案全文＋
+   為何更正）——標準答案集的更正不能是無痕覆寫。
+7. `ruling_history`（更正軌跡）若存在必須形狀完整（先前 ie_ruling＋
+   supersede_reason＋superseded_date）——「保留軌跡」不可是空殼宣稱。
 
 mutation 證據（CI_GATES 規則 7）：
 - 把 `merge_review_state` 的 sha 配對改成流水號配對 → `test_renumbered_draft_still_matched` 紅。
 - 把 `apply_review_state_entry` 的 hint 比對拆掉 → `test_stale_when_hint_changed` 紅。
 - 把 stale 改成靜默套用 → `test_stale_entry_leaves_draft_untouched` 紅。
 - 把 `draft_json_files` 的排除拆掉 → `test_review_state_file_is_not_a_draft` 紅。
+- 把 `load_review_state` 的 ruling_history 驗證拆掉 →
+  `test_load_review_state_rejects_bad_ruling_history` 紅。
 """
 from __future__ import annotations
 
@@ -133,7 +141,10 @@ def test_renumbered_draft_still_matched():
 
 
 def test_ruling_with_pending_resegmentation_and_rejected_evidence():
-    """d026 型：multi_cycle 裁決＋plan 待重切＋否定結構標記（證據保留不刪）。"""
+    """multi_cycle 裁決＋plan 待重切＋否定結構標記（證據保留不刪）。
+
+    首輪 d026 曾是此型（第二輪已更正為 single_cycle）；機制本身仍是合法形狀，
+    測試保留驗機制。"""
     norm = "雙手抓握主機板組至機箱"
     d = _draft(norm, hint="ambiguous")
     entry = _entry(
@@ -289,6 +300,68 @@ def test_load_review_state_rejects_bad_shapes(tmp_path: Path, mutate, match: str
         load_review_state(p)
 
 
+def test_load_review_state_accepts_valid_ruling_history(tmp_path: Path):
+    """更正軌跡（d026 型第二輪更正）：形狀完整的 ruling_history 可載入。"""
+    norm = "雙手抓握主機板組至機箱"
+    entry = _entry(
+        norm,
+        hint="ambiguous",
+        segmentation_source="ie_ruling",
+        ie_ruling="single_cycle",
+        ruling_history=[
+            {
+                "ie_ruling": "multi_cycle_3",
+                "ruled_date": "2026-08-16",
+                "superseded_date": "2026-08-16",
+                "supersede_reason": "提問誤述範本結構為句子切分，釐清後更正",
+            }
+        ],
+    )
+    p = _write_state(tmp_path / REVIEW_STATE_FILENAME, {_sha(norm)[:8]: entry})
+    entries = load_review_state(p)
+    assert entries[_sha(norm)[:8]]["ruling_history"][0]["ie_ruling"] == "multi_cycle_3"
+
+
+@pytest.mark.parametrize(
+    ("history", "match"),
+    [
+        ([], "非空 list"),  # 空殼軌跡
+        (["not-a-dict"], "object"),
+        (
+            [{"superseded_date": "2026-08-16", "supersede_reason": "x"}],
+            "ie_ruling",
+        ),  # 先前答案沒保留
+        (
+            [{"ie_ruling": "multi_cycle_3", "superseded_date": "2026-08-16"}],
+            "supersede_reason",
+        ),  # 為何更正沒寫
+        (
+            [
+                {
+                    "ie_ruling": "multi_cycle_3",
+                    "supersede_reason": "x",
+                    "superseded_date": "16/08/2026",
+                }
+            ],
+            "YYYY-MM-DD",
+        ),
+    ],
+)
+def test_load_review_state_rejects_bad_ruling_history(tmp_path: Path, history, match: str):
+    """更正軌跡驗證是硬的：軌跡缺件＝「保留軌跡」只是空殼宣稱——擋下。"""
+    norm = "雙手抓握主機板組至機箱"
+    entry = _entry(
+        norm,
+        hint="ambiguous",
+        segmentation_source="ie_ruling",
+        ie_ruling="single_cycle",
+        ruling_history=history,
+    )
+    p = _write_state(tmp_path / REVIEW_STATE_FILENAME, {_sha(norm)[:8]: entry})
+    with pytest.raises(SystemExit, match=match):
+        load_review_state(p)
+
+
 def test_load_review_state_ruling_requires_valid_ruling(tmp_path: Path):
     norm = "雙手抓握主機板組至機箱"
     entry = _entry(norm, hint="ambiguous", segmentation_source="ie_ruling")  # 缺 ie_ruling
@@ -358,9 +431,12 @@ def test_repo_review_state_all_entries_fresh_and_applied():
         assert c == by_id_repo[c["id"]], f"{c['id']}：重放合併與 repo 檔不一致"
 
 
-def test_repo_first_round_ie_rulings_present():
-    """IE 首輪覆核結果落地檢查（2026-08-16 親答）：d026=multi_cycle_3（plan 待
-    重切、否定結構已標記）、d045=single_cycle、其餘 39 筆確認照 v3 結構預設。"""
+def test_repo_ie_rulings_present_after_round2_correction():
+    """IE 覆核結果落地檢查。首輪（2026-08-16 親答）：d045=single_cycle、39 筆
+    確認照 v3 結構預設、d026=multi_cycle_3。**第二輪更正**（2026-08-16 釐清並
+    獲 User 確認）：d026 這句本身＝1 列——首輪「3 列」是對整個 wi-template
+    三步驟製程的回答（提問誤述範本結構為句子切分）。更正不是無痕覆寫：
+    先前裁決全文＋為何更正保留在 state entry 的 `ruling_history`。"""
     state_path = DRAFT_DIR / REVIEW_STATE_FILENAME
     if not state_path.exists():
         pytest.skip("repo 無 review-state.json（草稿可能已全數轉正）")
@@ -371,19 +447,28 @@ def test_repo_first_round_ie_rulings_present():
         pytest.skip("d026/d045 已不在草稿目錄（可能已轉正或重編號）")
 
     ir26 = d026["ie_review"]
-    assert ir26["ie_ruling"] == "multi_cycle_3"
-    assert ir26["plan_pending_resegmentation"] is True, (
-        "d026 的 3 列子句非原句子字串——不准編造 span，plan 重切等第二輪"
+    assert ir26["ie_ruling"] == "single_cycle", "第二輪更正：這句本身＝1 列"
+    assert "plan_pending_resegmentation" not in ir26, (
+        "single_cycle 下沒有「等重切」——首輪的 pending 旗標必須隨更正清除"
     )
-    assert len(d026["plan"]["actions"]) == 1, "plan 未重切（等第二輪）——不得偷切"
+    assert len(d026["plan"]["actions"]) == 1
     rejected = [
         s
         for s in d026["v3_structure_evidence"]["sources"]
         if s.get("ie_ruling_rejected")
     ]
-    assert [(s["table"], s["cycles"]) for s in rejected] == [("motion_modules", 1)], (
-        "被否定的是單列 action module；證據保留不刪"
+    assert [(s["table"], s["cycles"]) for s in rejected] == [("motion_modules", 3)], (
+        "更正後被否定的是「wi-template 名稱句對應 3 列＝本句切 3 個 cycle」的推論"
+        "（範本名稱是製程標題，不是本句的切分）；證據保留不刪。"
+        "首輪對單列 action module 的否定已隨更正撤回。"
     )
+    # 更正軌跡：state entry 必須保留首輪答案與更正理由（無痕覆寫＝標準答案集事故）
+    entries = load_review_state(state_path)
+    entry26 = entries[draft_sha8(d026)]
+    history = entry26.get("ruling_history")
+    assert history, "d026 被更正過——ruling_history 必須存在（不無痕覆寫）"
+    assert [h["ie_ruling"] for h in history] == ["multi_cycle_3"], "先前答案必須保留"
+    assert "誤述" in history[0]["supersede_reason"], "為何更正必須寫明（提問誤述範本結構）"
 
     ir45 = d045["ie_review"]
     assert ir45["ie_ruling"] == "single_cycle"

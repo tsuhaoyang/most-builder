@@ -44,15 +44,13 @@
     "tool_handling",
     "simo_both_hands"
   ],
-  "preannotation_caveat": [
-    "empty_lexicon_no_slot_candidates"
-  ],
+  "preannotation_caveat": [],
   "preannotation": {
     "pipeline": "rule_based_v1 -> plan_from_rule_result -> SlotLinker(no-db) -> compile_plan -> engine_gate(most_engine) -> compute_routing(auto=off)",
     "planner": "rule_based_v1",
     "rule_set_code": "MINIMOST_FACTORY_V2",
     "lexicon_source": "rule_option_synonyms",
-    "lexicon_size": 0,
+    "lexicon_size": 11,
     "routing_reasons": [
       "composite_unknown"
     ]

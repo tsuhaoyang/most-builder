@@ -17,8 +17,9 @@
 
 另有 **1 筆**與正式 gold（tests/gold/wi_plans/）既有案例同句，已排除不重複進草稿：「拿取電動起子，依圖示鎖附兩顆螺絲」。
 
-詞典（rule_option_synonyms @ MINIMOST_FACTORY_V2）：**0 條**。
-**⚠️ 詞典為空**：預標註完全沒有 slot 候選（G/P/M/X/I 全空、cycle 全部 incomplete），每筆草稿都帶 `empty_lexicon_no_slot_candidates` 旗標；IE 覆核時需自填 option code。
+詞典（rule_option_synonyms @ MINIMOST_FACTORY_V2）：**11 條**。
+
+Cycle 完成度：**0／60 筆**至少一個 cycle complete 帶 TMU（TMU 唯一出處＝most_engine）；其餘 60 筆全部 incomplete（缺 slot 候選或判型未定——逐筆原因見草稿 `expected_cycles[].issues_contain`）。
 
 ## 挑戰維度覆蓋（spec §14.3 的 16 維度）
 

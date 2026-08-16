@@ -53,8 +53,7 @@
     "simo_both_hands"
   ],
   "preannotation_caveat": [
-    "likely_multi_action_undercounted",
-    "empty_lexicon_no_slot_candidates"
+    "likely_multi_action_undercounted"
   ],
   "v3_structure_hint": "single_cycle",
   "v3_structure_evidence": {
@@ -83,7 +82,7 @@
     "planner": "rule_based_v1",
     "rule_set_code": "MINIMOST_FACTORY_V2",
     "lexicon_source": "rule_option_synonyms",
-    "lexicon_size": 0,
+    "lexicon_size": 11,
     "routing_reasons": [
       "composite_unknown"
     ]

@@ -1,6 +1,6 @@
 {
   "schema_version": "wi-review-state-v1",
-  "note": "IE 覆核狀態檔（D3-015）：本檔是 IE 的裁決記錄，scripts/gold_harvest.py 只讀不寫、--force 不刪；重產草稿時以 normalized_text sha256 前 8 碼配對，合併回草稿的 ie_review 區塊。segmentation_source=v3_structure_confirmed＝確認照 v3 結構預設（切分維度確認，非整筆 gold 核准；確認≠修改，ie_modified 維持 false）；ie_ruling＝IE 對 ambiguous 案例的切分裁決。文字或 v3 結構證據變了的 entry 會被 harvest 標 stale 列入摘要，不靜默套用。首輪內容＝2026-08-16 IE（IEC141289）親答：39 筆確認題全照 v3 結構預設；d045 定 1 列；d026 定 3 列（3 列 wi-template 為正確結構）。",
+  "note": "IE 覆核狀態檔（D3-015）：本檔是 IE 的裁決記錄，scripts/gold_harvest.py 只讀不寫、--force 不刪；重產草稿時以 normalized_text sha256 前 8 碼配對，合併回草稿的 ie_review 區塊。segmentation_source=v3_structure_confirmed＝確認照 v3 結構預設（切分維度確認，非整筆 gold 核准；確認≠修改，ie_modified 維持 false）；ie_ruling＝IE 對 ambiguous 案例的切分裁決。文字或 v3 結構證據變了的 entry 會被 harvest 標 stale 列入摘要，不靜默套用。首輪內容＝2026-08-16 IE（IEC141289）親答：39 筆確認題全照 v3 結構預設；d045 定 1 列；d026 定 3 列（3 列 wi-template 為正確結構）。第二輪更正（2026-08-16 釐清）：d026 這句本身＝1 列——首輪「3 列」是對整個 wi-template 三步驟製程的回答（提問誤述範本結構為句子切分，已向 User 釐清並獲確認）；更正軌跡（先前答案全文＋為何更正）保留在該 entry 的 ruling_history，標準答案集的更正不無痕覆寫。",
   "entries": {
     "0423b4e8": {
       "source_text": "左手從料架拿取假DIMM保持住至流水線",
@@ -28,13 +28,28 @@
       "segmentation_confirmed_date": "2026-08-16",
       "ie_modified": false,
       "segmentation_source": "ie_ruling",
-      "ie_ruling": "multi_cycle_3",
-      "ie_ruling_notes": "IE 裁決（首輪覆核）：v3 兩個矛盾結構中，3 列 wi-template（motion_modules/dcbb30a8-44f0-4218-aafb-b6882a66aca0）是對的；單列 action module（motion_modules/32a29bba-fabe-4332-baee-9785d4c2525d）為 IE 裁決否定的結構（證據保留，標 ie_ruling_rejected）。查證該 wi-template v1 的 3 列子句＝「雙手接觸DIMM壓合治具拉至規定位置」（CM）／「雙手抓握主板保持住至流水線」（GM）／「雙手抓握主板組至機箱」（GM）——三列是各自獨立的完整子句，不是原句「雙手抓握主板組至機箱」的子字串，原句無法誠實切出 3 段 evidence span（不編造）；plan 重切等第二輪（需子句對應）。",
-      "plan_pending_resegmentation": true,
+      "ie_ruling": "single_cycle",
+      "ie_ruling_notes": "IE 裁決（第二輪更正，2026-08-16 釐清並獲 User 確認）：本句本身＝1 列（單一 cycle）。首輪「3 列」的答案是對整個三步驟製程（wi-template motion_modules/dcbb30a8-44f0-4218-aafb-b6882a66aca0）說的——提問時把範本結構誤述為句子切分，已釐清更正（先前裁決全文與更正理由見 ruling_history，不無痕覆寫）。結構證據與更正後裁決一致：本句在該 wi-template v1 中就是 rows[2] 一列＝一個 cycle（motion_module_versions/b91e9fca-a311-496a-bbdb-db6f76f460c2），單列 action module（motion_modules/32a29bba-fabe-4332-baee-9785d4c2525d）亦為 1 cycle——首輪對它的否定一併撤回。被否定的是「wi-template 名稱句對應發布版 3 列＝本句切 3 個 cycle」的推論（motion_modules/dcbb30a8 的 name_zh 來源，標 ie_ruling_rejected 證據保留）：範本名稱是三步驟製程的標題，其 3 列是各自獨立的完整子句，不是本句的切分。",
       "ie_rejected_evidence": [
         {
           "table": "motion_modules",
-          "id": "32a29bba-fabe-4332-baee-9785d4c2525d"
+          "id": "dcbb30a8-44f0-4218-aafb-b6882a66aca0"
+        }
+      ],
+      "ruling_history": [
+        {
+          "ie_ruling": "multi_cycle_3",
+          "ruled_date": "2026-08-16",
+          "superseded_date": "2026-08-16",
+          "supersede_reason": "提問時把 wi-template 的範本結構誤述為句子切分——首輪「3 列」是 IE 對整個三步驟製程（wi-template motion_modules/dcbb30a8-44f0-4218-aafb-b6882a66aca0）的回答，不是對本句「雙手抓握主板組至機箱」的切分；2026-08-16 向 User 釐清並獲確認：這句本身＝1 列。",
+          "ie_ruling_notes": "IE 裁決（首輪覆核）：v3 兩個矛盾結構中，3 列 wi-template（motion_modules/dcbb30a8-44f0-4218-aafb-b6882a66aca0）是對的；單列 action module（motion_modules/32a29bba-fabe-4332-baee-9785d4c2525d）為 IE 裁決否定的結構（證據保留，標 ie_ruling_rejected）。查證該 wi-template v1 的 3 列子句＝「雙手接觸DIMM壓合治具拉至規定位置」（CM）／「雙手抓握主板保持住至流水線」（GM）／「雙手抓握主板組至機箱」（GM）——三列是各自獨立的完整子句，不是原句「雙手抓握主板組至機箱」的子字串，原句無法誠實切出 3 段 evidence span（不編造）；plan 重切等第二輪（需子句對應）。",
+          "plan_pending_resegmentation": true,
+          "ie_rejected_evidence": [
+            {
+              "table": "motion_modules",
+              "id": "32a29bba-fabe-4332-baee-9785d4c2525d"
+            }
+          ]
         }
       ]
     },

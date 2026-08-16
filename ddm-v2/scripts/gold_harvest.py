@@ -1407,6 +1407,22 @@ def build_summary(
             "**⚠️ 詞典為空**：預標註完全沒有 slot 候選（G/P/M/X/I 全空、cycle 全部 incomplete），"
             "每筆草稿都帶 `empty_lexicon_no_slot_candidates` 旗標；IE 覆核時需自填 option code。"
         )
+    if drafts:
+        with_tmu = [
+            d
+            for d in drafts
+            if any(
+                ec.get("complete") and ec.get("total_tmu") is not None
+                for ec in d["expected_cycles"]
+            )
+        ]
+        lines.append("")
+        lines.append(
+            f"Cycle 完成度：**{len(with_tmu)}／{len(drafts)} 筆**至少一個 cycle "
+            "complete 帶 TMU（TMU 唯一出處＝most_engine）；其餘 "
+            f"{len(drafts) - len(with_tmu)} 筆全部 incomplete"
+            "（缺 slot 候選或判型未定——逐筆原因見草稿 `expected_cycles[].issues_contain`）。"
+        )
     lines.append("")
     lines.append("## 挑戰維度覆蓋（spec §14.3 的 16 維度）")
     lines.append("")
@@ -1784,6 +1800,38 @@ def load_review_state(path: Path) -> dict[str, dict[str, Any]]:
                     and isinstance(r.get("id"), str)
                 ):
                     _fail_state(path, f"{ctx}：ie_rejected_evidence 條目需 {{table, id}}")
+        # 更正軌跡（標準答案集的更正不能是無痕覆寫）：entry 被更正時，先前的
+        # 裁決與更正理由記在 ruling_history——若存在，形狀必須完整，否則
+        # 「保留軌跡」只是空殼宣稱
+        history = entry.get("ruling_history")
+        if history is not None:
+            if not (isinstance(history, list) and history):
+                _fail_state(
+                    path, f"{ctx}：ruling_history 若存在必須是非空 list（更正軌跡不可是空殼）"
+                )
+            for h in history:
+                if not isinstance(h, dict):
+                    _fail_state(path, f"{ctx}：ruling_history 條目必須是 object")
+                prev_ruling = h.get("ie_ruling")
+                if not (isinstance(prev_ruling, str) and _RULING_RE.match(prev_ruling)):
+                    _fail_state(
+                        path, f"{ctx}：ruling_history 條目缺有效 ie_ruling（先前答案必須保留）"
+                    )
+                if not (
+                    isinstance(h.get("supersede_reason"), str)
+                    and h["supersede_reason"].strip()
+                ):
+                    _fail_state(
+                        path,
+                        f"{ctx}：ruling_history 條目缺 supersede_reason（為何更正必須寫明）",
+                    )
+                if not (
+                    isinstance(h.get("superseded_date"), str)
+                    and _DATE_RE.match(h["superseded_date"])
+                ):
+                    _fail_state(
+                        path, f"{ctx}：ruling_history 條目的 superseded_date 必須是 YYYY-MM-DD"
+                    )
     return entries
 
 

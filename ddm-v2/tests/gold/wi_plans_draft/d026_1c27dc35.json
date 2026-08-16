@@ -70,8 +70,7 @@
     "simo_both_hands"
   ],
   "preannotation_caveat": [
-    "take_place_pair_may_be_single_gm",
-    "empty_lexicon_no_slot_candidates"
+    "take_place_pair_may_be_single_gm"
   ],
   "v3_structure_hint": "ambiguous",
   "v3_structure_evidence": {
@@ -83,7 +82,8 @@
         "detail": "name_zh (category=wi-template)",
         "cycles": 3,
         "v3_migrated": true,
-        "basis": "module 名稱句對應發布版 v1 共 3 列＝IE 把這段話切成 3 個 cycle"
+        "basis": "module 名稱句對應發布版 v1 共 3 列＝IE 把這段話切成 3 個 cycle",
+        "ie_ruling_rejected": true
       },
       {
         "table": "motion_module_versions",
@@ -107,8 +107,7 @@
         "detail": "name_zh (category=action)",
         "cycles": 1,
         "v3_migrated": true,
-        "basis": "module 名稱句對應發布版 v1 共 1 列＝IE 把這段話切成 1 個 cycle",
-        "ie_ruling_rejected": true
+        "basis": "module 名稱句對應發布版 v1 共 1 列＝IE 把這段話切成 1 個 cycle"
       }
     ],
     "reason": "conflicting_v3_structures"
@@ -118,7 +117,7 @@
     "planner": "rule_based_v1",
     "rule_set_code": "MINIMOST_FACTORY_V2",
     "lexicon_source": "rule_option_synonyms",
-    "lexicon_size": 0,
+    "lexicon_size": 11,
     "routing_reasons": [
       "composite_unknown"
     ]
@@ -155,7 +154,14 @@
       "composite_unknown"
     ]
   },
-  "synthetic_synonyms": [],
+  "synthetic_synonyms": [
+    {
+      "parameter": "G",
+      "option_code": "g_grasp",
+      "synonym_norm": "抓握",
+      "priority": 0
+    }
+  ],
   "expected_cycles": [
     {
       "action_id": "a1",
@@ -175,8 +181,7 @@
     "segmentation_confirmed_by": "IEC141289",
     "segmentation_confirmed_date": "2026-08-16",
     "segmentation_source": "ie_ruling",
-    "ie_ruling": "multi_cycle_3",
-    "ie_ruling_notes": "IE 裁決（首輪覆核）：v3 兩個矛盾結構中，3 列 wi-template（motion_modules/dcbb30a8-44f0-4218-aafb-b6882a66aca0）是對的；單列 action module（motion_modules/32a29bba-fabe-4332-baee-9785d4c2525d）為 IE 裁決否定的結構（證據保留，標 ie_ruling_rejected）。查證該 wi-template v1 的 3 列子句＝「雙手接觸DIMM壓合治具拉至規定位置」（CM）／「雙手抓握主板保持住至流水線」（GM）／「雙手抓握主板組至機箱」（GM）——三列是各自獨立的完整子句，不是原句「雙手抓握主板組至機箱」的子字串，原句無法誠實切出 3 段 evidence span（不編造）；plan 重切等第二輪（需子句對應）。",
-    "plan_pending_resegmentation": true
+    "ie_ruling": "single_cycle",
+    "ie_ruling_notes": "IE 裁決（第二輪更正，2026-08-16 釐清並獲 User 確認）：本句本身＝1 列（單一 cycle）。首輪「3 列」的答案是對整個三步驟製程（wi-template motion_modules/dcbb30a8-44f0-4218-aafb-b6882a66aca0）說的——提問時把範本結構誤述為句子切分，已釐清更正（先前裁決全文與更正理由見 ruling_history，不無痕覆寫）。結構證據與更正後裁決一致：本句在該 wi-template v1 中就是 rows[2] 一列＝一個 cycle（motion_module_versions/b91e9fca-a311-496a-bbdb-db6f76f460c2），單列 action module（motion_modules/32a29bba-fabe-4332-baee-9785d4c2525d）亦為 1 cycle——首輪對它的否定一併撤回。被否定的是「wi-template 名稱句對應發布版 3 列＝本句切 3 個 cycle」的推論（motion_modules/dcbb30a8 的 name_zh 來源，標 ie_ruling_rejected 證據保留）：範本名稱是三步驟製程的標題，其 3 列是各自獨立的完整子句，不是本句的切分。"
   }
 }
