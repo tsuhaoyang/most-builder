@@ -5,7 +5,7 @@
   "review_status": "pending_ie",
   "approved_by": null,
   "plan_origin": "rule_based_v1_preannotation",
-  "ie_modified": null,
+  "ie_modified": false,
   "split": null,
   "split_groups": [
     "module:32a29bba-fabe-4332-baee-9785d4c2525d",
@@ -107,7 +107,8 @@
         "detail": "name_zh (category=action)",
         "cycles": 1,
         "v3_migrated": true,
-        "basis": "module 名稱句對應發布版 v1 共 1 列＝IE 把這段話切成 1 個 cycle"
+        "basis": "module 名稱句對應發布版 v1 共 1 列＝IE 把這段話切成 1 個 cycle",
+        "ie_ruling_rejected": true
       }
     ],
     "reason": "conflicting_v3_structures"
@@ -169,5 +170,13 @@
   "expected": {
     "action_count": 1,
     "routing_status": "abstain"
+  },
+  "ie_review": {
+    "segmentation_confirmed_by": "IEC141289",
+    "segmentation_confirmed_date": "2026-08-16",
+    "segmentation_source": "ie_ruling",
+    "ie_ruling": "multi_cycle_3",
+    "ie_ruling_notes": "IE 裁決（首輪覆核）：v3 兩個矛盾結構中，3 列 wi-template（motion_modules/dcbb30a8-44f0-4218-aafb-b6882a66aca0）是對的；單列 action module（motion_modules/32a29bba-fabe-4332-baee-9785d4c2525d）為 IE 裁決否定的結構（證據保留，標 ie_ruling_rejected）。查證該 wi-template v1 的 3 列子句＝「雙手接觸DIMM壓合治具拉至規定位置」（CM）／「雙手抓握主板保持住至流水線」（GM）／「雙手抓握主板組至機箱」（GM）——三列是各自獨立的完整子句，不是原句「雙手抓握主板組至機箱」的子字串，原句無法誠實切出 3 段 evidence span（不編造）；plan 重切等第二輪（需子句對應）。",
+    "plan_pending_resegmentation": true
   }
 }

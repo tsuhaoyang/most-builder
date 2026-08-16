@@ -25,6 +25,10 @@
    v3 證據 cycle 數對不上＝決策規則壞了）、hint 絕不寫進 `expected.*`（誠實
    邊界）、`acquire_without_place` 旗標與 plan 的 action_type 序列判定同進同出
    （5c；單一判定函式）。
+   D3-015 追加（5d）：`ie_review` 的單一出處＝`review-state.json`——草稿區塊
+   必須等於對應 entry 的投影（`review_block_from_entry` 同一函式）；
+   `ie_ruling_rejected` 證據標記與 entry 的 `ie_rejected_evidence` 同進同出；
+   entry 可套用卻未合併（或草稿單方面長出 ie_review）都紅。
 6. 重放自洽：compile 段（plan → link/compile/engine）與 planner 段
    （source_text → rule planner）都能重放且與檔內期望一致——保證核准後
    移入正式 gold 時不會立刻紅。
@@ -65,10 +69,14 @@ from gold_harvest import (  # noqa: E402
     DIM_KEYS,
     HEURISTIC_UNVERIFIED_DIMS,
     PLAN_ORIGIN_PREANNOTATION,
+    REVIEW_STATE_FILENAME,
     SEGMENTATION_CAVEATS,
     STRUCTURE_HINT_AMBIGUOUS,
     STRUCTURE_HINT_SINGLE,
     acquire_without_place,
+    draft_sha8,
+    load_review_state,
+    review_block_from_entry,
 )
 
 
@@ -85,7 +93,8 @@ def provenance_matches_normalized_text(data: dict) -> bool:
 def _draft_files() -> list[Path]:
     if not DRAFT_DIR.is_dir():
         return []
-    return sorted(DRAFT_DIR.glob("*.json"))
+    # review-state.json 是 IE 的覆核狀態檔（D3-015），不是草稿——排除
+    return sorted(p for p in DRAFT_DIR.glob("*.json") if p.name != REVIEW_STATE_FILENAME)
 
 
 def _draft_ids() -> list[str]:
@@ -98,9 +107,19 @@ def drafts() -> list[tuple[Path, dict]]:
     if not files:
         pytest.skip("wi_plans_draft 目前沒有草稿（可能全數已轉正）")
     cases, load_errors = load_gold_cases_checked(DRAFT_DIR)
+    # loader 掃全目錄會把 review-state.json 當 gold case 讀（缺 plan）——它不是
+    # 草稿，濾掉；其餘 load error 照樣硬紅
+    cases = [(p, d) for p, d in cases if p.name != REVIEW_STATE_FILENAME]
+    load_errors = [e for e in load_errors if e.file != REVIEW_STATE_FILENAME]
     assert not load_errors, f"草稿結構層無效：{[e.to_dict() for e in load_errors]}"
     assert len(cases) == len(files)
     return cases
+
+
+@pytest.fixture(scope="module")
+def review_state() -> dict[str, dict]:
+    """repo 的 review-state.json（可能不存在＝空 dict）；load 失敗＝硬紅。"""
+    return load_review_state(DRAFT_DIR / REVIEW_STATE_FILENAME)
 
 
 def test_draft_dir_is_sibling_not_inside_gold():
@@ -111,7 +130,9 @@ def test_draft_dir_is_sibling_not_inside_gold():
 
 
 @pytest.mark.parametrize("fname", _draft_ids() or ["<empty>"])
-async def test_draft_case(fname: str, drafts: list[tuple[Path, dict]]):
+async def test_draft_case(
+    fname: str, drafts: list[tuple[Path, dict]], review_state: dict[str, dict]
+):
     data = next(d for p, d in drafts if p.name == fname)
 
     # 3. 草稿身分：pending_ie＝管線原樣；ie_edited＝IE 改過但尚未轉正
@@ -242,6 +263,61 @@ async def test_draft_case(fname: str, drafts: list[tuple[Path, dict]]):
     assert ("acquire_without_place" in caveats) == acquire_without_place(
         data["plan"]["actions"]
     ), f"{fname}：acquire_without_place 旗標與 plan 的 action_type 序列判定不一致"
+
+    # 5d. D3-015：ie_review（IE 覆核狀態）的單一出處＝review-state.json——
+    # 草稿上的區塊必須是對應 entry 的投影（review_block_from_entry 同一函式），
+    # 不許草稿單方面長出/漂移覆核狀態（沒有 entry 的 ie_review 下一輪 --force
+    # 就被洗掉，正是 D3-015 要消滅的事故型態）。
+    ir = data.get("ie_review")
+    entry = review_state.get(draft_sha8(data))
+    ev_sources = (evidence or {}).get("sources") or []
+    rejected_marks = {
+        (s["table"], s["id"]) for s in ev_sources if s.get("ie_ruling_rejected")
+    }
+    if ir is not None:
+        assert entry is not None, (
+            f"{fname}：草稿帶 ie_review 但 review-state.json 無對應 entry——"
+            "覆核狀態的唯一出處是 state 檔，草稿上的會被下一輪 --force 洗掉"
+        )
+        assert ir == review_block_from_entry(entry), (
+            f"{fname}：ie_review 與 state entry 投影不一致（兩邊漂移）"
+        )
+        assert data.get("ie_modified") is False, (
+            f"{fname}：已合併覆核狀態的草稿 ie_modified 必為 false（確認≠修改——"
+            "自我指涉設計不計 planner 證據力）"
+        )
+        if ir["segmentation_source"] == "v3_structure_confirmed":
+            # 「照 v3 結構預設 OK」只有在預設存在時才成立
+            assert isinstance(hint, str) and hint != STRUCTURE_HINT_AMBIGUOUS, (
+                f"{fname}：v3_structure_confirmed 但草稿 hint={hint!r}——確認的對象不存在"
+            )
+            assert "ie_ruling" not in ir
+        else:
+            assert ir["segmentation_source"] == "ie_ruling"
+            assert isinstance(ir.get("ie_ruling"), str)
+        # 「IE 裁決否定的結構」標記 ↔ entry 的 ie_rejected_evidence 同進同出
+        rejected_state = {
+            (r["table"], r["id"]) for r in entry.get("ie_rejected_evidence") or []
+        }
+        assert rejected_marks == rejected_state, (
+            f"{fname}：ie_ruling_rejected 標記與 state entry 不一致"
+        )
+    else:
+        assert not rejected_marks, (
+            f"{fname}：無 ie_review 卻帶 ie_ruling_rejected 證據標記——標記只能由合併產生"
+        )
+        if entry is not None:
+            # entry 存在但未合併：唯一合法原因是 stale（apply 會回報原因）；
+            # apply 在 deep copy 上重放——回 None＝本應套用卻沒套（harvest 漏合併）
+            import copy
+
+            from gold_harvest import apply_review_state_entry
+
+            reason = apply_review_state_entry(copy.deepcopy(data), entry)
+            assert reason is not None, (
+                f"{fname}：review-state 有可套用的 entry 但草稿無 ie_review——"
+                "harvest 未跑合併或草稿被手動剝除"
+            )
 
     # 2+6. planner 段重放：offset 守衛（gold_* 具名錯誤＝標註缺損）永遠檢查；
     # 「與 rule planner 重放整份 plan 相等」只對 pending_ie（原樣草稿）要求——

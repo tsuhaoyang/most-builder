@@ -54,6 +54,12 @@
 sha256 命名、輸出不含任何 timestamp）。守門在
 `tests/integration/test_gold_harvest.py`。
 
+IE 覆核狀態的存活（D3-015）：out 目錄的 `review-state.json`（IE 的檔案，
+harvest 只讀不寫、`--force` 不刪）記錄切分維度的確認/裁決，重產時以
+normalized_text 的 sha256 前 8 碼配對合併回草稿的 `ie_review` 區塊；文字或
+v3 結構證據變了的 entry 標 stale 列入摘要，**不靜默套用**。詳見檔內
+「IE 覆核狀態」節與 `docs/llm/gold-review/README.md`。
+
 用法（於 ddm-v2/）：
   PYTHONPATH=src .venv/bin/python scripts/gold_harvest.py --out tests/gold/wi_plans_draft/
   # IE 改完草稿 plan 後，用單一引擎重算 expected_cycles/expected（不跑 planner）：
@@ -70,6 +76,7 @@ import asyncio
 import hashlib
 import json
 import os
+import re
 import sys
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -217,8 +224,6 @@ def _has_ascii_alpha(s: str) -> bool:
 
 
 def _quantity_present(norm: str) -> bool:
-    import re
-
     if re.search(r"[×x]\s*\d+", norm):
         return True
     if re.search(r"\d+\s*[顆個次支條片組粒張]", norm):
@@ -1199,6 +1204,49 @@ def _questions_for(draft: dict[str, Any]) -> list[str]:
     return qs
 
 
+def _ie_review_lines(draft: dict[str, Any]) -> list[str]:
+    """已合併覆核狀態的草稿在覆核表的狀態行（D3-015）。
+
+    語意邊界寫死在字面上：切分維度的確認/裁決 ≠ 整筆 gold 核准。"""
+    ir = draft.get("ie_review")
+    if not ir:
+        return []
+    who = ir.get("segmentation_confirmed_by")
+    date = ir.get("segmentation_confirmed_date")
+    out: list[str] = []
+    if ir.get("segmentation_source") == "v3_structure_confirmed":
+        out.append(
+            f"**✅ IE 覆核狀態（切分維度）**：已確認照 v3 結構預設（{who}，{date}）。"
+            "僅確認切分，不是整筆 gold 核准；`ie_modified: false`"
+            "（確認≠修改——本筆不計入 planner 段 Plan 層證據力）。"
+        )
+        return out
+    ruling = ir.get("ie_ruling")
+    out.append(
+        f"**✅ IE 裁決（切分維度）**：`{ruling}`（{who}，{date}）——"
+        "裁決取代本節 v3 結構的 ambiguous/開放題。僅裁決切分，不是整筆 gold 核准。"
+    )
+    if ir.get("ie_ruling_notes"):
+        out.append(f"  - 裁決註記：{ir['ie_ruling_notes']}")
+    if ir.get("plan_pending_resegmentation"):
+        out.append(
+            "  - **切分裁決已下，plan 重切等第二輪（需子句對應）**：裁決的各 cycle "
+            "子句不是原句的子字串，無法誠實切出對應 evidence span——不編造 span，"
+            "plan 維持單 action 待第二輪以子句對應重切。"
+        )
+    rejected = [
+        s
+        for s in (draft.get("v3_structure_evidence") or {}).get("sources") or []
+        if s.get("ie_ruling_rejected")
+    ]
+    for s in rejected:
+        out.append(
+            f"  - IE 裁決否定的結構（證據保留不刪）：`{s['table']}/{str(s['id'])[:8]}…`"
+            f"（{s['detail']}；{s['cycles']} cycle）"
+        )
+    return out
+
+
 def build_review_checklist(drafts: list[dict[str, Any]]) -> str:
     lines: list[str] = []
     lines.append("# IE 覆核表 — gold set 擴充預標註草稿")
@@ -1231,7 +1279,16 @@ def build_review_checklist(drafts: list[dict[str, Any]]) -> str:
     )
     lines.append("")
     n_flag = sum(1 for d in drafts if d["preannotation_caveat"])
+    n_reviewed = sum(1 for d in drafts if d.get("ie_review"))
     lines.append(f"共 {len(drafts)} 筆，其中 {n_flag} 筆帶 ⚠️ 旗標。")
+    if n_reviewed:
+        lines.append("")
+        lines.append(
+            f"其中 **{n_reviewed} 筆**已由 `review-state.json` 合併 IE 覆核狀態"
+            "（各節「IE 覆核狀態」行）。注意：那是**切分維度**的確認/裁決，"
+            "**不是整筆 gold 核准**——cycle 仍 incomplete 的照樣要覆核 option code，"
+            "轉正另有流程（`docs/llm/gold-review/README.md`）。"
+        )
     lines.append("")
     for d in drafts:
         plan = d["plan"]
@@ -1257,6 +1314,8 @@ def build_review_checklist(drafts: list[dict[str, Any]]) -> str:
                 f"**v3 結構**：`{d['v3_structure_hint']}`——{_structure_evidence_brief(d)}"
                 "（hint 是證據不是判決；預設依 v3 結構，IE 可推翻）"
             )
+        for line in _ie_review_lines(d):
+            lines.append(line)
         for c in d["preannotation_caveat"]:
             lines.append(f"**⚠️ {c}**：{_caveat_line_zh(c, d)}")
         lines.append("")
@@ -1298,8 +1357,13 @@ def build_summary(
     limit: int,
     already_gold: list[Candidate] | None = None,
     drafts: list[dict[str, Any]] | None = None,
+    review_state_present: bool = False,
+    review_applied: list[str] | None = None,
+    review_stale: list[dict[str, Any]] | None = None,
 ) -> str:
     drafts = drafts or []
+    review_applied = review_applied or []
+    review_stale = review_stale or []
     lines: list[str] = []
     lines.append("# Harvest 摘要 — gold set 擴充候選採集")
     lines.append("")
@@ -1476,6 +1540,34 @@ def build_summary(
             "WARN 標給 IE，非 BLOCK）。"
         )
         lines.append("")
+    # D3-015：IE 覆核狀態合併結果（review-state.json；stale 不靜默套用）
+    lines.append("## IE 覆核狀態合併（review-state.json；--force 重產後存活）")
+    lines.append("")
+    if not review_state_present:
+        lines.append(
+            "（out 目錄無 `review-state.json`——本輪未套用任何覆核狀態。首輪 harvest "
+            "屬正常；IE 覆核後由工程端把裁決記入 state 檔，之後每輪重產自動合併。）"
+        )
+    else:
+        lines.append(
+            f"套用 **{len(review_applied)} 筆**（草稿帶 `ie_review` 區塊；"
+            "配對鍵＝normalized_text sha256 前 8 碼，與流水號無關）："
+            f"{'、'.join(f'`{i}`' for i in review_applied) or '（無）'}"
+        )
+        lines.append("")
+        if review_stale:
+            lines.append(
+                f"**⚠️ stale {len(review_stale)} 筆——未套用**（狀態所依據的內容已變，"
+                "不靜默沿用；IE 需重看後更新 state 檔）："
+            )
+            lines.append("")
+            for s in review_stale:
+                lines.append(
+                    f"- `{s['sha8']}`（{s['reason']}）：「{s.get('source_text') or '（無原文記錄）'}」"
+                )
+        else:
+            lines.append("stale：0 筆（所有覆核狀態都配對到內容未變的草稿）。")
+    lines.append("")
     dropped = [c for c in all_candidates if c not in selected]
     lines.append(f"## 未入選候選（{len(dropped)} 筆；多樣性選擇額度用罄，非品質淘汰）")
     lines.append("")
@@ -1538,6 +1630,232 @@ def _dump(data: dict[str, Any]) -> str:
     return json.dumps(data, ensure_ascii=False, indent=2) + "\n"
 
 
+# ── IE 覆核狀態（review-state.json；D3-015）─────────────────────────────────
+#
+# 為什麼獨立檔而不是寫在草稿上：`--force` 是「整批重產」語意——草稿檔＝管線
+# 輸出，可任意重生；IE 的覆核記錄是人的裁決，生命週期不同。裁決寫在草稿上
+# 會被下一輪重產（同義詞登記後必然重跑）整批洗掉。
+#
+# 機制：覆核狀態放 out 目錄的 `review-state.json`（**IE 的檔案，harvest 只讀
+# 不寫、--force 不刪**），重產時逐筆合併回對應草稿（寫進草稿的 `ie_review`
+# 區塊＋`ie_modified`）。配對鍵＝normalized_text 的 sha256 前 8 碼（草稿檔名
+# 後綴同一來源），與流水號無關——第二輪選擇順序改變、編號位移，狀態照樣
+# 跟著句子走。
+#
+# 誠實邊界（stale 不靜默套用，逐條列入 harvest 摘要）：
+# - 文字變了 ⇒ sha 變 ⇒ 舊 entry 配不到任何草稿 ⇒ `no_matching_draft`。
+# - v3 結構 hint 變了（DB 結構訊號改變）⇒ 當初確認/裁決所依據的證據已不同
+#   ⇒ `v3_structure_hint_changed`，IE 需重看。
+# - entry 記 `ie_modified: true`（IE 改過 plan 內容）⇒ 本機制只保**覆核詮釋
+#   資料**，不保 plan 內容——重產必然以管線輸出蓋掉 plan 編輯，這種 entry
+#   拒絕合併（`ie_modified_plan_not_preservable`）；要保 plan 編輯就不要對該
+#   目錄 --force，或第二輪人工重套。
+# - sha8 相符但完整 sha 不符 ⇒ 不是 stale，是 state 檔損毀/雜湊碰撞 ⇒ 大聲
+#   失敗（No error bypass：IE 的裁決寧可擋下重產也不可錯掛）。
+
+REVIEW_STATE_FILENAME = "review-state.json"
+REVIEW_STATE_SCHEMA_VERSION = "wi-review-state-v1"
+REVIEW_SEGMENTATION_SOURCES = ("v3_structure_confirmed", "ie_ruling")
+_RULING_RE = re.compile(r"^(single_cycle|multi_cycle_[2-9]\d*)$")
+_DATE_RE = re.compile(r"^\d{4}-\d{2}-\d{2}$")
+_SHA8_RE = re.compile(r"^[0-9a-f]{8}$")
+_SHA256_RE = re.compile(r"^[0-9a-f]{64}$")
+# entry → 草稿 ie_review 區塊要帶的欄位（review_block_from_entry 的唯一出處）
+_REVIEW_BLOCK_KEYS = (
+    "segmentation_confirmed_by",
+    "segmentation_confirmed_date",
+    "segmentation_source",
+    "ie_ruling",
+    "ie_ruling_notes",
+    "plan_pending_resegmentation",
+)
+
+
+def draft_json_files(out_dir: Path) -> list[Path]:
+    """out 目錄裡的草稿 JSON——排除 review-state.json（IE 的覆核狀態檔不是草稿，
+    `--force` 不得刪它、覆蓋守衛不把它當既有草稿）。"""
+    return [p for p in sorted(out_dir.glob("*.json")) if p.name != REVIEW_STATE_FILENAME]
+
+
+def draft_sha8(draft: dict[str, Any]) -> str:
+    """草稿的配對鍵＝normalized_text 的 sha256 前 8 碼（與檔名後綴同一來源；
+    不用檔名解析——檔名可被改名，normalized_text 是內容本身）。"""
+    norm = draft["plan"]["normalized_text"]
+    return hashlib.sha256(norm.encode("utf-8")).hexdigest()[:8]
+
+
+def _fail_state(path: Path | str, msg: str) -> None:
+    raise SystemExit(f"review-state 無效（{path}）：{msg}——IE 覆核狀態不可靜默丟棄，修檔後再跑")
+
+
+def load_review_state(path: Path) -> dict[str, dict[str, Any]]:
+    """讀取並驗證 review-state.json；檔案不存在＝空狀態（首輪合法）。
+
+    驗證是硬的（SystemExit）：state 檔是 IE 裁決的唯一載體，格式錯誤若被吞掉，
+    合併就會靜默漏套——寧可擋下 harvest。"""
+    if not path.exists():
+        return {}
+    try:
+        data = json.loads(path.read_text(encoding="utf-8"))
+    except json.JSONDecodeError as exc:
+        _fail_state(path, f"不是有效 JSON：{exc}")
+    if not isinstance(data, dict):
+        _fail_state(path, "頂層必須是 object")
+    if data.get("schema_version") != REVIEW_STATE_SCHEMA_VERSION:
+        _fail_state(
+            path,
+            f"schema_version={data.get('schema_version')!r}，"
+            f"預期 {REVIEW_STATE_SCHEMA_VERSION!r}",
+        )
+    entries = data.get("entries")
+    if not isinstance(entries, dict) or not entries:
+        _fail_state(path, "entries 必須是非空 object（sha8 → entry）")
+    for sha8, entry in entries.items():
+        ctx = f"entries[{sha8!r}]"
+        if not _SHA8_RE.match(sha8):
+            _fail_state(path, f"{ctx}：鍵必須是 8 碼小寫十六進位（草稿檔名後綴）")
+        if not isinstance(entry, dict):
+            _fail_state(path, f"{ctx}：必須是 object")
+        full = entry.get("norm_sha256")
+        if not (isinstance(full, str) and _SHA256_RE.match(full)):
+            _fail_state(path, f"{ctx}：norm_sha256 必須是 64 碼 sha256")
+        if full[:8] != sha8:
+            _fail_state(path, f"{ctx}：norm_sha256 前 8 碼 {full[:8]} 與鍵不一致")
+        if not (isinstance(entry.get("source_text"), str) and entry["source_text"].strip()):
+            _fail_state(path, f"{ctx}：source_text 必填（人讀對照用）")
+        if not (
+            isinstance(entry.get("segmentation_confirmed_by"), str)
+            and entry["segmentation_confirmed_by"].strip()
+        ):
+            _fail_state(path, f"{ctx}：segmentation_confirmed_by 必填（IE 工號）")
+        if not (
+            isinstance(entry.get("segmentation_confirmed_date"), str)
+            and _DATE_RE.match(entry["segmentation_confirmed_date"])
+        ):
+            _fail_state(path, f"{ctx}：segmentation_confirmed_date 必須是 YYYY-MM-DD")
+        src = entry.get("segmentation_source")
+        if src not in REVIEW_SEGMENTATION_SOURCES:
+            _fail_state(
+                path, f"{ctx}：segmentation_source 必須是 {REVIEW_SEGMENTATION_SOURCES}"
+            )
+        if not isinstance(entry.get("ie_modified"), bool):
+            _fail_state(path, f"{ctx}：ie_modified 必填 true|false")
+        if "v3_structure_hint_at_review" not in entry:
+            _fail_state(
+                path,
+                f"{ctx}：v3_structure_hint_at_review 必填（可為 null）——"
+                "沒有它就無法偵測「確認所依據的結構證據已改變」",
+            )
+        hint_at = entry["v3_structure_hint_at_review"]
+        ruling = entry.get("ie_ruling")
+        if src == "v3_structure_confirmed":
+            # 「照 v3 結構預設 OK」——被確認的預設必須真的存在（非 ambiguous）
+            if not (isinstance(hint_at, str) and _RULING_RE.match(hint_at)):
+                _fail_state(
+                    path,
+                    f"{ctx}：v3_structure_confirmed 但 hint_at_review={hint_at!r} "
+                    "不是可確認的結構答案（single_cycle/multi_cycle_n）",
+                )
+            if ruling is not None:
+                _fail_state(path, f"{ctx}：確認≠裁決——v3_structure_confirmed 不得帶 ie_ruling")
+        else:  # ie_ruling
+            if not (isinstance(ruling, str) and _RULING_RE.match(ruling)):
+                _fail_state(
+                    path, f"{ctx}：ie_ruling 必須是 single_cycle 或 multi_cycle_n（n≥2）"
+                )
+        pending = entry.get("plan_pending_resegmentation")
+        if pending is not None:
+            if not isinstance(pending, bool):
+                _fail_state(path, f"{ctx}：plan_pending_resegmentation 必須是 bool")
+            if pending and not (isinstance(ruling, str) and ruling.startswith("multi_cycle_")):
+                _fail_state(
+                    path,
+                    f"{ctx}：plan_pending_resegmentation 只在 multi_cycle 裁決下有意義"
+                    "（單 cycle 沒有「等重切」）",
+                )
+        rejected = entry.get("ie_rejected_evidence")
+        if rejected is not None:
+            if not (isinstance(rejected, list) and rejected):
+                _fail_state(path, f"{ctx}：ie_rejected_evidence 若存在必須是非空 list")
+            for r in rejected:
+                if not (
+                    isinstance(r, dict)
+                    and isinstance(r.get("table"), str)
+                    and isinstance(r.get("id"), str)
+                ):
+                    _fail_state(path, f"{ctx}：ie_rejected_evidence 條目需 {{table, id}}")
+    return entries
+
+
+def review_block_from_entry(entry: dict[str, Any]) -> dict[str, Any]:
+    """state entry → 草稿的 `ie_review` 區塊（單一出處：合併與 schema 守門測試
+    共用本函式，不允許兩邊投影規則漂移）。"""
+    return {k: entry[k] for k in _REVIEW_BLOCK_KEYS if entry.get(k) is not None}
+
+
+def apply_review_state_entry(draft: dict[str, Any], entry: dict[str, Any]) -> str | None:
+    """把單筆覆核狀態合併進草稿；回傳 None＝已套用、字串＝stale 原因（未動草稿）。
+
+    所有前置檢查先做完才落筆——不留半套狀態。"""
+    norm = draft["plan"]["normalized_text"]
+    full = hashlib.sha256(norm.encode("utf-8")).hexdigest()
+    if entry["norm_sha256"] != full:
+        raise SystemExit(
+            f"review-state 完整性失敗：entry {entry['norm_sha256'][:8]} 的 norm_sha256 "
+            f"與草稿 {draft.get('id')} 的 normalized_text sha 不符——"
+            "state 檔損毀或雜湊碰撞，不是 stale，人工排查後再跑"
+        )
+    if entry.get("ie_modified") is True:
+        return "ie_modified_plan_not_preservable"
+    if entry.get("v3_structure_hint_at_review") != draft.get("v3_structure_hint"):
+        return "v3_structure_hint_changed"
+    rejected = entry.get("ie_rejected_evidence") or []
+    sources = (draft.get("v3_structure_evidence") or {}).get("sources") or []
+    source_keys = {(s["table"], s["id"]) for s in sources}
+    if any((r["table"], r["id"]) not in source_keys for r in rejected):
+        return "rejected_evidence_missing"
+    draft["ie_review"] = review_block_from_entry(entry)
+    draft["ie_modified"] = False  # 確認≠修改（entry 的 ie_modified=true 已在上面拒絕）
+    for r in rejected:
+        for s in sources:
+            if (s["table"], s["id"]) == (r["table"], r["id"]):
+                # IE 裁決否定的結構：證據保留不刪，標記讓覆核表/後人看得到
+                s["ie_ruling_rejected"] = True
+    return None
+
+
+def merge_review_state(
+    drafts: list[dict[str, Any]], entries: dict[str, dict[str, Any]]
+) -> tuple[list[str], list[dict[str, Any]]]:
+    """整批合併：回傳（已套用草稿 id 排序清單, stale 條目清單）。決定性：
+    entry 依 sha8 排序處理，輸出穩定。"""
+    by_sha8: dict[str, dict[str, Any]] = {}
+    for d in drafts:
+        key = draft_sha8(d)
+        if key in by_sha8:  # pragma: no cover — 去重後同 norm 不會出現兩筆
+            raise SystemExit(f"草稿 sha8 重複：{key}（{by_sha8[key]['id']} vs {d['id']}）")
+        by_sha8[key] = d
+    applied: list[str] = []
+    stale: list[dict[str, Any]] = []
+    for sha8 in sorted(entries):
+        entry = entries[sha8]
+        draft = by_sha8.get(sha8)
+        if draft is None:
+            stale.append(
+                {"sha8": sha8, "reason": "no_matching_draft",
+                 "source_text": entry.get("source_text")}
+            )
+            continue
+        reason = apply_review_state_entry(draft, entry)
+        if reason is None:
+            applied.append(draft["id"])
+        else:
+            stale.append(
+                {"sha8": sha8, "reason": reason, "source_text": entry.get("source_text")}
+            )
+    return sorted(applied), stale
+
+
 async def cmd_harvest(args: argparse.Namespace) -> int:
     out_dir = Path(args.out)
     assert_out_dir_safe(out_dir)  # 守衛在任何 DB 存取之前：絕不寫進正式 gold 目錄
@@ -1559,14 +1877,15 @@ async def cmd_harvest(args: argparse.Namespace) -> int:
     selected = select_diverse(all_candidates, args.limit)
 
     out_dir.mkdir(parents=True, exist_ok=True)
-    existing = sorted(p.name for p in out_dir.glob("*.json"))
+    # review-state.json 不是草稿：不觸發覆蓋守衛、--force 不刪（IE 的覆核狀態檔）
+    existing = [p.name for p in draft_json_files(out_dir)]
     if existing and not args.force:
         raise SystemExit(
             f"{out_dir} 已有 {len(existing)} 個草稿（可能含 IE 編輯），不覆蓋。"
             "確定要整批重產請加 --force。"
         )
     if args.force:
-        for p in out_dir.glob("*.json"):
+        for p in draft_json_files(out_dir):
             p.unlink()
 
     rs = build_from_seed_v2()  # 一次 build，逐筆共用（不進迴圈）
@@ -1585,6 +1904,12 @@ async def cmd_harvest(args: argparse.Namespace) -> int:
             )
         )
 
+    # D3-015：合併 IE 覆核狀態（--force 重產後存活的機制）——寫檔前合併，
+    # 草稿落地即帶狀態；stale 不靜默套用，列入摘要
+    state_path = out_dir / REVIEW_STATE_FILENAME
+    review_entries = load_review_state(state_path)
+    review_applied, review_stale = merge_review_state(drafts, review_entries)
+
     for d in drafts:
         (out_dir / f"{d['id']}.json").write_text(_dump(d), encoding="utf-8")
 
@@ -1600,6 +1925,9 @@ async def cmd_harvest(args: argparse.Namespace) -> int:
         args.limit,
         already_gold=already_gold,
         drafts=drafts,
+        review_state_present=bool(review_entries),
+        review_applied=review_applied,
+        review_stale=review_stale,
     )
     (review_dir / "harvest-summary.md").write_text(summary, encoding="utf-8")
 

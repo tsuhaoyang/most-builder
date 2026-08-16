@@ -34,7 +34,12 @@ ROOT = Path(__file__).resolve().parents[2]
 SCRIPT = ROOT / "scripts" / "gold_harvest.py"
 
 sys.path.insert(0, str(ROOT / "scripts"))
-from gold_harvest import SEGMENTATION_CAVEATS, acquire_without_place  # noqa: E402
+from gold_harvest import (  # noqa: E402
+    REVIEW_STATE_FILENAME,
+    REVIEW_STATE_SCHEMA_VERSION,
+    SEGMENTATION_CAVEATS,
+    acquire_without_place,
+)
 
 
 def _run_harvest(out_dir: Path, review_dir: Path, *extra: str) -> subprocess.CompletedProcess:
@@ -109,6 +114,98 @@ def test_harvest_deterministic_and_loadable(tmp_path: Path):
     marker = "# Harvest 摘要"
     assert marker in p1.stdout and marker in p2.stdout
     assert p1.stdout[p1.stdout.index(marker):] == p2.stdout[p2.stdout.index(marker):]
+
+
+def test_review_state_survives_force_and_stale_not_applied(tmp_path: Path):
+    """D3-015 關鍵演練：IE 覆核狀態在 --force 整批重產後存活；stale 不靜默套用。
+
+    劇本：首輪 harvest → 依產出草稿寫 review-state.json（1 筆有效確認＋1 筆
+    sha 配不到＋1 筆 hint 不符）→ --force 重產 → 有效確認合併回草稿、
+    兩筆 stale 列入摘要且不套用、state 檔本身不被刪；再 --force 一次 →
+    輸出 byte-identical（合併不破壞決定性）。
+
+    mutation 證據：把 cmd_harvest 的 merge_review_state 呼叫拆掉 → ie_review
+    斷言紅；把 --force 刪檔迴圈改回 glob("*.json") → state 檔消失斷言紅。
+    """
+    import hashlib
+    import json
+
+    out_dir, rev_dir = tmp_path / "drafts", tmp_path / "review"
+    p1 = _run_harvest(out_dir, rev_dir)
+    assert p1.returncode == 0, p1.stdout + p1.stderr
+    draft_paths = sorted(p for p in out_dir.glob("*.json") if p.name != REVIEW_STATE_FILENAME)
+    if not draft_paths:
+        pytest.skip("此 DB 無候選（CI 最小 seed）；覆核狀態演練需至少一筆草稿")
+
+    def _entry(draft: dict, **over: object) -> dict:
+        norm = draft["plan"]["normalized_text"]
+        e = {
+            "source_text": draft["source_text"],
+            "norm_sha256": hashlib.sha256(norm.encode("utf-8")).hexdigest(),
+            "v3_structure_hint_at_review": draft.get("v3_structure_hint"),
+            "segmentation_confirmed_by": "IEC141289",
+            "segmentation_confirmed_date": "2026-08-16",
+            "segmentation_source": "ie_ruling",
+            "ie_ruling": "single_cycle",
+            "ie_modified": False,
+        }
+        e.update(over)
+        return e
+
+    drafts = [json.loads(p.read_text(encoding="utf-8")) for p in draft_paths]
+    target = drafts[0]
+    target_sha8 = hashlib.sha256(
+        target["plan"]["normalized_text"].encode("utf-8")
+    ).hexdigest()[:8]
+    entries = {
+        # 有效：sha 與 hint 都對得上 → 必須合併
+        target_sha8: _entry(target),
+        # stale 1：sha 配不到任何草稿（文字已變/句子已不在本輪）
+        "deadbeef": _entry(target, norm_sha256="deadbeef" + "0" * 56,
+                           source_text="已改寫的舊句子"),
+    }
+    if len(drafts) > 1:
+        other = drafts[1]
+        other_sha8 = hashlib.sha256(
+            other["plan"]["normalized_text"].encode("utf-8")
+        ).hexdigest()[:8]
+        # stale 2：hint 與當初覆核時不同（結構證據已變）→ 不得沿用
+        entries[other_sha8] = _entry(
+            other, v3_structure_hint_at_review="multi_cycle_9"
+        )
+    state_path = out_dir / REVIEW_STATE_FILENAME
+    state_path.write_text(
+        json.dumps(
+            {"schema_version": REVIEW_STATE_SCHEMA_VERSION, "entries": entries},
+            ensure_ascii=False,
+        ),
+        encoding="utf-8",
+    )
+
+    p2 = _run_harvest(out_dir, rev_dir, "--force")
+    assert p2.returncode == 0, p2.stdout + p2.stderr
+    assert state_path.exists(), "--force 不得刪 review-state.json（IE 的檔案）"
+
+    merged = json.loads((out_dir / f"{target['id']}.json").read_text(encoding="utf-8"))
+    ir = merged.get("ie_review")
+    assert ir and ir["segmentation_confirmed_by"] == "IEC141289", "覆核狀態沒在重產後存活"
+    assert ir["ie_ruling"] == "single_cycle"
+    assert merged["ie_modified"] is False
+
+    summary = (rev_dir / "harvest-summary.md").read_text(encoding="utf-8")
+    assert "deadbeef" in summary and "no_matching_draft" in summary, "stale 必須列入報告"
+    if len(drafts) > 1:
+        other_merged = json.loads(
+            (out_dir / f"{drafts[1]['id']}.json").read_text(encoding="utf-8")
+        )
+        assert "ie_review" not in other_merged, "hint 不符的 stale 狀態被靜默套用了"
+        assert "v3_structure_hint_changed" in summary
+
+    # 決定性：帶 state 再 --force 一次 → 草稿與報告 byte-identical
+    before = _snapshot(out_dir)
+    p3 = _run_harvest(out_dir, rev_dir, "--force")
+    assert p3.returncode == 0, p3.stdout + p3.stderr
+    assert _snapshot(out_dir) == before, "合併覆核狀態破壞了決定性"
 
 
 def test_harvest_refuses_overwrite_without_force(tmp_path: Path):

@@ -5,7 +5,7 @@
   "review_status": "pending_ie",
   "approved_by": null,
   "plan_origin": "rule_based_v1_preannotation",
-  "ie_modified": null,
+  "ie_modified": false,
   "split": null,
   "split_groups": [
     "module:ac3ce9bb-a878-434e-88bf-a2a4fd9e480d",
@@ -152,5 +152,10 @@
   "expected": {
     "action_count": 1,
     "routing_status": "abstain"
+  },
+  "ie_review": {
+    "segmentation_confirmed_by": "IEC141289",
+    "segmentation_confirmed_date": "2026-08-16",
+    "segmentation_source": "v3_structure_confirmed"
   }
 }

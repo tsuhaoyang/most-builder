@@ -8,6 +8,8 @@
 
 共 60 筆，其中 60 筆帶 ⚠️ 旗標。
 
+其中 **41 筆**已由 `review-state.json` 合併 IE 覆核狀態（各節「IE 覆核狀態」行）。注意：那是**切分維度**的確認/裁決，**不是整筆 gold 核准**——cycle 仍 incomplete 的照樣要覆核 option code，轉正另有流程（`docs/llm/gold-review/README.md`）。
+
 ---
 
 ## d001_6fa45cdb
@@ -17,6 +19,7 @@
 **來源**：`motion_modules/d630108e…`（name_zh (category=wi-template)）
 **挑戰維度（規則式判定）**：全形字元、中英混合、多 action、數量、工具持有
 **v3 結構**：`multi_cycle_3`——`motion_modules/d630108e…`（name_zh (category=wi-template)；3 cycle；v3）（hint 是證據不是判決；預設依 v3 結構，IE 可推翻）
+**✅ IE 覆核狀態（切分維度）**：已確認照 v3 結構預設（IEC141289，2026-08-16）。僅確認切分，不是整筆 gold 核准；`ie_modified: false`（確認≠修改——本筆不計入 planner 段 Plan 層證據力）。
 **⚠️ likely_multi_action_undercounted**：rule planner 結構上永遠只出 1 個 action；本句含多動詞/連接詞，**切分幾乎必然低估**——請務必逐動詞檢查
 **⚠️ empty_lexicon_no_slot_candidates**：dev DB 的 rule_option_synonyms 目前是空的：所有 slot 都沒有候選，option code 需 IE 自填（並考慮順手登記同義詞）
 
@@ -44,6 +47,7 @@
 **來源**：`motion_module_versions/62d5bebb…`（rows[0].sub_activity）; `motion_module_versions/89add432…`（rows[0].sub_activity）; `motion_modules/310981d5…`（name_zh (category=action)）
 **挑戰維度（規則式判定）**：繁簡（簡體字/大陸用語）、中英混合、工具持有、SIMO／雙手
 **v3 結構**：`single_cycle`——`motion_module_versions/62d5bebb…`（rows[0].sub_activity；1 cycle；v3）；`motion_module_versions/89add432…`（rows[0].sub_activity；1 cycle；v3）；`motion_modules/310981d5…`（name_zh (category=action)；1 cycle；v3）（hint 是證據不是判決；預設依 v3 結構，IE 可推翻）
+**✅ IE 覆核狀態（切分維度）**：已確認照 v3 結構預設（IEC141289，2026-08-16）。僅確認切分，不是整筆 gold 核准；`ie_modified: false`（確認≠修改——本筆不計入 planner 段 Plan 層證據力）。
 **⚠️ take_place_pair_may_be_single_gm**：本句是「取＋放」動詞配對（無連接詞）——MiniMOST 的 GM 序列本來就是 G＋P 同一 cycle，單 action 不必然是低估。請裁決：建成**單一 GM cycle**（G 與 P 各取值）還是 acquire＋move_place **兩個 action**（見下方「取放建模」題；不預設方向）
 **⚠️ empty_lexicon_no_slot_candidates**：dev DB 的 rule_option_synonyms 目前是空的：所有 slot 都沒有候選，option code 需 IE 自填（並考慮順手登記同義詞）
 
@@ -72,6 +76,7 @@
 **來源**：`motion_module_versions/6e6f8d3d…`（rows[0].sub_activity）
 **挑戰維度（規則式判定）**：中英混合、多 action、數量、SIMO／雙手
 **v3 結構**：`single_cycle`——`motion_module_versions/6e6f8d3d…`（rows[0].sub_activity；1 cycle；v3）（hint 是證據不是判決；預設依 v3 結構，IE 可推翻）
+**✅ IE 覆核狀態（切分維度）**：已確認照 v3 結構預設（IEC141289，2026-08-16）。僅確認切分，不是整筆 gold 核准；`ie_modified: false`（確認≠修改——本筆不計入 planner 段 Plan 層證據力）。
 **⚠️ likely_multi_action_undercounted**：本句含多動詞/連接詞，rule planner 只出 1 個 action——但 **v3 結構顯示 IE 當初把這句建為單一 cycle**（證據見本節「v3 結構」與草稿 `v3_structure_evidence`），「幾乎必然低估」對本筆**降級**：預設依 v3 結構（單一 cycle），除非你認定 v3 的切分本身有誤（hint 是證據不是判決，可推翻）
 **⚠️ empty_lexicon_no_slot_candidates**：dev DB 的 rule_option_synonyms 目前是空的：所有 slot 都沒有候選，option code 需 IE 自填（並考慮順手登記同義詞）
 
@@ -99,6 +104,7 @@
 **來源**：`motion_module_versions/255beb05…`（rows[0].sub_activity）
 **挑戰維度（規則式判定）**：繁簡（簡體字/大陸用語）、中英混合、數量、SIMO／雙手
 **v3 結構**：`single_cycle`——`motion_module_versions/255beb05…`（rows[0].sub_activity；1 cycle；v3）（hint 是證據不是判決；預設依 v3 結構，IE 可推翻）
+**✅ IE 覆核狀態（切分維度）**：已確認照 v3 結構預設（IEC141289，2026-08-16）。僅確認切分，不是整筆 gold 核准；`ie_modified: false`（確認≠修改——本筆不計入 planner 段 Plan 層證據力）。
 **⚠️ take_place_pair_may_be_single_gm**：本句是「取＋放」動詞配對（無連接詞）——MiniMOST 的 GM 序列本來就是 G＋P 同一 cycle，單 action 不必然是低估。請裁決：建成**單一 GM cycle**（G 與 P 各取值）還是 acquire＋move_place **兩個 action**（見下方「取放建模」題；不預設方向）
 **⚠️ empty_lexicon_no_slot_candidates**：dev DB 的 rule_option_synonyms 目前是空的：所有 slot 都沒有候選，option code 需 IE 自填（並考慮順手登記同義詞）
 
@@ -127,6 +133,7 @@
 **來源**：`motion_modules/8436a0d0…`（name_zh (category=wi-template)）
 **挑戰維度（規則式判定）**：繁簡（簡體字/大陸用語）、全形字元、多 action
 **v3 結構**：`multi_cycle_4`——`motion_modules/8436a0d0…`（name_zh (category=wi-template)；4 cycle；v3）（hint 是證據不是判決；預設依 v3 結構，IE 可推翻）
+**✅ IE 覆核狀態（切分維度）**：已確認照 v3 結構預設（IEC141289，2026-08-16）。僅確認切分，不是整筆 gold 核准；`ie_modified: false`（確認≠修改——本筆不計入 planner 段 Plan 層證據力）。
 **⚠️ likely_multi_action_undercounted**：rule planner 結構上永遠只出 1 個 action；本句含多動詞/連接詞，**切分幾乎必然低估**——請務必逐動詞檢查
 **⚠️ empty_lexicon_no_slot_candidates**：dev DB 的 rule_option_synonyms 目前是空的：所有 slot 都沒有候選，option code 需 IE 自填（並考慮順手登記同義詞）
 
@@ -152,6 +159,7 @@
 **來源**：`motion_module_versions/2b40d576…`（rows[0].sub_activity）
 **挑戰維度（規則式判定）**：中英混合、多 action、數量、SIMO／雙手
 **v3 結構**：`single_cycle`——`motion_module_versions/2b40d576…`（rows[0].sub_activity；1 cycle；v3）（hint 是證據不是判決；預設依 v3 結構，IE 可推翻）
+**✅ IE 覆核狀態（切分維度）**：已確認照 v3 結構預設（IEC141289，2026-08-16）。僅確認切分，不是整筆 gold 核准；`ie_modified: false`（確認≠修改——本筆不計入 planner 段 Plan 層證據力）。
 **⚠️ likely_multi_action_undercounted**：本句含多動詞/連接詞，rule planner 只出 1 個 action——但 **v3 結構顯示 IE 當初把這句建為單一 cycle**（證據見本節「v3 結構」與草稿 `v3_structure_evidence`），「幾乎必然低估」對本筆**降級**：預設依 v3 結構（單一 cycle），除非你認定 v3 的切分本身有誤（hint 是證據不是判決，可推翻）
 **⚠️ empty_lexicon_no_slot_candidates**：dev DB 的 rule_option_synonyms 目前是空的：所有 slot 都沒有候選，option code 需 IE 自填（並考慮順手登記同義詞）
 
@@ -179,6 +187,7 @@
 **來源**：`motion_module_versions/9569aeaf…`（rows[1].sub_activity）; `motion_module_versions/b66a74ed…`（rows[0].sub_activity）; `motion_modules/2ea27e92…`（name_zh (category=action)）
 **挑戰維度（規則式判定）**：繁簡（簡體字/大陸用語）、多 action、工具持有
 **v3 結構**：`single_cycle`——`motion_module_versions/9569aeaf…`（rows[1].sub_activity；1 cycle；v3）；`motion_module_versions/b66a74ed…`（rows[0].sub_activity；1 cycle；v3）；`motion_modules/2ea27e92…`（name_zh (category=action)；1 cycle；v3）（hint 是證據不是判決；預設依 v3 結構，IE 可推翻）
+**✅ IE 覆核狀態（切分維度）**：已確認照 v3 結構預設（IEC141289，2026-08-16）。僅確認切分，不是整筆 gold 核准；`ie_modified: false`（確認≠修改——本筆不計入 planner 段 Plan 層證據力）。
 **⚠️ likely_multi_action_undercounted**：本句含多動詞/連接詞，rule planner 只出 1 個 action——但 **v3 結構顯示 IE 當初把這句建為單一 cycle**（證據見本節「v3 結構」與草稿 `v3_structure_evidence`），「幾乎必然低估」對本筆**降級**：預設依 v3 結構（單一 cycle），除非你認定 v3 的切分本身有誤（hint 是證據不是判決，可推翻）
 **⚠️ empty_lexicon_no_slot_candidates**：dev DB 的 rule_option_synonyms 目前是空的：所有 slot 都沒有候選，option code 需 IE 自填（並考慮順手登記同義詞）
 
@@ -205,6 +214,7 @@
 **來源**：`motion_modules/d9203ed2…`（name_zh (category=wi-template)）
 **挑戰維度（規則式判定）**：全形字元、中英混合、多 action
 **v3 結構**：`multi_cycle_2`——`motion_modules/d9203ed2…`（name_zh (category=wi-template)；2 cycle；v3）（hint 是證據不是判決；預設依 v3 結構，IE 可推翻）
+**✅ IE 覆核狀態（切分維度）**：已確認照 v3 結構預設（IEC141289，2026-08-16）。僅確認切分，不是整筆 gold 核准；`ie_modified: false`（確認≠修改——本筆不計入 planner 段 Plan 層證據力）。
 **⚠️ likely_multi_action_undercounted**：rule planner 結構上永遠只出 1 個 action；本句含多動詞/連接詞，**切分幾乎必然低估**——請務必逐動詞檢查
 **⚠️ empty_lexicon_no_slot_candidates**：dev DB 的 rule_option_synonyms 目前是空的：所有 slot 都沒有候選，option code 需 IE 自填（並考慮順手登記同義詞）
 
@@ -255,6 +265,7 @@
 **來源**：`motion_module_versions/55e93ed7…`（rows[0].sub_activity）; `motion_module_versions/b91e9fca…`（rows[1].sub_activity）; `motion_modules/ea8ebe0c…`（name_zh (category=action)）
 **挑戰維度（規則式判定）**：繁簡（簡體字/大陸用語）、多 action、SIMO／雙手
 **v3 結構**：`single_cycle`——`motion_module_versions/55e93ed7…`（rows[0].sub_activity；1 cycle；v3）；`motion_module_versions/b91e9fca…`（rows[1].sub_activity；1 cycle；v3）；`motion_modules/ea8ebe0c…`（name_zh (category=action)；1 cycle；v3）（hint 是證據不是判決；預設依 v3 結構，IE 可推翻）
+**✅ IE 覆核狀態（切分維度）**：已確認照 v3 結構預設（IEC141289，2026-08-16）。僅確認切分，不是整筆 gold 核准；`ie_modified: false`（確認≠修改——本筆不計入 planner 段 Plan 層證據力）。
 **⚠️ likely_multi_action_undercounted**：本句含多動詞/連接詞，rule planner 只出 1 個 action——但 **v3 結構顯示 IE 當初把這句建為單一 cycle**（證據見本節「v3 結構」與草稿 `v3_structure_evidence`），「幾乎必然低估」對本筆**降級**：預設依 v3 結構（單一 cycle），除非你認定 v3 的切分本身有誤（hint 是證據不是判決，可推翻）
 **⚠️ empty_lexicon_no_slot_candidates**：dev DB 的 rule_option_synonyms 目前是空的：所有 slot 都沒有候選，option code 需 IE 自填（並考慮順手登記同義詞）
 
@@ -281,6 +292,7 @@
 **來源**：`motion_module_versions/62d5bebb…`（rows[1].sub_activity）; `motion_module_versions/b7eefdb5…`（rows[0].sub_activity）; `motion_modules/8028b635…`（name_zh (category=action)）
 **挑戰維度（規則式判定）**：中英混合、工具持有、SIMO／雙手
 **v3 結構**：`single_cycle`——`motion_module_versions/62d5bebb…`（rows[1].sub_activity；1 cycle；v3）；`motion_module_versions/b7eefdb5…`（rows[0].sub_activity；1 cycle；v3）；`motion_modules/8028b635…`（name_zh (category=action)；1 cycle；v3）（hint 是證據不是判決；預設依 v3 結構，IE 可推翻）
+**✅ IE 覆核狀態（切分維度）**：已確認照 v3 結構預設（IEC141289，2026-08-16）。僅確認切分，不是整筆 gold 核准；`ie_modified: false`（確認≠修改——本筆不計入 planner 段 Plan 層證據力）。
 **⚠️ take_move_pair_may_be_single_cm**：本句是「取/觸＋推/拉」動詞配對（無連接詞）——MiniMOST 的 CM 序列本來就是 G 與 M 同一 cycle（`docs/core-logic/minimost-sequence-model-core-logic-spec.md` §2：A B G M X I A），單 action 不必然是低估。請裁決：建成**單一 CM cycle**（G 與 M 各取值）還是 acquire＋controlled_move **兩個 action**（見下方「取移建模」題；不預設方向）
 **⚠️ empty_lexicon_no_slot_candidates**：dev DB 的 rule_option_synonyms 目前是空的：所有 slot 都沒有候選，option code 需 IE 自填（並考慮順手登記同義詞）
 
@@ -309,6 +321,7 @@
 **來源**：`motion_modules/b5666b80…`（name_zh (category=wi-template)）
 **挑戰維度（規則式判定）**：繁簡（簡體字/大陸用語）、中英混合、工具持有
 **v3 結構**：`multi_cycle_2`——`motion_modules/b5666b80…`（name_zh (category=wi-template)；2 cycle；v3）（hint 是證據不是判決；預設依 v3 結構，IE 可推翻）
+**✅ IE 覆核狀態（切分維度）**：已確認照 v3 結構預設（IEC141289，2026-08-16）。僅確認切分，不是整筆 gold 核准；`ie_modified: false`（確認≠修改——本筆不計入 planner 段 Plan 層證據力）。
 **⚠️ take_place_pair_may_be_single_gm**：本句是「取＋放」動詞配對（無連接詞）——MiniMOST 的 GM 序列本來就是 G＋P 同一 cycle，單 action 不必然是低估。請裁決：建成**單一 GM cycle**（G 與 P 各取值）還是 acquire＋move_place **兩個 action**（見下方「取放建模」題；不預設方向）
 **⚠️ empty_lexicon_no_slot_candidates**：dev DB 的 rule_option_synonyms 目前是空的：所有 slot 都沒有候選，option code 需 IE 自填（並考慮順手登記同義詞）
 
@@ -336,6 +349,7 @@
 **來源**：`motion_modules/12ce967e…`（name_zh (category=wi-template)）
 **挑戰維度（規則式判定）**：中英混合、數量、SIMO／雙手
 **v3 結構**：`single_cycle`——`motion_modules/12ce967e…`（name_zh (category=wi-template)；1 cycle；v3）（hint 是證據不是判決；預設依 v3 結構，IE 可推翻）
+**✅ IE 覆核狀態（切分維度）**：已確認照 v3 結構預設（IEC141289，2026-08-16）。僅確認切分，不是整筆 gold 核准；`ie_modified: false`（確認≠修改——本筆不計入 planner 段 Plan 層證據力）。
 **⚠️ take_place_pair_may_be_single_gm**：本句是「取＋放」動詞配對（無連接詞）——MiniMOST 的 GM 序列本來就是 G＋P 同一 cycle，單 action 不必然是低估。請裁決：建成**單一 GM cycle**（G 與 P 各取值）還是 acquire＋move_place **兩個 action**（見下方「取放建模」題；不預設方向）
 **⚠️ empty_lexicon_no_slot_candidates**：dev DB 的 rule_option_synonyms 目前是空的：所有 slot 都沒有候選，option code 需 IE 自填（並考慮順手登記同義詞）
 
@@ -389,6 +403,7 @@
 **來源**：`motion_module_versions/687ed233…`（rows[0].sub_activity）; `motion_module_versions/f799f56e…`（rows[0].sub_activity）; `motion_modules/b09813d6…`（name_zh (category=action)）
 **挑戰維度（規則式判定）**：繁簡（簡體字/大陸用語）、中英混合、SIMO／雙手
 **v3 結構**：`single_cycle`——`motion_module_versions/687ed233…`（rows[0].sub_activity；1 cycle；v3）；`motion_module_versions/f799f56e…`（rows[0].sub_activity；1 cycle；v3）；`motion_modules/b09813d6…`（name_zh (category=action)；1 cycle；v3）（hint 是證據不是判決；預設依 v3 結構，IE 可推翻）
+**✅ IE 覆核狀態（切分維度）**：已確認照 v3 結構預設（IEC141289，2026-08-16）。僅確認切分，不是整筆 gold 核准；`ie_modified: false`（確認≠修改——本筆不計入 planner 段 Plan 層證據力）。
 **⚠️ take_place_pair_may_be_single_gm**：本句是「取＋放」動詞配對（無連接詞）——MiniMOST 的 GM 序列本來就是 G＋P 同一 cycle，單 action 不必然是低估。請裁決：建成**單一 GM cycle**（G 與 P 各取值）還是 acquire＋move_place **兩個 action**（見下方「取放建模」題；不預設方向）
 **⚠️ empty_lexicon_no_slot_candidates**：dev DB 的 rule_option_synonyms 目前是空的：所有 slot 都沒有候選，option code 需 IE 自填（並考慮順手登記同義詞）
 
@@ -416,6 +431,7 @@
 **來源**：`motion_modules/8451efa7…`（name_zh (category=wi-template)）
 **挑戰維度（規則式判定）**：中英混合、多 action、工具持有
 **v3 結構**：`multi_cycle_5`——`motion_modules/8451efa7…`（name_zh (category=wi-template)；5 cycle；v3）（hint 是證據不是判決；預設依 v3 結構，IE 可推翻）
+**✅ IE 覆核狀態（切分維度）**：已確認照 v3 結構預設（IEC141289，2026-08-16）。僅確認切分，不是整筆 gold 核准；`ie_modified: false`（確認≠修改——本筆不計入 planner 段 Plan 層證據力）。
 **⚠️ likely_multi_action_undercounted**：rule planner 結構上永遠只出 1 個 action；本句含多動詞/連接詞，**切分幾乎必然低估**——請務必逐動詞檢查
 **⚠️ empty_lexicon_no_slot_candidates**：dev DB 的 rule_option_synonyms 目前是空的：所有 slot 都沒有候選，option code 需 IE 自填（並考慮順手登記同義詞）
 
@@ -442,6 +458,7 @@
 **來源**：`motion_module_versions/77097e44…`（rows[0].sub_activity）; `motion_modules/61f49bcc…`（name_zh (category=action)）
 **挑戰維度（規則式判定）**：繁簡（簡體字/大陸用語）、中英混合、SIMO／雙手
 **v3 結構**：`single_cycle`——`motion_module_versions/77097e44…`（rows[0].sub_activity；1 cycle；v3）；`motion_modules/61f49bcc…`（name_zh (category=action)；1 cycle；v3）（hint 是證據不是判決；預設依 v3 結構，IE 可推翻）
+**✅ IE 覆核狀態（切分維度）**：已確認照 v3 結構預設（IEC141289，2026-08-16）。僅確認切分，不是整筆 gold 核准；`ie_modified: false`（確認≠修改——本筆不計入 planner 段 Plan 層證據力）。
 **⚠️ take_place_pair_may_be_single_gm**：本句是「取＋放」動詞配對（無連接詞）——MiniMOST 的 GM 序列本來就是 G＋P 同一 cycle，單 action 不必然是低估。請裁決：建成**單一 GM cycle**（G 與 P 各取值）還是 acquire＋move_place **兩個 action**（見下方「取放建模」題；不預設方向）
 **⚠️ empty_lexicon_no_slot_candidates**：dev DB 的 rule_option_synonyms 目前是空的：所有 slot 都沒有候選，option code 需 IE 自填（並考慮順手登記同義詞）
 
@@ -469,6 +486,7 @@
 **來源**：`motion_modules/83a0868f…`（name_zh (category=wi-template)）
 **挑戰維度（規則式判定）**：中英混合、多 action、工具持有
 **v3 結構**：`single_cycle`——`motion_modules/83a0868f…`（name_zh (category=wi-template)；1 cycle；v3）（hint 是證據不是判決；預設依 v3 結構，IE 可推翻）
+**✅ IE 覆核狀態（切分維度）**：已確認照 v3 結構預設（IEC141289，2026-08-16）。僅確認切分，不是整筆 gold 核准；`ie_modified: false`（確認≠修改——本筆不計入 planner 段 Plan 層證據力）。
 **⚠️ likely_multi_action_undercounted**：本句含多動詞/連接詞，rule planner 只出 1 個 action——但 **v3 結構顯示 IE 當初把這句建為單一 cycle**（證據見本節「v3 結構」與草稿 `v3_structure_evidence`），「幾乎必然低估」對本筆**降級**：預設依 v3 結構（單一 cycle），除非你認定 v3 的切分本身有誤（hint 是證據不是判決，可推翻）
 **⚠️ empty_lexicon_no_slot_candidates**：dev DB 的 rule_option_synonyms 目前是空的：所有 slot 都沒有候選，option code 需 IE 自填（並考慮順手登記同義詞）
 
@@ -495,6 +513,7 @@
 **來源**：`motion_module_versions/437a60f0…`（rows[0].sub_activity）; `motion_module_versions/b91e9fca…`（rows[0].sub_activity）; `motion_modules/3725c049…`（name_zh (category=action)）
 **挑戰維度（規則式判定）**：中英混合、工具持有、SIMO／雙手
 **v3 結構**：`single_cycle`——`motion_module_versions/437a60f0…`（rows[0].sub_activity；1 cycle；v3）；`motion_module_versions/b91e9fca…`（rows[0].sub_activity；1 cycle；v3）；`motion_modules/3725c049…`（name_zh (category=action)；1 cycle；v3）（hint 是證據不是判決；預設依 v3 結構，IE 可推翻）
+**✅ IE 覆核狀態（切分維度）**：已確認照 v3 結構預設（IEC141289，2026-08-16）。僅確認切分，不是整筆 gold 核准；`ie_modified: false`（確認≠修改——本筆不計入 planner 段 Plan 層證據力）。
 **⚠️ take_move_pair_may_be_single_cm**：本句是「取/觸＋推/拉」動詞配對（無連接詞）——MiniMOST 的 CM 序列本來就是 G 與 M 同一 cycle（`docs/core-logic/minimost-sequence-model-core-logic-spec.md` §2：A B G M X I A），單 action 不必然是低估。請裁決：建成**單一 CM cycle**（G 與 M 各取值）還是 acquire＋controlled_move **兩個 action**（見下方「取移建模」題；不預設方向）
 **⚠️ empty_lexicon_no_slot_candidates**：dev DB 的 rule_option_synonyms 目前是空的：所有 slot 都沒有候選，option code 需 IE 自填（並考慮順手登記同義詞）
 
@@ -523,6 +542,7 @@
 **來源**：`motion_module_versions/ab031277…`（rows[0].sub_activity）; `motion_modules/b55f8099…`（name_zh (category=action)）
 **挑戰維度（規則式判定）**：中英混合、多 action、SIMO／雙手
 **v3 結構**：`single_cycle`——`motion_module_versions/ab031277…`（rows[0].sub_activity；1 cycle；v3）；`motion_modules/b55f8099…`（name_zh (category=action)；1 cycle；v3）（hint 是證據不是判決；預設依 v3 結構，IE 可推翻）
+**✅ IE 覆核狀態（切分維度）**：已確認照 v3 結構預設（IEC141289，2026-08-16）。僅確認切分，不是整筆 gold 核准；`ie_modified: false`（確認≠修改——本筆不計入 planner 段 Plan 層證據力）。
 **⚠️ likely_multi_action_undercounted**：本句含多動詞/連接詞，rule planner 只出 1 個 action——但 **v3 結構顯示 IE 當初把這句建為單一 cycle**（證據見本節「v3 結構」與草稿 `v3_structure_evidence`），「幾乎必然低估」對本筆**降級**：預設依 v3 結構（單一 cycle），除非你認定 v3 的切分本身有誤（hint 是證據不是判決，可推翻）
 **⚠️ empty_lexicon_no_slot_candidates**：dev DB 的 rule_option_synonyms 目前是空的：所有 slot 都沒有候選，option code 需 IE 自填（並考慮順手登記同義詞）
 
@@ -549,6 +569,7 @@
 **來源**：`motion_module_versions/3c2d739e…`（rows[0].sub_activity）; `motion_module_versions/76d8c950…`（rows[0].sub_activity）; `motion_modules/39a7b9db…`（name_zh (category=action)）
 **挑戰維度（規則式判定）**：中英混合、多 action、工具持有
 **v3 結構**：`single_cycle`——`motion_module_versions/3c2d739e…`（rows[0].sub_activity；1 cycle；v3）；`motion_module_versions/76d8c950…`（rows[0].sub_activity；1 cycle；v3）；`motion_modules/39a7b9db…`（name_zh (category=action)；1 cycle；v3）（hint 是證據不是判決；預設依 v3 結構，IE 可推翻）
+**✅ IE 覆核狀態（切分維度）**：已確認照 v3 結構預設（IEC141289，2026-08-16）。僅確認切分，不是整筆 gold 核准；`ie_modified: false`（確認≠修改——本筆不計入 planner 段 Plan 層證據力）。
 **⚠️ likely_multi_action_undercounted**：本句含多動詞/連接詞，rule planner 只出 1 個 action——但 **v3 結構顯示 IE 當初把這句建為單一 cycle**（證據見本節「v3 結構」與草稿 `v3_structure_evidence`），「幾乎必然低估」對本筆**降級**：預設依 v3 結構（單一 cycle），除非你認定 v3 的切分本身有誤（hint 是證據不是判決，可推翻）
 **⚠️ empty_lexicon_no_slot_candidates**：dev DB 的 rule_option_synonyms 目前是空的：所有 slot 都沒有候選，option code 需 IE 自填（並考慮順手登記同義詞）
 
@@ -575,6 +596,7 @@
 **來源**：`motion_modules/45915347…`（name_zh (category=wi-template)）; `motion_module_versions/fc8b5371…`（rows[0].sub_activity）; `motion_modules/f495f90c…`（name_zh (category=action)）
 **挑戰維度（規則式判定）**：中英混合、多 action、SIMO／雙手
 **v3 結構**：`single_cycle`——`motion_modules/45915347…`（name_zh (category=wi-template)；1 cycle；v3）；`motion_module_versions/fc8b5371…`（rows[0].sub_activity；1 cycle；v3）；`motion_modules/f495f90c…`（name_zh (category=action)；1 cycle；v3）（hint 是證據不是判決；預設依 v3 結構，IE 可推翻）
+**✅ IE 覆核狀態（切分維度）**：已確認照 v3 結構預設（IEC141289，2026-08-16）。僅確認切分，不是整筆 gold 核准；`ie_modified: false`（確認≠修改——本筆不計入 planner 段 Plan 層證據力）。
 **⚠️ likely_multi_action_undercounted**：本句含多動詞/連接詞，rule planner 只出 1 個 action——但 **v3 結構顯示 IE 當初把這句建為單一 cycle**（證據見本節「v3 結構」與草稿 `v3_structure_evidence`），「幾乎必然低估」對本筆**降級**：預設依 v3 結構（單一 cycle），除非你認定 v3 的切分本身有誤（hint 是證據不是判決，可推翻）
 **⚠️ empty_lexicon_no_slot_candidates**：dev DB 的 rule_option_synonyms 目前是空的：所有 slot 都沒有候選，option code 需 IE 自填（並考慮順手登記同義詞）
 
@@ -601,6 +623,7 @@
 **來源**：`motion_module_versions/687ed233…`（rows[4].sub_activity）; `motion_module_versions/83f8be04…`（rows[0].sub_activity）; `motion_modules/7b395f7d…`（name_zh (category=action)）
 **挑戰維度（規則式判定）**：中英混合、多 action、工具持有
 **v3 結構**：`single_cycle`——`motion_module_versions/687ed233…`（rows[4].sub_activity；1 cycle；v3）；`motion_module_versions/83f8be04…`（rows[0].sub_activity；1 cycle；v3）；`motion_modules/7b395f7d…`（name_zh (category=action)；1 cycle；v3）（hint 是證據不是判決；預設依 v3 結構，IE 可推翻）
+**✅ IE 覆核狀態（切分維度）**：已確認照 v3 結構預設（IEC141289，2026-08-16）。僅確認切分，不是整筆 gold 核准；`ie_modified: false`（確認≠修改——本筆不計入 planner 段 Plan 層證據力）。
 **⚠️ likely_multi_action_undercounted**：本句含多動詞/連接詞，rule planner 只出 1 個 action——但 **v3 結構顯示 IE 當初把這句建為單一 cycle**（證據見本節「v3 結構」與草稿 `v3_structure_evidence`），「幾乎必然低估」對本筆**降級**：預設依 v3 結構（單一 cycle），除非你認定 v3 的切分本身有誤（hint 是證據不是判決，可推翻）
 **⚠️ empty_lexicon_no_slot_candidates**：dev DB 的 rule_option_synonyms 目前是空的：所有 slot 都沒有候選，option code 需 IE 自填（並考慮順手登記同義詞）
 
@@ -627,6 +650,7 @@
 **來源**：`motion_module_versions/47007c24…`（rows[0].sub_activity）; `motion_module_versions/fb1bde71…`（rows[3].sub_activity）; `motion_modules/d4106090…`（name_zh (category=action)）
 **挑戰維度（規則式判定）**：繁簡（簡體字/大陸用語）、SIMO／雙手
 **v3 結構**：`single_cycle`——`motion_module_versions/47007c24…`（rows[0].sub_activity；1 cycle；v3）；`motion_module_versions/fb1bde71…`（rows[3].sub_activity；1 cycle；v3）；`motion_modules/d4106090…`（name_zh (category=action)；1 cycle；v3）（hint 是證據不是判決；預設依 v3 結構，IE 可推翻）
+**✅ IE 覆核狀態（切分維度）**：已確認照 v3 結構預設（IEC141289，2026-08-16）。僅確認切分，不是整筆 gold 核准；`ie_modified: false`（確認≠修改——本筆不計入 planner 段 Plan 層證據力）。
 **⚠️ take_place_pair_may_be_single_gm**：本句是「取＋放」動詞配對（無連接詞）——MiniMOST 的 GM 序列本來就是 G＋P 同一 cycle，單 action 不必然是低估。請裁決：建成**單一 GM cycle**（G 與 P 各取值）還是 acquire＋move_place **兩個 action**（見下方「取放建模」題；不預設方向）
 **⚠️ empty_lexicon_no_slot_candidates**：dev DB 的 rule_option_synonyms 目前是空的：所有 slot 都沒有候選，option code 需 IE 自填（並考慮順手登記同義詞）
 
@@ -677,6 +701,10 @@
 **來源**：`motion_modules/dcbb30a8…`（name_zh (category=wi-template)）; `motion_module_versions/34b10cd8…`（rows[0].sub_activity）; `motion_module_versions/b91e9fca…`（rows[2].sub_activity）；另 1 個來源見草稿 JSON
 **挑戰維度（規則式判定）**：繁簡（簡體字/大陸用語）、SIMO／雙手
 **v3 結構**：`ambiguous`——`motion_modules/dcbb30a8…`（name_zh (category=wi-template)；3 cycle；v3）；`motion_module_versions/34b10cd8…`（rows[0].sub_activity；1 cycle；v3）；`motion_module_versions/b91e9fca…`（rows[2].sub_activity；1 cycle；v3）；`motion_modules/32a29bba…`（name_zh (category=action)；1 cycle；v3）（hint 是證據不是判決；預設依 v3 結構，IE 可推翻）
+**✅ IE 裁決（切分維度）**：`multi_cycle_3`（IEC141289，2026-08-16）——裁決取代本節 v3 結構的 ambiguous/開放題。僅裁決切分，不是整筆 gold 核准。
+  - 裁決註記：IE 裁決（首輪覆核）：v3 兩個矛盾結構中，3 列 wi-template（motion_modules/dcbb30a8-44f0-4218-aafb-b6882a66aca0）是對的；單列 action module（motion_modules/32a29bba-fabe-4332-baee-9785d4c2525d）為 IE 裁決否定的結構（證據保留，標 ie_ruling_rejected）。查證該 wi-template v1 的 3 列子句＝「雙手接觸DIMM壓合治具拉至規定位置」（CM）／「雙手抓握主板保持住至流水線」（GM）／「雙手抓握主板組至機箱」（GM）——三列是各自獨立的完整子句，不是原句「雙手抓握主板組至機箱」的子字串，原句無法誠實切出 3 段 evidence span（不編造）；plan 重切等第二輪（需子句對應）。
+  - **切分裁決已下，plan 重切等第二輪（需子句對應）**：裁決的各 cycle 子句不是原句的子字串，無法誠實切出對應 evidence span——不編造 span，plan 維持單 action 待第二輪以子句對應重切。
+  - IE 裁決否定的結構（證據保留不刪）：`motion_modules/32a29bba…`（name_zh (category=action)；1 cycle）
 **⚠️ take_place_pair_may_be_single_gm**：本句是「取＋放」動詞配對（無連接詞）——MiniMOST 的 GM 序列本來就是 G＋P 同一 cycle，單 action 不必然是低估。請裁決：建成**單一 GM cycle**（G 與 P 各取值）還是 acquire＋move_place **兩個 action**（見下方「取放建模」題；不預設方向）
 **⚠️ empty_lexicon_no_slot_candidates**：dev DB 的 rule_option_synonyms 目前是空的：所有 slot 都沒有候選，option code 需 IE 自填（並考慮順手登記同義詞）
 
@@ -704,6 +732,7 @@
 **來源**：`motion_module_versions/549e17e8…`（rows[0].sub_activity）; `motion_module_versions/fb1bde71…`（rows[1].sub_activity）; `motion_modules/8a2348c0…`（name_zh (category=action)）
 **挑戰維度（規則式判定）**：繁簡（簡體字/大陸用語）、多 action
 **v3 結構**：`single_cycle`——`motion_module_versions/549e17e8…`（rows[0].sub_activity；1 cycle；v3）；`motion_module_versions/fb1bde71…`（rows[1].sub_activity；1 cycle；v3）；`motion_modules/8a2348c0…`（name_zh (category=action)；1 cycle；v3）（hint 是證據不是判決；預設依 v3 結構，IE 可推翻）
+**✅ IE 覆核狀態（切分維度）**：已確認照 v3 結構預設（IEC141289，2026-08-16）。僅確認切分，不是整筆 gold 核准；`ie_modified: false`（確認≠修改——本筆不計入 planner 段 Plan 層證據力）。
 **⚠️ likely_multi_action_undercounted**：本句含多動詞/連接詞，rule planner 只出 1 個 action——但 **v3 結構顯示 IE 當初把這句建為單一 cycle**（證據見本節「v3 結構」與草稿 `v3_structure_evidence`），「幾乎必然低估」對本筆**降級**：預設依 v3 結構（單一 cycle），除非你認定 v3 的切分本身有誤（hint 是證據不是判決，可推翻）
 **⚠️ empty_lexicon_no_slot_candidates**：dev DB 的 rule_option_synonyms 目前是空的：所有 slot 都沒有候選，option code 需 IE 自填（並考慮順手登記同義詞）
 
@@ -752,6 +781,7 @@
 **來源**：`motion_module_versions/334b6d42…`（rows[0].sub_activity）; `motion_module_versions/fb1bde71…`（rows[0].sub_activity）; `motion_modules/979b51cb…`（name_zh (category=action)）
 **挑戰維度（規則式判定）**：繁簡（簡體字/大陸用語）、多 action
 **v3 結構**：`single_cycle`——`motion_module_versions/334b6d42…`（rows[0].sub_activity；1 cycle；v3）；`motion_module_versions/fb1bde71…`（rows[0].sub_activity；1 cycle；v3）；`motion_modules/979b51cb…`（name_zh (category=action)；1 cycle；v3）（hint 是證據不是判決；預設依 v3 結構，IE 可推翻）
+**✅ IE 覆核狀態（切分維度）**：已確認照 v3 結構預設（IEC141289，2026-08-16）。僅確認切分，不是整筆 gold 核准；`ie_modified: false`（確認≠修改——本筆不計入 planner 段 Plan 層證據力）。
 **⚠️ likely_multi_action_undercounted**：本句含多動詞/連接詞，rule planner 只出 1 個 action——但 **v3 結構顯示 IE 當初把這句建為單一 cycle**（證據見本節「v3 結構」與草稿 `v3_structure_evidence`），「幾乎必然低估」對本筆**降級**：預設依 v3 結構（單一 cycle），除非你認定 v3 的切分本身有誤（hint 是證據不是判決，可推翻）
 **⚠️ empty_lexicon_no_slot_candidates**：dev DB 的 rule_option_synonyms 目前是空的：所有 slot 都沒有候選，option code 需 IE 自填（並考慮順手登記同義詞）
 
@@ -777,6 +807,7 @@
 **來源**：`motion_modules/6366f744…`（name_zh (category=wi-template)）
 **挑戰維度（規則式判定）**：中英混合、數量
 **v3 結構**：`multi_cycle_2`——`motion_modules/6366f744…`（name_zh (category=wi-template)；2 cycle；v3）（hint 是證據不是判決；預設依 v3 結構，IE 可推翻）
+**✅ IE 覆核狀態（切分維度）**：已確認照 v3 結構預設（IEC141289，2026-08-16）。僅確認切分，不是整筆 gold 核准；`ie_modified: false`（確認≠修改——本筆不計入 planner 段 Plan 層證據力）。
 **⚠️ take_place_pair_may_be_single_gm**：本句是「取＋放」動詞配對（無連接詞）——MiniMOST 的 GM 序列本來就是 G＋P 同一 cycle，單 action 不必然是低估。請裁決：建成**單一 GM cycle**（G 與 P 各取值）還是 acquire＋move_place **兩個 action**（見下方「取放建模」題；不預設方向）
 **⚠️ empty_lexicon_no_slot_candidates**：dev DB 的 rule_option_synonyms 目前是空的：所有 slot 都沒有候選，option code 需 IE 自填（並考慮順手登記同義詞）
 
@@ -803,6 +834,7 @@
 **來源**：`motion_module_versions/1ec11b2a…`（rows[0].sub_activity）; `motion_module_versions/687ed233…`（rows[2].sub_activity）; `motion_modules/0c944bee…`（name_zh (category=action)）
 **挑戰維度（規則式判定）**：多 action、工具持有
 **v3 結構**：`single_cycle`——`motion_module_versions/1ec11b2a…`（rows[0].sub_activity；1 cycle；v3）；`motion_module_versions/687ed233…`（rows[2].sub_activity；1 cycle；v3）；`motion_modules/0c944bee…`（name_zh (category=action)；1 cycle；v3）（hint 是證據不是判決；預設依 v3 結構，IE 可推翻）
+**✅ IE 覆核狀態（切分維度）**：已確認照 v3 結構預設（IEC141289，2026-08-16）。僅確認切分，不是整筆 gold 核准；`ie_modified: false`（確認≠修改——本筆不計入 planner 段 Plan 層證據力）。
 **⚠️ likely_multi_action_undercounted**：本句含多動詞/連接詞，rule planner 只出 1 個 action——但 **v3 結構顯示 IE 當初把這句建為單一 cycle**（證據見本節「v3 結構」與草稿 `v3_structure_evidence`），「幾乎必然低估」對本筆**降級**：預設依 v3 結構（單一 cycle），除非你認定 v3 的切分本身有誤（hint 是證據不是判決，可推翻）
 **⚠️ empty_lexicon_no_slot_candidates**：dev DB 的 rule_option_synonyms 目前是空的：所有 slot 都沒有候選，option code 需 IE 自填（並考慮順手登記同義詞）
 
@@ -829,6 +861,7 @@
 **來源**：`motion_module_versions/0be9daab…`（rows[0].sub_activity）
 **挑戰維度（規則式判定）**：中英混合、數量
 **v3 結構**：`single_cycle`——`motion_module_versions/0be9daab…`（rows[0].sub_activity；1 cycle；v3）（hint 是證據不是判決；預設依 v3 結構，IE 可推翻）
+**✅ IE 覆核狀態（切分維度）**：已確認照 v3 結構預設（IEC141289，2026-08-16）。僅確認切分，不是整筆 gold 核准；`ie_modified: false`（確認≠修改——本筆不計入 planner 段 Plan 層證據力）。
 **⚠️ take_place_pair_may_be_single_gm**：本句是「取＋放」動詞配對（無連接詞）——MiniMOST 的 GM 序列本來就是 G＋P 同一 cycle，單 action 不必然是低估。請裁決：建成**單一 GM cycle**（G 與 P 各取值）還是 acquire＋move_place **兩個 action**（見下方「取放建模」題；不預設方向）
 **⚠️ empty_lexicon_no_slot_candidates**：dev DB 的 rule_option_synonyms 目前是空的：所有 slot 都沒有候選，option code 需 IE 自填（並考慮順手登記同義詞）
 
@@ -879,6 +912,7 @@
 **來源**：`motion_module_versions/61b92e7e…`（rows[0].sub_activity）; `motion_modules/a6e06c10…`（name_zh (category=action)）
 **挑戰維度（規則式判定）**：中英混合、工具持有
 **v3 結構**：`single_cycle`——`motion_module_versions/61b92e7e…`（rows[0].sub_activity；1 cycle；v3）；`motion_modules/a6e06c10…`（name_zh (category=action)；1 cycle；v3）（hint 是證據不是判決；預設依 v3 結構，IE 可推翻）
+**✅ IE 覆核狀態（切分維度）**：已確認照 v3 結構預設（IEC141289，2026-08-16）。僅確認切分，不是整筆 gold 核准；`ie_modified: false`（確認≠修改——本筆不計入 planner 段 Plan 層證據力）。
 **⚠️ take_place_pair_may_be_single_gm**：本句是「取＋放」動詞配對（無連接詞）——MiniMOST 的 GM 序列本來就是 G＋P 同一 cycle，單 action 不必然是低估。請裁決：建成**單一 GM cycle**（G 與 P 各取值）還是 acquire＋move_place **兩個 action**（見下方「取放建模」題；不預設方向）
 **⚠️ empty_lexicon_no_slot_candidates**：dev DB 的 rule_option_synonyms 目前是空的：所有 slot 都沒有候選，option code 需 IE 自填（並考慮順手登記同義詞）
 
@@ -906,6 +940,7 @@
 **來源**：`motion_module_versions/2a1ba08c…`（rows[0].sub_activity）; `motion_module_versions/4495bd92…`（rows[0].sub_activity）; `motion_modules/d8232ea2…`（name_zh (category=action)）
 **挑戰維度（規則式判定）**：繁簡（簡體字/大陸用語）、中英混合
 **v3 結構**：`single_cycle`——`motion_module_versions/2a1ba08c…`（rows[0].sub_activity；1 cycle；v3）；`motion_module_versions/4495bd92…`（rows[0].sub_activity；1 cycle；v3）；`motion_modules/d8232ea2…`（name_zh (category=action)；1 cycle；v3）（hint 是證據不是判決；預設依 v3 結構，IE 可推翻）
+**✅ IE 覆核狀態（切分維度）**：已確認照 v3 結構預設（IEC141289，2026-08-16）。僅確認切分，不是整筆 gold 核准；`ie_modified: false`（確認≠修改——本筆不計入 planner 段 Plan 層證據力）。
 **⚠️ take_place_pair_may_be_single_gm**：本句是「取＋放」動詞配對（無連接詞）——MiniMOST 的 GM 序列本來就是 G＋P 同一 cycle，單 action 不必然是低估。請裁決：建成**單一 GM cycle**（G 與 P 各取值）還是 acquire＋move_place **兩個 action**（見下方「取放建模」題；不預設方向）
 **⚠️ empty_lexicon_no_slot_candidates**：dev DB 的 rule_option_synonyms 目前是空的：所有 slot 都沒有候選，option code 需 IE 自填（並考慮順手登記同義詞）
 
@@ -956,6 +991,7 @@
 **來源**：`motion_module_versions/40bb7624…`（rows[2].sub_activity）; `motion_module_versions/739d25e9…`（rows[0].sub_activity）; `motion_modules/9af1d144…`（name_zh (category=action)）
 **挑戰維度（規則式判定）**：中英混合、工具持有
 **v3 結構**：`single_cycle`——`motion_module_versions/40bb7624…`（rows[2].sub_activity；1 cycle；v3）；`motion_module_versions/739d25e9…`（rows[0].sub_activity；1 cycle；v3）；`motion_modules/9af1d144…`（name_zh (category=action)；1 cycle；v3）（hint 是證據不是判決；預設依 v3 結構，IE 可推翻）
+**✅ IE 覆核狀態（切分維度）**：已確認照 v3 結構預設（IEC141289，2026-08-16）。僅確認切分，不是整筆 gold 核准；`ie_modified: false`（確認≠修改——本筆不計入 planner 段 Plan 層證據力）。
 **⚠️ take_move_pair_may_be_single_cm**：本句是「取/觸＋推/拉」動詞配對（無連接詞）——MiniMOST 的 CM 序列本來就是 G 與 M 同一 cycle（`docs/core-logic/minimost-sequence-model-core-logic-spec.md` §2：A B G M X I A），單 action 不必然是低估。請裁決：建成**單一 CM cycle**（G 與 M 各取值）還是 acquire＋controlled_move **兩個 action**（見下方「取移建模」題；不預設方向）
 **⚠️ empty_lexicon_no_slot_candidates**：dev DB 的 rule_option_synonyms 目前是空的：所有 slot 都沒有候選，option code 需 IE 自填（並考慮順手登記同義詞）
 
@@ -983,6 +1019,7 @@
 **來源**：`motion_module_versions/687ed233…`（rows[3].sub_activity）; `motion_module_versions/87f0fddc…`（rows[0].sub_activity）; `motion_modules/ef3a2924…`（name_zh (category=action)）
 **挑戰維度（規則式判定）**：中英混合、多 action
 **v3 結構**：`single_cycle`——`motion_module_versions/687ed233…`（rows[3].sub_activity；1 cycle；v3）；`motion_module_versions/87f0fddc…`（rows[0].sub_activity；1 cycle；v3）；`motion_modules/ef3a2924…`（name_zh (category=action)；1 cycle；v3）（hint 是證據不是判決；預設依 v3 結構，IE 可推翻）
+**✅ IE 覆核狀態（切分維度）**：已確認照 v3 結構預設（IEC141289，2026-08-16）。僅確認切分，不是整筆 gold 核准；`ie_modified: false`（確認≠修改——本筆不計入 planner 段 Plan 層證據力）。
 **⚠️ likely_multi_action_undercounted**：本句含多動詞/連接詞，rule planner 只出 1 個 action——但 **v3 結構顯示 IE 當初把這句建為單一 cycle**（證據見本節「v3 結構」與草稿 `v3_structure_evidence`），「幾乎必然低估」對本筆**降級**：預設依 v3 結構（單一 cycle），除非你認定 v3 的切分本身有誤（hint 是證據不是判決，可推翻）
 **⚠️ empty_lexicon_no_slot_candidates**：dev DB 的 rule_option_synonyms 目前是空的：所有 slot 都沒有候選，option code 需 IE 自填（並考慮順手登記同義詞）
 
@@ -1008,6 +1045,7 @@
 **來源**：`motion_module_versions/7fc58b77…`（rows[0].sub_activity）; `motion_module_versions/93b2939c…`（rows[0].sub_activity）; `motion_modules/ac3ce9bb…`（name_zh (category=action)）
 **挑戰維度（規則式判定）**：中英混合、多 action
 **v3 結構**：`single_cycle`——`motion_module_versions/7fc58b77…`（rows[0].sub_activity；1 cycle；v3）；`motion_module_versions/93b2939c…`（rows[0].sub_activity；1 cycle；v3）；`motion_modules/ac3ce9bb…`（name_zh (category=action)；1 cycle；v3）（hint 是證據不是判決；預設依 v3 結構，IE 可推翻）
+**✅ IE 覆核狀態（切分維度）**：已確認照 v3 結構預設（IEC141289，2026-08-16）。僅確認切分，不是整筆 gold 核准；`ie_modified: false`（確認≠修改——本筆不計入 planner 段 Plan 層證據力）。
 **⚠️ likely_multi_action_undercounted**：本句含多動詞/連接詞，rule planner 只出 1 個 action——但 **v3 結構顯示 IE 當初把這句建為單一 cycle**（證據見本節「v3 結構」與草稿 `v3_structure_evidence`），「幾乎必然低估」對本筆**降級**：預設依 v3 結構（單一 cycle），除非你認定 v3 的切分本身有誤（hint 是證據不是判決，可推翻）
 **⚠️ empty_lexicon_no_slot_candidates**：dev DB 的 rule_option_synonyms 目前是空的：所有 slot 都沒有候選，option code 需 IE 自填（並考慮順手登記同義詞）
 
@@ -1033,6 +1071,7 @@
 **來源**：`motion_module_versions/7fc58b77…`（rows[1].sub_activity）; `motion_module_versions/b8e3690d…`（rows[0].sub_activity）; `motion_modules/2b73646b…`（name_zh (category=action)）
 **挑戰維度（規則式判定）**：中英混合、多 action
 **v3 結構**：`single_cycle`——`motion_module_versions/7fc58b77…`（rows[1].sub_activity；1 cycle；v3）；`motion_module_versions/b8e3690d…`（rows[0].sub_activity；1 cycle；v3）；`motion_modules/2b73646b…`（name_zh (category=action)；1 cycle；v3）（hint 是證據不是判決；預設依 v3 結構，IE 可推翻）
+**✅ IE 覆核狀態（切分維度）**：已確認照 v3 結構預設（IEC141289，2026-08-16）。僅確認切分，不是整筆 gold 核准；`ie_modified: false`（確認≠修改——本筆不計入 planner 段 Plan 層證據力）。
 **⚠️ likely_multi_action_undercounted**：本句含多動詞/連接詞，rule planner 只出 1 個 action——但 **v3 結構顯示 IE 當初把這句建為單一 cycle**（證據見本節「v3 結構」與草稿 `v3_structure_evidence`），「幾乎必然低估」對本筆**降級**：預設依 v3 結構（單一 cycle），除非你認定 v3 的切分本身有誤（hint 是證據不是判決，可推翻）
 **⚠️ empty_lexicon_no_slot_candidates**：dev DB 的 rule_option_synonyms 目前是空的：所有 slot 都沒有候選，option code 需 IE 自填（並考慮順手登記同義詞）
 
@@ -1104,6 +1143,7 @@
 **來源**：`motion_module_versions/37b5e479…`（rows[0].sub_activity）; `motion_module_versions/fb1bde71…`（rows[2].sub_activity）; `motion_modules/909142f5…`（name_zh (category=action)）
 **挑戰維度（規則式判定）**：繁簡（簡體字/大陸用語）
 **v3 結構**：`single_cycle`——`motion_module_versions/37b5e479…`（rows[0].sub_activity；1 cycle；v3）；`motion_module_versions/fb1bde71…`（rows[2].sub_activity；1 cycle；v3）；`motion_modules/909142f5…`（name_zh (category=action)；1 cycle；v3）（hint 是證據不是判決；預設依 v3 結構，IE 可推翻）
+**✅ IE 覆核狀態（切分維度）**：已確認照 v3 結構預設（IEC141289，2026-08-16）。僅確認切分，不是整筆 gold 核准；`ie_modified: false`（確認≠修改——本筆不計入 planner 段 Plan 層證據力）。
 **⚠️ take_place_pair_may_be_single_gm**：本句是「取＋放」動詞配對（無連接詞）——MiniMOST 的 GM 序列本來就是 G＋P 同一 cycle，單 action 不必然是低估。請裁決：建成**單一 GM cycle**（G 與 P 各取值）還是 acquire＋move_place **兩個 action**（見下方「取放建模」題；不預設方向）
 **⚠️ empty_lexicon_no_slot_candidates**：dev DB 的 rule_option_synonyms 目前是空的：所有 slot 都沒有候選，option code 需 IE 自填（並考慮順手登記同義詞）
 
@@ -1152,6 +1192,8 @@
 **來源**：`wi_rows/26d9037d…`（sub_activity）
 **挑戰維度（規則式判定）**：多 action
 **v3 結構**：`ambiguous`——`wi_rows/26d9037d…`（sub_activity；1 cycle；非 v3，不餵 hint）（hint 是證據不是判決；預設依 v3 結構，IE 可推翻）
+**✅ IE 裁決（切分維度）**：`single_cycle`（IEC141289，2026-08-16）——裁決取代本節 v3 結構的 ambiguous/開放題。僅裁決切分，不是整筆 gold 核准。
+  - 裁決註記：IE 裁決（首輪覆核）：「拿取排線並對準接頭」為 1 列（單一 cycle）；plan 已是 1 action，內容不動（ie_modified: false）。
 **⚠️ likely_multi_action_undercounted**：rule planner 結構上永遠只出 1 個 action；本句含多動詞/連接詞，**切分幾乎必然低估**——請務必逐動詞檢查
 **⚠️ empty_lexicon_no_slot_candidates**：dev DB 的 rule_option_synonyms 目前是空的：所有 slot 都沒有候選，option code 需 IE 自填（並考慮順手登記同義詞）
 
@@ -1176,6 +1218,7 @@
 **來源**：`motion_module_versions/9569aeaf…`（rows[2].sub_activity）
 **挑戰維度（規則式判定）**：多 action
 **v3 結構**：`single_cycle`——`motion_module_versions/9569aeaf…`（rows[2].sub_activity；1 cycle；v3）（hint 是證據不是判決；預設依 v3 結構，IE 可推翻）
+**✅ IE 覆核狀態（切分維度）**：已確認照 v3 結構預設（IEC141289，2026-08-16）。僅確認切分，不是整筆 gold 核准；`ie_modified: false`（確認≠修改——本筆不計入 planner 段 Plan 層證據力）。
 **⚠️ likely_multi_action_undercounted**：本句含多動詞/連接詞，rule planner 只出 1 個 action——但 **v3 結構顯示 IE 當初把這句建為單一 cycle**（證據見本節「v3 結構」與草稿 `v3_structure_evidence`），「幾乎必然低估」對本筆**降級**：預設依 v3 結構（單一 cycle），除非你認定 v3 的切分本身有誤（hint 是證據不是判決，可推翻）
 **⚠️ empty_lexicon_no_slot_candidates**：dev DB 的 rule_option_synonyms 目前是空的：所有 slot 都沒有候選，option code 需 IE 自填（並考慮順手登記同義詞）
 
@@ -1200,6 +1243,7 @@
 **來源**：`motion_module_versions/a4b7f7b7…`（rows[0].sub_activity）; `motion_modules/c7c55293…`（name_zh (category=action)）
 **挑戰維度（規則式判定）**：多 action
 **v3 結構**：`single_cycle`——`motion_module_versions/a4b7f7b7…`（rows[0].sub_activity；1 cycle；v3）；`motion_modules/c7c55293…`（name_zh (category=action)；1 cycle；v3）（hint 是證據不是判決；預設依 v3 結構，IE 可推翻）
+**✅ IE 覆核狀態（切分維度）**：已確認照 v3 結構預設（IEC141289，2026-08-16）。僅確認切分，不是整筆 gold 核准；`ie_modified: false`（確認≠修改——本筆不計入 planner 段 Plan 層證據力）。
 **⚠️ likely_multi_action_undercounted**：本句含多動詞/連接詞，rule planner 只出 1 個 action——但 **v3 結構顯示 IE 當初把這句建為單一 cycle**（證據見本節「v3 結構」與草稿 `v3_structure_evidence`），「幾乎必然低估」對本筆**降級**：預設依 v3 結構（單一 cycle），除非你認定 v3 的切分本身有誤（hint 是證據不是判決，可推翻）
 **⚠️ empty_lexicon_no_slot_candidates**：dev DB 的 rule_option_synonyms 目前是空的：所有 slot 都沒有候選，option code 需 IE 自填（並考慮順手登記同義詞）
 
@@ -1317,6 +1361,7 @@
 **來源**：`motion_module_versions/0be9daab…`（rows[1].sub_activity）; `motion_module_versions/9a0c3806…`（rows[0].sub_activity）; `motion_modules/c8728419…`（name_zh (category=action)）
 **挑戰維度（規則式判定）**：中英混合
 **v3 結構**：`single_cycle`——`motion_module_versions/0be9daab…`（rows[1].sub_activity；1 cycle；v3）；`motion_module_versions/9a0c3806…`（rows[0].sub_activity；1 cycle；v3）；`motion_modules/c8728419…`（name_zh (category=action)；1 cycle；v3）（hint 是證據不是判決；預設依 v3 結構，IE 可推翻）
+**✅ IE 覆核狀態（切分維度）**：已確認照 v3 結構預設（IEC141289，2026-08-16）。僅確認切分，不是整筆 gold 核准；`ie_modified: false`（確認≠修改——本筆不計入 planner 段 Plan 層證據力）。
 **⚠️ take_place_pair_may_be_single_gm**：本句是「取＋放」動詞配對（無連接詞）——MiniMOST 的 GM 序列本來就是 G＋P 同一 cycle，單 action 不必然是低估。請裁決：建成**單一 GM cycle**（G 與 P 各取值）還是 acquire＋move_place **兩個 action**（見下方「取放建模」題；不預設方向）
 **⚠️ empty_lexicon_no_slot_candidates**：dev DB 的 rule_option_synonyms 目前是空的：所有 slot 都沒有候選，option code 需 IE 自填（並考慮順手登記同義詞）
 
@@ -1343,6 +1388,7 @@
 **來源**：`motion_module_versions/687ed233…`（rows[1].sub_activity）; `motion_module_versions/b7ba9e33…`（rows[0].sub_activity）; `motion_modules/c1fde19a…`（name_zh (category=action)）
 **挑戰維度（規則式判定）**：中英混合
 **v3 結構**：`single_cycle`——`motion_module_versions/687ed233…`（rows[1].sub_activity；1 cycle；v3）；`motion_module_versions/b7ba9e33…`（rows[0].sub_activity；1 cycle；v3）；`motion_modules/c1fde19a…`（name_zh (category=action)；1 cycle；v3）（hint 是證據不是判決；預設依 v3 結構，IE 可推翻）
+**✅ IE 覆核狀態（切分維度）**：已確認照 v3 結構預設（IEC141289，2026-08-16）。僅確認切分，不是整筆 gold 核准；`ie_modified: false`（確認≠修改——本筆不計入 planner 段 Plan 層證據力）。
 **⚠️ take_place_pair_may_be_single_gm**：本句是「取＋放」動詞配對（無連接詞）——MiniMOST 的 GM 序列本來就是 G＋P 同一 cycle，單 action 不必然是低估。請裁決：建成**單一 GM cycle**（G 與 P 各取值）還是 acquire＋move_place **兩個 action**（見下方「取放建模」題；不預設方向）
 **⚠️ empty_lexicon_no_slot_candidates**：dev DB 的 rule_option_synonyms 目前是空的：所有 slot 都沒有候選，option code 需 IE 自填（並考慮順手登記同義詞）
 
@@ -1391,6 +1437,7 @@
 **來源**：`motion_module_versions/94ca55fd…`（rows[0].sub_activity）; `motion_modules/f7f178a1…`（name_zh (category=action)）
 **挑戰維度（規則式判定）**：中英混合
 **v3 結構**：`single_cycle`——`motion_module_versions/94ca55fd…`（rows[0].sub_activity；1 cycle；v3）；`motion_modules/f7f178a1…`（name_zh (category=action)；1 cycle；v3）（hint 是證據不是判決；預設依 v3 結構，IE 可推翻）
+**✅ IE 覆核狀態（切分維度）**：已確認照 v3 結構預設（IEC141289，2026-08-16）。僅確認切分，不是整筆 gold 核准；`ie_modified: false`（確認≠修改——本筆不計入 planner 段 Plan 層證據力）。
 **⚠️ take_place_pair_may_be_single_gm**：本句是「取＋放」動詞配對（無連接詞）——MiniMOST 的 GM 序列本來就是 G＋P 同一 cycle，單 action 不必然是低估。請裁決：建成**單一 GM cycle**（G 與 P 各取值）還是 acquire＋move_place **兩個 action**（見下方「取放建模」題；不預設方向）
 **⚠️ empty_lexicon_no_slot_candidates**：dev DB 的 rule_option_synonyms 目前是空的：所有 slot 都沒有候選，option code 需 IE 自填（並考慮順手登記同義詞）
 

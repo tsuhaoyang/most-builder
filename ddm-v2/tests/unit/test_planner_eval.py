@@ -340,7 +340,12 @@ async def test_rubber_stamp_promotion_does_not_move_plan_metrics(tmp_path: Path)
     mutation 證據：把 summarize_planner_results 的 is_self_referential 排除拆掉，
     accuracy 會從 2/3 跳到 (2+N)/(3+N)（審查實測 0.9811）→ 本測試必紅。
     """
-    draft_files = sorted(DRAFT_DIR.glob("*.json"))
+    from gold_harvest import REVIEW_STATE_FILENAME
+
+    # review-state.json 是 IE 覆核狀態檔（D3-015），不是草稿——橡皮圖章實驗不搬它
+    draft_files = sorted(
+        p for p in DRAFT_DIR.glob("*.json") if p.name != REVIEW_STATE_FILENAME
+    )
     if not draft_files:
         pytest.skip("wi_plans_draft 目前沒有草稿（可能全數已轉正）——實驗無素材")
 

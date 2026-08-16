@@ -5,7 +5,7 @@
   "review_status": "pending_ie",
   "approved_by": null,
   "plan_origin": "rule_based_v1_preannotation",
-  "ie_modified": null,
+  "ie_modified": false,
   "split": null,
   "split_groups": [
     "worksheet:55555555-5555-5555-5555-555555555555"
@@ -120,5 +120,12 @@
   "expected": {
     "action_count": 1,
     "routing_status": "abstain"
+  },
+  "ie_review": {
+    "segmentation_confirmed_by": "IEC141289",
+    "segmentation_confirmed_date": "2026-08-16",
+    "segmentation_source": "ie_ruling",
+    "ie_ruling": "single_cycle",
+    "ie_ruling_notes": "IE 裁決（首輪覆核）：「拿取排線並對準接頭」為 1 列（單一 cycle）；plan 已是 1 action，內容不動（ie_modified: false）。"
   }
 }

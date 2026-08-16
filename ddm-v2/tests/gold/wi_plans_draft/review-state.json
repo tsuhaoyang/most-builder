@@ -1,0 +1,386 @@
+{
+  "schema_version": "wi-review-state-v1",
+  "note": "IE 覆核狀態檔（D3-015）：本檔是 IE 的裁決記錄，scripts/gold_harvest.py 只讀不寫、--force 不刪；重產草稿時以 normalized_text sha256 前 8 碼配對，合併回草稿的 ie_review 區塊。segmentation_source=v3_structure_confirmed＝確認照 v3 結構預設（切分維度確認，非整筆 gold 核准；確認≠修改，ie_modified 維持 false）；ie_ruling＝IE 對 ambiguous 案例的切分裁決。文字或 v3 結構證據變了的 entry 會被 harvest 標 stale 列入摘要，不靜默套用。首輪內容＝2026-08-16 IE（IEC141289）親答：39 筆確認題全照 v3 結構預設；d045 定 1 列；d026 定 3 列（3 列 wi-template 為正確結構）。",
+  "entries": {
+    "0423b4e8": {
+      "source_text": "左手從料架拿取假DIMM保持住至流水線",
+      "norm_sha256": "0423b4e877effcb622ca29d75f6a83d0ff429b16b59a1c38c613d3e30d71227b",
+      "v3_structure_hint_at_review": "single_cycle",
+      "segmentation_confirmed_by": "IEC141289",
+      "segmentation_confirmed_date": "2026-08-16",
+      "ie_modified": false,
+      "segmentation_source": "v3_structure_confirmed"
+    },
+    "0acd56df": {
+      "source_text": "雙手接觸×16DIMM卡槽的左右卡扣按壓×16並確認卡扣按壓規定位置",
+      "norm_sha256": "0acd56dfbfabcc7b1418bb7d5cbe76a2d908ec7da7e46c17b59d6b4f69e354af",
+      "v3_structure_hint_at_review": "single_cycle",
+      "segmentation_confirmed_by": "IEC141289",
+      "segmentation_confirmed_date": "2026-08-16",
+      "ie_modified": false,
+      "segmentation_source": "v3_structure_confirmed"
+    },
+    "1c27dc35": {
+      "source_text": "雙手抓握主板組至機箱",
+      "norm_sha256": "1c27dc356633ed6c340be464122a09a6297656ae8e95928a5fe1e16981989364",
+      "v3_structure_hint_at_review": "ambiguous",
+      "segmentation_confirmed_by": "IEC141289",
+      "segmentation_confirmed_date": "2026-08-16",
+      "ie_modified": false,
+      "segmentation_source": "ie_ruling",
+      "ie_ruling": "multi_cycle_3",
+      "ie_ruling_notes": "IE 裁決（首輪覆核）：v3 兩個矛盾結構中，3 列 wi-template（motion_modules/dcbb30a8-44f0-4218-aafb-b6882a66aca0）是對的；單列 action module（motion_modules/32a29bba-fabe-4332-baee-9785d4c2525d）為 IE 裁決否定的結構（證據保留，標 ie_ruling_rejected）。查證該 wi-template v1 的 3 列子句＝「雙手接觸DIMM壓合治具拉至規定位置」（CM）／「雙手抓握主板保持住至流水線」（GM）／「雙手抓握主板組至機箱」（GM）——三列是各自獨立的完整子句，不是原句「雙手抓握主板組至機箱」的子字串，原句無法誠實切出 3 段 evidence span（不編造）；plan 重切等第二輪（需子句對應）。",
+      "plan_pending_resegmentation": true,
+      "ie_rejected_evidence": [
+        {
+          "table": "motion_modules",
+          "id": "32a29bba-fabe-4332-baee-9785d4c2525d"
+        }
+      ]
+    },
+    "30d9b858": {
+      "source_text": "雙手抓握主板保持住至流水線",
+      "norm_sha256": "30d9b858d317f6bbef8217f284a24936e6a0f02de7205797819f6e1dc61e459f",
+      "v3_structure_hint_at_review": "single_cycle",
+      "segmentation_confirmed_by": "IEC141289",
+      "segmentation_confirmed_date": "2026-08-16",
+      "ie_modified": false,
+      "segmentation_source": "v3_structure_confirmed"
+    },
+    "314f0644": {
+      "source_text": "左手抓握DIMM壓合治具的把手放至對應的點位",
+      "norm_sha256": "314f0644952cb119e578386e258ee6989656aea9065427b611386a2b80bb843d",
+      "v3_structure_hint_at_review": "single_cycle",
+      "segmentation_confirmed_by": "IEC141289",
+      "segmentation_confirmed_date": "2026-08-16",
+      "ie_modified": false,
+      "segmentation_source": "v3_structure_confirmed"
+    },
+    "35372a96": {
+      "source_text": "拿取排線並對準接頭",
+      "norm_sha256": "35372a96554c4cebb9d05a301f505b7fe9a640f207bdec5efba1b7fb95c58bff",
+      "v3_structure_hint_at_review": "ambiguous",
+      "segmentation_confirmed_by": "IEC141289",
+      "segmentation_confirmed_date": "2026-08-16",
+      "ie_modified": false,
+      "segmentation_source": "ie_ruling",
+      "ie_ruling": "single_cycle",
+      "ie_ruling_notes": "IE 裁決（首輪覆核）：「拿取排線並對準接頭」為 1 列（單一 cycle）；plan 已是 1 action，內容不動（ie_modified: false）。"
+    },
+    "3791550c": {
+      "source_text": "右手並鎖附固定並確認螺絲到位",
+      "norm_sha256": "3791550c972e67bd3c8d96cdbf621185dfa7d01ae4fbc1c2595c4f2c4364d8d2",
+      "v3_structure_hint_at_review": "single_cycle",
+      "segmentation_confirmed_by": "IEC141289",
+      "segmentation_confirmed_date": "2026-08-16",
+      "ie_modified": false,
+      "segmentation_source": "v3_structure_confirmed"
+    },
+    "3ba13f82": {
+      "source_text": "右手抓握电动起子保持住至機箱",
+      "norm_sha256": "3ba13f82388df3dc05f7d18e40fb794a9852133182ae26b3542d449515840ad2",
+      "v3_structure_hint_at_review": "single_cycle",
+      "segmentation_confirmed_by": "IEC141289",
+      "segmentation_confirmed_date": "2026-08-16",
+      "ie_modified": false,
+      "segmentation_source": "v3_structure_confirmed"
+    },
+    "3eab7c3e": {
+      "source_text": "右手抓握風槍按動按鈕並吹風清潔DIMM卡槽",
+      "norm_sha256": "3eab7c3ea1f4f364b645a356125e3882536ea93c92ce3c47c62d7388ee89f819",
+      "v3_structure_hint_at_review": "single_cycle",
+      "segmentation_confirmed_by": "IEC141289",
+      "segmentation_confirmed_date": "2026-08-16",
+      "ie_modified": false,
+      "segmentation_source": "v3_structure_confirmed"
+    },
+    "4765e5f2": {
+      "source_text": "右手抓握假DIMM的包裝袋撕除",
+      "norm_sha256": "4765e5f29e039562d60169e7db65e4ae84e0d1d89c044cc79f5a584968e367f8",
+      "v3_structure_hint_at_review": "single_cycle",
+      "segmentation_confirmed_by": "IEC141289",
+      "segmentation_confirmed_date": "2026-08-16",
+      "ie_modified": false,
+      "segmentation_source": "v3_structure_confirmed"
+    },
+    "51077fd1": {
+      "source_text": "拿取風槍清潔DIMM卡槽",
+      "norm_sha256": "51077fd1092dadd5cb27b451aeb9069edd2bba425c68c8483b67d971f356ee27",
+      "v3_structure_hint_at_review": "single_cycle",
+      "segmentation_confirmed_by": "IEC141289",
+      "segmentation_confirmed_date": "2026-08-16",
+      "ie_modified": false,
+      "segmentation_source": "v3_structure_confirmed"
+    },
+    "5cb719bb": {
+      "source_text": "拿取主板，去除包裝袋，將主板放置工作台",
+      "norm_sha256": "5cb719bb05696b98e5f16d05e92a6b6e94f757298441c11a18fb4f0fef6de38d",
+      "v3_structure_hint_at_review": "multi_cycle_4",
+      "segmentation_confirmed_by": "IEC141289",
+      "segmentation_confirmed_date": "2026-08-16",
+      "ie_modified": false,
+      "segmentation_source": "v3_structure_confirmed"
+    },
+    "5cd079e8": {
+      "source_text": "左手重新抓握主板的包装袋放至料架",
+      "norm_sha256": "5cd079e826526dbe3cf158aa9abae3167f2a6f4f317ee90b6d2f12e604b77590",
+      "v3_structure_hint_at_review": "single_cycle",
+      "segmentation_confirmed_by": "IEC141289",
+      "segmentation_confirmed_date": "2026-08-16",
+      "ie_modified": false,
+      "segmentation_source": "v3_structure_confirmed"
+    },
+    "6017ab5e": {
+      "source_text": "雙手抓握主板放至DIMM壓合治具",
+      "norm_sha256": "6017ab5ec2170f8d5d95b4ef7038a62e493e693fbacc96ab225095df926b3fd6",
+      "v3_structure_hint_at_review": "single_cycle",
+      "segmentation_confirmed_by": "IEC141289",
+      "segmentation_confirmed_date": "2026-08-16",
+      "ie_modified": false,
+      "segmentation_source": "v3_structure_confirmed"
+    },
+    "631c3ece": {
+      "source_text": "左手抓握DIMM材料盒放至規定位置處",
+      "norm_sha256": "631c3ece22465dd3a83267a3a879517c3b8fae2609b1ed3767a28000b7d10429",
+      "v3_structure_hint_at_review": "single_cycle",
+      "segmentation_confirmed_by": "IEC141289",
+      "segmentation_confirmed_date": "2026-08-16",
+      "ie_modified": false,
+      "segmentation_source": "v3_structure_confirmed"
+    },
+    "650ee42f": {
+      "source_text": "右手從料架拿取主板保持住",
+      "norm_sha256": "650ee42f375e8a4489013e198c08f4ae1ff73a1fdd9c9466ebd86a750799ce85",
+      "v3_structure_hint_at_review": "single_cycle",
+      "segmentation_confirmed_by": "IEC141289",
+      "segmentation_confirmed_date": "2026-08-16",
+      "ie_modified": false,
+      "segmentation_source": "v3_structure_confirmed"
+    },
+    "6ae5a84f": {
+      "source_text": "右手接觸DIMM壓合治具的底板拉至對應的點位",
+      "norm_sha256": "6ae5a84f467b74533767755840e412ae17f6bfca87caf00f177c67cde5b0c971",
+      "v3_structure_hint_at_review": "single_cycle",
+      "segmentation_confirmed_by": "IEC141289",
+      "segmentation_confirmed_date": "2026-08-16",
+      "ie_modified": false,
+      "segmentation_source": "v3_structure_confirmed"
+    },
+    "6fa45cdb": {
+      "source_text": "確認DIMM點位，並按壓DIMM壓合治具的把手 (依據配置要求-16個DIMM)",
+      "norm_sha256": "6fa45cdb32cec075deef4be68809ac3532ea5ffef6e902ac416aa93255a6794c",
+      "v3_structure_hint_at_review": "multi_cycle_3",
+      "segmentation_confirmed_by": "IEC141289",
+      "segmentation_confirmed_date": "2026-08-16",
+      "ie_modified": false,
+      "segmentation_source": "v3_structure_confirmed"
+    },
+    "72dc0511": {
+      "source_text": "從料架上拿取假DIMM，去除其包裝袋",
+      "norm_sha256": "72dc051103642c67d34351d928de4240a78f8244a383d821b4775eaff601dd0e",
+      "v3_structure_hint_at_review": "multi_cycle_2",
+      "segmentation_confirmed_by": "IEC141289",
+      "segmentation_confirmed_date": "2026-08-16",
+      "ie_modified": false,
+      "segmentation_source": "v3_structure_confirmed"
+    },
+    "7c6eb8af": {
+      "source_text": "雙手從DIMM材料盒拿取×16DIMM插入×16至主板",
+      "norm_sha256": "7c6eb8af21e80ce03c5fa629c9e7454845eee6aa9e26a6d325b5abb4d8e8742c",
+      "v3_structure_hint_at_review": "single_cycle",
+      "segmentation_confirmed_by": "IEC141289",
+      "segmentation_confirmed_date": "2026-08-16",
+      "ie_modified": false,
+      "segmentation_source": "v3_structure_confirmed"
+    },
+    "7e40706c": {
+      "source_text": "雙手接觸DIMM壓合治具推至規定位置",
+      "norm_sha256": "7e40706c01226ac17474e5e61281b669b13222ed11d7dfd1d4aef3805dff0374",
+      "v3_structure_hint_at_review": "single_cycle",
+      "segmentation_confirmed_by": "IEC141289",
+      "segmentation_confirmed_date": "2026-08-16",
+      "ie_modified": false,
+      "segmentation_source": "v3_structure_confirmed"
+    },
+    "7ff8b879": {
+      "source_text": "並鎖附固定並確認螺絲到位",
+      "norm_sha256": "7ff8b8794b1de3f35650985d89d150f16afc20940c9740ac7abced35f4ccff9d",
+      "v3_structure_hint_at_review": "single_cycle",
+      "segmentation_confirmed_by": "IEC141289",
+      "segmentation_confirmed_date": "2026-08-16",
+      "ie_modified": false,
+      "segmentation_source": "v3_structure_confirmed"
+    },
+    "813bca06": {
+      "source_text": "雙手重新抓握主板放至潔淨棚的工作台",
+      "norm_sha256": "813bca06b3ef3f2e640b5d41ea24ebcd5072d5eb0cc4d7a963a599d02dce8930",
+      "v3_structure_hint_at_review": "single_cycle",
+      "segmentation_confirmed_by": "IEC141289",
+      "segmentation_confirmed_date": "2026-08-16",
+      "ie_modified": false,
+      "segmentation_source": "v3_structure_confirmed"
+    },
+    "9c1a987f": {
+      "source_text": "右手拿取假DIMM組至DIMM卡槽",
+      "norm_sha256": "9c1a987f74a5f1fa583843e3587509bae5c16446a5646f2636f35b29fc9be010",
+      "v3_structure_hint_at_review": "single_cycle",
+      "segmentation_confirmed_by": "IEC141289",
+      "segmentation_confirmed_date": "2026-08-16",
+      "ie_modified": false,
+      "segmentation_source": "v3_structure_confirmed"
+    },
+    "9f3d6515": {
+      "source_text": "雙手接觸DIMM卡槽的左右卡扣按壓並確認卡扣按壓規定位置",
+      "norm_sha256": "9f3d65151d26a00a2f73b30db7d7a76b703fe75d5523fb7554090865241c3cc9",
+      "v3_structure_hint_at_review": "single_cycle",
+      "segmentation_confirmed_by": "IEC141289",
+      "segmentation_confirmed_date": "2026-08-16",
+      "ie_modified": false,
+      "segmentation_source": "v3_structure_confirmed"
+    },
+    "a00f4953": {
+      "source_text": "雙手接觸DIMM卡槽的左右卡扣推至規定位置並確認到位",
+      "norm_sha256": "a00f49536458c492b36ca87a66ddffa36309fb97a1dc3b34a15b1cd23109d98e",
+      "v3_structure_hint_at_review": "single_cycle",
+      "segmentation_confirmed_by": "IEC141289",
+      "segmentation_confirmed_date": "2026-08-16",
+      "ie_modified": false,
+      "segmentation_source": "v3_structure_confirmed"
+    },
+    "a062c017": {
+      "source_text": "雙手從料架拿取DIMM材料盒放至潔淨棚的工作台",
+      "norm_sha256": "a062c01794de087b488e60b40b1e93021e8f398b6f91872239ad17b5e2494330",
+      "v3_structure_hint_at_review": "single_cycle",
+      "segmentation_confirmed_by": "IEC141289",
+      "segmentation_confirmed_date": "2026-08-16",
+      "ie_modified": false,
+      "segmentation_source": "v3_structure_confirmed"
+    },
+    "aa72871a": {
+      "source_text": "左手抓握DIMM材料盒保持住",
+      "norm_sha256": "aa72871a2479411b61f84b09d674cd845703a5d3db281725c92dbd33deb40441",
+      "v3_structure_hint_at_review": "single_cycle",
+      "segmentation_confirmed_by": "IEC141289",
+      "segmentation_confirmed_date": "2026-08-16",
+      "ie_modified": false,
+      "segmentation_source": "v3_structure_confirmed"
+    },
+    "af172fd9": {
+      "source_text": "雙手從DIMM材料盒拿取DIMM組至主板",
+      "norm_sha256": "af172fd99916bb9f6d0f09d8499d2eac428ceaa4d4655917113d5eb554a7709e",
+      "v3_structure_hint_at_review": "single_cycle",
+      "segmentation_confirmed_by": "IEC141289",
+      "segmentation_confirmed_date": "2026-08-16",
+      "ie_modified": false,
+      "segmentation_source": "v3_structure_confirmed"
+    },
+    "b49a90ee": {
+      "source_text": "雙手接觸DIMM卡槽的左右卡扣推×16至規定位置並確認到位",
+      "norm_sha256": "b49a90ee149f90843a07d17d9231d8d713ad87d8dd038688b8c0e4c87da7a9b9",
+      "v3_structure_hint_at_review": "single_cycle",
+      "segmentation_confirmed_by": "IEC141289",
+      "segmentation_confirmed_date": "2026-08-16",
+      "ie_modified": false,
+      "segmentation_source": "v3_structure_confirmed"
+    },
+    "b6ee694d": {
+      "source_text": "雙手拿取DIMM組於DIMM卡槽 (依據配置要求-16個DIMM)",
+      "norm_sha256": "b6ee694d62bcd5d7e9dbeaae5a69bdb6fcf1a4a92f0b025fbad07956d8f0387f",
+      "v3_structure_hint_at_review": "single_cycle",
+      "segmentation_confirmed_by": "IEC141289",
+      "segmentation_confirmed_date": "2026-08-16",
+      "ie_modified": false,
+      "segmentation_source": "v3_structure_confirmed"
+    },
+    "c6add069": {
+      "source_text": "右手抓握風槍保持住至規定位置處",
+      "norm_sha256": "c6add0695695c1c294098a1c58da9d17bb5bc7f16c1e612aa678ae8dae8baf26",
+      "v3_structure_hint_at_review": "single_cycle",
+      "segmentation_confirmed_by": "IEC141289",
+      "segmentation_confirmed_date": "2026-08-16",
+      "ie_modified": false,
+      "segmentation_source": "v3_structure_confirmed"
+    },
+    "d0350279": {
+      "source_text": "拿取風槍清潔放置DIMM材料盒的DIMM",
+      "norm_sha256": "d03502793738283bbf0b49e87440135031aaedc4c8ad8b5550be59381ab80343",
+      "v3_structure_hint_at_review": "multi_cycle_5",
+      "segmentation_confirmed_by": "IEC141289",
+      "segmentation_confirmed_date": "2026-08-16",
+      "ie_modified": false,
+      "segmentation_source": "v3_structure_confirmed"
+    },
+    "d58a53a7": {
+      "source_text": "左手抓握假DIMM的包裝袋丟至垃圾桶",
+      "norm_sha256": "d58a53a7d420ea1d59936a31141c70a48bd6e8b6960a57f0ed260b319339fc25",
+      "v3_structure_hint_at_review": "single_cycle",
+      "segmentation_confirmed_by": "IEC141289",
+      "segmentation_confirmed_date": "2026-08-16",
+      "ie_modified": false,
+      "segmentation_source": "v3_structure_confirmed"
+    },
+    "d9190952": {
+      "source_text": "雙手接觸DIMM壓合治具拉至規定位置",
+      "norm_sha256": "d9190952aded3b5c486af79da2339f9b5c4f2f94343a24aeba952467b2858eff",
+      "v3_structure_hint_at_review": "single_cycle",
+      "segmentation_confirmed_by": "IEC141289",
+      "segmentation_confirmed_date": "2026-08-16",
+      "ie_modified": false,
+      "segmentation_source": "v3_structure_confirmed"
+    },
+    "e55d16c7": {
+      "source_text": "右手從DIMM材料盒拿取Label貼附至主板",
+      "norm_sha256": "e55d16c74866abef12111f861bc10d8366ef43731101818136170af8f41b102b",
+      "v3_structure_hint_at_review": "single_cycle",
+      "segmentation_confirmed_by": "IEC141289",
+      "segmentation_confirmed_date": "2026-08-16",
+      "ie_modified": false,
+      "segmentation_source": "v3_structure_confirmed"
+    },
+    "e945e29e": {
+      "source_text": "右手拿取×16假DIMM插入×16至DIMM卡槽",
+      "norm_sha256": "e945e29e66fbc2d0cdcc258fc2b670aa7ea912d887b06cf8e8580d5b59629f5a",
+      "v3_structure_hint_at_review": "single_cycle",
+      "segmentation_confirmed_by": "IEC141289",
+      "segmentation_confirmed_date": "2026-08-16",
+      "ie_modified": false,
+      "segmentation_source": "v3_structure_confirmed"
+    },
+    "f721bbfc": {
+      "source_text": "左手抓握主板的包装袋去除",
+      "norm_sha256": "f721bbfca99652d2b7edaf75126f16fe27526725346ffc51ca04eb41bde652b8",
+      "v3_structure_hint_at_review": "single_cycle",
+      "segmentation_confirmed_by": "IEC141289",
+      "segmentation_confirmed_date": "2026-08-16",
+      "ie_modified": false,
+      "segmentation_source": "v3_structure_confirmed"
+    },
+    "f8b21a01": {
+      "source_text": "右手抓握風槍按動按鈕並吹風清潔DIMM",
+      "norm_sha256": "f8b21a0138411726f9db1c28856ff82b10199121ecca4694fe73f608ba952b43",
+      "v3_structure_hint_at_review": "single_cycle",
+      "segmentation_confirmed_by": "IEC141289",
+      "segmentation_confirmed_date": "2026-08-16",
+      "ie_modified": false,
+      "segmentation_source": "v3_structure_confirmed"
+    },
+    "fe1f3a90": {
+      "source_text": "拿取假DIMM組於DIMM卡槽 (依據配置要求-16個假DIMM)",
+      "norm_sha256": "fe1f3a90492331afa01a112ef6f3952dbfcd5e19f712990b062fb14c14c911ff",
+      "v3_structure_hint_at_review": "multi_cycle_2",
+      "segmentation_confirmed_by": "IEC141289",
+      "segmentation_confirmed_date": "2026-08-16",
+      "ie_modified": false,
+      "segmentation_source": "v3_structure_confirmed"
+    },
+    "fe5391c6": {
+      "source_text": "拿取主板放置於DIMM壓合治具",
+      "norm_sha256": "fe5391c624ad32ae90739b277fca14c3a838658a16df7bba0d6c05e059edc64b",
+      "v3_structure_hint_at_review": "multi_cycle_2",
+      "segmentation_confirmed_by": "IEC141289",
+      "segmentation_confirmed_date": "2026-08-16",
+      "ie_modified": false,
+      "segmentation_source": "v3_structure_confirmed"
+    }
+  }
+}

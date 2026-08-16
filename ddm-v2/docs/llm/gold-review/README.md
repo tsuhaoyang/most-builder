@@ -8,9 +8,13 @@
 
 | 檔案 | 產生方式 | 內容 |
 |---|---|---|
-| `review-checklist.md` | `scripts/gold_harvest.py` 產生（重跑會整檔重寫） | 每筆草稿一節：原文、預測切分（evidence 以【】標示）、TMU/tech line、routing、⚠️ 旗標、IE 要回答的具體問題 |
-| `harvest-summary.md` | 同上 | 來源筆數、16 維度覆蓋表（全形英數/標點分列）、覆蓋缺口、預測 action type 分佈、split 分組（傳遞閉包）、未入選候選清單、已知系統性偏差 |
-| `README.md`（本檔） | 手寫 | 覆核工作流、split 分配原則、temporal_holdout 提案 |
+| `review-checklist.md` | `scripts/gold_harvest.py` 產生（重跑會整檔重寫） | 每筆草稿一節：原文、預測切分（evidence 以【】標示）、TMU/tech line、routing、⚠️ 旗標、**IE 覆核狀態**（review-state 合併）、IE 要回答的具體問題 |
+| `harvest-summary.md` | 同上 | 來源筆數、16 維度覆蓋表（全形英數/標點分列）、覆蓋缺口、預測 action type 分佈、split 分組（傳遞閉包）、**IE 覆核狀態合併結果（含 stale 清單）**、未入選候選清單、已知系統性偏差 |
+| `synonym-candidates.md` | 工程端整理（掃 60 句動詞面對照 rule-set 選項與 v3 字典） | **候選**同義詞清單——登記需 IE 核可（ADR-023 字典治理），未寫 DB |
+| `README.md`（本檔） | 手寫 | 覆核工作流、覆核狀態保留機制、split 分配原則、temporal_holdout 提案 |
+
+另有 `tests/gold/wi_plans_draft/review-state.json`（**IE 覆核狀態檔**，見下節
+「覆核狀態怎麼在重產後存活」）。
 
 草稿位置：`tests/gold/wi_plans_draft/`（**非 gold**；評測掃不到，守門在
 `tests/unit/test_gold_draft_isolation.py`）。
@@ -101,7 +105,8 @@
 5. `empty_lexicon_no_slot_candidates` — dev DB 的 `rule_option_synonyms` 目前為空，
    所以所有 slot 都沒有候選、cycle 全部 incomplete。IE 需自填 option code；
    同義詞順手登記進字典（`POST /api/v2/rule-sets/{code}/synonyms`），下一輪
-   harvest 的預標註品質會直接提升。
+   harvest 的預標註品質會直接提升。**候選清單已備好待核可**：
+   `synonym-candidates.md`（掃 60 句動詞面對照選項表；`?` 者需 IE 裁決）。
 6. `engine_rejected_cycle` — 引擎拒絕的 complete cycle。期望端寫的是
    `expected_engine_rejected: true`（重放驗「引擎仍拒絕」，草稿不會產出即紅）；
    但**轉正前必須修正 cycle 值**——原樣轉正沒有 TMU，會撞空殼守門
@@ -118,6 +123,49 @@ action module，conflicting）；22 筆 likely_multi 中 **21 筆**拿到結構�
 （17 single→警語降級、4 multi_cycle_n）、**1 筆 ambiguous**（d045「拿取排線
 並對準接頭」——唯一來源是 dev seed 的 wi_rows，no_v3_structure_signal）。
 逐筆明細見 `harvest-summary.md`「v3 結構回填」節。
+
+## IE 首輪覆核結果（D3-015，2026-08-16；User/IE 親答）
+
+1. **39 筆確認題：全部照 v3 結構預設，OK**。落地：`review-state.json` 逐筆記
+   `segmentation_confirmed_by: "IEC141289"`＋日期＋
+   `segmentation_source: "v3_structure_confirmed"`，harvest 合併回草稿的
+   `ie_review` 區塊。**這是切分維度的確認，不是整筆 gold 核准**——cycle 仍
+   incomplete（詞典為空），option code 覆核與轉正另有流程；`ie_modified`
+   維持 `false`（確認≠修改，依自我指涉設計不計 planner 段證據力）。
+2. **d045「拿取排線並對準接頭」＝1 列**（ambiguous → 裁決）。
+   `ie_ruling: "single_cycle"`；plan 已是 1 action，內容不動。
+3. **d026「雙手抓握主板組至機箱」＝3 列**（ambiguous → 裁決：v3 兩個矛盾結構
+   中，3 列 wi-template 是對的；單列 action module 為 IE 裁決否定的結構，
+   證據保留並標 `ie_ruling_rejected`）。**plan 未重切（誠實降級）**：查證該
+   wi-template v1 的 3 列子句＝「雙手接觸DIMM壓合治具拉至規定位置」／
+   「雙手抓握主板保持住至流水線」／「雙手抓握主板組至機箱」——三列是各自
+   獨立的完整子句，**不是原句的子字串**，原句切不出 3 段誠實的 evidence
+   span（不編造）。記 `ie_ruling: "multi_cycle_3"`＋
+   `plan_pending_resegmentation: true`，plan 重切等第二輪（需子句對應）。
+
+## 覆核狀態怎麼在重產後存活（D3-015）
+
+問題：`--force` 整批重寫草稿檔，覆核記錄若寫在草稿上會被第二輪
+（同義詞登記後必然重跑）洗掉。
+
+機制：覆核狀態放**獨立檔** `tests/gold/wi_plans_draft/review-state.json`
+（**IE 的檔案：harvest 只讀不寫、`--force` 不刪**），以 normalized_text 的
+sha256 前 8 碼（草稿檔名後綴）為鍵；harvest 重產時逐筆合併回對應草稿的
+`ie_review` 區塊。編號位移（d026→d031）不影響配對——鍵跟著句子走。
+
+**stale 不靜默套用**（逐條列入 `harvest-summary.md`）：
+
+- 句子文字變了 ⇒ sha 變 ⇒ 配不到（`no_matching_draft`）；
+- v3 結構 hint 變了 ⇒ 當初確認/裁決所依據的證據已不同
+  （`v3_structure_hint_changed`）；
+- entry 記 `ie_modified: true` ⇒ 本機制只保覆核詮釋資料、保不了 plan 內容
+  （`ie_modified_plan_not_preservable`）——要保 plan 編輯就不要對該目錄
+  `--force`。
+
+守門：`tests/unit/test_gold_harvest_review_state.py`（合併/stale/驗證的
+mutation 逐條）＋`tests/unit/test_gold_draft_schema.py` 5d（草稿 `ie_review`
+的唯一出處＝state 檔，兩邊漂移即紅）＋
+`tests/integration/test_gold_harvest.py`（--force 存活演練＋決定性）。
 
 ## 覆核一筆草稿的步驟
 
