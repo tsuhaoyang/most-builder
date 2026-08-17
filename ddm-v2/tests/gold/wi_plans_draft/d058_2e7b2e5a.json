@@ -1,38 +1,38 @@
 {
-  "id": "d001_6fa45cdb",
-  "source_text": "確認DIMM點位，並按壓DIMM壓合治具的把手 (依據配置要求-16個DIMM)",
+  "id": "d058_2e7b2e5a",
+  "source_text": "按壓/按鈕",
   "notes": "預標註草稿（rule pipeline 自動產生；scripts/gold_harvest.py）。非 gold——IE 覆核核准前不得移入 tests/gold/wi_plans/。",
   "review_status": "pending_ie",
   "approved_by": null,
   "plan_origin": "rule_based_v1_preannotation",
-  "ie_modified": false,
+  "ie_modified": null,
   "split": null,
   "split_groups": [
-    "module:d630108e-643e-4717-94e0-c0c922200076"
+    "template:f378444b-f7b0-40b3-b0b3-28789c4b6fb2"
   ],
-  "split_component": "module:03ceef7d-5939-4ccc-a57c-da17e06e94de",
+  "split_component": "template:f378444b-f7b0-40b3-b0b3-28789c4b6fb2",
   "source_provenance": [
     {
-      "table": "motion_modules",
-      "id": "d630108e-643e-4717-94e0-c0c922200076",
-      "detail": "name_zh (category=wi-template)",
-      "group_key": "module:d630108e-643e-4717-94e0-c0c922200076",
-      "db_timestamp": "2026-08-04T06:59:46.526279+00:00",
-      "raw_text": "確認DIMM點位，並按壓DIMM壓合治具的把手 (依據配置要求-16個DIMM)"
+      "table": "motion_templates",
+      "id": "f378444b-f7b0-40b3-b0b3-28789c4b6fb2",
+      "detail": "name_zh",
+      "group_key": "template:f378444b-f7b0-40b3-b0b3-28789c4b6fb2",
+      "db_timestamp": "2026-08-04T06:51:03.957179+00:00",
+      "raw_text": "按壓/按鈕"
     }
   ],
   "challenge_tags": {
     "zh_simplified_variant": false,
-    "fullwidth_chars": true,
+    "fullwidth_chars": false,
     "typo": "unknown",
     "homophone": "unknown",
-    "mixed_zh_en": true,
+    "mixed_zh_en": false,
     "english_only": false,
     "inverted_word_order": "unknown",
     "colloquial": "unknown",
-    "multi_action": true,
-    "quantity": true,
-    "tool_handling": true,
+    "multi_action": false,
+    "quantity": false,
+    "tool_handling": false,
     "simo_both_hands": false,
     "missing_info": "unknown",
     "ambiguity": "unknown",
@@ -45,26 +45,11 @@
     "simo_both_hands"
   ],
   "preannotation_caveat": [
-    "typing_changed_by_verb_lexicon",
-    "likely_multi_action_undercounted"
+    "typing_changed_by_verb_lexicon"
   ],
   "typing_change": {
-    "noun_only_seq": "GM",
+    "noun_only_seq": null,
     "lexicon_seq": "CM"
-  },
-  "v3_structure_hint": "multi_cycle_3",
-  "v3_structure_evidence": {
-    "note": "hint 是證據不是判決：來源＝IE 驗證過的 v3 生產資料的結構（module/cycle 邊界）；覆核表預設依 v3 結構、IE 可推翻；本欄位絕不寫進 expected.*",
-    "sources": [
-      {
-        "table": "motion_modules",
-        "id": "d630108e-643e-4717-94e0-c0c922200076",
-        "detail": "name_zh (category=wi-template)",
-        "cycles": 3,
-        "v3_migrated": true,
-        "basis": "module 名稱句對應發布版 v1 共 3 列＝IE 把這段話切成 3 個 cycle"
-      }
-    ]
   },
   "preannotation": {
     "pipeline": "rule_based_v1 -> plan_from_rule_result -> SlotLinker(no-db) -> compile_plan -> engine_gate(most_engine) -> compute_routing(auto=off)",
@@ -76,8 +61,8 @@
   },
   "plan": {
     "schema_version": "wi-plan-v1",
-    "source_text": "確認DIMM點位，並按壓DIMM壓合治具的把手 (依據配置要求-16個DIMM)",
-    "normalized_text": "確認dimm點位,並按壓dimm壓合治具的把手 (依據配置要求-16個dimm)",
+    "source_text": "按壓/按鈕",
+    "normalized_text": "按壓/按鈕",
     "language": "zh",
     "source_ref": {
       "kind": "interactive",
@@ -94,8 +79,8 @@
         "evidence": [
           {
             "start": 0,
-            "end": 40,
-            "text": "確認dimm點位,並按壓dimm壓合治具的把手 (依據配置要求-16個dimm)"
+            "end": 5,
+            "text": "按壓/按鈕"
           }
         ],
         "notes": "rule_based_v1"
@@ -105,12 +90,6 @@
     "unresolved": []
   },
   "synthetic_synonyms": [
-    {
-      "parameter": "I",
-      "option_code": "i_confirm",
-      "synonym_norm": "確認",
-      "priority": 0
-    },
     {
       "parameter": "M",
       "option_code": "m_press",
@@ -134,12 +113,5 @@
   "expected": {
     "action_count": 1,
     "routing_status": "review"
-  },
-  "ie_review": {
-    "segmentation_confirmed_by": "IEC141289",
-    "segmentation_confirmed_date": "2026-08-16",
-    "segmentation_source": "v3_structure_confirmed",
-    "typing_confirmed_by": "IEC141289",
-    "typing_confirmed_date": "2026-08-17"
   }
 }

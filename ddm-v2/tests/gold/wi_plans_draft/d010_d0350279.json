@@ -1,6 +1,6 @@
 {
-  "id": "d008_72dc0511",
-  "source_text": "從料架上拿取假DIMM，去除其包裝袋",
+  "id": "d010_d0350279",
+  "source_text": "拿取風槍清潔放置DIMM材料盒的DIMM",
   "notes": "預標註草稿（rule pipeline 自動產生；scripts/gold_harvest.py）。非 gold——IE 覆核核准前不得移入 tests/gold/wi_plans/。",
   "review_status": "pending_ie",
   "approved_by": null,
@@ -8,22 +8,22 @@
   "ie_modified": false,
   "split": null,
   "split_groups": [
-    "module:d9203ed2-8138-4d2a-8ab6-480ff29daafb"
+    "module:8451efa7-7536-48f7-b579-b56d21608c02"
   ],
-  "split_component": "module:ac3ce9bb-a878-434e-88bf-a2a4fd9e480d",
+  "split_component": "module:8451efa7-7536-48f7-b579-b56d21608c02",
   "source_provenance": [
     {
       "table": "motion_modules",
-      "id": "d9203ed2-8138-4d2a-8ab6-480ff29daafb",
+      "id": "8451efa7-7536-48f7-b579-b56d21608c02",
       "detail": "name_zh (category=wi-template)",
-      "group_key": "module:d9203ed2-8138-4d2a-8ab6-480ff29daafb",
-      "db_timestamp": "2026-08-04T06:59:46.574898+00:00",
-      "raw_text": "從料架上拿取假DIMM，去除其包裝袋"
+      "group_key": "module:8451efa7-7536-48f7-b579-b56d21608c02",
+      "db_timestamp": "2026-08-04T06:59:46.337246+00:00",
+      "raw_text": "拿取風槍清潔放置DIMM材料盒的DIMM"
     }
   ],
   "challenge_tags": {
     "zh_simplified_variant": false,
-    "fullwidth_chars": true,
+    "fullwidth_chars": false,
     "typo": "unknown",
     "homophone": "unknown",
     "mixed_zh_en": true,
@@ -32,7 +32,7 @@
     "colloquial": "unknown",
     "multi_action": true,
     "quantity": false,
-    "tool_handling": false,
+    "tool_handling": true,
     "simo_both_hands": false,
     "missing_info": "unknown",
     "ambiguity": "unknown",
@@ -46,24 +46,24 @@
   ],
   "preannotation_caveat": [
     "typing_changed_by_verb_lexicon",
-    "likely_multi_action_undercounted",
-    "zero_tmu_distance_unstated"
+    "p_direction_none_by_context",
+    "likely_multi_action_undercounted"
   ],
   "typing_change": {
     "noun_only_seq": null,
-    "lexicon_seq": "CM"
+    "lexicon_seq": "GM"
   },
-  "v3_structure_hint": "multi_cycle_2",
+  "v3_structure_hint": "multi_cycle_5",
   "v3_structure_evidence": {
     "note": "hint 是證據不是判決：來源＝IE 驗證過的 v3 生產資料的結構（module/cycle 邊界）；覆核表預設依 v3 結構、IE 可推翻；本欄位絕不寫進 expected.*",
     "sources": [
       {
         "table": "motion_modules",
-        "id": "d9203ed2-8138-4d2a-8ab6-480ff29daafb",
+        "id": "8451efa7-7536-48f7-b579-b56d21608c02",
         "detail": "name_zh (category=wi-template)",
-        "cycles": 2,
+        "cycles": 5,
         "v3_migrated": true,
-        "basis": "module 名稱句對應發布版 v1 共 2 列＝IE 把這段話切成 2 個 cycle"
+        "basis": "module 名稱句對應發布版 v1 共 5 列＝IE 把這段話切成 5 個 cycle"
       }
     ]
   },
@@ -77,8 +77,8 @@
   },
   "plan": {
     "schema_version": "wi-plan-v1",
-    "source_text": "從料架上拿取假DIMM，去除其包裝袋",
-    "normalized_text": "從料架上拿取假dimm,去除其包裝袋",
+    "source_text": "拿取風槍清潔放置DIMM材料盒的DIMM",
+    "normalized_text": "拿取風槍清潔放置dimm材料盒的dimm",
     "language": "zh",
     "source_ref": {
       "kind": "interactive",
@@ -89,14 +89,14 @@
     "actions": [
       {
         "action_id": "a1",
-        "action_type": "controlled_move",
+        "action_type": "move_place",
         "sequence_order": 1,
         "roles": {},
         "evidence": [
           {
             "start": 0,
-            "end": 18,
-            "text": "從料架上拿取假dimm,去除其包裝袋"
+            "end": 20,
+            "text": "拿取風槍清潔放置dimm材料盒的dimm"
           }
         ],
         "notes": "rule_based_v1"
@@ -113,9 +113,21 @@
       "priority": 0
     },
     {
-      "parameter": "M",
-      "option_code": "m_remove",
-      "synonym_norm": "去除",
+      "parameter": "P",
+      "option_code": "p_place_none",
+      "synonym_norm": "放置",
+      "priority": 1
+    },
+    {
+      "parameter": "P",
+      "option_code": "p_place_single",
+      "synonym_norm": "放置",
+      "priority": 0
+    },
+    {
+      "parameter": "X",
+      "option_code": "x_blow_clean",
+      "synonym_norm": "清潔",
       "priority": 0
     }
   ],
@@ -123,12 +135,12 @@
     {
       "action_id": "a1",
       "complete": true,
-      "seq": "CM",
-      "m_verb": "m_remove",
-      "distance_cm": 0.0,
+      "seq": "GM",
+      "g_code": null,
+      "p_base_code": "p_place_none",
       "frequency": 1.0,
-      "total_tmu": 0.0,
-      "tech_line": "A0 B0 G0 M0 X0 I0 A0"
+      "total_tmu": 6.0,
+      "tech_line": "A0 B0 G0 A0 B0 P6 A0"
     }
   ],
   "gold_schema_version": "wi-gold-v1",
@@ -142,9 +154,7 @@
     "segmentation_source": "v3_structure_confirmed",
     "typing_confirmed_by": "IEC141289",
     "typing_confirmed_date": "2026-08-17",
-    "zero_tmu_ruling": "distance_unstated",
-    "zero_tmu_ruled_by": "IEC141289",
-    "zero_tmu_ruled_date": "2026-08-17"
-  },
-  "expected_incomplete_reason": "distance_unstated"
+    "p_direction_confirmed_by": "IEC141289",
+    "p_direction_confirmed_date": "2026-08-17"
+  }
 }

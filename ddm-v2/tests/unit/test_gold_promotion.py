@@ -45,6 +45,7 @@ sys.path.insert(0, str(ROOT / "scripts"))
 from _seed_gold_baseline import PROMOTED_GOLD_N  # noqa: E402
 from gold_harvest import (  # noqa: E402
     PROMOTION_SPLITS,
+    REVIEW_SEGMENTATION_SOURCE_BATCH,
     REVIEW_STATE_FILENAME,
     TYPING_CHANGED_CAVEAT,
     ZERO_TMU_CAVEAT,
@@ -226,6 +227,71 @@ def test_multi_cycle_confirmed_but_plan_not_resegmented_blocks():
     assert applied and not stale
     blockers = promotion_blockers(draft, entry2)
     assert any("plan 未重切" in b for b in blockers)
+
+
+def _batch_eligible_pair() -> tuple[dict[str, Any], dict[str, Any]]:
+    """批次確認（D3-021）下全資格滿足的草稿＋entry：無切分爭點（無旗標、
+    無 v3 hint）、有實質內容、S 檢通過。"""
+    norm = normalize("鎖附螺絲並確認")
+    sha = hashlib.sha256(norm.encode("utf-8")).hexdigest()
+    draft: dict[str, Any] = {
+        "id": f"d002_{sha[:8]}",
+        "source_text": norm,
+        "review_status": "pending_ie",
+        "approved_by": None,
+        "plan_origin": "rule_based_v1_preannotation",
+        "ie_modified": None,
+        "split": None,
+        "split_groups": ["module:m2"],
+        "split_component": "module:m2",
+        "source_provenance": [
+            {"table": "motion_modules", "id": "mm-2", "raw_text": norm}
+        ],
+        "preannotation_caveat": [],
+        "plan": {
+            "normalized_text": norm,
+            "actions": [
+                {"action_id": "a1", "action_type": "controlled_move", "sequence_order": 1}
+            ],
+        },
+        "expected_cycles": [
+            {"action_id": "a1", "complete": True, "seq": "CM", "total_tmu": 21.0}
+        ],
+        "expected": {"action_count": 1, "routing_status": "review"},
+    }
+    entry: dict[str, Any] = {
+        "source_text": norm,
+        "norm_sha256": sha,
+        "v3_structure_hint_at_review": None,
+        "segmentation_confirmed_by": IE,
+        "segmentation_confirmed_date": "2026-08-17",
+        "segmentation_source": REVIEW_SEGMENTATION_SOURCE_BATCH,
+        "ie_modified": False,
+    }
+    applied, stale = merge_review_state([draft], {sha[:8]: entry})
+    assert applied == [draft["id"]] and stale == [], "前提：批次確認合併必須成功"
+    return draft, entry
+
+
+def test_batch_confirmed_eligible_draft_passes():
+    """批次切分確認＋實質內容＝合格（守門不是恆紅）；轉正後 gold 檔的
+    ie_review 保留批次來源（與逐筆確認可區分的軌跡）。"""
+    draft, entry = _batch_eligible_pair()
+    assert promotion_blockers(draft, entry) == []
+    assert draft["ie_review"]["segmentation_source"] == REVIEW_SEGMENTATION_SOURCE_BATCH
+
+
+def test_batch_confirmed_multi_action_plan_blocks():
+    """批次確認的對象＝單 action 現狀；plan 若是多 action，「無爭點」前提
+    本身有假——結構一致性擋（把批次來源在 structure_consistency_blockers
+    併回 v3 hint 分支 → hint 為 None 誤放行 → 本測試紅）。"""
+    draft, entry = _batch_eligible_pair()
+    draft["plan"]["actions"].append(
+        {"action_id": "a2", "action_type": "move_place", "sequence_order": 2}
+    )
+    blockers = structure_consistency_blockers(draft)
+    assert blockers and "plan 未重切" in blockers[0]
+    assert any("plan 未重切" in b for b in promotion_blockers(draft, entry))
 
 
 def test_unresolved_lint_flag_blocks():

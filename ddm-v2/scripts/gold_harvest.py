@@ -49,6 +49,9 @@
 - complete 但 TMU=0.0（距離未述＝0cm 的引擎口徑輸出）標
   `zero_tmu_distance_unstated`（D3-018 M1）：TMU=0.0 非真值，覆核表逐筆問
   「補距離或判定句子資訊不足」；原樣轉正撞空殼守門（total_tmu > 0）。
+- 「清潔→x_blow_clean」是情境條件裁決（D3-021：IE 只裁吹風情境）——lexicon
+  配出此映射而句面無風槍/吹風脈絡時標 `x_clean_context_unverified`，
+  不無條件套用（轉正 fail-closed）。
 - 9 個可判維度的 `false` 同為啟發式輸出（quantity/tool/simo 的漏標已有實證，
   如「多顆」無數字不命中 quantity）——每筆草稿標 `heuristic_tags_unverified`
   點名這幾維，IE 覆核時 true/false 都要確認。
@@ -218,6 +221,16 @@ P_DIRECTION_CAVEAT_NAMES = frozenset(P_DIRECTION_CAVEATS.values())
 # 旗標逐筆掛草稿＋覆核表逐筆提問，不只摘要一句話。
 ZERO_TMU_CAVEAT = "zero_tmu_distance_unstated"
 
+# D3-021：「清潔」→ x_blow_clean 是**情境條件裁決**——IE 只裁了吹風情境
+# （語料 4 筆全是風槍/吹風），不是無條件映射。同義詞表本身不帶情境（DB 映射
+# 是全域的），情境守門在這裡（仿 p_direction 情境規則模式）：句面無風槍/吹風
+# 脈絡而 lexicon 仍配出「清潔→x_blow_clean」時掛旗標交 IE，**不無條件套用**
+# ——該旗標無確認機制（IE 未裁非吹風情境），轉正 fail-closed 擋下。
+X_CLEAN_SYNONYM_NORM = "清潔"
+X_CLEAN_OPTION_CODE = "x_blow_clean"
+X_CLEAN_CONTEXT_TERMS = ("風槍", "吹風")
+X_CLEAN_CONTEXT_CAVEAT = "x_clean_context_unverified"
+
 
 def has_zero_tmu_complete_cycle(expected_cycles: list[dict[str, Any]]) -> bool:
     """任一 complete 期望 cycle 的 total_tmu == 0？（D3-018 M1 單一出處：
@@ -226,6 +239,22 @@ def has_zero_tmu_complete_cycle(expected_cycles: list[dict[str, Any]]) -> bool:
     return any(
         ec.get("complete") and ec.get("total_tmu") == 0 for ec in expected_cycles
     )
+
+
+def x_clean_context_missing(norm: str, used_synonyms: list[dict[str, Any]]) -> bool:
+    """「清潔→x_blow_clean」命中但句面無吹風脈絡？（D3-021 單一出處：
+    preannotate 的旗標與 schema 守門（test_gold_draft_schema）共用本函式。）
+
+    判定對象＝該草稿實際用到的 lexicon 條目（used_lexicon_entries 的輸出）——
+    只有 lexicon 真的配出這條映射才有「情境是否成立」的問題；脈絡詞查
+    normalized_text（lexicon 配對的同一文本）。"""
+    hit = any(
+        s.get("parameter") == "X"
+        and s.get("synonym_norm") == X_CLEAN_SYNONYM_NORM
+        and s.get("option_code") == X_CLEAN_OPTION_CODE
+        for s in used_synonyms
+    )
+    return hit and not any(t in norm for t in X_CLEAN_CONTEXT_TERMS)
 
 try:
     import opencc as _opencc_mod
@@ -1034,6 +1063,11 @@ async def preannotate(
         # 提問；原樣轉正會撞空殼守門（total_tmu > 0 或顯式
         # expected_incomplete_reason）
         caveats.append(ZERO_TMU_CAVEAT)
+    used_synonyms = used_lexicon_entries(plan.normalized_text, synonyms)
+    if x_clean_context_missing(plan.normalized_text, used_synonyms):
+        # D3-021：「清潔→x_blow_clean」是吹風情境的裁決——句面無風槍/吹風
+        # 脈絡時不無條件套用，掛旗標交 IE（轉正 fail-closed 擋下）
+        caveats.append(X_CLEAN_CONTEXT_CAVEAT)
 
     out: dict[str, Any] = {
         "id": draft_id,
@@ -1077,7 +1111,7 @@ async def preannotate(
             "routing_reasons": list(reasons),
         },
         "plan": plan_json,
-        "synthetic_synonyms": used_lexicon_entries(plan.normalized_text, synonyms),
+        "synthetic_synonyms": used_synonyms,
         "expected_cycles": expected_cycles_json,
         "gold_schema_version": GOLD_SCHEMA_VERSION,
         "expected": {
@@ -1154,6 +1188,12 @@ _CAVEAT_ZH = {
         "不是 TMU 可信度。**請補距離（改 plan/cycle 後 `--recompile` 重算）或"
         "判定句子資訊不足**（轉正時顯式寫 expected_incomplete_reason；"
         "空殼守門要求 total_tmu > 0，原樣轉正會被擋）"
+    ),
+    X_CLEAN_CONTEXT_CAVEAT: (
+        "「清潔」情境條件（IE 裁決 D3-021）：「清潔→x_blow_clean 並吹風清潔」"
+        "只裁了**吹風情境**（語料 4 筆全是風槍/吹風）——本句配出此映射但句面"
+        "**無風槍/吹風脈絡**，不無條件套用。**請 IE 裁決本句的「清潔」建法**"
+        "（吹風 x_blow_clean？擦拭 m_wipe？其他？）；未裁前本筆轉正 fail-closed 擋下"
     ),
 }
 
@@ -1276,6 +1316,9 @@ def _questions_for(draft: dict[str, Any]) -> list[str]:
     # D3-018 M1：TMU=0.0 的草稿逐筆問（旗標與提問同一出處；不只摘要一句話）
     if ZERO_TMU_CAVEAT in (draft.get("preannotation_caveat") or []):
         qs.append(f"TMU=0.0：{_CAVEAT_ZH[ZERO_TMU_CAVEAT]}。")
+    # D3-021：清潔情境條件不成立的草稿逐筆問（旗標與提問同一出處）
+    if X_CLEAN_CONTEXT_CAVEAT in (draft.get("preannotation_caveat") or []):
+        qs.append(f"清潔情境：{_CAVEAT_ZH[X_CLEAN_CONTEXT_CAVEAT]}。")
     # 配對題與草稿旗標**共用同一判定**（take_place_pair / take_move_pair）：
     # 兩邊條件各寫一份曾經自相矛盾（掛「幾乎必然低估」的節同時出「多半建單一
     # GM cycle」的題）——單一出處，宣稱即事實。
@@ -1373,6 +1416,13 @@ def _ie_review_lines(draft: dict[str, Any]) -> list[str]:
             f"**✅ IE 覆核狀態（切分維度）**：已確認照 v3 結構預設（{who}，{date}）。"
             "僅確認切分，不是整筆 gold 核准；`ie_modified: false`"
             "（確認≠修改——本筆不計入 planner 段 Plan 層證據力）。"
+        )
+    elif ir.get("segmentation_source") == REVIEW_SEGMENTATION_SOURCE_BATCH:
+        out.append(
+            f"**✅ IE 覆核狀態（切分維度・批次確認）**：無切分爭點案例，IE 整批"
+            f"確認現行切分（單 action＝single_cycle；{who}，{date}）。"
+            "與逐筆確認可區分（`segmentation_source: no_contention_batch_confirmed`"
+            "——未逐筆核 v3 結構證據）；僅確認切分，不是整筆 gold 核准。"
         )
     elif ir.get("segmentation_source") == "ie_ruling":
         ruling = ir.get("ie_ruling")
@@ -2020,10 +2070,25 @@ def _dump(data: dict[str, Any]) -> str:
 # 在 tests/gold/wi_plans/，harvest 合併時**跳過**（不套用也不算 stale——軌跡
 # 保留不刪 entry）；正式 gold ↔ promoted 標記的同進同出守門在
 # tests/unit/test_gold_promotion.py。
+#
+# D3-021 追加——切分來源第三值 `no_contention_batch_confirmed`（批次確認）：
+# IE 對「無切分爭點」的案例（草稿無任何 SEGMENTATION_CAVEATS、無 v3 hint）
+# 整批確認現行切分（rule planner 的單 action＝single_cycle）。與逐筆確認
+# （v3_structure_confirmed）**必須可區分**——批次確認沒有逐筆看過 v3 結構
+# 證據，證據力不同，來源值就是區分（投影進草稿 ie_review 與轉正後的 gold 檔）。
+# 驗證與 stale 都綁「無爭點」前提：entry 的 hint_at_review 必須是 null（有
+# hint＝有爭點，不得走批次）；合併時草稿若長出任何切分旗標（新一輪動詞字典
+# 讓配對/多動作旗標出現）⇒ `segmentation_contention_appeared`，確認不沿用。
 
 REVIEW_STATE_FILENAME = "review-state.json"
 REVIEW_STATE_SCHEMA_VERSION = "wi-review-state-v1"
-REVIEW_SEGMENTATION_SOURCES = ("v3_structure_confirmed", "ie_ruling")
+# 批次確認（D3-021）：無爭點案例的整批切分確認——與逐筆確認可區分（見上）
+REVIEW_SEGMENTATION_SOURCE_BATCH = "no_contention_batch_confirmed"
+REVIEW_SEGMENTATION_SOURCES = (
+    "v3_structure_confirmed",
+    "ie_ruling",
+    REVIEW_SEGMENTATION_SOURCE_BATCH,
+)
 # TMU=0 裁決的唯一合法值（D3-019：IE 判定「句子資訊不足——距離未述」；
 # 合併時原樣寫進草稿 expected_incomplete_reason）
 ZERO_TMU_RULING_DISTANCE_UNSTATED = "distance_unstated"
@@ -2248,6 +2313,23 @@ def load_review_state(path: Path) -> dict[str, dict[str, Any]]:
                 )
             if ruling is not None:
                 _fail_state(path, f"{ctx}：確認≠裁決——v3_structure_confirmed 不得帶 ie_ruling")
+        elif src == REVIEW_SEGMENTATION_SOURCE_BATCH:
+            # D3-021 批次確認：對象限「無切分爭點」案例——有 v3 hint＝有爭點，
+            # 必須走逐筆確認/裁決；批次來源混用逐筆語意＝證據力造假
+            if hint_at is not None:
+                _fail_state(
+                    path,
+                    f"{ctx}：{REVIEW_SEGMENTATION_SOURCE_BATCH} 但 "
+                    f"hint_at_review={hint_at!r}——批次確認的對象是無切分爭點的"
+                    "草稿（無 v3 hint）；有結構 hint 的案例走逐筆 "
+                    "v3_structure_confirmed/ie_ruling",
+                )
+            if ruling is not None:
+                _fail_state(
+                    path,
+                    f"{ctx}：確認≠裁決——{REVIEW_SEGMENTATION_SOURCE_BATCH} "
+                    "不得帶 ie_ruling",
+                )
         else:  # ie_ruling
             if not (isinstance(ruling, str) and _RULING_RE.match(ruling)):
                 _fail_state(
@@ -2338,6 +2420,12 @@ def apply_review_state_entry(draft: dict[str, Any], entry: dict[str, Any]) -> st
     if any((r["table"], r["id"]) not in source_keys for r in rejected):
         return "rejected_evidence_missing"
     caveats = draft.get("preannotation_caveat") or []
+    if entry.get("segmentation_source") == REVIEW_SEGMENTATION_SOURCE_BATCH:
+        # D3-021：批次確認的前提＝該句無切分爭點。新一輪若長出任何切分旗標
+        # （動詞字典擴充讓配對/多動作旗標出現），前提已不成立——批次確認
+        # 不得沿用（IE 沒逐筆看過爭點），整筆 stale 交 IE 重看
+        if any(c in caveats for c in SEGMENTATION_CAVEATS):
+            return "segmentation_contention_appeared"
     if "typing_change_at_review" in entry:
         # 判型確認的依據＝當時的舊/新判型值；新一輪判型又變了就不得沿用確認
         if draft.get("typing_change") != entry["typing_change_at_review"]:
@@ -2645,6 +2733,13 @@ def caveat_resolution_blockers(data: dict[str, Any]) -> list[str]:
                     f"{c}：TMU=0.0 未經 IE 裁決（需 zero_tmu_ruling＋"
                     "expected_incomplete_reason）"
                 )
+        elif c == X_CLEAN_CONTEXT_CAVEAT:
+            # D3-021：IE 只裁了吹風情境的「清潔」——非吹風情境尚無裁決，
+            # 無確認機制可解此旗標（fail-closed；下輪 IE 裁了再開機制）
+            blockers.append(
+                f"{c}：「清潔」非吹風情境（句面無風槍/吹風）——IE 只裁了吹風"
+                "情境（D3-021），本句建法未裁，不得套 x_blow_clean 轉正"
+            )
         else:
             blockers.append(f"{c}：未解決的覆核旗標（無對應確認機制，fail-closed）")
     return blockers
@@ -2659,6 +2754,10 @@ def structure_consistency_blockers(data: dict[str, Any]) -> list[str]:
         return []  # 切分未確認由 promotion_blockers 另擋
     if ir.get("segmentation_source") == "ie_ruling":
         confirmed = ir.get("ie_ruling")
+    elif ir.get("segmentation_source") == REVIEW_SEGMENTATION_SOURCE_BATCH:
+        # D3-021 批次確認：確認對象＝無爭點案例的現行切分（rule planner 單
+        # action）＝single_cycle；plan 若不是 1 action，「無爭點」前提本身有假
+        confirmed = STRUCTURE_HINT_SINGLE
     else:
         confirmed = data.get("v3_structure_hint")
     n = _structure_hint_cycles(confirmed)

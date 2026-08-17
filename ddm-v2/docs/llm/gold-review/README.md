@@ -192,6 +192,38 @@ action module，conflicting）；22 筆 likely_multi 中 **21 筆**拿到結構�
    清單見 worklog D3-019；轉正後 state entry 標 `promoted_to`/`promoted_date`
    （軌跡保留不刪），harvest 合併跳過 promoted entry。
 
+## IE 第四輪答案與第二批轉正（D3-021，2026-08-17；User/IE 親答）
+
+1. **6 條同義詞登記**（同一 API，登記人 IEC141289，priority 0；詞典 16→22 條）：
+   確認→`i_confirm`（範圍內）、鎖附→`x_screw_fix`（電動起子情境）、
+   組至/組於/插入→`p_asm_single`（照放置邏輯，方向數逐筆確認）、
+   清潔→`x_blow_clean`（**僅吹風情境**）。細節與情境條件見
+   `synonym-candidates.md`；「插入」的 base＋addon 雙段計時裁決同見該檔。
+2. **清潔情境守門**：同義詞映射是全域的，IE 的裁決是情境的——harvest 對
+   「lexicon 配出清潔→x_blow_clean 但句面無風槍/吹風脈絡」的草稿掛
+   `x_clean_context_unverified` 旗標（仿 p_direction 情境規則模式），
+   **不無條件套用**；旗標無確認機制，轉正 fail-closed。本輪語料 2 筆「清潔」
+   全在風槍脈絡 → 0 旗標。
+3. **4 筆新旗標照預設確認**（第四輪 d015/d016/d029/d039＝句子
+   a062c017/d0350279/650ee42f/0423b4e8）：判型 4 筆＋其中 2 筆 P 方向數。
+4. **16 筆無爭點案例批次切分確認**：`segmentation_source:
+   "no_contention_batch_confirmed"`（第三個來源值）——與逐筆確認**可區分**
+   （批次未逐筆核 v3 結構證據；entry 的 hint_at_review 必須 null、不得帶
+   ie_ruling；草稿長出切分旗標 ⇒ `segmentation_contention_appeared` stale）。
+   16 筆全數仍卡實質內容守門（incomplete、無 TMU）——批次確認≠轉正。
+5. **第五輪 harvest**：60 entry 全存活（stale 0）；草稿集換血——已轉正 21 句
+   移出、21 筆新候選補位；動詞解鎖讓組至/組於/插入 7 筆轉 complete 帶 TMU
+   （但判型旗標新出現、未確認）。**新出現 TMU=0.0 恰 1 筆**
+   （`7f085e02`「撕除螢幕保護膜」）——**不自動套「資訊不足」**（上輪 9 筆的
+   解讀仍待 User 明示確認，不擴大適用），標旗列清單、本輪不轉正、交 IE 下輪。
+6. **第二批轉正 3 筆**（g27–g29；approved_by=IEC141289、2026-08-17、
+   split=test、`ie_modified: false`）：a062c017→g27_pick_dimm_box_to_bench、
+   650ee42f→g28_pick_board_hold、0423b4e8→g29_pick_dummy_dimm_hold_to_line
+   ——即 D3-019 被擋類別「新 typed 判型/方向未確認」3 筆，本輪確認後解鎖。
+   任務預期的「B 的 16 筆」全數卡實質內容（誠實統計見 worklog D3-021）；
+   6 筆 multi_cycle（重切建議稿 IE 未答）維持被擋不動。累計 IE 核准
+   **24/50**；planner 指標維持 0.6667/0.5714（24 筆全數自我指涉排除）。
+
 ## 覆核狀態怎麼在重產後存活（D3-015）
 
 問題：`--force` 整批重寫草稿檔，覆核記錄若寫在草稿上會被第二輪

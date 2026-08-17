@@ -9,7 +9,15 @@
       "segmentation_confirmed_by": "IEC141289",
       "segmentation_confirmed_date": "2026-08-16",
       "ie_modified": false,
-      "segmentation_source": "v3_structure_confirmed"
+      "segmentation_source": "v3_structure_confirmed",
+      "typing_confirmed_by": "IEC141289",
+      "typing_confirmed_date": "2026-08-17",
+      "typing_change_at_review": {
+        "noun_only_seq": null,
+        "lexicon_seq": "GM"
+      },
+      "promoted_to": "g29_pick_dummy_dimm_hold_to_line",
+      "promoted_date": "2026-08-17"
     },
     "0acd56df": {
       "source_text": "雙手接觸×16DIMM卡槽的左右卡扣按壓×16並確認卡扣按壓規定位置",
@@ -245,7 +253,15 @@
       "segmentation_confirmed_by": "IEC141289",
       "segmentation_confirmed_date": "2026-08-16",
       "ie_modified": false,
-      "segmentation_source": "v3_structure_confirmed"
+      "segmentation_source": "v3_structure_confirmed",
+      "typing_confirmed_by": "IEC141289",
+      "typing_confirmed_date": "2026-08-17",
+      "typing_change_at_review": {
+        "noun_only_seq": null,
+        "lexicon_seq": "GM"
+      },
+      "promoted_to": "g28_pick_board_hold",
+      "promoted_date": "2026-08-17"
     },
     "6ae5a84f": {
       "source_text": "右手接觸DIMM壓合治具的底板拉至對應的點位",
@@ -411,7 +427,18 @@
       "segmentation_confirmed_by": "IEC141289",
       "segmentation_confirmed_date": "2026-08-16",
       "ie_modified": false,
-      "segmentation_source": "v3_structure_confirmed"
+      "segmentation_source": "v3_structure_confirmed",
+      "typing_confirmed_by": "IEC141289",
+      "typing_confirmed_date": "2026-08-17",
+      "typing_change_at_review": {
+        "noun_only_seq": null,
+        "lexicon_seq": "GM"
+      },
+      "p_direction_confirmed_by": "IEC141289",
+      "p_direction_confirmed_date": "2026-08-17",
+      "p_direction_caveat_at_review": "p_direction_none_by_context",
+      "promoted_to": "g27_pick_dimm_box_to_bench",
+      "promoted_date": "2026-08-17"
     },
     "aa72871a": {
       "source_text": "左手抓握DIMM材料盒保持住",
@@ -481,7 +508,16 @@
       "segmentation_confirmed_by": "IEC141289",
       "segmentation_confirmed_date": "2026-08-16",
       "ie_modified": false,
-      "segmentation_source": "v3_structure_confirmed"
+      "segmentation_source": "v3_structure_confirmed",
+      "typing_confirmed_by": "IEC141289",
+      "typing_confirmed_date": "2026-08-17",
+      "typing_change_at_review": {
+        "noun_only_seq": null,
+        "lexicon_seq": "GM"
+      },
+      "p_direction_confirmed_by": "IEC141289",
+      "p_direction_confirmed_date": "2026-08-17",
+      "p_direction_caveat_at_review": "p_direction_none_by_context"
     },
     "d58a53a7": {
       "source_text": "左手抓握假DIMM的包裝袋丟至垃圾桶",
@@ -642,6 +678,150 @@
         "noun_only_seq": null,
         "lexicon_seq": "CM"
       }
+    },
+    "0461f75d": {
+      "source_text": "拿取 M.2 SSD",
+      "norm_sha256": "0461f75d82aee90744e1828223ab2ab8dc9a3ce7708590579951ae51b66a2557",
+      "v3_structure_hint_at_review": null,
+      "segmentation_confirmed_by": "IEC141289",
+      "segmentation_confirmed_date": "2026-08-17",
+      "ie_modified": false,
+      "segmentation_source": "no_contention_batch_confirmed"
+    },
+    "0e83128f": {
+      "source_text": "下壓 CPU 拉桿鎖定",
+      "norm_sha256": "0e83128f532bc5ab23c0941d7d228e8c5424a59ec5d4042be447f4d1089d43b2",
+      "v3_structure_hint_at_review": null,
+      "segmentation_confirmed_by": "IEC141289",
+      "segmentation_confirmed_date": "2026-08-17",
+      "ie_modified": false,
+      "segmentation_source": "no_contention_batch_confirmed"
+    },
+    "130bb1ad": {
+      "source_text": "電動鎖附(多顆)",
+      "norm_sha256": "130bb1adf47aaad70b787ee191fef03c086eefa37268af41cd18d6cf5965966a",
+      "v3_structure_hint_at_review": null,
+      "segmentation_confirmed_by": "IEC141289",
+      "segmentation_confirmed_date": "2026-08-17",
+      "ie_modified": false,
+      "segmentation_source": "no_contention_batch_confirmed"
+    },
+    "28f9ed7e": {
+      "source_text": "拿取螺絲 x1",
+      "norm_sha256": "28f9ed7eb6cff9d819955a43bdce60e43be340e096ef2e92e5668e2994fa8681",
+      "v3_structure_hint_at_review": null,
+      "segmentation_confirmed_by": "IEC141289",
+      "segmentation_confirmed_date": "2026-08-17",
+      "ie_modified": false,
+      "segmentation_source": "no_contention_batch_confirmed"
+    },
+    "2f0cb396": {
+      "source_text": "並確認DIMM點位",
+      "norm_sha256": "2f0cb3964a1e2e13b896988ea993e3f34b44f788b1bbb49932ae53993f0138ab",
+      "v3_structure_hint_at_review": null,
+      "segmentation_confirmed_by": "IEC141289",
+      "segmentation_confirmed_date": "2026-08-17",
+      "ie_modified": false,
+      "segmentation_source": "no_contention_batch_confirmed"
+    },
+    "323b04c1": {
+      "source_text": "鎖附螺絲",
+      "norm_sha256": "323b04c15103b5812fc5b285be19dc7baf4905baf5be2ec62c5e44154fd4b40b",
+      "v3_structure_hint_at_review": null,
+      "segmentation_confirmed_by": "IEC141289",
+      "segmentation_confirmed_date": "2026-08-17",
+      "ie_modified": false,
+      "segmentation_source": "no_contention_batch_confirmed"
+    },
+    "37fbd2a6": {
+      "source_text": "放置散熱片於 CPU 上",
+      "norm_sha256": "37fbd2a677dbd3f7ec911df9e50536f2802f8f8cb0678ee1a3befb5c6fd5e21a",
+      "v3_structure_hint_at_review": null,
+      "segmentation_confirmed_by": "IEC141289",
+      "segmentation_confirmed_date": "2026-08-17",
+      "ie_modified": false,
+      "segmentation_source": "no_contention_batch_confirmed"
+    },
+    "4eb2b2e6": {
+      "source_text": "功能測試(治具)",
+      "norm_sha256": "4eb2b2e616eb10225f354a86011bca5f9c51812ceb02584bbc52833ea0f836d7",
+      "v3_structure_hint_at_review": null,
+      "segmentation_confirmed_by": "IEC141289",
+      "segmentation_confirmed_date": "2026-08-17",
+      "ie_modified": false,
+      "segmentation_source": "no_contention_batch_confirmed"
+    },
+    "633b52bb": {
+      "source_text": "雙手掰開DIMM卡槽的卡扣",
+      "norm_sha256": "633b52bbf9b41930a47a1debc4cb8bb6aa5d956d4ae527d8c5594c0b6509821a",
+      "v3_structure_hint_at_review": null,
+      "segmentation_confirmed_by": "IEC141289",
+      "segmentation_confirmed_date": "2026-08-17",
+      "ie_modified": false,
+      "segmentation_source": "no_contention_batch_confirmed"
+    },
+    "6678c378": {
+      "source_text": "左手抓握DIMM壓合治具的把手放×16至對應的點位",
+      "norm_sha256": "6678c378845bc939e1b15494de148ccc329bd875348912f3f67114d16c3adf66",
+      "v3_structure_hint_at_review": null,
+      "segmentation_confirmed_by": "IEC141289",
+      "segmentation_confirmed_date": "2026-08-17",
+      "ie_modified": false,
+      "segmentation_source": "no_contention_batch_confirmed"
+    },
+    "8dfafd2e": {
+      "source_text": "折合上蓋扣合",
+      "norm_sha256": "8dfafd2e0a04b37ca7ec7fe220687f18785b5bebd8cdf4f2d94a3059cc9223d0",
+      "v3_structure_hint_at_review": null,
+      "segmentation_confirmed_by": "IEC141289",
+      "segmentation_confirmed_date": "2026-08-17",
+      "ie_modified": false,
+      "segmentation_source": "no_contention_batch_confirmed"
+    },
+    "995f5d45": {
+      "source_text": "貼標籤",
+      "norm_sha256": "995f5d45e36aabd468014da486eb7f8a61f93815aab4b4f25d4af22efe10e88a",
+      "v3_structure_hint_at_review": null,
+      "segmentation_confirmed_by": "IEC141289",
+      "segmentation_confirmed_date": "2026-08-17",
+      "ie_modified": false,
+      "segmentation_source": "no_contention_batch_confirmed"
+    },
+    "ac155900": {
+      "source_text": "拿取 DIMM 記憶體模組",
+      "norm_sha256": "ac155900e30297cbf3e296ccbc1967287784314d1f17384b5ec2f6ebdb5ff323",
+      "v3_structure_hint_at_review": null,
+      "segmentation_confirmed_by": "IEC141289",
+      "segmentation_confirmed_date": "2026-08-17",
+      "ie_modified": false,
+      "segmentation_source": "no_contention_batch_confirmed"
+    },
+    "b2618d31": {
+      "source_text": "小範圍拿取(≤50cm)",
+      "norm_sha256": "b2618d3158fdad326e5acd385866cd1e5b69b347b784c3704897609be1093d34",
+      "v3_structure_hint_at_review": null,
+      "segmentation_confirmed_by": "IEC141289",
+      "segmentation_confirmed_date": "2026-08-17",
+      "ie_modified": false,
+      "segmentation_source": "no_contention_batch_confirmed"
+    },
+    "bc473698": {
+      "source_text": "鎖附主機板固定螺絲 x6",
+      "norm_sha256": "bc473698860a5e342de62dbae40170f6713b6da2c8f52a19e6b8741005e6fd8c",
+      "v3_structure_hint_at_review": null,
+      "segmentation_confirmed_by": "IEC141289",
+      "segmentation_confirmed_date": "2026-08-17",
+      "ie_modified": false,
+      "segmentation_source": "no_contention_batch_confirmed"
+    },
+    "ee5c168e": {
+      "source_text": "電動起子鎖附 CPU 散熱片螺絲 x4",
+      "norm_sha256": "ee5c168ee5921dced23356345ccf3b34fda1a1c033ba87ee2ea872059eba28ec",
+      "v3_structure_hint_at_review": null,
+      "segmentation_confirmed_by": "IEC141289",
+      "segmentation_confirmed_date": "2026-08-17",
+      "ie_modified": false,
+      "segmentation_source": "no_contention_batch_confirmed"
     }
   }
 }

@@ -1,6 +1,6 @@
 {
-  "id": "d001_6fa45cdb",
-  "source_text": "確認DIMM點位，並按壓DIMM壓合治具的把手 (依據配置要求-16個DIMM)",
+  "id": "d023_1dd7c1d5",
+  "source_text": "按壓功能測試治具",
   "notes": "預標註草稿（rule pipeline 自動產生；scripts/gold_harvest.py）。非 gold——IE 覆核核准前不得移入 tests/gold/wi_plans/。",
   "review_status": "pending_ie",
   "approved_by": null,
@@ -8,30 +8,30 @@
   "ie_modified": false,
   "split": null,
   "split_groups": [
-    "module:d630108e-643e-4717-94e0-c0c922200076"
+    "worksheet:55555555-5555-5555-5555-555555555555"
   ],
-  "split_component": "module:03ceef7d-5939-4ccc-a57c-da17e06e94de",
+  "split_component": "worksheet:55555555-5555-5555-5555-555555555555",
   "source_provenance": [
     {
-      "table": "motion_modules",
-      "id": "d630108e-643e-4717-94e0-c0c922200076",
-      "detail": "name_zh (category=wi-template)",
-      "group_key": "module:d630108e-643e-4717-94e0-c0c922200076",
-      "db_timestamp": "2026-08-04T06:59:46.526279+00:00",
-      "raw_text": "確認DIMM點位，並按壓DIMM壓合治具的把手 (依據配置要求-16個DIMM)"
+      "table": "wi_rows",
+      "id": "bd1da7bc-51ce-4aba-9ebe-a87a64f5eab7",
+      "detail": "sub_activity",
+      "group_key": "worksheet:55555555-5555-5555-5555-555555555555",
+      "db_timestamp": "2026-08-11T14:26:06.268970+00:00",
+      "raw_text": "按壓功能測試治具"
     }
   ],
   "challenge_tags": {
     "zh_simplified_variant": false,
-    "fullwidth_chars": true,
+    "fullwidth_chars": false,
     "typo": "unknown",
     "homophone": "unknown",
-    "mixed_zh_en": true,
+    "mixed_zh_en": false,
     "english_only": false,
     "inverted_word_order": "unknown",
     "colloquial": "unknown",
-    "multi_action": true,
-    "quantity": true,
+    "multi_action": false,
+    "quantity": false,
     "tool_handling": true,
     "simo_both_hands": false,
     "missing_info": "unknown",
@@ -45,26 +45,11 @@
     "simo_both_hands"
   ],
   "preannotation_caveat": [
-    "typing_changed_by_verb_lexicon",
-    "likely_multi_action_undercounted"
+    "typing_changed_by_verb_lexicon"
   ],
   "typing_change": {
     "noun_only_seq": "GM",
     "lexicon_seq": "CM"
-  },
-  "v3_structure_hint": "multi_cycle_3",
-  "v3_structure_evidence": {
-    "note": "hint 是證據不是判決：來源＝IE 驗證過的 v3 生產資料的結構（module/cycle 邊界）；覆核表預設依 v3 結構、IE 可推翻；本欄位絕不寫進 expected.*",
-    "sources": [
-      {
-        "table": "motion_modules",
-        "id": "d630108e-643e-4717-94e0-c0c922200076",
-        "detail": "name_zh (category=wi-template)",
-        "cycles": 3,
-        "v3_migrated": true,
-        "basis": "module 名稱句對應發布版 v1 共 3 列＝IE 把這段話切成 3 個 cycle"
-      }
-    ]
   },
   "preannotation": {
     "pipeline": "rule_based_v1 -> plan_from_rule_result -> SlotLinker(no-db) -> compile_plan -> engine_gate(most_engine) -> compute_routing(auto=off)",
@@ -76,8 +61,8 @@
   },
   "plan": {
     "schema_version": "wi-plan-v1",
-    "source_text": "確認DIMM點位，並按壓DIMM壓合治具的把手 (依據配置要求-16個DIMM)",
-    "normalized_text": "確認dimm點位,並按壓dimm壓合治具的把手 (依據配置要求-16個dimm)",
+    "source_text": "按壓功能測試治具",
+    "normalized_text": "按壓功能測試治具",
     "language": "zh",
     "source_ref": {
       "kind": "interactive",
@@ -94,8 +79,8 @@
         "evidence": [
           {
             "start": 0,
-            "end": 40,
-            "text": "確認dimm點位,並按壓dimm壓合治具的把手 (依據配置要求-16個dimm)"
+            "end": 8,
+            "text": "按壓功能測試治具"
           }
         ],
         "notes": "rule_based_v1"
@@ -105,12 +90,6 @@
     "unresolved": []
   },
   "synthetic_synonyms": [
-    {
-      "parameter": "I",
-      "option_code": "i_confirm",
-      "synonym_norm": "確認",
-      "priority": 0
-    },
     {
       "parameter": "M",
       "option_code": "m_press",
@@ -136,9 +115,6 @@
     "routing_status": "review"
   },
   "ie_review": {
-    "segmentation_confirmed_by": "IEC141289",
-    "segmentation_confirmed_date": "2026-08-16",
-    "segmentation_source": "v3_structure_confirmed",
     "typing_confirmed_by": "IEC141289",
     "typing_confirmed_date": "2026-08-17"
   }

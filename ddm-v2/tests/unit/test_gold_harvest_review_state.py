@@ -48,6 +48,7 @@ DRAFT_DIR = ROOT / "tests" / "gold" / "wi_plans_draft"
 
 sys.path.insert(0, str(ROOT / "scripts"))
 from gold_harvest import (  # noqa: E402
+    REVIEW_SEGMENTATION_SOURCE_BATCH,
     REVIEW_STATE_FILENAME,
     REVIEW_STATE_SCHEMA_VERSION,
     apply_review_state_entry,
@@ -355,6 +356,104 @@ def test_promoted_entry_skipped_not_stale():
     assert "ie_review" not in d
 
 
+# ── 2b. 批次確認（D3-021 `no_contention_batch_confirmed`）────────────────────
+#
+# 與逐筆確認的區分是實質的：批次沒逐筆核 v3 結構證據，只對「無切分爭點」
+# 案例成立——前提在驗證（hint 必須 null、不得帶裁決）與合併（草稿長出切分
+# 旗標 ⇒ stale）兩端都要活著。mutation：把 apply 的爭點前提檢查拆掉 →
+# `test_batch_confirmation_stale_when_contention_appears` 紅；把 load 的批次
+# 分支併回 v3_structure_confirmed → reject 兩測紅。
+
+
+def _batch_draft(norm: str, idx: int = 1) -> dict[str, Any]:
+    """無切分爭點的草稿：無旗標、無 v3 hint（批次確認的合法對象）。"""
+    d = _draft(norm, idx=idx, hint=None)
+    d["preannotation_caveat"] = []
+    return d
+
+
+def _batch_entry(norm: str, **over: Any) -> dict[str, Any]:
+    return _entry(
+        norm,
+        hint=None,
+        segmentation_source=REVIEW_SEGMENTATION_SOURCE_BATCH,
+        segmentation_confirmed_date="2026-08-17",
+        **over,
+    )
+
+
+def test_batch_confirmation_applies_and_source_distinct():
+    """批次確認套用到無爭點草稿；ie_review 帶批次來源（與逐筆確認可區分）。"""
+    norm = "鎖附螺絲"
+    d = _batch_draft(norm)
+    applied, stale = merge_review_state([d], {_sha(norm)[:8]: _batch_entry(norm)})
+    assert applied == [d["id"]] and stale == []
+    assert d["ie_review"]["segmentation_source"] == REVIEW_SEGMENTATION_SOURCE_BATCH
+    assert d["ie_review"]["segmentation_confirmed_by"] == "IEC141289"
+    assert "ie_ruling" not in d["ie_review"]
+    assert d["ie_modified"] is False
+
+
+def test_batch_confirmation_stale_when_contention_appears():
+    """前提失效：草稿長出切分旗標（新一輪動詞字典讓配對/多動作旗標出現）
+    ⇒ 批次確認不得沿用——stale、草稿不動。"""
+    norm = "鎖附螺絲"
+    d = _batch_draft(norm)
+    d["preannotation_caveat"] = ["take_place_pair_may_be_single_gm"]
+    before = copy.deepcopy(d)
+    applied, stale = merge_review_state([d], {_sha(norm)[:8]: _batch_entry(norm)})
+    assert applied == []
+    assert [s["reason"] for s in stale] == ["segmentation_contention_appeared"]
+    assert d == before, "stale 時草稿一個欄位都不得動"
+
+
+def test_load_review_state_rejects_batch_with_hint(tmp_path: Path):
+    """批次確認帶結構 hint＝有爭點案例混用批次來源——硬紅。"""
+    norm = "鎖附螺絲"
+    p = _write_state(
+        tmp_path / REVIEW_STATE_FILENAME,
+        {_sha(norm)[:8]: _batch_entry(norm, v3_structure_hint_at_review="single_cycle")},
+    )
+    with pytest.raises(SystemExit, match="批次確認的對象是無切分爭點"):
+        load_review_state(p)
+
+
+def test_load_review_state_rejects_batch_with_ruling(tmp_path: Path):
+    """確認≠裁決：批次確認不得帶 ie_ruling——硬紅。"""
+    norm = "鎖附螺絲"
+    p = _write_state(
+        tmp_path / REVIEW_STATE_FILENAME,
+        {_sha(norm)[:8]: _batch_entry(norm, ie_ruling="single_cycle")},
+    )
+    with pytest.raises(SystemExit, match="確認≠裁決"):
+        load_review_state(p)
+
+
+def test_repo_batch_confirmed_answer_b_pinned():
+    """repo 釘值（D3-021 答案 B）：批次確認恰 16 筆、全數未轉正、逐筆配對到
+    無爭點草稿且 ie_review 帶批次來源。"""
+    state_path = DRAFT_DIR / REVIEW_STATE_FILENAME
+    if not state_path.exists():
+        pytest.skip("repo 無 review-state.json")
+    entries = load_review_state(state_path)
+    batch = {
+        k: e
+        for k, e in entries.items()
+        if e.get("segmentation_source") == REVIEW_SEGMENTATION_SOURCE_BATCH
+    }
+    assert len(batch) == 16, "D3-021 答案 B＝16 筆批次切分確認（增減都要有意識更新）"
+    drafts = {draft_sha8(d): d for d in _repo_drafts()}
+    for sha8, e in batch.items():
+        assert not e.get("promoted_to"), (
+            f"{sha8}：批次確認案例本輪不應轉正（全數卡實質內容守門）"
+        )
+        d = drafts.get(sha8)
+        assert d is not None, f"{sha8}：批次 entry 配不到草稿"
+        assert d["ie_review"]["segmentation_source"] == REVIEW_SEGMENTATION_SOURCE_BATCH
+        assert e.get("segmentation_confirmed_by") == "IEC141289"
+        assert e.get("segmentation_confirmed_date") == "2026-08-17"
+
+
 # ── 3. state 檔驗證（硬紅，不靜默）──────────────────────────────────────────
 
 
@@ -618,17 +717,21 @@ def test_repo_review_state_all_entries_fresh_and_applied():
 
 
 def test_repo_ie_rulings_present_after_round2_correction():
-    """IE 覆核結果落地檢查。首輪（2026-08-16 親答）：d045=single_cycle、39 筆
-    確認照 v3 結構預設、d026=multi_cycle_3。**第二輪更正**（2026-08-16 釐清並
-    獲 User 確認）：d026 這句本身＝1 列——首輪「3 列」是對整個 wi-template
+    """IE 覆核結果落地檢查。首輪（2026-08-16 親答）：「拿取排線並對準接頭」
+    =single_cycle、39 筆確認照 v3 結構預設、「雙手抓握主板組至機箱」
+    =multi_cycle_3。**第二輪更正**（2026-08-16 釐清並獲 User 確認）：
+    「雙手抓握主板組至機箱」這句本身＝1 列——首輪「3 列」是對整個 wi-template
     三步驟製程的回答（提問誤述範本結構為句子切分）。更正不是無痕覆寫：
-    先前裁決全文＋為何更正保留在 state entry 的 `ruling_history`。"""
+    先前裁決全文＋為何更正保留在 state entry 的 `ruling_history`。
+
+    配對用 sha8（跟句子不跟流水號）：第五輪重產後流水號位移（原 d026→d014、
+    原 d045→d026），id 前綴配對會抓錯句子。"""
     state_path = DRAFT_DIR / REVIEW_STATE_FILENAME
     if not state_path.exists():
         pytest.skip("repo 無 review-state.json（草稿可能已全數轉正）")
-    drafts = {d["id"]: d for d in _repo_drafts()}
-    d026 = next((d for i, d in drafts.items() if i.startswith("d026_")), None)
-    d045 = next((d for i, d in drafts.items() if i.startswith("d045_")), None)
+    drafts = {draft_sha8(d): d for d in _repo_drafts()}
+    d026 = drafts.get("1c27dc35")  # 「雙手抓握主板組至機箱」（首輪 d026）
+    d045 = drafts.get("35372a96")  # 「拿取排線並對準接頭」（首輪 d045）
     if d026 is None or d045 is None:
         pytest.skip("d026/d045 已不在草稿目錄（可能已轉正或重編號）")
 
@@ -665,9 +768,11 @@ def test_repo_ie_rulings_present_after_round2_correction():
         d for d in drafts.values()
         if (d.get("ie_review") or {}).get("segmentation_source") == "v3_structure_confirmed"
     ]
-    # 首輪 39 筆確認；D3-019 首批轉正把其中 21 筆（全部 v3_structure_confirmed）
-    # 搬進 tests/gold/wi_plans/ → 草稿目錄剩 18 筆帶確認。促成守恆的另一半
-    # （promoted entry ↔ 正式 gold 檔）在 test_gold_promotion.py。
+    # 首輪 39 筆確認；D3-019 首批轉正 21 筆＋D3-021 第二批 3 筆（全部
+    # v3_structure_confirmed）搬進 tests/gold/wi_plans/ → 草稿目錄剩 15 筆帶
+    # 確認。促成守恆的另一半（promoted entry ↔ 正式 gold 檔）在
+    # test_gold_promotion.py。D3-021 批次確認（no_contention_batch_confirmed）
+    # 是另一個來源，不進本守恆——批次數量釘在下方獨立斷言。
     state_entries = load_review_state(DRAFT_DIR / REVIEW_STATE_FILENAME)
     promoted_confirmed = sum(
         1
@@ -678,7 +783,7 @@ def test_repo_ie_rulings_present_after_round2_correction():
     assert len(confirmed) + promoted_confirmed == 39, (
         f"切分確認守恆破了：草稿 {len(confirmed)} ＋ 已轉正 {promoted_confirmed} ≠ 39"
     )
-    assert len(confirmed) == 18
+    assert len(confirmed) == 15
     for d in confirmed:
         assert d["v3_structure_hint"] != "ambiguous"
         assert d["ie_modified"] is False

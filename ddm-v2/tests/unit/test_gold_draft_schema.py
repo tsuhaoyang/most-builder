@@ -75,11 +75,13 @@ from gold_harvest import (  # noqa: E402
     P_DIRECTION_CAVEAT_NAMES,
     P_DIRECTION_CAVEATS,
     PLAN_ORIGIN_PREANNOTATION,
+    REVIEW_SEGMENTATION_SOURCE_BATCH,
     REVIEW_STATE_FILENAME,
     SEGMENTATION_CAVEATS,
     STRUCTURE_HINT_AMBIGUOUS,
     STRUCTURE_HINT_SINGLE,
     TYPING_CHANGED_CAVEAT,
+    X_CLEAN_CONTEXT_CAVEAT,
     ZERO_TMU_CAVEAT,
     acquire_without_place,
     draft_sha8,
@@ -87,6 +89,7 @@ from gold_harvest import (  # noqa: E402
     load_review_state,
     provenance_matches_normalized_text,  # R5 判定單一出處（同一支 normalize）
     review_block_from_entry,
+    x_clean_context_missing,
 )
 
 
@@ -321,6 +324,16 @@ async def test_draft_case(
         "（旗標無 0.0＝誤報；0.0 無旗標＝IE 看不到警示）"
     )
 
+    # 5i. D3-021：清潔情境旗標與判定同進同出（單一出處＝x_clean_context_missing）。
+    # IE 只裁了吹風情境的「清潔→x_blow_clean」：lexicon 配出映射而句面無
+    # 風槍/吹風脈絡 ⟺ 旗標——情境條件拆掉（無條件套用）或旗標拆掉都紅。
+    assert (X_CLEAN_CONTEXT_CAVEAT in caveats) == x_clean_context_missing(
+        data["plan"]["normalized_text"], data.get("synthetic_synonyms") or []
+    ), (
+        f"{fname}：{X_CLEAN_CONTEXT_CAVEAT} 旗標與情境判定不同進同出"
+        "（無脈絡命中未標旗＝無條件套用 IE 未裁的情境；有脈絡卻標旗＝誤報）"
+    )
+
     # 5d. D3-015：ie_review（IE 覆核狀態）的單一出處＝review-state.json——
     # 草稿上的區塊必須是對應 entry 的投影（review_block_from_entry 同一函式），
     # 不許草稿單方面長出/漂移覆核狀態（沒有 entry 的 ie_review 下一輪 --force
@@ -352,6 +365,18 @@ async def test_draft_case(
                 f"{fname}：v3_structure_confirmed 但草稿 hint={hint!r}——確認的對象不存在"
             )
             assert "ie_ruling" not in ir
+        elif seg_source == REVIEW_SEGMENTATION_SOURCE_BATCH:
+            # D3-021：批次確認限「無爭點」案例——與逐筆確認的區分不是裝飾：
+            # 批次沒逐筆核 v3 結構證據，前提（無切分旗標、無 hint）必須在
+            # 草稿上成立；帶爭點的草稿掛批次來源＝證據力造假
+            assert hint is None, (
+                f"{fname}：批次確認但草稿有 v3_structure_hint={hint!r}——"
+                "有結構爭點的案例必須走逐筆 v3_structure_confirmed/ie_ruling"
+            )
+            assert not any(c in caveats for c in SEGMENTATION_CAVEATS), (
+                f"{fname}：批次確認但草稿帶切分旗標——「無爭點」前提不成立"
+            )
+            assert "ie_ruling" not in ir, f"{fname}：確認≠裁決——批次確認不得帶 ie_ruling"
         elif seg_source is not None:
             assert seg_source == "ie_ruling"
             assert isinstance(ir.get("ie_ruling"), str)
@@ -437,7 +462,7 @@ def test_provenance_mutation_detected(drafts: list[tuple[Path, dict]]):
     )
 
 
-# ── 第四輪基線（2026-08-17：D3-019「拿取→g_pick_sel」登記後的既成事實）─────
+# ── 第五輪基線（2026-08-17：D3-021 第四輪 IE 答案 6 條同義詞登記後的既成事實）─
 #
 # 為什麼要釘：同義詞登記後，草稿的 slot 命中（synthetic_synonyms）與 cycle
 # 完成度是「已達成的管線能力」——下一輪 harvest 若因 DB 同義詞被誤刪/改壞而
@@ -445,77 +470,74 @@ def test_provenance_mutation_detected(drafts: list[tuple[Path, dict]]):
 # 必須紅燈，不准靜默。基線是**既成事實的記錄**，更新它必須是有意識的編輯
 # （新一輪 harvest 後 coverage 只增不減：superset 斷言下增長自動綠）。
 #
-# 第四輪記錄（前值：第三輪 complete＝27、slot 命中 37 筆；第二輪 complete＝0）：
-# - 「拿取」→ g_pick_sel（G，priority 0；2026-08-16→17 IE 第三輪答案，D3-019）
-#   ——詞典 15→16 條，slot 命中 37→48 筆。
-# - 判型：typed 29→33 筆（GM 13→17＋CM 16），complete 帶 TMU 27→31 筆——
-#   其中 9 筆 TMU=0.0 不變（距離未述；IE 已裁 distance_unstated，草稿記
-#   expected_incomplete_reason），complete≠可信 TMU。
+# 第五輪記錄（前值：第四輪 complete＝31、slot 命中 48 筆；第三輪 27／37；
+# 第二輪 complete＝0）：
+# - D3-021 登記 6 條（確認→i_confirm、鎖附→x_screw_fix、清潔→x_blow_clean、
+#   組至/組於/插入→p_asm_single）——詞典 16→22 條。
+# - 草稿集換血：D3-019 首批轉正 21 筆移出草稿目錄、21 筆新候選補位（60 維持）；
+#   續留 39 筆中 typed 12→19（組至/組於/插入 解鎖 7 筆 GM）、新進 21 筆中
+#   typed 2（d052 撕除／d058 按壓）。全集 typed 21、complete 帶 TMU 19；
+#   本輪轉正 3 筆（g27–g29）後草稿集 complete=16。
+# - TMU=0.0 共 3 筆：72dc0511／51518399（IE 已裁 distance_unstated）＋
+#   **7f085e02（撕除螢幕保護膜，新出現——未裁，不自動套「資訊不足」，
+#   本輪不轉正，交 IE 下輪）**。
+# - 清潔情境守門（D3-021）：「清潔」X 命中 2 筆（51077fd1／d0350279）句面
+#   皆有風槍脈絡 → `x_clean_context_unverified` 旗標 0 筆（語料與 IE 裁決
+#   一致的誠實記錄）。
 # COMPLETE_TMU_SHA8_BASELINE 是**等值釘**：complete 集合任何變動（增或減）
 # 都必須有意識地更新本常數——IE 覆核工作量的數字不准漂移。已轉正（不在
 # 草稿集）的 sha8 保留在基線中無害（present 過濾）。
 SYN_COVERAGE_SHA8_BASELINE: dict[str, frozenset[str]] = {
     sha8: frozenset(pairs)
     for sha8, pairs in {
-        "0423b4e8": ["G:g_pick_sel", "P:p_hold"],
         "0461f75d": ["G:g_pick_sel"],
-        "0acd56df": ["G:g_touch", "M:m_press"],
-        "1c27dc35": ["G:g_grasp"],
+        "130bb1ad": ["X:x_screw_fix"],
+        "1c27dc35": ["G:g_grasp", "P:p_asm_single"],
         "1dd7c1d5": ["M:m_press"],
         "28f9ed7e": ["G:g_pick_sel"],
-        "30d9b858": ["G:g_grasp", "P:p_hold"],
-        "314f0644": ["G:g_grasp", "P:p_place_none", "P:p_place_single"],
+        "2e7b2e5a": ["M:m_press"],
+        "2f0cb396": ["I:i_confirm"],
+        "323b04c1": ["X:x_screw_fix"],
         "35372a96": ["G:g_pick_sel"],
+        "3791550c": ["I:i_confirm", "X:x_screw_fix"],
         "37fbd2a6": ["P:p_place_none", "P:p_place_single"],
-        "3ba13f82": ["G:g_grasp", "P:p_hold"],
-        "3eab7c3e": ["G:g_grasp", "M:m_btn"],
-        "4765e5f2": ["G:g_grasp", "M:m_teartape"],
-        "51077fd1": ["G:g_pick_sel"],
+        "51077fd1": ["G:g_pick_sel", "X:x_blow_clean"],
         "51518399": ["M:m_attach"],
         "5cb719bb": ["G:g_pick_sel", "M:m_remove", "P:p_place_none", "P:p_place_single"],
-        "5cd079e8": ["G:g_grasp", "P:p_place_none", "P:p_place_single"],
-        "6017ab5e": ["G:g_grasp", "P:p_place_none", "P:p_place_single"],
-        "631c3ece": ["G:g_grasp", "P:p_place_none", "P:p_place_single"],
-        "650ee42f": ["G:g_pick_sel", "P:p_hold"],
+        "60223e3d": ["P:p_asm_single"],
         "6678c378": ["G:g_grasp"],
-        "6ae5a84f": ["G:g_touch", "M:m_pull"],
         "6be614c5": ["M:m_press"],
-        "6fa45cdb": ["M:m_press"],
+        "6fa45cdb": ["I:i_confirm", "M:m_press"],
         "72dc0511": ["G:g_pick_sel", "M:m_remove"],
-        "7c6eb8af": ["G:g_pick_sel"],
-        "7e40706c": ["G:g_touch", "M:m_push"],
-        "813bca06": ["G:g_grasp", "P:p_place_none", "P:p_place_single"],
-        "9c1a987f": ["G:g_pick_sel"],
-        "9f3d6515": ["G:g_touch", "M:m_press"],
-        "a00f4953": ["G:g_touch", "M:m_push"],
-        "a062c017": ["G:g_pick_sel", "P:p_place_none", "P:p_place_single"],
-        "aa72871a": ["G:g_grasp", "P:p_hold"],
+        "7c6eb8af": ["G:g_pick_sel", "P:p_asm_single"],
+        "7f085e02": ["M:m_teartape"],
+        "7ff8b879": ["I:i_confirm", "X:x_screw_fix"],
+        "86a61399": ["G:g_pick_sel"],
+        "901d1623": ["P:p_place_none", "P:p_place_single"],
+        "9b7bc11d": ["P:p_place_none", "P:p_place_single"],
+        "9c1a987f": ["G:g_pick_sel", "P:p_asm_single"],
         "ac155900": ["G:g_pick_sel"],
-        "af172fd9": ["G:g_pick_sel"],
+        "af172fd9": ["G:g_pick_sel", "P:p_asm_single"],
         "b2618d31": ["G:g_pick_sel"],
-        "b49a90ee": ["G:g_touch"],
-        "b6ee694d": ["G:g_pick_sel"],
-        "c6add069": ["G:g_grasp", "P:p_hold"],
-        "d0350279": ["G:g_pick_sel", "P:p_place_none", "P:p_place_single"],
-        "d58a53a7": ["G:g_grasp", "P:p_toss"],
-        "d9190952": ["G:g_touch", "M:m_pull"],
-        "e55d16c7": ["G:g_pick_sel", "M:m_attach"],
-        "e945e29e": ["G:g_pick_sel"],
-        "f721bbfc": ["G:g_grasp", "M:m_remove"],
-        "f8b21a01": ["G:g_grasp", "M:m_btn"],
-        "fe1f3a90": ["G:g_pick_sel"],
+        "b49a90ee": ["G:g_touch", "I:i_confirm"],
+        "b6ee694d": ["G:g_pick_sel", "P:p_asm_single"],
+        "bc473698": ["X:x_screw_fix"],
+        "d0350279": ["G:g_pick_sel", "P:p_place_none", "P:p_place_single", "X:x_blow_clean"],
+        "df2af257": ["G:g_pick_sel"],
+        "e0c7f95c": ["P:p_place_none", "P:p_place_single"],
+        "e55c3e1c": ["P:p_place_none", "P:p_place_single"],
+        "e945e29e": ["G:g_pick_sel", "P:p_asm_single"],
+        "ee5c168e": ["X:x_screw_fix"],
+        "fe1f3a90": ["G:g_pick_sel", "P:p_asm_single"],
         "fe5391c6": ["G:g_pick_sel", "P:p_place_none", "P:p_place_single"],
     }.items()
 }
-# 第四輪 complete＝31 筆（等值釘；17 GM＋16 CM 中 core 參數有值者；
-# 9 筆 TMU=0.0 也在列——「complete」是結構完成度，不是 TMU 可信度）。
+# 第五輪 complete＝19 筆；本輪轉正 3 筆（g27–g29）移出後草稿集等值釘＝16
+# （TMU=0.0 的 3 筆也在列——「complete」是結構完成度，不是 TMU 可信度）。
 COMPLETE_TMU_SHA8_BASELINE: frozenset[str] = frozenset({
-    "0423b4e8", "0acd56df", "1dd7c1d5", "30d9b858", "314f0644", "3ba13f82",
-    "3eab7c3e", "4765e5f2", "51518399", "5cd079e8", "6017ab5e", "631c3ece",
-    "650ee42f", "6ae5a84f", "6be614c5", "6fa45cdb", "72dc0511", "7e40706c",
-    "813bca06", "9f3d6515", "a00f4953", "a062c017", "aa72871a", "c6add069",
-    "d0350279", "d58a53a7", "d9190952", "e55d16c7", "f721bbfc", "f8b21a01",
-    "fe5391c6",
+    "1c27dc35", "1dd7c1d5", "2e7b2e5a", "51518399", "6be614c5", "6fa45cdb",
+    "72dc0511", "7c6eb8af", "7f085e02", "9c1a987f", "af172fd9", "b6ee694d",
+    "d0350279", "e945e29e", "fe1f3a90", "fe5391c6",
 })
 
 

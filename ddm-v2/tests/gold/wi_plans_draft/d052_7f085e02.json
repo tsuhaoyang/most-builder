@@ -1,36 +1,36 @@
 {
-  "id": "d008_72dc0511",
-  "source_text": "從料架上拿取假DIMM，去除其包裝袋",
+  "id": "d052_7f085e02",
+  "source_text": "撕除螢幕保護膜",
   "notes": "預標註草稿（rule pipeline 自動產生；scripts/gold_harvest.py）。非 gold——IE 覆核核准前不得移入 tests/gold/wi_plans/。",
   "review_status": "pending_ie",
   "approved_by": null,
   "plan_origin": "rule_based_v1_preannotation",
-  "ie_modified": false,
+  "ie_modified": null,
   "split": null,
   "split_groups": [
-    "module:d9203ed2-8138-4d2a-8ab6-480ff29daafb"
+    "worksheet:55555555-5555-5555-5555-555555555555"
   ],
-  "split_component": "module:ac3ce9bb-a878-434e-88bf-a2a4fd9e480d",
+  "split_component": "worksheet:55555555-5555-5555-5555-555555555555",
   "source_provenance": [
     {
-      "table": "motion_modules",
-      "id": "d9203ed2-8138-4d2a-8ab6-480ff29daafb",
-      "detail": "name_zh (category=wi-template)",
-      "group_key": "module:d9203ed2-8138-4d2a-8ab6-480ff29daafb",
-      "db_timestamp": "2026-08-04T06:59:46.574898+00:00",
-      "raw_text": "從料架上拿取假DIMM，去除其包裝袋"
+      "table": "wi_rows",
+      "id": "e58b4ad3-269d-4421-a480-883645e52489",
+      "detail": "sub_activity",
+      "group_key": "worksheet:55555555-5555-5555-5555-555555555555",
+      "db_timestamp": "2026-08-11T14:26:06.268970+00:00",
+      "raw_text": "撕除螢幕保護膜"
     }
   ],
   "challenge_tags": {
     "zh_simplified_variant": false,
-    "fullwidth_chars": true,
+    "fullwidth_chars": false,
     "typo": "unknown",
     "homophone": "unknown",
-    "mixed_zh_en": true,
+    "mixed_zh_en": false,
     "english_only": false,
     "inverted_word_order": "unknown",
     "colloquial": "unknown",
-    "multi_action": true,
+    "multi_action": false,
     "quantity": false,
     "tool_handling": false,
     "simo_both_hands": false,
@@ -46,26 +46,11 @@
   ],
   "preannotation_caveat": [
     "typing_changed_by_verb_lexicon",
-    "likely_multi_action_undercounted",
     "zero_tmu_distance_unstated"
   ],
   "typing_change": {
     "noun_only_seq": null,
     "lexicon_seq": "CM"
-  },
-  "v3_structure_hint": "multi_cycle_2",
-  "v3_structure_evidence": {
-    "note": "hint 是證據不是判決：來源＝IE 驗證過的 v3 生產資料的結構（module/cycle 邊界）；覆核表預設依 v3 結構、IE 可推翻；本欄位絕不寫進 expected.*",
-    "sources": [
-      {
-        "table": "motion_modules",
-        "id": "d9203ed2-8138-4d2a-8ab6-480ff29daafb",
-        "detail": "name_zh (category=wi-template)",
-        "cycles": 2,
-        "v3_migrated": true,
-        "basis": "module 名稱句對應發布版 v1 共 2 列＝IE 把這段話切成 2 個 cycle"
-      }
-    ]
   },
   "preannotation": {
     "pipeline": "rule_based_v1 -> plan_from_rule_result -> SlotLinker(no-db) -> compile_plan -> engine_gate(most_engine) -> compute_routing(auto=off)",
@@ -77,8 +62,8 @@
   },
   "plan": {
     "schema_version": "wi-plan-v1",
-    "source_text": "從料架上拿取假DIMM，去除其包裝袋",
-    "normalized_text": "從料架上拿取假dimm,去除其包裝袋",
+    "source_text": "撕除螢幕保護膜",
+    "normalized_text": "撕除螢幕保護膜",
     "language": "zh",
     "source_ref": {
       "kind": "interactive",
@@ -95,8 +80,8 @@
         "evidence": [
           {
             "start": 0,
-            "end": 18,
-            "text": "從料架上拿取假dimm,去除其包裝袋"
+            "end": 7,
+            "text": "撕除螢幕保護膜"
           }
         ],
         "notes": "rule_based_v1"
@@ -107,15 +92,9 @@
   },
   "synthetic_synonyms": [
     {
-      "parameter": "G",
-      "option_code": "g_pick_sel",
-      "synonym_norm": "拿取",
-      "priority": 0
-    },
-    {
       "parameter": "M",
-      "option_code": "m_remove",
-      "synonym_norm": "去除",
+      "option_code": "m_teartape",
+      "synonym_norm": "撕除",
       "priority": 0
     }
   ],
@@ -124,7 +103,7 @@
       "action_id": "a1",
       "complete": true,
       "seq": "CM",
-      "m_verb": "m_remove",
+      "m_verb": "m_teartape",
       "distance_cm": 0.0,
       "frequency": 1.0,
       "total_tmu": 0.0,
@@ -135,16 +114,5 @@
   "expected": {
     "action_count": 1,
     "routing_status": "review"
-  },
-  "ie_review": {
-    "segmentation_confirmed_by": "IEC141289",
-    "segmentation_confirmed_date": "2026-08-16",
-    "segmentation_source": "v3_structure_confirmed",
-    "typing_confirmed_by": "IEC141289",
-    "typing_confirmed_date": "2026-08-17",
-    "zero_tmu_ruling": "distance_unstated",
-    "zero_tmu_ruled_by": "IEC141289",
-    "zero_tmu_ruled_date": "2026-08-17"
-  },
-  "expected_incomplete_reason": "distance_unstated"
+  }
 }
