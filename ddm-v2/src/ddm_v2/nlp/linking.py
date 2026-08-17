@@ -2,6 +2,17 @@
 
 L0 motion_templates（可選 session）、L1 synonym exact、L2 pg_trgm（可選）。
 L3 embedding 本階段不實作（provider 無表則跳過）。
+
+D3-024（IE 裁決落地）：CM 系 action（controlled_move/process/inspect）的
+X/I 面命中掛進對應格（`_CM_SEQ_ACTION_TYPES`／`_CM_EXTRA_SPECS` 節）；
+「清潔→x_blow_clean」情境守門的判定單一出處也在本模組
+（`x_clean_context_missing`——harvest 旗標與掛值守門共用）。
+
+D3-024 複審（H1/H2）：X 掛值先查 option 的 input_mode——seconds 模式且無
+秒數來源的候選**不落 chosen**（cycle X 格維持空＝X0），掛 `x_seconds_required`
+旗標、候選仍留 top_k（`_apply_x_input_mode_rule`）；I 格的「視線範圍未明→
+取 NORMAL」假設守門解綁 action_type——任何 I 格 chosen 且該 action 無
+inspect_kind role 都掛 `i_range_assumed`（`_apply_i_range_rule`）。
 """
 from __future__ import annotations
 
@@ -34,6 +45,178 @@ _LINK_SPEC: dict[str, list[tuple[str, str, tuple[str, ...]]]] = {
     "inspect": [("I", "i5.i_code", ("inspect_kind", "object"))],
     "release_return": [("P", "p5.p_base_code", ("object", "destination", "tool"))],
 }
+
+# ── D3-024：CM 系 action 的 X/I 面命中掛進對應格 ────────────────────────────
+#
+# CM 序列＝A B G M X I A（`docs/core-logic/minimost-sequence-model-core-logic-
+# spec.md` §2）——同一 CM cycle 本來就同時容納 M、X、I 三格；compile 端
+# （most_compiler/compile.py）也一直讀全部三格。先前 linker 只掛各 action_type
+# 的 core 格（controlled_move→M、process→X、inspect→I），導致 IE 已登記的
+# X/I 動詞面（確認→i_confirm、鎖附→x_screw_fix、清潔→x_blow_clean，D3-021）
+# 在 controlled_move 句上閒置。本節與 G/M/P 同模式補掛：**面命中才掛**
+# （lexicon 對 query 有命中才追加 spec——與 B 的條件式追加同構；無命中不加
+# no_candidate 噪音）。GM 系 action（acquire/move_place/release_return）不掛
+# ——GM 序列沒有 X/I 格。
+#
+# 完整性語意不變：completeness 判準仍是 CORE_PARAM_BY_ACTION 的 core 格
+# （controlled_move 缺 M 仍 missing_core_m）——「X 承載做工時 M 可為零」
+# 是否成立是 IE 域判準，未裁前不放寬（D3-024 紅線；待裁題列
+# docs/llm/gold-review/README.md 快答清單）。
+_CM_SEQ_ACTION_TYPES = frozenset({"controlled_move", "process", "inspect"})
+_CM_EXTRA_SPECS: tuple[tuple[str, str, tuple[str, ...]], ...] = (
+    ("X", "x4.x_code", ("process_kind", "object", "tool")),
+    ("I", "i5.i_code", ("inspect_kind", "object")),
+)
+
+# ── 「清潔」情境守門（IE 裁決 D3-021；D3-024 起 linker 掛值也適用）──────────
+#
+# 「清潔→x_blow_clean」是**情境條件裁決**：IE 只裁了吹風情境（語料全是
+# 風槍/吹風），同義詞表本身是全域映射、不帶情境。判定的**單一出處在這裡**
+# （scripts/gold_harvest.py 的旗標、test_gold_draft_schema 5i 守門、linker
+# 掛值全部 import 本模組——不允許第二份判定）。掛值語意（D3-024）：旗標
+# 情境下**掛值照掛但 needs_review**（review_reason=x_clean_context_unverified）
+# ——值不硬套成定案，交 IE；轉正端 fail-closed 不變（gold_harvest
+# caveat_resolution_blockers）。
+X_CLEAN_SYNONYM_NORM = "清潔"
+X_CLEAN_OPTION_CODE = "x_blow_clean"
+X_CLEAN_CONTEXT_TERMS = ("風槍", "吹風")
+X_CLEAN_REVIEW_REASON = "x_clean_context_unverified"
+
+
+def x_clean_context_missing(norm: str, used_synonyms: list[dict[str, Any]]) -> bool:
+    """「清潔→x_blow_clean」命中但句面無吹風脈絡？（D3-021 單一出處：
+    harvest 的旗標、schema 守門與 linker 掛值守門共用本函式。）
+
+    判定對象＝實際配出的 lexicon 條目（harvest 端＝used_lexicon_entries 輸出；
+    linker 端＝該 X 格 query 的 match_all 命中）——只有 lexicon 真的配出這條
+    映射才有「情境是否成立」的問題；脈絡詞查 normalized_text（整句，lexicon
+    配對的同一文本）。"""
+    hit = any(
+        s.get("parameter") == "X"
+        and s.get("synonym_norm") == X_CLEAN_SYNONYM_NORM
+        and s.get("option_code") == X_CLEAN_OPTION_CODE
+        for s in used_synonyms
+    )
+    return hit and not any(t in norm for t in X_CLEAN_CONTEXT_TERMS)
+
+
+def _apply_x_clean_context_rule(
+    plan_norm: str,
+    query: str,
+    lexicon: list[LexEntry],
+    chosen: OptionCandidate | None,
+    needs_review: bool,
+    review_reason: str | None,
+) -> tuple[bool, str | None]:
+    """X 格掛值的清潔情境守門：chosen 是 x_blow_clean 且經「清潔」面配出、
+    句面（整句）無風槍/吹風脈絡 → 掛值照掛、標 needs_review（不硬套 IE 未裁
+    的情境，也不丟掉候選——丟掉＝linker 越權裁決建法）。"""
+    if chosen is None or chosen.option_code != X_CLEAN_OPTION_CODE:
+        return needs_review, review_reason
+    x_pool = [e for e in lexicon if e.parameter == "X"]
+    used = [
+        {"parameter": e.parameter, "option_code": e.option_code, "synonym_norm": e.norm}
+        for _start, _end, e in match_all(query, x_pool)
+    ]
+    if x_clean_context_missing(plan_norm, used):
+        return True, review_reason or X_CLEAN_REVIEW_REASON
+    return needs_review, review_reason
+
+
+# ── X input_mode 守門（D3-024 複審 H1）─────────────────────────────────────
+#
+# X option 分三種 input_mode（rule_x_options.mode）：zero（X0）、fixed
+# （fixed_seconds 有值＝真 TMU 可算，如 x_screw_fix）、seconds（製程時間由
+# IE 現場量測輸入）。seconds 模式的候選若無秒數來源就落 chosen，compile 會
+# 產出 x_seconds=0 的 complete cycle → 引擎硬拒 X_SECONDS_REQUIRED →
+# routing=invalid——合法草稿（如「按壓把手並清潔卡槽」，M 核心格可填）被
+# 整筆判死。修法＝**不落 chosen**（cycle X 格維持空＝X0，與掛值前行為相同）、
+# 候選仍留 top_k、掛 `x_seconds_required` 旗標——資訊保留、需求浮上、不硬拒；
+# 秒數模式的製程時間本來就要 IE 量測給值，不落 chosen 是誠實而非丟資訊。
+#
+# mode 來源：session＋rule_set_id 可用（生產路徑）→ 讀該 rule set 的
+# rule_x_options（runtime 值權威＝DB）；否則（unit／gold_eval 重放）→ seed
+# 權威 build_from_seed_v2（這些路徑的 engine gate 用的就是同一份 seed 資料）。
+X_SECONDS_REVIEW_REASON = "x_seconds_required"
+# 秒數來源判準＝compile 讀 x_seconds 的同一形狀（most_compiler/compile.py：
+# process_kind role 帶秒值）——linker 不另創秒數語意（compile 端是唯一消費者）
+_X_SECONDS_UNITS = frozenset({"s", "sec", "秒"})
+_SEED_X_INPUT_MODES: dict[str, str] | None = None
+
+
+def _seed_x_input_modes() -> dict[str, str]:
+    global _SEED_X_INPUT_MODES
+    if _SEED_X_INPUT_MODES is None:
+        from ddm_v2.most_engine.providers import build_from_seed_v2
+
+        _SEED_X_INPUT_MODES = {
+            code: mode for code, (mode, _fsec) in build_from_seed_v2().x_options.items()
+        }
+    return _SEED_X_INPUT_MODES
+
+
+async def _load_x_input_modes(
+    *, session: AsyncSession | None, rule_set_id: Any | None
+) -> dict[str, str]:
+    """X option code → input_mode。DB 路徑不吞錯（rule_x_options 是必在表，
+    查詢失敗＝環境壞了，讓例外浮上——與 trgm 的 extension 可缺不同）。"""
+    if session is not None and rule_set_id is not None:
+        from ddm_v2.models.v2.rule_set_tables import RuleXOption
+
+        rows = (
+            await session.execute(
+                select(RuleXOption.code, RuleXOption.mode).where(
+                    RuleXOption.rule_set_id == rule_set_id
+                )
+            )
+        ).all()
+        return {str(code): str(mode) for code, mode in rows}
+    return _seed_x_input_modes()
+
+
+def _x_seconds_source_present(action: PlannedAction) -> bool:
+    pk = action.roles.get("process_kind")
+    return bool(pk is not None and pk.unit in _X_SECONDS_UNITS and pk.value is not None)
+
+
+def _apply_x_input_mode_rule(
+    action: PlannedAction,
+    chosen: OptionCandidate | None,
+    x_modes: dict[str, str],
+    needs_review: bool,
+    review_reason: str | None,
+) -> tuple[OptionCandidate | None, bool, str | None]:
+    """X 掛值的 input_mode 守門（H1）：seconds 模式且無秒數來源 → 不落
+    chosen（X0）＋`x_seconds_required`；fixed/zero（真值可算）與「seconds
+    但句面帶秒數」（compile 會填 x_seconds）照掛。不在 mode 表的 code 原樣
+    通過——compiler allow-list 是未知 code 的守門，不在此重複。"""
+    if chosen is None:
+        return chosen, needs_review, review_reason
+    if x_modes.get(chosen.option_code) != "seconds":
+        return chosen, needs_review, review_reason
+    if _x_seconds_source_present(action):
+        return chosen, needs_review, review_reason
+    return None, True, review_reason or X_SECONDS_REVIEW_REASON
+
+
+def _apply_i_range_rule(
+    action: PlannedAction,
+    chosen: OptionCandidate | None,
+    needs_review: bool,
+    review_reason: str | None,
+) -> tuple[bool, str | None]:
+    """I 格掛值的視線範圍守門（D3-024 複審 H2）：「視線範圍未明→取 NORMAL
+    變體」是假設（i_confirm 6 TMU vs i_confirm_out 16 TMU），原先只綁
+    action_type=="inspect"——D3-024 起 controlled_move/process 也掛 I 格，
+    同一假設繞過守門。解綁：任何 I 格 chosen 且該 action 無 inspect_kind
+    role → `i_range_assumed`（與 P 方向／X 清潔守門同層擺放）。"""
+    if chosen is None:
+        return needs_review, review_reason
+    role = action.roles.get("inspect_kind")
+    if role is not None and role.text:
+        return needs_review, review_reason
+    return True, review_reason or "i_range_assumed"
+
 
 _B_BODY_HINTS = ("蹲", "彎", "起身", "彎腰", "蹲下", "站起")
 _P_ADDON_HINTS = (("插入", "a_insert"), ("卡合", "a_snap"), ("卡入", "a_snap"), ("對準", "a_align"))
@@ -380,6 +563,8 @@ class SlotLinker:
         templates: list[dict] | None = None,
     ) -> list[SlotCandidateSet]:
         results: list[SlotCandidateSet] = []
+        # X input_mode 表（H1）：整次 link 載一次（首個 X 格才載，無 X 不查）
+        x_modes: dict[str, str] | None = None
 
         # L0 motion_templates
         tmpl_list = templates
@@ -400,6 +585,19 @@ class SlotLinker:
             blob = _query_text(action, ("object", "tool", "destination"), plan)
             if any(h in blob for h in _B_BODY_HINTS):
                 specs.append(("B", "b1.b_code", ("object", "tool")))
+            # X/I：CM 系 action 面命中才掛（D3-024；GM 序列無 X/I 格不掛）
+            if action.action_type in _CM_SEQ_ACTION_TYPES:
+                present = {p for p, _f, _r in specs}
+                for extra in _CM_EXTRA_SPECS:
+                    param, _field, extra_roles = extra
+                    if param in present:
+                        continue  # core 格已在 _LINK_SPEC（process→X、inspect→I）
+                    if _match_pool(
+                        _query_text(action, extra_roles, plan),
+                        self._lexicon,
+                        parameter=param,
+                    ):
+                        specs.append(extra)
 
             for parameter, field, role_keys in specs:
                 q = _query_text(action, role_keys, plan)
@@ -431,6 +629,24 @@ class SlotLinker:
                     chosen, top_k, needs, reason = _apply_p_direction_rule(
                         q, self._lexicon, chosen, top_k, needs, reason
                     )
+                if parameter == "X":
+                    # input_mode 守門（H1）先於清潔守門：先定「掛不掛」，
+                    # 情境旗標只對真的掛上的值有意義（chosen 空則 no-op）
+                    if x_modes is None:
+                        x_modes = await _load_x_input_modes(
+                            session=session, rule_set_id=rule_set_id
+                        )
+                    chosen, needs, reason = _apply_x_input_mode_rule(
+                        action, chosen, x_modes, needs, reason
+                    )
+                    # 清潔情境守門（D3-021/D3-024）：非吹風脈絡的 x_blow_clean
+                    # 掛值照掛但 needs_review（不硬套 IE 未裁情境）
+                    needs, reason = _apply_x_clean_context_rule(
+                        plan.normalized_text, q, self._lexicon, chosen, needs, reason
+                    )
+                if parameter == "I":
+                    # 視線範圍守門（H2）：I 掛值＝NORMAL 假設，不分 action_type
+                    needs, reason = _apply_i_range_rule(action, chosen, needs, reason)
                 results.append(
                     SlotCandidateSet(
                         action_id=action.action_id,
@@ -473,20 +689,6 @@ class SlotLinker:
                                 review_reason=None,
                             )
                         )
-                        break
-
-            # inspect 視線範圍未明 → NORMAL 變體＋i_range_assumed（若有 i_confirm 類命中）
-            if action.action_type == "inspect":
-                for sc in results:
-                    if (
-                        sc.action_id == action.action_id
-                        and sc.parameter == "I"
-                        and sc.chosen
-                        and sc.review_reason is None
-                    ):
-                        if "inspect_kind" not in action.roles or not action.roles["inspect_kind"].text:
-                            sc.needs_review = True
-                            sc.review_reason = "i_range_assumed"
                         break
 
         return results

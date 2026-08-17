@@ -48,6 +48,16 @@
      定位錨點請用 `data-testid`／`aria-label` 這類**不隨版面文案漂移**的語意錨點。
    - 對應的正向要求：**新增或修改測試時附 mutation 證據**（改壞 → 紅，改回 → 綠）。
      「沒看過它紅過的守門不算守門」——參見 `architecture/v2-authoritative-model-guide.md` §6。
+8. **動到 linker 掛值（`nlp/linking.py` 的 chosen／掛格語意）的改動，驗證必須含
+   「核心格可填＋新格面命中」的合成句跑完整 engine_gate**（linker→compile→engine→
+   routing，斷言 routing 不得 invalid、該掛值的旗標在）。理由：語料對「complete=True
+   才觸發」的失效**結構性失明**——D3-024 複審 H1 實證：語料 X/I 句全卡
+   `missing_core_m`（incomplete 根本不進 engine gate），於是「seconds 模式 X 掛進
+   chosen → 引擎 `X_SECONDS_REQUIRED` 硬拒 → 合法草稿整筆 invalid」這條路徑在
+   56 筆草稿＋38 筆 gold 上**零覆蓋**，unit／golden／eval 全綠照樣翻車
+   （「按壓把手並清潔卡槽」實測 invalid）。現行合成句閘門＝
+   `tests/unit/test_linking.py` 的 `test_engine_gate_*` 三條（fixed X 真 TMU／
+   seconds X 不 invalid＋X0＋旗標／I 掛值旗標擋 auto）。
 
 ## Feature → 驗證測試點 → script
 

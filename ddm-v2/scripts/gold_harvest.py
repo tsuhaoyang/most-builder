@@ -111,7 +111,14 @@ from ddm_v2.nlp.linking import (  # noqa: E402
     P_VARIANT_SURFACE,
     SlotLinker,
     classify_p_destination,
+    x_clean_context_missing,
 )
+
+# D3-024：清潔情境守門的單一出處搬進 nlp.linking——常數原名再匯出
+# （tests 與既有引用不變；判定函式 x_clean_context_missing 同上方 import）
+from ddm_v2.nlp.linking import X_CLEAN_CONTEXT_TERMS as X_CLEAN_CONTEXT_TERMS  # noqa: E402
+from ddm_v2.nlp.linking import X_CLEAN_OPTION_CODE as X_CLEAN_OPTION_CODE  # noqa: E402
+from ddm_v2.nlp.linking import X_CLEAN_SYNONYM_NORM as X_CLEAN_SYNONYM_NORM  # noqa: E402
 from ddm_v2.nlp.normalization import normalize  # noqa: E402
 from ddm_v2.nlp.planner_eval import (  # noqa: E402
     RULE_PLANNER_NAME,
@@ -224,8 +231,9 @@ P_DIRECTION_CAVEATS = {
 P_DIRECTION_CAVEAT_NAMES = frozenset(P_DIRECTION_CAVEATS.values())
 
 # D3-018 M1：TMU=0.0 不是真值——「complete」是結構完成度不是 TMU 可信度。
-# 引擎口徑下距離未述＝0cm（M 階梯 0→0）且 linker 只掛 core 參數（CM 的 G、
-# GM 的 G 等伴隨 slot 不填），會產出 complete 且 TMU=0.0 的 cycle。轉正空殼
+# 引擎口徑下距離未述＝0cm（M 階梯 0→0）且 G/B 伴隨 slot 不由 linker 掛值
+# （CM 的 G、GM 的 G 等不填；X/I 自 D3-024 起面命中掛值，但不改本旗標的
+# 成立條件），會產出 complete 且 TMU=0.0 的 cycle。轉正空殼
 # 守門（tests/unit/test_gold_draft_isolation.py approved_case_defects）要求
 # total_tmu > 0 或顯式 expected_incomplete_reason——原樣轉正會被擋。
 # 旗標逐筆掛草稿＋覆核表逐筆提問，不只摘要一句話。
@@ -233,12 +241,12 @@ ZERO_TMU_CAVEAT = "zero_tmu_distance_unstated"
 
 # D3-021：「清潔」→ x_blow_clean 是**情境條件裁決**——IE 只裁了吹風情境
 # （語料 4 筆全是風槍/吹風），不是無條件映射。同義詞表本身不帶情境（DB 映射
-# 是全域的），情境守門在這裡（仿 p_direction 情境規則模式）：句面無風槍/吹風
-# 脈絡而 lexicon 仍配出「清潔→x_blow_clean」時掛旗標交 IE，**不無條件套用**
-# ——該旗標無確認機制（IE 未裁非吹風情境），轉正 fail-closed 擋下。
-X_CLEAN_SYNONYM_NORM = "清潔"
-X_CLEAN_OPTION_CODE = "x_blow_clean"
-X_CLEAN_CONTEXT_TERMS = ("風槍", "吹風")
+# 是全域的），情境守門仿 p_direction 情境規則模式：句面無風槍/吹風脈絡而
+# lexicon 仍配出「清潔→x_blow_clean」時掛旗標交 IE，**不無條件套用**——該
+# 旗標無確認機制（IE 未裁非吹風情境），轉正 fail-closed 擋下。
+# D3-024 起判定的單一出處搬到 `src/ddm_v2/nlp/linking.py`（linker 掛 X 格時
+# 同一守門：掛值照掛但 needs_review）——本檔 import 共用，常數與函式名保留
+# 原名再匯出（旗標／schema 5i／轉正擋的語意不變）。
 X_CLEAN_CONTEXT_CAVEAT = "x_clean_context_unverified"
 
 
@@ -250,21 +258,6 @@ def has_zero_tmu_complete_cycle(expected_cycles: list[dict[str, Any]]) -> bool:
         ec.get("complete") and ec.get("total_tmu") == 0 for ec in expected_cycles
     )
 
-
-def x_clean_context_missing(norm: str, used_synonyms: list[dict[str, Any]]) -> bool:
-    """「清潔→x_blow_clean」命中但句面無吹風脈絡？（D3-021 單一出處：
-    preannotate 的旗標與 schema 守門（test_gold_draft_schema）共用本函式。）
-
-    判定對象＝該草稿實際用到的 lexicon 條目（used_lexicon_entries 的輸出）——
-    只有 lexicon 真的配出這條映射才有「情境是否成立」的問題；脈絡詞查
-    normalized_text（lexicon 配對的同一文本）。"""
-    hit = any(
-        s.get("parameter") == "X"
-        and s.get("synonym_norm") == X_CLEAN_SYNONYM_NORM
-        and s.get("option_code") == X_CLEAN_OPTION_CODE
-        for s in used_synonyms
-    )
-    return hit and not any(t in norm for t in X_CLEAN_CONTEXT_TERMS)
 
 try:
     import opencc as _opencc_mod
@@ -1191,7 +1184,8 @@ _CAVEAT_ZH = {
     ),
     ZERO_TMU_CAVEAT: (
         "此句未述距離，**TMU=0.0 非真值**（引擎口徑：距離未述＝0cm、M 階梯 "
-        "0→0；linker 只掛 core 參數，伴隨 slot 未填）——complete 是結構完成度"
+        "0→0；G/B 伴隨 slot 未由 linker 掛值——X/I 自 D3-024 起面命中掛值）"
+        "——complete 是結構完成度"
         "不是 TMU 可信度。**請補距離（改 plan/cycle 後 `--recompile` 重算）或"
         "判定句子資訊不足**（轉正時顯式寫 expected_incomplete_reason；"
         "空殼守門要求 total_tmu > 0，原樣轉正會被擋）"
@@ -1880,8 +1874,8 @@ def build_summary(
             lines.append(
                 f"**誠實旗標**：complete 之中 **{len(zero_tmu)} 筆 TMU＝0.0**"
                 f"（{'、'.join('`' + d['id'] + '`' for d in zero_tmu)}）——引擎口徑下"
-                "距離未述＝0cm（M 階梯 0→0）且核心參數以外的 slot（如 CM 的 G、"
-                "GM 的 G）未由 linker 掛值（per-action linking 只掛 core 參數）。"
+                "距離未述＝0cm（M 階梯 0→0）且 G/B 伴隨 slot（如 CM 的 G、"
+                "GM 的 G）未由 linker 掛值（X/I 自 D3-024 起面命中掛值）。"
                 "complete≠可信 TMU：TMU=0.0 非真值——每筆已掛 "
                 f"`{ZERO_TMU_CAVEAT}` 旗標，覆核表逐筆問「補距離或判定句子資訊"
                 "不足」；原樣轉正會撞空殼守門（total_tmu > 0 或顯式 "
@@ -2513,18 +2507,67 @@ def load_review_state(path: Path) -> dict[str, dict[str, Any]]:
                     _fail_state(path, f"{ctx}：ie_rejected_evidence 條目需 {{table, id}}")
         # 更正軌跡（標準答案集的更正不能是無痕覆寫）：entry 被更正時，先前的
         # 裁決與更正理由記在 ruling_history——若存在，形狀必須完整，否則
-        # 「保留軌跡」只是空殼宣稱
+        # 「保留軌跡」只是空殼宣稱。條目兩型（fail-closed：非此二型即擋）：
+        # - 切分裁決更正（D3-015/D3-022 既有）：帶有效 `ie_ruling`（先前答案）。
+        # - 面向退場（D3-024，d0350279 型）：帶 `superseded_aspects`——判型/
+        #   P 方向/TMU=0 面向的依據在新一輪消失（如判型棄權讓 typing_change
+        #   旗標不再存在）時，stale 重確認的過程記錄：退場面向的欄位原值全文
+        #   搬進 superseded_aspects（不無痕刪除），entry 本體只留仍有依據的
+        #   面向。切分面向不得走此型（切分更正走 ie_ruling 型；標題句另有
+        #   resegmentation_ruling 欄）。
         history = entry.get("ruling_history")
         if history is not None:
             if not (isinstance(history, list) and history):
                 _fail_state(
                     path, f"{ctx}：ruling_history 若存在必須是非空 list（更正軌跡不可是空殼）"
                 )
+            retire_allowed = (
+                set(_TYPING_ENTRY_KEYS) | set(_P_DIR_ENTRY_KEYS) | set(_ZERO_TMU_ENTRY_KEYS)
+            )
             for h in history:
                 if not isinstance(h, dict):
                     _fail_state(path, f"{ctx}：ruling_history 條目必須是 object")
                 prev_ruling = h.get("ie_ruling")
-                if not (isinstance(prev_ruling, str) and _RULING_RE.match(prev_ruling)):
+                aspects = h.get("superseded_aspects")
+                if aspects is not None:
+                    if prev_ruling is not None:
+                        _fail_state(
+                            path,
+                            f"{ctx}：ruling_history 條目不得同時是切分更正（ie_ruling）"
+                            "與面向退場（superseded_aspects）——兩型分開記",
+                        )
+                    if not (isinstance(aspects, dict) and aspects):
+                        _fail_state(
+                            path,
+                            f"{ctx}：superseded_aspects 必須是非空 object（退場面向的原值全文）",
+                        )
+                    bad = sorted(set(aspects) - retire_allowed)
+                    if bad:
+                        _fail_state(
+                            path,
+                            f"{ctx}：superseded_aspects 含不可退場欄位 {bad}"
+                            "（只有判型/P 方向/TMU=0 面向可退場；切分走 ie_ruling 型）",
+                        )
+                    # D3-024 複審 M1：退場記錄的**值**依面向分組跑同一批
+                    # _validate_*_aspect（單一出處，不另抄）——「原值全文保留」
+                    # 若保留的是 garbage（壞日期/非法 seq/半套面向），軌跡即空殼。
+                    hctx = f"{ctx}.ruling_history[].superseded_aspects"
+                    if any(k in aspects for k in _TYPING_ENTRY_KEYS):
+                        _validate_typing_aspect(path, hctx, aspects)
+                    if any(k in aspects for k in _P_DIR_ENTRY_KEYS):
+                        _validate_p_direction_aspect(path, hctx, aspects)
+                    if any(k in aspects for k in _ZERO_TMU_ENTRY_KEYS):
+                        _validate_zero_tmu_aspect(path, hctx, aspects)
+                    # 假退場：退場鍵不得同時存在於 entry 本體——退場＝搬移
+                    # 非複製（entry 同時持有完整面向＝面向根本沒退場）
+                    dup = sorted(k for k in aspects if k in entry)
+                    if dup:
+                        _fail_state(
+                            path,
+                            f"{ctx}：superseded_aspects 的退場鍵 {dup} 仍存在於 "
+                            "entry 本體——退場是搬移不是複製，本體必須移除退場面向",
+                        )
+                elif not (isinstance(prev_ruling, str) and _RULING_RE.match(prev_ruling)):
                     _fail_state(
                         path, f"{ctx}：ruling_history 條目缺有效 ie_ruling（先前答案必須保留）"
                     )

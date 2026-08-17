@@ -21,7 +21,7 @@
 
 Cycle 完成度：**5／56 筆**至少一個 cycle complete 帶 TMU（TMU 唯一出處＝most_engine）；其餘 51 筆全部 incomplete（缺 slot 候選或判型未定——逐筆原因見草稿 `expected_cycles[].issues_contain`）。
 
-**誠實旗標**：complete 之中 **2 筆 TMU＝0.0**（`d003_51518399`、`d038_7f085e02`）——引擎口徑下距離未述＝0cm（M 階梯 0→0）且核心參數以外的 slot（如 CM 的 G、GM 的 G）未由 linker 掛值（per-action linking 只掛 core 參數）。complete≠可信 TMU：TMU=0.0 非真值——每筆已掛 `zero_tmu_distance_unstated` 旗標，覆核表逐筆問「補距離或判定句子資訊不足」；原樣轉正會撞空殼守門（total_tmu > 0 或顯式 expected_incomplete_reason）。
+**誠實旗標**：complete 之中 **2 筆 TMU＝0.0**（`d003_51518399`、`d038_7f085e02`）——引擎口徑下距離未述＝0cm（M 階梯 0→0）且 G/B 伴隨 slot（如 CM 的 G、GM 的 G）未由 linker 掛值（X/I 自 D3-024 起面命中掛值）。complete≠可信 TMU：TMU=0.0 非真值——每筆已掛 `zero_tmu_distance_unstated` 旗標，覆核表逐筆問「補距離或判定句子資訊不足」；原樣轉正會撞空殼守門（total_tmu > 0 或顯式 expected_incomplete_reason）。
 
 ## 挑戰維度覆蓋（spec §14.3 的 16 維度）
 
@@ -178,11 +178,9 @@ likely_multi 中 **4 筆**因 v3 結構顯示單一 cycle，「幾乎必然低�
 
 ## IE 覆核狀態合併（review-state.json；--force 重產後存活）
 
-套用 **26 筆**（草稿帶 `ie_review` 區塊；配對鍵＝normalized_text sha256 前 8 碼，與流水號無關）：`d001_b49a90ee`、`d002_ee5c168e`、`d003_51518399`、`d005_51077fd1`、`d006_6678c378`、`d007_633b52bb`、`d008_8dfafd2e`、`d009_bc473698`、`d010_28f9ed7e`、`d011_35372a96`、`d012_1dd7c1d5`、`d013_3791550c`、`d014_4eb2b2e6`、`d015_7ff8b879`、`d016_37fbd2a6`、`d017_6be614c5`、`d018_0461f75d`、`d019_ac155900`、`d020_b2618d31`、`d021_2f0cb396`、`d022_0e83128f`、`d023_130bb1ad`、`d024_323b04c1`、`d025_995f5d45`、`d038_7f085e02`、`d044_2e7b2e5a`
+套用 **27 筆**（草稿帶 `ie_review` 區塊；配對鍵＝normalized_text sha256 前 8 碼，與流水號無關）：`d001_b49a90ee`、`d002_ee5c168e`、`d003_51518399`、`d004_d0350279`、`d005_51077fd1`、`d006_6678c378`、`d007_633b52bb`、`d008_8dfafd2e`、`d009_bc473698`、`d010_28f9ed7e`、`d011_35372a96`、`d012_1dd7c1d5`、`d013_3791550c`、`d014_4eb2b2e6`、`d015_7ff8b879`、`d016_37fbd2a6`、`d017_6be614c5`、`d018_0461f75d`、`d019_ac155900`、`d020_b2618d31`、`d021_2f0cb396`、`d022_0e83128f`、`d023_130bb1ad`、`d024_323b04c1`、`d025_995f5d45`、`d038_7f085e02`、`d044_2e7b2e5a`
 
-**⚠️ stale 1 筆——未套用**（狀態所依據的內容已變，不靜默沿用；IE 需重看後更新 state 檔）：
-
-- `d0350279`（typing_change_changed）：「拿取風槍清潔放置DIMM材料盒的DIMM」
+stale：0 筆（所有覆核狀態都配對到內容未變的草稿）。
 
 已轉正（promoted）entry：**35 筆**——跳過合併（句子已在 tests/gold/wi_plans/，不再產草稿；entry 保留為轉正軌跡）：
 

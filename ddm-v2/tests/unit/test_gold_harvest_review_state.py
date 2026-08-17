@@ -21,8 +21,11 @@
    首輪「3 列」是對整個 wi-template 三步驟製程的回答（提問誤述範本結構為
    句子切分）。更正軌跡保留在該 entry 的 `ruling_history`（先前答案全文＋
    為何更正）——標準答案集的更正不能是無痕覆寫。
-7. `ruling_history`（更正軌跡）若存在必須形狀完整（先前 ie_ruling＋
-   supersede_reason＋superseded_date）——「保留軌跡」不可是空殼宣稱。
+7. `ruling_history`（更正軌跡）若存在必須形狀完整——「保留軌跡」不可是
+   空殼宣稱。條目兩型（fail-closed）：切分更正（先前 ie_ruling＋
+   supersede_reason＋superseded_date）；面向退場（D3-024，d0350279 型：
+   `superseded_aspects` 帶退場面向原值全文——判型/P 方向/TMU=0 依據消失時
+   不無痕刪除，切分面向不得走此型）。
 
 mutation 證據（CI_GATES 規則 7）：
 - 把 `merge_review_state` 的 sha 配對改成流水號配對 → `test_renumbered_draft_still_matched` 紅。
@@ -690,6 +693,175 @@ def test_load_review_state_rejects_bad_ruling_history(tmp_path: Path, history, m
         load_review_state(p)
 
 
+# D3-024（d0350279 型）：判型棄權讓判型/P 方向確認的依據消失——面向退場
+# 記 ruling_history（superseded_aspects 帶原值全文），entry 本體只留仍有
+# 依據的面向。
+_RETIRED_ASPECTS = {
+    "typing_confirmed_by": "IEC141289",
+    "typing_confirmed_date": "2026-08-17",
+    "typing_change_at_review": {"noun_only_seq": None, "lexicon_seq": "GM"},
+    "p_direction_confirmed_by": "IEC141289",
+    "p_direction_confirmed_date": "2026-08-17",
+    "p_direction_caveat_at_review": "p_direction_none_by_context",
+}
+
+
+def test_load_review_state_accepts_aspect_retirement_history(tmp_path: Path):
+    """面向退場軌跡（D3-024）：stale→重確認的過程記錄——退場面向原值全文
+    在 superseded_aspects、supersede_reason 寫明依據為何消失，可載入。"""
+    norm = "拿取風槍清潔放置DIMM材料盒的DIMM"
+    entry = _entry(
+        norm,
+        hint="multi_cycle_5",
+        ruling_history=[
+            {
+                "superseded_aspects": dict(_RETIRED_ASPECTS),
+                "superseded_date": "2026-08-17",
+                "supersede_reason": "X/I 判型棄權後旗標消失，面向退場（IE 重確認）",
+            }
+        ],
+    )
+    p = _write_state(tmp_path / REVIEW_STATE_FILENAME, {_sha(norm)[:8]: entry})
+    entries = load_review_state(p)
+    history = entries[_sha(norm)[:8]]["ruling_history"]
+    assert history[0]["superseded_aspects"]["typing_change_at_review"] == {
+        "noun_only_seq": None,
+        "lexicon_seq": "GM",
+    }, "退場面向的原值全文必須保留（不無痕刪除）"
+
+
+@pytest.mark.parametrize(
+    ("item_over", "match"),
+    [
+        # 同條目混兩型：切分更正與面向退場必須分開記
+        ({"ie_ruling": "multi_cycle_5"}, "兩型分開記"),
+        # 空殼退場：沒有原值全文＝無痕刪除
+        ({"superseded_aspects": {}}, "非空 object"),
+        # 切分面向不得走退場型（切分更正走 ie_ruling 型）
+        (
+            {
+                "superseded_aspects": {
+                    "segmentation_confirmed_by": "IEC141289",
+                }
+            },
+            "不可退場",
+        ),
+    ],
+)
+def test_load_review_state_rejects_bad_aspect_retirement(
+    tmp_path: Path, item_over: dict, match: str
+):
+    """面向退場的 fail-closed：非兩型之一、空殼、退場切分面向都擋。"""
+    norm = "拿取風槍清潔放置DIMM材料盒的DIMM"
+    item: dict[str, Any] = {
+        "superseded_aspects": dict(_RETIRED_ASPECTS),
+        "superseded_date": "2026-08-17",
+        "supersede_reason": "X/I 判型棄權後旗標消失，面向退場",
+    }
+    item.update(item_over)
+    entry = _entry(norm, hint="multi_cycle_5", ruling_history=[item])
+    p = _write_state(tmp_path / REVIEW_STATE_FILENAME, {_sha(norm)[:8]: entry})
+    with pytest.raises(SystemExit, match=match):
+        load_review_state(p)
+
+
+# D3-024 複審 M1：退場記錄的值驗證＝entry 本體同一批 _validate_*_aspect——
+# 先前只驗到鍵名，garbage 日期/非法 seq/半套面向/假退場全部 ACCEPTED（entry
+# 本體同樣的壞值全被拒）。mutation：分組驗證拆掉 → 前三組紅；本體重複鍵
+# 檢查拆掉 → 假退場測試紅。
+
+
+@pytest.mark.parametrize(
+    ("aspects", "match"),
+    [
+        # 壞值 1：garbage 日期——本體會被 _require_by_date 擋，退場記錄同標準
+        (
+            {
+                "typing_confirmed_by": "IEC141289",
+                "typing_confirmed_date": "17/08/2026",
+                "typing_change_at_review": {"noun_only_seq": None, "lexicon_seq": "GM"},
+            },
+            "YYYY-MM-DD",
+        ),
+        # 壞值 2：非法 seq——typing_change_at_review 值域 GM/CM/null
+        (
+            {
+                "typing_confirmed_by": "IEC141289",
+                "typing_confirmed_date": "2026-08-17",
+                "typing_change_at_review": {"noun_only_seq": None, "lexicon_seq": "ZZ"},
+            },
+            "GM/CM/null",
+        ),
+        # 壞值 3：半套面向——只搬一個鍵＝原值全文沒保留
+        ({"typing_confirmed_by": "IEC141289"}, "typing_confirmed_date"),
+        # 壞值 4：P 方向 caveat 不在合法值域
+        (
+            {
+                "p_direction_confirmed_by": "IEC141289",
+                "p_direction_confirmed_date": "2026-08-17",
+                "p_direction_caveat_at_review": "not_a_caveat",
+            },
+            "p_direction_caveat_at_review",
+        ),
+        # 壞值 5：TMU=0 裁決值非法
+        (
+            {
+                "zero_tmu_ruling": "whatever",
+                "zero_tmu_ruled_by": "IEC141289",
+                "zero_tmu_ruled_date": "2026-08-17",
+            },
+            "zero_tmu_ruling",
+        ),
+    ],
+)
+def test_load_review_state_rejects_garbage_retired_aspect_values(
+    tmp_path: Path, aspects: dict, match: str
+):
+    """退場面向的值依面向分組跑同一批 _validate_*_aspect（單一出處）——
+    entry 本體擋得下的壞值，退場記錄也必須擋。"""
+    norm = "拿取風槍清潔放置DIMM材料盒的DIMM"
+    entry = _entry(
+        norm,
+        hint="multi_cycle_5",
+        ruling_history=[
+            {
+                "superseded_aspects": aspects,
+                "superseded_date": "2026-08-17",
+                "supersede_reason": "測試：退場面向帶壞值必須被擋",
+            }
+        ],
+    )
+    p = _write_state(tmp_path / REVIEW_STATE_FILENAME, {_sha(norm)[:8]: entry})
+    with pytest.raises(SystemExit, match=match):
+        load_review_state(p)
+
+
+def test_load_review_state_rejects_fake_retirement(tmp_path: Path):
+    """假退場：退場鍵同時存在於 entry 本體（本體仍持有完整面向）＝面向根本
+    沒退場——退場是搬移不是複製，擋下。"""
+    norm = "拿取風槍清潔放置DIMM材料盒的DIMM"
+    typing_aspect = {
+        "typing_confirmed_by": "IEC141289",
+        "typing_confirmed_date": "2026-08-17",
+        "typing_change_at_review": {"noun_only_seq": None, "lexicon_seq": "GM"},
+    }
+    entry = _entry(
+        norm,
+        hint="multi_cycle_5",
+        ruling_history=[
+            {
+                "superseded_aspects": dict(typing_aspect),
+                "superseded_date": "2026-08-17",
+                "supersede_reason": "測試：本體同時持有完整面向的假退場",
+            }
+        ],
+        **typing_aspect,  # entry 本體同樣持有（值合法——本體驗證擋不到）
+    )
+    p = _write_state(tmp_path / REVIEW_STATE_FILENAME, {_sha(norm)[:8]: entry})
+    with pytest.raises(SystemExit, match="仍存在於"):
+        load_review_state(p)
+
+
 @pytest.mark.parametrize(
     ("over", "match"),
     [
@@ -873,15 +1045,15 @@ def _repo_drafts() -> list[dict]:
     ]
 
 
-# D3-023 已知 stale（有意識釘名單，不是放寬）：X/I 參與判型後，
-# 「拿取風槍清潔放置DIMM材料盒的DIMM」（d0350279）命中 G＋X＋P＝跨模型混合
-# → 判型棄權，原 typing_change {null→GM} 消失——entry 的判型確認所依據的值
-# 已不同 ⇒ stale（typing_change_changed），設計如此（不靜默沿用）。此句 IE
-# 已裁為標題句（title_sentence_no_resegmentation，不轉正），棄權判型比原
-# GM 誤判誠實；entry 待 IE 下輪重看（快答清單見 worklog D3-023）。
+# 已知 stale 名單（有意識釘名單，不是放寬）。D3-023 曾釘
+# {"d0350279": "typing_change_changed"}（X/I 參與判型讓該句判型棄權，
+# entry 判型確認的依據消失）；D3-024（2026-08-17 IE 親答）重看後清掉：
+# 標題句裁決維持（不硬切、不轉正），判型/P 方向兩面向依規則退場入該 entry
+# 的 ruling_history（superseded_aspects 型條目——原值全文保留），entry
+# 恢復可套用 → 名單清空。
 # 名單**恰等**：多一筆＝新的未預期 stale（必須查）；少一筆＝IE 已重看，
 # 名單要同步清掉。
-REPO_KNOWN_STALE: dict[str, str] = {"d0350279": "typing_change_changed"}
+REPO_KNOWN_STALE: dict[str, str] = {}
 
 
 def test_repo_review_state_all_entries_fresh_and_applied():
@@ -1083,15 +1255,16 @@ def test_repo_ie_rulings_present_after_round2_correction():
     )
     # D3-023 第三批轉正 5 筆 v3_structure_confirmed（7c6eb8af/af172fd9/
     # b6ee694d/e945e29e/9c1a987f；另 2 筆 1c27dc35/fe1f3a90 是 ie_ruling）：
-    # 草稿 10→4（含 d0350279 轉入 stale 項）、已轉正 25→30
-    assert len(confirmed) == 4
+    # 草稿 10→4、已轉正 25→30。D3-024：d0350279 stale 重看後恢復套用
+    # （stale 項 1→0、草稿 4→5——守恆總數不變）。
+    assert len(confirmed) == 5
     assert promoted_confirmed == 30
     assert len(superseded_confirmed) == 4, (
         "D3-022 更正（v3_structure_confirmed → ie_ruling）恰 4 筆"
         "（6fa45cdb/5cb719bb/fe5391c6/fe1f3a90）——增減都要有意識更新"
     )
-    assert stale_confirmed == ["d0350279"], (
-        "已知 stale 的切分確認 entry 恰 1 筆（d0350279，D3-023 X/I 判型棄權）"
+    assert stale_confirmed == [], (
+        "已知 stale 的切分確認 entry 應為 0（D3-024 d0350279 已重看恢復套用）"
     )
     for e in superseded_confirmed:
         # 更正不是無痕覆寫：先前確認的結構值必須保留在軌跡裡

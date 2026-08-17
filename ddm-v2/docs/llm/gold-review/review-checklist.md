@@ -8,9 +8,7 @@
 
 共 56 筆，其中 16 筆帶 ⚠️ 旗標。
 
-其中 **26 筆**已由 `review-state.json` 合併 IE 覆核狀態（各節「IE 覆核狀態」行）。注意：那是**切分維度**的確認/裁決，**不是整筆 gold 核准**——cycle 仍 incomplete 的照樣要覆核 option code，轉正另有流程（`docs/llm/gold-review/README.md`）。
-
-**⚠️ 1 筆**（`d004_d0350279`）的先前 IE 覆核狀態本輪 **stale 未套用**（確認/裁決所依據的內容已變，不靜默沿用）——該筆小節有 banner，**先前裁決的內容印在 banner 上**；請先重新確認裁決是否維持，再答該節問題（該節的預設值未帶入先前狀態）。
+其中 **27 筆**已由 `review-state.json` 合併 IE 覆核狀態（各節「IE 覆核狀態」行）。注意：那是**切分維度**的確認/裁決，**不是整筆 gold 核准**——cycle 仍 incomplete 的照樣要覆核 option code，轉正另有流程（`docs/llm/gold-review/README.md`）。
 
 ---
 
@@ -22,6 +20,7 @@
 **挑戰維度（規則式判定）**：中英混合、多 action、數量、SIMO／雙手
 **v3 結構**：`single_cycle`——`motion_module_versions/2b40d576…`（rows[0].sub_activity；1 cycle；v3）（hint 是證據不是判決；預設依 v3 結構，IE 可推翻）
 **✅ IE 覆核狀態（切分維度）**：已確認照 v3 結構預設（IEC141289，2026-08-16）。僅確認切分，不是整筆 gold 核准；`ie_modified: false`（確認≠修改——本筆不計入 planner 段 Plan 層證據力）。
+**✅ IE 覆核狀態（判型）**：動詞字典的判型修正已確認照預設（IEC141289，2026-08-17）。確認≠修改，`ie_modified` 維持 false。
 **⚠️ typing_changed_by_verb_lexicon**：**判型已由動詞字典修正，請確認**：動詞字典參與 GM/CM 判型（D3-017 收 M/G+P、D3-023 收 X/I；衝突矩陣見 nlp/rule_based.py classify_seq）——舊判型（僅名詞觸發）＝未定（composite_unknown），新判型（動詞字典參與）＝CM（控制移動）。不同意新判型請在本筆「判型」題回答
 **⚠️ likely_multi_action_undercounted**：本句含多動詞/連接詞，rule planner 只出 1 個 action——但 **v3 結構顯示 IE 當初把這句建為單一 cycle**（證據見本節「v3 結構」與草稿 `v3_structure_evidence`），「幾乎必然低估」對本筆**降級**：預設依 v3 結構（單一 cycle），除非你認定 v3 的切分本身有誤（hint 是證據不是判決，可推翻）
 
@@ -49,6 +48,7 @@
 **來源**：`wi_rows/30e06fae…`（sub_activity）
 **挑戰維度（規則式判定）**：中英混合、數量、工具持有
 **✅ IE 覆核狀態（切分維度・批次確認）**：無切分爭點案例，IE 整批確認現行切分（單 action＝single_cycle；IEC141289，2026-08-17）。與逐筆確認可區分（`segmentation_source: no_contention_batch_confirmed`——未逐筆核 v3 結構證據）；僅確認切分，不是整筆 gold 核准。
+**✅ IE 覆核狀態（判型）**：動詞字典的判型修正已確認照預設（IEC141289，2026-08-17）。確認≠修改，`ie_modified` 維持 false。
 **⚠️ typing_changed_by_verb_lexicon**：**判型已由動詞字典修正，請確認**：動詞字典參與 GM/CM 判型（D3-017 收 M/G+P、D3-023 收 X/I；衝突矩陣見 nlp/rule_based.py classify_seq）——舊判型（僅名詞觸發）＝未定（composite_unknown），新判型（動詞字典參與）＝CM（控制移動）。不同意新判型請在本筆「判型」題回答
 
 **預測 action 數**：1
@@ -77,7 +77,7 @@
 **✅ IE 覆核狀態（判型）**：動詞字典的判型修正已確認照預設（IEC141289，2026-08-17）。確認≠修改，`ie_modified` 維持 false。
 **✅ IE 裁決（TMU=0.0）**：`distance_unstated`——句子未述距離、判定資訊不足（IEC141289，2026-08-17）；草稿已記 `expected_incomplete_reason`（轉正走誠實記錄路徑，不發明距離）。
 **⚠️ typing_changed_by_verb_lexicon**：**判型已由動詞字典修正，請確認**：動詞字典參與 GM/CM 判型（D3-017 收 M/G+P、D3-023 收 X/I；衝突矩陣見 nlp/rule_based.py classify_seq）——舊判型（僅名詞觸發）＝未定（composite_unknown），新判型（動詞字典參與）＝CM（控制移動）。不同意新判型請在本筆「判型」題回答
-**⚠️ zero_tmu_distance_unstated**：此句未述距離，**TMU=0.0 非真值**（引擎口徑：距離未述＝0cm、M 階梯 0→0；linker 只掛 core 參數，伴隨 slot 未填）——complete 是結構完成度不是 TMU 可信度。**請補距離（改 plan/cycle 後 `--recompile` 重算）或判定句子資訊不足**（轉正時顯式寫 expected_incomplete_reason；空殼守門要求 total_tmu > 0，原樣轉正會被擋）
+**⚠️ zero_tmu_distance_unstated**：此句未述距離，**TMU=0.0 非真值**（引擎口徑：距離未述＝0cm、M 階梯 0→0；G/B 伴隨 slot 未由 linker 掛值——X/I 自 D3-024 起面命中掛值）——complete 是結構完成度不是 TMU 可信度。**請補距離（改 plan/cycle 後 `--recompile` 重算）或判定句子資訊不足**（轉正時顯式寫 expected_incomplete_reason；空殼守門要求 total_tmu > 0，原樣轉正會被擋）
 
 **預測 action 數**：1
 **預測切分（evidence 以【】標在正規化原文上）**：
@@ -90,7 +90,7 @@
 **IE 請回答**：
 1. 切分：預測 action 數 = 1。本句實際應拆成幾個 action？若不同，請在 plan.actions 增列並各給 evidence（原文子字串與 offset）。
 2. 判型（a1）：預測為 controlled_move，對嗎？若對，core 參數 M（控制移動） 的 option code 是什麼？（預標註無候選時請直接填）【判型已由動詞字典修正：未定（composite_unknown） → CM（控制移動），請確認】
-3. TMU=0.0：此句未述距離，**TMU=0.0 非真值**（引擎口徑：距離未述＝0cm、M 階梯 0→0；linker 只掛 core 參數，伴隨 slot 未填）——complete 是結構完成度不是 TMU 可信度。**請補距離（改 plan/cycle 後 `--recompile` 重算）或判定句子資訊不足**（轉正時顯式寫 expected_incomplete_reason；空殼守門要求 total_tmu > 0，原樣轉正會被擋）。
+3. TMU=0.0：此句未述距離，**TMU=0.0 非真值**（引擎口徑：距離未述＝0cm、M 階梯 0→0；G/B 伴隨 slot 未由 linker 掛值——X/I 自 D3-024 起面命中掛值）——complete 是結構完成度不是 TMU 可信度。**請補距離（改 plan/cycle 後 `--recompile` 重算）或判定句子資訊不足**（轉正時顯式寫 expected_incomplete_reason；空殼守門要求 total_tmu > 0，原樣轉正會被擋）。
 4. routing：預測 routing_status = review（理由：無）。核准後應維持這個值嗎？
 
 ---
@@ -102,7 +102,9 @@
 **來源**：`motion_modules/8451efa7…`（name_zh (category=wi-template)）
 **挑戰維度（規則式判定）**：中英混合、多 action、工具持有
 **v3 結構**：`multi_cycle_5`——`motion_modules/8451efa7…`（name_zh (category=wi-template)；5 cycle；v3）（hint 是證據不是判決；預設依 v3 結構，IE 可推翻）
-**⚠️ 本筆先前 IE 覆核狀態因 `typing_change_changed` 未套用**（stale——確認/裁決所依據的內容已變，不靜默沿用；本節下方的預設值**未帶入**先前狀態）；**先前裁決：標題句不硬切（D3-022，`title_sentence_no_resegmentation`——不重切、不轉正，內容由成分列的獨立 gold 覆蓋）；切分已確認照 v3 結構（`multi_cycle_5`）；判型修正已確認（未定（composite_unknown） → GM（一般移動））；P 方向數已確認（`p_direction_none_by_context`）**，見 review-state entry（`d0350279`）。**本次請先重新確認先前裁決是否維持，再看下列問題。**
+**✅ IE 覆核狀態（切分維度）**：已確認照 v3 結構預設（IEC141289，2026-08-16）。僅確認切分，不是整筆 gold 核准；`ie_modified: false`（確認≠修改——本筆不計入 planner 段 Plan 層證據力）。
+**✅ IE 裁決（重切）**：`title_sentence_no_resegmentation`——本句是製程標題句，各列為獨立子句非本句子字串，**不硬切、不轉正**（fail-closed）；留在草稿當多動作辨識參考（IEC141289，2026-08-17）。
+  - 裁決註記：IE 裁決（D3-022，2026-08-17 親答「d016 不硬切」）：本句是五步驟製程的壓縮標題句（multi_cycle_5＝provenance module motion_modules/8451efa7-7536-48f7-b579-b56d21608c02 發布版的 5 列）；5 列全部是各自獨立的完整子句、無一是本句子字串，切不出 5 段連續互不重疊的誠實 evidence span（d026 型——不編造）。內容已由 5 列的獨立 gold 全數覆蓋：rows[0]=g27_pick_dimm_box_to_bench、rows[1]=g26_dimm_box_to_position、rows[2]=g18_hold_airgun_to_position、rows[3]=g22_hold_dimm_box（SIMO 併行列，不計版本合計）、rows[4]=g15_airgun_clean_dimm（重切建議稿當時 rows[0] 尚為草稿 a062c017，D3-021 已轉正——現 5/5 皆 gold）。本句不重切、不轉正（fail-closed 擋轉正），留在草稿當多動作辨識參考；母句僅存 provenance 對應。D3-024 stale 重看（2026-08-17 IE 親答）：X/I 參與判型讓本句判型棄權（G＋X＋P 跨模型混合）後，先前裁決**維持不變**（不硬切、不轉正；重確認 IEC141289，2026-08-17）；判型與 P 方向兩面向的依據隨棄權消失，退場記錄見 ruling_history。
 **⚠️ likely_multi_action_undercounted**：rule planner 結構上永遠只出 1 個 action；本句含多動詞/連接詞，**切分幾乎必然低估**——請務必逐動詞檢查
 
 **預測 action 數**：1
@@ -129,6 +131,7 @@
 **挑戰維度（規則式判定）**：中英混合、多 action、工具持有
 **v3 結構**：`single_cycle`——`motion_modules/83a0868f…`（name_zh (category=wi-template)；1 cycle；v3）（hint 是證據不是判決；預設依 v3 結構，IE 可推翻）
 **✅ IE 覆核狀態（切分維度）**：已確認照 v3 結構預設（IEC141289，2026-08-16）。僅確認切分，不是整筆 gold 核准；`ie_modified: false`（確認≠修改——本筆不計入 planner 段 Plan 層證據力）。
+**✅ IE 覆核狀態（判型）**：動詞字典的判型修正已確認照預設（IEC141289，2026-08-17）。確認≠修改，`ie_modified` 維持 false。
 **⚠️ typing_changed_by_verb_lexicon**：**判型已由動詞字典修正，請確認**：動詞字典參與 GM/CM 判型（D3-017 收 M/G+P、D3-023 收 X/I；衝突矩陣見 nlp/rule_based.py classify_seq）——舊判型（僅名詞觸發）＝未定（composite_unknown），新判型（動詞字典參與）＝CM（控制移動）。不同意新判型請在本筆「判型」題回答
 **⚠️ likely_multi_action_undercounted**：本句含多動詞/連接詞，rule planner 只出 1 個 action——但 **v3 結構顯示 IE 當初把這句建為單一 cycle**（證據見本節「v3 結構」與草稿 `v3_structure_evidence`），「幾乎必然低估」對本筆**降級**：預設依 v3 結構（單一 cycle），除非你認定 v3 的切分本身有誤（hint 是證據不是判決，可推翻）
 
@@ -226,6 +229,7 @@
 **來源**：`wi_rows/2e52933c…`（sub_activity）
 **挑戰維度（規則式判定）**：中英混合、數量
 **✅ IE 覆核狀態（切分維度・批次確認）**：無切分爭點案例，IE 整批確認現行切分（單 action＝single_cycle；IEC141289，2026-08-17）。與逐筆確認可區分（`segmentation_source: no_contention_batch_confirmed`——未逐筆核 v3 結構證據）；僅確認切分，不是整筆 gold 核准。
+**✅ IE 覆核狀態（判型）**：動詞字典的判型修正已確認照預設（IEC141289，2026-08-17）。確認≠修改，`ie_modified` 維持 false。
 **⚠️ typing_changed_by_verb_lexicon**：**判型已由動詞字典修正，請確認**：動詞字典參與 GM/CM 判型（D3-017 收 M/G+P、D3-023 收 X/I；衝突矩陣見 nlp/rule_based.py classify_seq）——舊判型（僅名詞觸發）＝未定（composite_unknown），新判型（動詞字典參與）＝CM（控制移動）。不同意新判型請在本筆「判型」題回答
 
 **預測 action 數**：1
@@ -323,6 +327,7 @@
 **挑戰維度（規則式判定）**：多 action
 **v3 結構**：`single_cycle`——`motion_module_versions/9569aeaf…`（rows[2].sub_activity；1 cycle；v3）（hint 是證據不是判決；預設依 v3 結構，IE 可推翻）
 **✅ IE 覆核狀態（切分維度）**：已確認照 v3 結構預設（IEC141289，2026-08-16）。僅確認切分，不是整筆 gold 核准；`ie_modified: false`（確認≠修改——本筆不計入 planner 段 Plan 層證據力）。
+**✅ IE 覆核狀態（判型）**：動詞字典的判型修正已確認照預設（IEC141289，2026-08-17）。確認≠修改，`ie_modified` 維持 false。
 **⚠️ typing_changed_by_verb_lexicon**：**判型已由動詞字典修正，請確認**：動詞字典參與 GM/CM 判型（D3-017 收 M/G+P、D3-023 收 X/I；衝突矩陣見 nlp/rule_based.py classify_seq）——舊判型（僅名詞觸發）＝未定（composite_unknown），新判型（動詞字典參與）＝CM（控制移動）。不同意新判型請在本筆「判型」題回答
 **⚠️ likely_multi_action_undercounted**：本句含多動詞/連接詞，rule planner 只出 1 個 action——但 **v3 結構顯示 IE 當初把這句建為單一 cycle**（證據見本節「v3 結構」與草稿 `v3_structure_evidence`），「幾乎必然低估」對本筆**降級**：預設依 v3 結構（單一 cycle），除非你認定 v3 的切分本身有誤（hint 是證據不是判決，可推翻）
 
@@ -371,6 +376,7 @@
 **挑戰維度（規則式判定）**：多 action
 **v3 結構**：`single_cycle`——`motion_module_versions/a4b7f7b7…`（rows[0].sub_activity；1 cycle；v3）；`motion_modules/c7c55293…`（name_zh (category=action)；1 cycle；v3）（hint 是證據不是判決；預設依 v3 結構，IE 可推翻）
 **✅ IE 覆核狀態（切分維度）**：已確認照 v3 結構預設（IEC141289，2026-08-16）。僅確認切分，不是整筆 gold 核准；`ie_modified: false`（確認≠修改——本筆不計入 planner 段 Plan 層證據力）。
+**✅ IE 覆核狀態（判型）**：動詞字典的判型修正已確認照預設（IEC141289，2026-08-17）。確認≠修改，`ie_modified` 維持 false。
 **⚠️ typing_changed_by_verb_lexicon**：**判型已由動詞字典修正，請確認**：動詞字典參與 GM/CM 判型（D3-017 收 M/G+P、D3-023 收 X/I；衝突矩陣見 nlp/rule_based.py classify_seq）——舊判型（僅名詞觸發）＝未定（composite_unknown），新判型（動詞字典參與）＝CM（控制移動）。不同意新判型請在本筆「判型」題回答
 **⚠️ likely_multi_action_undercounted**：本句含多動詞/連接詞，rule planner 只出 1 個 action——但 **v3 結構顯示 IE 當初把這句建為單一 cycle**（證據見本節「v3 結構」與草稿 `v3_structure_evidence`），「幾乎必然低估」對本筆**降級**：預設依 v3 結構（單一 cycle），除非你認定 v3 的切分本身有誤（hint 是證據不是判決，可推翻）
 
@@ -511,6 +517,7 @@
 **來源**：`motion_module_versions/40bb7624…`（rows[0].sub_activity）; `motion_module_versions/61a9b8da…`（rows[0].sub_activity）; `motion_modules/03ceef7d…`（name_zh (category=action)）
 **挑戰維度（規則式判定）**：中英混合
 **✅ IE 覆核狀態（切分維度・批次確認）**：無切分爭點案例，IE 整批確認現行切分（單 action＝single_cycle；IEC141289，2026-08-17）。與逐筆確認可區分（`segmentation_source: no_contention_batch_confirmed`——未逐筆核 v3 結構證據）；僅確認切分，不是整筆 gold 核准。
+**✅ IE 覆核狀態（判型）**：動詞字典的判型修正已確認照預設（IEC141289，2026-08-17）。確認≠修改，`ie_modified` 維持 false。
 **⚠️ typing_changed_by_verb_lexicon**：**判型已由動詞字典修正，請確認**：動詞字典參與 GM/CM 判型（D3-017 收 M/G+P、D3-023 收 X/I；衝突矩陣見 nlp/rule_based.py classify_seq）——舊判型（僅名詞觸發）＝未定（composite_unknown），新判型（動詞字典參與）＝CM（控制移動）。不同意新判型請在本筆「判型」題回答
 
 **預測 action 數**：1
@@ -557,6 +564,7 @@
 **來源**：`motion_templates/8b1753a1…`（name_zh）
 **挑戰維度（規則式判定）**：（無命中）
 **✅ IE 覆核狀態（切分維度・批次確認）**：無切分爭點案例，IE 整批確認現行切分（單 action＝single_cycle；IEC141289，2026-08-17）。與逐筆確認可區分（`segmentation_source: no_contention_batch_confirmed`——未逐筆核 v3 結構證據）；僅確認切分，不是整筆 gold 核准。
+**✅ IE 覆核狀態（判型）**：動詞字典的判型修正已確認照預設（IEC141289，2026-08-17）。確認≠修改，`ie_modified` 維持 false。
 **⚠️ typing_changed_by_verb_lexicon**：**判型已由動詞字典修正，請確認**：動詞字典參與 GM/CM 判型（D3-017 收 M/G+P、D3-023 收 X/I；衝突矩陣見 nlp/rule_based.py classify_seq）——舊判型（僅名詞觸發）＝未定（composite_unknown），新判型（動詞字典參與）＝CM（控制移動）。不同意新判型請在本筆「判型」題回答
 
 **預測 action 數**：1
@@ -580,6 +588,7 @@
 **來源**：`motion_templates/5d6bb4c7…`（name_zh）
 **挑戰維度（規則式判定）**：（無命中）
 **✅ IE 覆核狀態（切分維度・批次確認）**：無切分爭點案例，IE 整批確認現行切分（單 action＝single_cycle；IEC141289，2026-08-17）。與逐筆確認可區分（`segmentation_source: no_contention_batch_confirmed`——未逐筆核 v3 結構證據）；僅確認切分，不是整筆 gold 核准。
+**✅ IE 覆核狀態（判型）**：動詞字典的判型修正已確認照預設（IEC141289，2026-08-17）。確認≠修改，`ie_modified` 維持 false。
 **⚠️ typing_changed_by_verb_lexicon**：**判型已由動詞字典修正，請確認**：動詞字典參與 GM/CM 判型（D3-017 收 M/G+P、D3-023 收 X/I；衝突矩陣見 nlp/rule_based.py classify_seq）——舊判型（僅名詞觸發）＝未定（composite_unknown），新判型（動詞字典參與）＝CM（控制移動）。不同意新判型請在本筆「判型」題回答
 
 **預測 action 數**：1
@@ -878,7 +887,7 @@
 **挑戰維度（規則式判定）**：（無命中）
 **✅ IE 覆核狀態（判型）**：動詞字典的判型修正已確認照預設（IEC141289，2026-08-17）。確認≠修改，`ie_modified` 維持 false。
 **⚠️ typing_changed_by_verb_lexicon**：**判型已由動詞字典修正，請確認**：動詞字典參與 GM/CM 判型（D3-017 收 M/G+P、D3-023 收 X/I；衝突矩陣見 nlp/rule_based.py classify_seq）——舊判型（僅名詞觸發）＝未定（composite_unknown），新判型（動詞字典參與）＝CM（控制移動）。不同意新判型請在本筆「判型」題回答
-**⚠️ zero_tmu_distance_unstated**：此句未述距離，**TMU=0.0 非真值**（引擎口徑：距離未述＝0cm、M 階梯 0→0；linker 只掛 core 參數，伴隨 slot 未填）——complete 是結構完成度不是 TMU 可信度。**請補距離（改 plan/cycle 後 `--recompile` 重算）或判定句子資訊不足**（轉正時顯式寫 expected_incomplete_reason；空殼守門要求 total_tmu > 0，原樣轉正會被擋）
+**⚠️ zero_tmu_distance_unstated**：此句未述距離，**TMU=0.0 非真值**（引擎口徑：距離未述＝0cm、M 階梯 0→0；G/B 伴隨 slot 未由 linker 掛值——X/I 自 D3-024 起面命中掛值）——complete 是結構完成度不是 TMU 可信度。**請補距離（改 plan/cycle 後 `--recompile` 重算）或判定句子資訊不足**（轉正時顯式寫 expected_incomplete_reason；空殼守門要求 total_tmu > 0，原樣轉正會被擋）
 
 **預測 action 數**：1
 **預測切分（evidence 以【】標在正規化原文上）**：
@@ -891,7 +900,7 @@
 **IE 請回答**：
 1. 切分：預測 action 數 = 1。本句實際應拆成幾個 action？若不同，請在 plan.actions 增列並各給 evidence（原文子字串與 offset）。
 2. 判型（a1）：預測為 controlled_move，對嗎？若對，core 參數 M（控制移動） 的 option code 是什麼？（預標註無候選時請直接填）【判型已由動詞字典修正：未定（composite_unknown） → CM（控制移動），請確認】
-3. TMU=0.0：此句未述距離，**TMU=0.0 非真值**（引擎口徑：距離未述＝0cm、M 階梯 0→0；linker 只掛 core 參數，伴隨 slot 未填）——complete 是結構完成度不是 TMU 可信度。**請補距離（改 plan/cycle 後 `--recompile` 重算）或判定句子資訊不足**（轉正時顯式寫 expected_incomplete_reason；空殼守門要求 total_tmu > 0，原樣轉正會被擋）。
+3. TMU=0.0：此句未述距離，**TMU=0.0 非真值**（引擎口徑：距離未述＝0cm、M 階梯 0→0；G/B 伴隨 slot 未由 linker 掛值——X/I 自 D3-024 起面命中掛值）——complete 是結構完成度不是 TMU 可信度。**請補距離（改 plan/cycle 後 `--recompile` 重算）或判定句子資訊不足**（轉正時顯式寫 expected_incomplete_reason；空殼守門要求 total_tmu > 0，原樣轉正會被擋）。
 4. routing：預測 routing_status = review（理由：無）。核准後應維持這個值嗎？
 
 ---

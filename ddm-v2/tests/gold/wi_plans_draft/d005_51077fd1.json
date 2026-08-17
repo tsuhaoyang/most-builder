@@ -139,6 +139,8 @@
   "ie_review": {
     "segmentation_confirmed_by": "IEC141289",
     "segmentation_confirmed_date": "2026-08-16",
-    "segmentation_source": "v3_structure_confirmed"
+    "segmentation_source": "v3_structure_confirmed",
+    "typing_confirmed_by": "IEC141289",
+    "typing_confirmed_date": "2026-08-17"
   }
 }

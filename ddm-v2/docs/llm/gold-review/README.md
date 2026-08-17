@@ -287,26 +287,49 @@ plan_metrics_n 3→6，accuracy 0.6667→**0.3333**（2/6）、boundary span F1
    1 未裁草稿），逐筆問「補典型距離幾 cm，或維持資訊不足」，不預填答案；
    7f085e02 的 TMU=0 未裁、不轉正。
 
-## 下輪快答清單（IE 待答；D3-023 收尾＋複審整理）
+## IE 第七輪答案：三項裁決落地＋linker 掛 X/I 格（D3-024，2026-08-17；User 親答）
 
-worklog D3-023 各處「列下輪快答」的集中落點（答案落地後逐條清掉並更新
-對應 state entry／文件）：
+D3-023 快答清單第 1–3 題的答案落地（第 4 題未裁，見下節）：
 
-1. **手動鎖附是否同判 CM？**（D3-023 複審發現 3）D3-021 答②是**條件式
-   裁決**——「鎖附→x_screw_fix」限**電動起子情境**，「手動鎖附遇到再議」。
-   D3-023 的 X/I 判型讓「鎖附」在**所有情境**給 CM 訊號：語料 9 筆判型
-   解鎖中 **4 筆句面無電動起子脈絡**（`bc473698`「鎖附主機板固定螺絲 x6」、
-   `3791550c`、`7ff8b879`、`323b04c1`「鎖附螺絲」），落在「再議」區。
-   現況兩道擋（判型不外溢成錯值）：判型旗未經 IE 確認即擋轉正＋X 面不由
-   linker 掛值（判型解鎖≠`x_screw_fix` 落 cycle）。詳見
-   `src/ddm_v2/nlp/rule_based.py` classify_seq ※1 的情境限縮註記。
-2. **d0350279（標題句）stale 重看**：X/I 上線後本句判型棄權（G＋X＋P
-   混合），entry 判型確認的依據已變（`typing_change_changed`）——先前
-   裁決（標題句不硬切，D3-022）是否維持？維持則更新 entry 的
-   `typing_change_at_review`；覆核表該節 banner 已印先前裁決內容。
-3. **X/I 新判型旗 9 筆確認**（null→CM；名單見 `harvest-summary.md`
-   「判型」節）——含上述 4 筆手動鎖附句（與第 1 題連動）。
-4. **7f085e02 的 TMU=0.0 距離裁決**（`distance-rulings.md` 唯一未裁筆）。
+1. **「鎖附」一律當電動（X/CM），無條件**——IE 確認**產線無手動鎖附**，
+   D3-021 答②的「手動鎖附遇到再議」條件解除。語料 4 筆句面無電動起子
+   脈絡的「鎖附螺絲」型句（bc473698/3791550c/7ff8b879/323b04c1）自此在
+   裁決字面內。**不建情境旗標**（User 明選無條件裁決而非情境守門；取捨
+   與風險註記——未來若出現手動鎖附工位需回頭補情境守門——記 worklog
+   D3-024）。`rule_based.py` classify_seq ※1 的情境限縮註記已更新為
+   無條件裁決。
+2. **d0350279（標題句）stale 重看＝維持「不硬切、不轉正」**（重確認
+   2026-08-17）。判型與 P 方向兩面向的依據隨判型棄權消失（旗標不再存在、
+   無從「確認照預設」），依規則退場入 entry 的 `ruling_history`
+   （**superseded_aspects 型條目**，D3-024 新定義：退場面向原值全文保留、
+   不無痕刪除；驗證 fail-closed——切分面向不得走退場型）。entry 恢復
+   可套用，已知 stale 名單清空（`test_gold_harvest_review_state.py`）。
+3. **9 筆 X/I 新判型旗照預設確認**（null→CM）：b49a90ee/ee5c168e/
+   51077fd1/bc473698/3791550c/7ff8b879/2f0cb396/130bb1ad/323b04c1
+   ——typing 面向落 state entry（IEC141289，2026-08-17）。
+4. **linker 掛 X/I 格（生產變更）**：`src/ddm_v2/nlp/linking.py`——CM 系
+   action（controlled_move/process/inspect）的 X/I 面命中掛進對應格
+   （x4.x_code／i5.i_code，與 G/M/P 同模式、面命中才掛不加噪音；GM 序列
+   無 X/I 格不掛）。清潔情境守門語意保留：`x_clean_context_unverified`
+   情境下**掛值照掛但 needs_review**（判定單一出處自 harvest 搬進
+   linking.py，兩邊 import 同一份）。**完整性語意不變**：9 筆 X/I 句掛值
+   後仍 incomplete `missing_core_m`——「X 承載做工時 M 可為零」是 IE 域
+   判準，未裁不硬通（列下節快答）。**第四批轉正 0 筆**（誠實回報：X/I
+   掛值解的是「登記映射閒置」，解不了 substance 守門——9 筆全卡
+   incomplete 無 TMU；被擋 56 筆逐類見 worklog D3-024）。
+
+## 下輪快答清單（IE 待答；D3-024 收尾）
+
+答案落地後逐條清掉並更新對應 state entry／文件：
+
+1. **7f085e02 的 TMU=0.0 距離裁決**（`distance-rulings.md` 唯一未裁筆；
+   自 D3-023 懸至今）。
+2. **「X 承載做工時 M 可為零」是否成立？**（D3-024 新題）9 筆 X/I 判型
+   確認的 CM 句（鎖附/確認/清潔型）在 X/I 掛值後仍 incomplete
+   `missing_core_m`——句面無移動動詞、M 格空。若 IE 裁定「X/I 承載做工
+   的 CM cycle 可以 M=0（或 M 空）視為 complete」，這 9 筆才有 TMU 可談；
+   未裁前完整性判準不放寬（`missing_core_m` 照擋，紅線釘在
+   `test_linking.py::test_xi_mounted_cycle_still_incomplete_without_core_m`）。
 
 ## 覆核狀態怎麼在重產後存活（D3-015）
 
