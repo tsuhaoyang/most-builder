@@ -224,6 +224,43 @@ action module，conflicting）；22 筆 likely_multi 中 **21 筆**拿到結構�
    6 筆 multi_cycle（重切建議稿 IE 未答）維持被擋不動。累計 IE 核准
    **24/50**；planner 指標維持 0.6667/0.5714（24 筆全數自我指涉排除）。
 
+## IE 重切裁決落地（D3-022，2026-08-17；User/IE 親答）
+
+D3-020 重切建議稿（`resegmentation-proposals.md`）的 6 筆裁決：
+**d008 照切、d016 不硬切、其餘（d001/d005/d012/d030）照建議稿**——含其中的
+取捨點結論（F3 距離未述不發明、F4 acquire 單獨子句照 g01 先例、span 字面
+優先於 v3 option 差異，差異一律留痕）。
+
+1. **d008（72dc0511）→ g30**：照切 2 action（逗號 span、與 module 2 列 1:1）
+   ——a1 acquire（g_pick_sel，10.0）＋a2 CM（m_remove@0cm，TMU 0.0 記
+   `distance_unstated`）。**`ie_modified: true`**（IE 改過 plan＝真 ground
+   truth，計入 planner 段 Plan 層指標）。
+2. **d001（6fa45cdb）→ g31**、**d005（5cb719bb）→ g32**：**部分重切**——可切
+   的誠實 span 切（d001＝2 段、d005＝3 段），**span 不可得的 v3 列不塞進
+   plan**（該列已是獨立 gold：d001 的 rows[2]＝g21、d005 的 rows[2]＝g24），
+   涵蓋對應與建模差異記進案例 notes；切分記錄以 `ie_ruling`
+   （multi_cycle_2／multi_cycle_3）更正、首輪確認值保留在 `ruling_history`
+   （`superseded_source: v3_structure_confirmed`）。`ie_modified: true`。
+3. **d012（fe5391c6）→ g33**、**d030（fe1f3a90，留草稿）**：hint 解讀更正
+   （multi_cycle_2 的結構證據指 module 而非本句；第二列是獨立句＝g10／g25）
+   ——照 d026 前例走 `ruling_history` 留痕更正為 `single_cycle`，plan 不動、
+   `ie_modified` 維持 false（d012 轉正後仍屬自我指涉排除）。**d030 不轉正**：
+   第五輪新判型旗（null→GM）IE 未確認，資格檢查照擋（不越權）。
+4. **d016（d0350279）不硬切、不轉正**：`resegmentation_ruling:
+   "title_sentence_no_resegmentation"`（`ie_ruling` 欄是 single/multi_cycle
+   硬 regex，語意另立欄位留痕——同 D3-019 zero_tmu_ruling 的 scope 前例）。
+   本句是五步驟製程的壓縮標題（d026 型，5 列 span 全不可得），內容已由
+   5 列獨立 gold 全數覆蓋（g27/g26/g18/g22/g15）；留在草稿當多動作辨識參考，
+   轉正端 fail-closed（`promotion_blockers` 一律擋，mutation 守門在
+   `test_gold_promotion.py`）。
+
+**Plan 層指標的誠實變化**：`ie_modified: true` 的 g30–g32 **計入**指標——
+plan_metrics_n 3→6，accuracy 0.6667→**0.3333**（2/6）、boundary span F1
+0.5714→**0.2353**（4/17）。rule planner 恆單 action，對多 action gold 必然
+拿 0：**分數下降是預期且誠實的**（真 ground truth 進了分母），不是迴歸；
+指標若回跳基線＝ie_modified 案例被錯誤排除（釘值守門在
+`test_planner_eval.py`）。累計 IE 核准 **28/50**。
+
 ## 覆核狀態怎麼在重產後存活（D3-015）
 
 問題：`--force` 整批重寫草稿檔，覆核記錄若寫在草稿上會被第二輪
@@ -241,7 +278,8 @@ sha256 前 8 碼（草稿檔名後綴）為鍵；harvest 重產時逐筆合併�
   （`v3_structure_hint_changed`）；
 - entry 記 `ie_modified: true` ⇒ 本機制只保覆核詮釋資料、保不了 plan 內容
   （`ie_modified_plan_not_preservable`）——要保 plan 編輯就不要對該目錄
-  `--force`。
+  `--force`（D3-022 實務：重切草稿在同一輪內完成 edit → `--recompile` →
+  `--promote`，轉正後 entry 標 promoted、合併跳過，不留 stale）。
 
 守門：`tests/unit/test_gold_harvest_review_state.py`（合併/stale/驗證的
 mutation 逐條）＋`tests/unit/test_gold_draft_schema.py` 5d（草稿 `ie_review`
@@ -295,7 +333,13 @@ PYTHONPATH=src .venv/bin/python scripts/gold_harvest.py \
 或帶 `expected_incomplete_reason`、無未解決旗標（acquire_without_place／
 engine_rejected_cycle）、S 檢（provenance 一致）綠。
 
-手動步驟（IE 改過 plan 的 `ie_modified: true` 案例，或工具路徑不適用時）：
+**D3-022 起 `ie_modified: true`（IE 重切）也走工具路徑**：宣告的唯一出處＝
+state entry 的 `ie_modified`；草稿必須是 `review_status: "ie_edited"`（兩者
+不一致雙向都擋——編輯過的 plan 不得以未修改身分轉正，反之亦然）；payload 的
+`ie_modified` 以 entry 為準（true＝計入 Plan 層指標）。帶
+`resegmentation_ruling`（標題句不硬切，d016 型）的 entry 一律擋轉正。
+
+手動步驟（工具路徑不適用時的後備）：
 
 1. 草稿 JSON 填上：
    - `approved_by`: IE 工號（如 `IEC141289`）；

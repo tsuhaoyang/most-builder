@@ -626,6 +626,82 @@ def test_load_review_state_rejects_bad_aspect_shapes(tmp_path: Path, over, match
         load_review_state(p)
 
 
+def test_load_review_state_accepts_valid_reseg_ruling(tmp_path: Path):
+    """D3-022（d016 型）：標題句不硬切裁決——形狀完整＋multi_cycle 前提可載入。"""
+    norm = "拿取風槍清潔放置dimm材料盒的dimm"
+    entry = _entry(
+        norm,
+        hint="multi_cycle_5",
+        resegmentation_ruling="title_sentence_no_resegmentation",
+        resegmentation_ruled_by="IEC141289",
+        resegmentation_ruled_date="2026-08-17",
+        resegmentation_ruling_notes="內容由 5 列獨立 gold 覆蓋",
+    )
+    p = _write_state(tmp_path / REVIEW_STATE_FILENAME, {_sha(norm)[:8]: entry})
+    loaded = load_review_state(p)
+    assert (
+        loaded[_sha(norm)[:8]]["resegmentation_ruling"]
+        == "title_sentence_no_resegmentation"
+    )
+
+
+@pytest.mark.parametrize(
+    ("over", "match"),
+    [
+        # 未定義的裁決值（fail-closed：新裁決型態必須先定義）
+        (
+            {
+                "resegmentation_ruling": "just_split_it_somehow",
+                "resegmentation_ruled_by": "IEC141289",
+                "resegmentation_ruled_date": "2026-08-17",
+            },
+            "resegmentation_ruling",
+        ),
+        # 欄位群不完整（缺 ruled_by）
+        (
+            {
+                "resegmentation_ruling": "title_sentence_no_resegmentation",
+                "resegmentation_ruled_date": "2026-08-17",
+            },
+            "resegmentation_ruled_by",
+        ),
+        # notes 空殼
+        (
+            {
+                "resegmentation_ruling": "title_sentence_no_resegmentation",
+                "resegmentation_ruled_by": "IEC141289",
+                "resegmentation_ruled_date": "2026-08-17",
+                "resegmentation_ruling_notes": "  ",
+            },
+            "resegmentation_ruling_notes",
+        ),
+    ],
+)
+def test_load_review_state_rejects_bad_reseg_shapes(tmp_path: Path, over, match: str):
+    """D3-022 裁決欄驗證是硬的：半套/未定義值＝IE 裁決可能靜默漏套——擋下。"""
+    norm = "拿取風槍清潔放置dimm材料盒的dimm"
+    entry = _entry(norm, hint="multi_cycle_5", **over)
+    p = _write_state(tmp_path / REVIEW_STATE_FILENAME, {_sha(norm)[:8]: entry})
+    with pytest.raises(SystemExit, match=match):
+        load_review_state(p)
+
+
+def test_load_review_state_reseg_requires_multi_cycle_premise(tmp_path: Path):
+    """「標題句不硬切」的前提＝multi_cycle 切分記錄——single_cycle 沒有
+    「不硬切」可裁（掛錯對象＝裁決語意造假）。"""
+    norm = "拿取風槍清潔放置dimm材料盒的dimm"
+    entry = _entry(
+        norm,
+        hint="single_cycle",
+        resegmentation_ruling="title_sentence_no_resegmentation",
+        resegmentation_ruled_by="IEC141289",
+        resegmentation_ruled_date="2026-08-17",
+    )
+    p = _write_state(tmp_path / REVIEW_STATE_FILENAME, {_sha(norm)[:8]: entry})
+    with pytest.raises(SystemExit, match="multi_cycle"):
+        load_review_state(p)
+
+
 def test_load_review_state_rejects_entry_without_any_aspect(tmp_path: Path):
     """空 entry（無任何覆核面向）不是覆核記錄——擋下。"""
     norm = "雙手抓握主機板放至治具"
@@ -769,10 +845,15 @@ def test_repo_ie_rulings_present_after_round2_correction():
         if (d.get("ie_review") or {}).get("segmentation_source") == "v3_structure_confirmed"
     ]
     # 首輪 39 筆確認；D3-019 首批轉正 21 筆＋D3-021 第二批 3 筆（全部
-    # v3_structure_confirmed）搬進 tests/gold/wi_plans/ → 草稿目錄剩 15 筆帶
-    # 確認。促成守恆的另一半（promoted entry ↔ 正式 gold 檔）在
-    # test_gold_promotion.py。D3-021 批次確認（no_contention_batch_confirmed）
-    # 是另一個來源，不進本守恆——批次數量釘在下方獨立斷言。
+    # v3_structure_confirmed）＋D3-022 重切轉正 1 筆（d008/72dc0511——照
+    # multi_cycle_2 確認重切，來源不變）搬進 tests/gold/wi_plans/；D3-022 另把
+    # 4 筆首輪確認更正為 ie_ruling（d001/6fa45cdb、d005/5cb719bb 部分重切轉正；
+    # d012/fe5391c6 更正 single_cycle 轉正；d030/fe1f3a90 更正 single_cycle 留
+    # 草稿）——更正軌跡在 ruling_history、以 superseded_source=
+    # v3_structure_confirmed 標記「由首輪確認更正而來」，守恆靠它對帳。
+    # 促成守恆的另一半（promoted entry ↔ 正式 gold 檔）在 test_gold_promotion.py。
+    # D3-021 批次確認（no_contention_batch_confirmed）是另一個來源，不進本
+    # 守恆——批次數量釘在下方獨立斷言。
     state_entries = load_review_state(DRAFT_DIR / REVIEW_STATE_FILENAME)
     promoted_confirmed = sum(
         1
@@ -780,10 +861,32 @@ def test_repo_ie_rulings_present_after_round2_correction():
         if e.get("promoted_to")
         and e.get("segmentation_source") == "v3_structure_confirmed"
     )
-    assert len(confirmed) + promoted_confirmed == 39, (
-        f"切分確認守恆破了：草稿 {len(confirmed)} ＋ 已轉正 {promoted_confirmed} ≠ 39"
+    superseded_confirmed = [
+        e
+        for e in state_entries.values()
+        if e.get("segmentation_source") == "ie_ruling"
+        and any(
+            h.get("superseded_source") == "v3_structure_confirmed"
+            for h in e.get("ruling_history") or []
+        )
+    ]
+    assert (
+        len(confirmed) + promoted_confirmed + len(superseded_confirmed) == 39
+    ), (
+        f"切分確認守恆破了：草稿 {len(confirmed)} ＋ 已轉正 {promoted_confirmed} "
+        f"＋ D3-022 更正為裁決 {len(superseded_confirmed)} ≠ 39"
     )
-    assert len(confirmed) == 15
+    assert len(confirmed) == 10
+    assert promoted_confirmed == 25
+    assert len(superseded_confirmed) == 4, (
+        "D3-022 更正（v3_structure_confirmed → ie_ruling）恰 4 筆"
+        "（6fa45cdb/5cb719bb/fe5391c6/fe1f3a90）——增減都要有意識更新"
+    )
+    for e in superseded_confirmed:
+        # 更正不是無痕覆寫：先前確認的結構值必須保留在軌跡裡
+        assert e["ruling_history"][0]["ie_ruling"].startswith("multi_cycle_"), (
+            "被更正的首輪確認值（multi_cycle_n）必須保留在 ruling_history"
+        )
     for d in confirmed:
         assert d["v3_structure_hint"] != "ambiguous"
         assert d["ie_modified"] is False

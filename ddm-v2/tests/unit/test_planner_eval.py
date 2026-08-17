@@ -38,7 +38,27 @@ DRAFT_DIR = ROOT / "tests" / "gold" / "wi_plans_draft"
 
 # gold 基線釘值的唯一出處＝tests/unit/_seed_gold_baseline.py
 # （與 test_gold_harvest_recompile.py 共用；不得在本檔另寫死）。
-from _seed_gold_baseline import GOLD_TOTAL_N, PROMOTED_GOLD_N, SEED_GOLD_N  # noqa: E402
+from _seed_gold_baseline import (  # noqa: E402
+    GOLD_TOTAL_N,
+    IE_MODIFIED_GOLD_N,
+    PROMOTED_GOLD_N,
+    SEED_GOLD_N,
+)
+
+# D3-022 後的 Plan 層基線（seed 3 筆＋ie_modified=true 轉正 3 筆＝分母 6）：
+# accuracy＝2/6（g01/g05 對；g02 與重切 3 筆 rule planner 恆單 action 必錯）；
+# boundary micro＝tp2 fp4 fn9 → F1 4/17。分數自 seed 基線 2/3、4/7 下降是
+# **預期且誠實**（真 ground truth 進了分母），不是迴歸。
+PLAN_METRICS_N = SEED_GOLD_N + IE_MODIFIED_GOLD_N
+PLAN_ACCURACY = 2 / 6
+BOUNDARY_MICRO = (2, 4, 9)  # (tp, fp, fn)
+BOUNDARY_F1 = 4 / 17
+# ie_modified=true 的轉正 gold（計入 Plan 層指標；錯誤排除即紅）
+IE_MODIFIED_GOLD_IDS = {
+    "g30_pick_dummy_dimm_debag",
+    "g31_confirm_points_press_handle",
+    "g32_pick_board_debag_place_bench",
+}
 
 # wi_ai_eval 的核准判定與 dataset_note（R4/R6 守門直接打函式，不繞 CLI）
 sys.path.insert(0, str(ROOT / "scripts"))
@@ -415,29 +435,40 @@ async def test_seed_gold_baseline_pinned():
     也同時殺掉兩類 mutation：accuracy 恆 1.0（數值不符）與 planner 段恆空
     （n≠GOLD_TOTAL_N）。
 
-    D3-019 轉正後的關鍵不變量：21 筆轉正案例全部 `ie_modified: false`
-    （原樣核准）→ **全數排除出 Plan 層指標**，分數必須停在 seed 基線
-    （2/3、4/7）——指標若動了，就是自我指涉排除破了（橡皮圖章假象）。
+    D3-019/D3-021 轉正的 25 筆全部 `ie_modified: false`（原樣核准）→ 排除出
+    Plan 層指標；**D3-022 重切轉正的 3 筆 `ie_modified: true`（IE 改過 plan＝
+    真實 ground truth）→ 計入**。分母 3→6、分數自 seed 基線 2/3、4/7 降為
+    2/6、4/17 是**預期且誠實**（rule planner 恆單 action，對多 action gold
+    必然拿 0）——ie_modified=true 案例被錯誤排除（plan_metrics_n 回落、分數
+    回跳基線）即紅。
     """
     results, summary = await evaluate_planner_all(GOLD_DIR)
     assert summary["planner"] == RULE_PLANNER_NAME
     assert summary["n"] == GOLD_TOTAL_N
     # seed gold 不是預標註轉正（無 plan_origin）——不觸發自我指涉排除；
-    # 轉正 21 筆＝rule planner 預標註且 ie_modified=false → 全數排除
-    assert summary["plan_metrics_n"] == SEED_GOLD_N
-    assert summary["self_referential_excluded"]["count"] == PROMOTED_GOLD_N
+    # ie_modified=false 的轉正全數排除、ie_modified=true 的重切轉正計入
+    assert summary["plan_metrics_n"] == PLAN_METRICS_N
+    assert (
+        summary["self_referential_excluded"]["count"]
+        == PROMOTED_GOLD_N - IE_MODIFIED_GOLD_N
+    )
     assert all(
         c.startswith("g") for c in summary["self_referential_excluded"]["cases"]
     )
+    # mutation 證據（D3-022）：ie_modified=true 的重切 gold 不得進排除名單
+    assert not (
+        IE_MODIFIED_GOLD_IDS & set(summary["self_referential_excluded"]["cases"])
+    ), "ie_modified=true 的真 ground truth 被錯誤排除出 Plan 層指標"
     assert all(r.ok for r in results), [r.errors for r in results]
 
-    # rule_based_v1 永遠單 action：g01/g05 數對、g02（2 actions）數錯
-    assert summary["action_count_accuracy"] == pytest.approx(2 / 3)
+    # rule_based_v1 永遠單 action：g01/g05 數對、g02（2 actions）與 D3-022
+    # 重切 3 筆（2/2/3 actions）數錯
+    assert summary["action_count_accuracy"] == pytest.approx(PLAN_ACCURACY)
     micro = summary["boundary_span"]["micro"]
-    assert (micro["tp"], micro["fp"], micro["fn"]) == (2, 1, 2)
-    assert micro["f1"] == pytest.approx(4 / 7)
-    assert summary["boundary_span"]["annotated_cases"] == SEED_GOLD_N
-    assert summary["boundary_span"]["scored_cases"] == SEED_GOLD_N
+    assert (micro["tp"], micro["fp"], micro["fn"]) == BOUNDARY_MICRO
+    assert micro["f1"] == pytest.approx(BOUNDARY_F1)
+    assert summary["boundary_span"]["annotated_cases"] == PLAN_METRICS_N
+    assert summary["boundary_span"]["scored_cases"] == PLAN_METRICS_N
     assert summary["boundary_span"]["unannotated_cases"] == []
     assert summary["boundary_span"]["trivially_empty_cases"] == []
 
@@ -446,6 +477,12 @@ async def test_seed_gold_baseline_pinned():
     assert by_id["g02_screwdriver_screw_x2"].boundary_span_f1 == 0.0
     assert by_id["g05_composite_unknown"].boundary_span_f1 == 1.0
     assert by_id["g02_screwdriver_screw_x2"].action_count_match is False
+    # D3-022 重切 gold 逐筆：計入分母、rule planner 必然拿 0（誠實的預期分數）
+    for gid in sorted(IE_MODIFIED_GOLD_IDS):
+        r = by_id[gid]
+        assert r.ie_modified is True, f"{gid}：ie_modified 宣告遺失（會被錯誤排除）"
+        assert r.action_count_match is False, f"{gid}：rule planner 恆單 action"
+        assert r.boundary_span_f1 == 0.0, f"{gid}：整句 span 對重切 gold 必為 0"
 
     # 未達 §19 P2 門檻——量測管道在，分數如實呈現
     # （spec＝docs/architecture/wi-ai-parser-system-spec.md；key 是 boundary_span_f1，
@@ -512,11 +549,15 @@ def test_cli_report_contains_both_segments(tmp_path: Path):
     assert planner["summary"]["n"] == GOLD_TOTAL_N
     assert planner["summary"]["planner"] == RULE_PLANNER_NAME
     assert len(planner["cases"]) == GOLD_TOTAL_N
-    # D3-019 轉正 21 筆全數自我指涉排除 → Plan 層指標停在 seed 基線不動
-    assert planner["summary"]["plan_metrics_n"] == SEED_GOLD_N
-    assert planner["summary"]["self_referential_excluded"]["count"] == PROMOTED_GOLD_N
-    assert planner["summary"]["action_count_accuracy"] == pytest.approx(2 / 3)
-    assert planner["summary"]["boundary_span"]["micro"]["f1"] == pytest.approx(4 / 7)
+    # ie_modified=false 的轉正全數自我指涉排除；D3-022 重切 3 筆（true）計入
+    # → 分數＝誠實的新基線（見 PLAN_ACCURACY/BOUNDARY_F1 注記）
+    assert planner["summary"]["plan_metrics_n"] == PLAN_METRICS_N
+    assert (
+        planner["summary"]["self_referential_excluded"]["count"]
+        == PROMOTED_GOLD_N - IE_MODIFIED_GOLD_N
+    )
+    assert planner["summary"]["action_count_accuracy"] == pytest.approx(PLAN_ACCURACY)
+    assert planner["summary"]["boundary_span"]["micro"]["f1"] == pytest.approx(BOUNDARY_F1)
     # 缺口要寫在報告裡，不是靠人記得：dependency F1 未實作、rule 分數退化
     assert planner["summary"]["dependency_f1"] is None
     assert "未實作" in planner["summary"]["dependency_f1_note"]

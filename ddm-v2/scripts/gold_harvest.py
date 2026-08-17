@@ -123,6 +123,13 @@ from ddm_v2.nlp.rule_plan_adapter import plan_from_rule_result  # noqa: E402
 
 GOLD_SCHEMA_VERSION = "wi-gold-v1"
 DEFAULT_LIMIT = 60
+# 草稿 notes 的管線樣板（preannotate 寫入；promoted_case_payload 據此判斷
+# 「IE 有沒有在 notes 留過內容」——樣板照抄＝無內容，轉正時以轉正註記取代；
+# IE 寫過的 notes（如 D3-022 重切的涵蓋對應）轉正時保留並附加轉正註記）
+DRAFT_NOTES_BOILERPLATE = (
+    "預標註草稿（rule pipeline 自動產生；scripts/gold_harvest.py）。"
+    "非 gold——IE 覆核核准前不得移入 tests/gold/wi_plans/。"
+)
 # 草稿 plan 的出處標記（planner 段評測據此排除自我指涉案例；見 nlp/planner_eval.py）
 PLAN_ORIGIN_PREANNOTATION = planner_preannotation_origin(RULE_PLANNER_NAME)
 PIPELINE_DESC = (
@@ -1072,10 +1079,7 @@ async def preannotate(
     out: dict[str, Any] = {
         "id": draft_id,
         "source_text": cand.raw,
-        "notes": (
-            "預標註草稿（rule pipeline 自動產生；scripts/gold_harvest.py）。"
-            "非 gold——IE 覆核核准前不得移入 tests/gold/wi_plans/。"
-        ),
+        "notes": DRAFT_NOTES_BOILERPLATE,
         "review_status": "pending_ie",
         "approved_by": None,
         # plan 出處＝rule planner 預標註；轉正時必填 ie_modified: true|false，
@@ -1466,6 +1470,15 @@ def _ie_review_lines(draft: dict[str, Any]) -> list[str]:
             f"判定資訊不足（{ir['zero_tmu_ruled_by']}，{ir['zero_tmu_ruled_date']}）；"
             "草稿已記 `expected_incomplete_reason`（轉正走誠實記錄路徑，不發明距離）。"
         )
+    if ir.get("resegmentation_ruling"):
+        out.append(
+            f"**✅ IE 裁決（重切）**：`{ir['resegmentation_ruling']}`——本句是製程"
+            "標題句，各列為獨立子句非本句子字串，**不硬切、不轉正**（fail-closed）；"
+            "留在草稿當多動作辨識參考"
+            f"（{ir['resegmentation_ruled_by']}，{ir['resegmentation_ruled_date']}）。"
+        )
+        if ir.get("resegmentation_ruling_notes"):
+            out.append(f"  - 裁決註記：{ir['resegmentation_ruling_notes']}")
     return out
 
 
@@ -2092,6 +2105,13 @@ REVIEW_SEGMENTATION_SOURCES = (
 # TMU=0 裁決的唯一合法值（D3-019：IE 判定「句子資訊不足——距離未述」；
 # 合併時原樣寫進草稿 expected_incomplete_reason）
 ZERO_TMU_RULING_DISTANCE_UNSTATED = "distance_unstated"
+# D3-022（d016 型）：重切裁決的唯一合法值——「本句是製程標題句、不硬切」。
+# 語意：IE 確認的 multi_cycle_n 是 module（範本）結構；各列是各自獨立的完整
+# 子句、非本句子字串，切不出誠實 evidence span（d026 教訓：不編造），且內容
+# 已由各列的獨立 gold/草稿逐筆覆蓋——本句**不重切、不轉正**，留在草稿當
+# 多動作辨識參考。轉正端 fail-closed：帶本裁決的 entry 一律擋（見
+# promotion_blockers）——「d016 被錯誤轉正」必須紅。
+RESEGMENTATION_RULING_TITLE_SENTENCE = "title_sentence_no_resegmentation"
 _RULING_RE = re.compile(r"^(single_cycle|multi_cycle_[2-9]\d*)$")
 _DATE_RE = re.compile(r"^\d{4}-\d{2}-\d{2}$")
 _SHA8_RE = re.compile(r"^[0-9a-f]{8}$")
@@ -2120,6 +2140,13 @@ _P_DIR_ENTRY_KEYS = (
     "p_direction_caveat_at_review",
 )
 _ZERO_TMU_ENTRY_KEYS = ("zero_tmu_ruling", "zero_tmu_ruled_by", "zero_tmu_ruled_date")
+# D3-022 重切裁決（d016 型「標題句不硬切」）：notes 選填、其餘同進同出
+_RESEG_ENTRY_KEYS = (
+    "resegmentation_ruling",
+    "resegmentation_ruled_by",
+    "resegmentation_ruled_date",
+    "resegmentation_ruling_notes",
+)
 _PROMOTED_ENTRY_KEYS = ("promoted_to", "promoted_date")
 # entry → 草稿 ie_review 區塊要帶的欄位（review_block_from_entry 的唯一出處；
 # *_at_review 是 stale 判定基準、promoted_* 是轉正軌跡——都不投影進草稿）
@@ -2137,6 +2164,12 @@ _REVIEW_BLOCK_KEYS = (
     "zero_tmu_ruling",
     "zero_tmu_ruled_by",
     "zero_tmu_ruled_date",
+    # D3-022：重切裁決投影進草稿（notes 帶覆蓋對應事實）——寫在草稿上的版本
+    # 會被 --force 洗掉，entry 才是唯一出處，投影讓它在重產後存活
+    "resegmentation_ruling",
+    "resegmentation_ruled_by",
+    "resegmentation_ruled_date",
+    "resegmentation_ruling_notes",
 )
 
 
@@ -2206,6 +2239,37 @@ def _validate_zero_tmu_aspect(path: Path | str, ctx: str, entry: dict) -> None:
     _require_by_date(path, ctx, entry, "zero_tmu_ruled_by", "zero_tmu_ruled_date")
 
 
+def _validate_reseg_aspect(path: Path | str, ctx: str, entry: dict) -> None:
+    """重切裁決面向（D3-022，d016 型）：只有一個合法值（fail-closed——新裁決
+    型態必須先定義），且必須附著在既有的 multi_cycle 切分記錄上（single_cycle
+    沒有「不硬切」可裁）。"""
+    ruling = entry.get("resegmentation_ruling")
+    if ruling != RESEGMENTATION_RULING_TITLE_SENTENCE:
+        _fail_state(
+            path,
+            f"{ctx}：resegmentation_ruling 目前唯一合法值是 "
+            f"{RESEGMENTATION_RULING_TITLE_SENTENCE!r}（IE 裁決標題句不硬切；"
+            "其他重切結果走 plan 編輯＋ie_modified=true，不在本欄）",
+        )
+    _require_by_date(
+        path, ctx, entry, "resegmentation_ruled_by", "resegmentation_ruled_date"
+    )
+    notes = entry.get("resegmentation_ruling_notes")
+    if notes is not None and not (isinstance(notes, str) and notes.strip()):
+        _fail_state(path, f"{ctx}：resegmentation_ruling_notes 若存在必須是非空字串")
+    # 裁決前提：切分記錄存在且為 multi_cycle_n（標題句的結構證據）
+    if entry.get("segmentation_source") == "ie_ruling":
+        structure = entry.get("ie_ruling")
+    else:
+        structure = entry.get("v3_structure_hint_at_review")
+    if not (isinstance(structure, str) and structure.startswith("multi_cycle_")):
+        _fail_state(
+            path,
+            f"{ctx}：{RESEGMENTATION_RULING_TITLE_SENTENCE} 的前提是 multi_cycle "
+            f"切分記錄（標題句對應多列），得到 {structure!r}",
+        )
+
+
 def _validate_promoted_marker(path: Path | str, ctx: str, entry: dict) -> None:
     """轉正標記：promoted_to（正式 gold id）＋promoted_date 同進同出——
     軌跡保留（entry 不刪），harvest 合併時跳過。"""
@@ -2263,6 +2327,7 @@ def load_review_state(path: Path) -> dict[str, dict[str, Any]]:
         has_typing = any(k in entry for k in _TYPING_ENTRY_KEYS)
         has_pdir = any(k in entry for k in _P_DIR_ENTRY_KEYS)
         has_zero = any(k in entry for k in _ZERO_TMU_ENTRY_KEYS)
+        has_reseg = any(k in entry for k in _RESEG_ENTRY_KEYS)
         has_promoted = any(k in entry for k in _PROMOTED_ENTRY_KEYS)
         if not (has_seg or has_typing or has_pdir or has_zero):
             _fail_state(
@@ -2276,6 +2341,14 @@ def load_review_state(path: Path) -> dict[str, dict[str, Any]]:
             _validate_p_direction_aspect(path, ctx, entry)
         if has_zero:
             _validate_zero_tmu_aspect(path, ctx, entry)
+        if has_reseg:
+            if not has_seg:
+                _fail_state(
+                    path,
+                    f"{ctx}：重切裁決必須附著在切分面向上"
+                    "（沒有切分記錄就沒有「不硬切」的對象）",
+                )
+            _validate_reseg_aspect(path, ctx, entry)
         if has_promoted:
             _validate_promoted_marker(path, ctx, entry)
         if not has_seg:
@@ -2671,6 +2744,10 @@ async def cmd_recompile(
 #    expected_incomplete_reason（D3-018 M1 空殼守門的兩條合法路徑）。
 # 5. S 檢：plan.normalized_text 與至少一筆 source_provenance.raw_text 正規化後
 #    一致（真實案例守門）。
+# 6. D3-022 追加：IE 重切（plan 編輯）走同一工作流——entry 的 ie_modified
+#    宣告與草稿的 ie_edited 狀態必須一致（兩方向都擋，見 promotion_blockers），
+#    payload 的 ie_modified 以 entry 為準（true＝計入 Plan 層指標）；帶
+#    resegmentation_ruling（標題句不硬切）的 entry 一律擋轉正。
 # 落筆語意：整批先驗再動手（一筆不合格＝一筆都不寫）；compile 段預檢全綠才
 # 落筆（任何一筆紅＝該筆期望值有問題，撤回該筆，不准為過而改期望）；轉正後
 # review-state entry 標 promoted_to/promoted_date（軌跡保留不刪）。
@@ -2790,7 +2867,34 @@ def promotion_blockers(
         if entry is not None and ir != review_block_from_entry(entry):
             blockers.append("ie_review 與 state entry 投影不一致（草稿過時，重跑 harvest）")
     if draft.get("ie_modified") is True:
-        blockers.append("ie_modified=true 的 plan 編輯不在本工作流（走 --recompile 後人工轉正）")
+        blockers.append(
+            "草稿 ie_modified=true——該欄是轉正時的宣告（來源＝state entry 的 "
+            "ie_modified），草稿階段預填 true 會騙過自我指涉排除"
+        )
+    # D3-022：IE 重切（plan 編輯）的轉正路徑——編輯狀態與 entry 的 ie_modified
+    # 宣告必須一致，兩個方向都擋：
+    # - entry 宣告改過但草稿沒走 ie_edited 工作流＝宣告掛在管線原樣 plan 上（說謊）；
+    # - 草稿被編輯過（ie_edited）但 entry 未宣告＝把 IE 的重切以「未修改」身分
+    #   轉正，該筆會被 Plan 層指標錯誤排除（真 ground truth 被丟掉）。
+    entry_modified = bool(entry.get("ie_modified")) if entry else False
+    edited = draft.get("review_status") == "ie_edited"
+    if entry_modified and not edited:
+        blockers.append(
+            "entry 宣告 ie_modified=true 但草稿 review_status 非 ie_edited——"
+            "plan 編輯必須依工作流標記（docs/llm/gold-review/README.md）"
+        )
+    if edited and not entry_modified:
+        blockers.append(
+            "草稿 review_status=ie_edited（IE 改過 plan）但 entry 未宣告 "
+            "ie_modified=true——編輯過的 plan 不得以未修改身分轉正"
+        )
+    if entry is not None and entry.get("resegmentation_ruling"):
+        # D3-022（d016 型）：IE 裁決「標題句不硬切、不轉正」——fail-closed，
+        # 內容由各列的獨立 gold 覆蓋，本句留在草稿當多動作辨識參考
+        blockers.append(
+            f"entry 帶 resegmentation_ruling={entry['resegmentation_ruling']}"
+            "（IE 裁決本句不重切、不轉正；內容由成分列的獨立 gold 覆蓋）"
+        )
     blockers += structure_consistency_blockers(draft)
     blockers += caveat_resolution_blockers(draft)
     blockers += substance_blockers(draft)
@@ -2806,23 +2910,35 @@ def promoted_case_payload(
     approved_by: str,
     approved_date: str,
     split: str,
+    ie_modified: bool = False,
 ) -> dict[str, Any]:
     """草稿 → 正式 gold 檔內容（純轉換，不落盤）：改身分欄位、保留全部
-    覆核軌跡（ie_review／caveat／provenance／草稿 id 進 notes 供追溯）。"""
+    覆核軌跡（ie_review／caveat／provenance／草稿 id 進 notes 供追溯）。
+
+    `ie_modified` 的來源＝state entry 的宣告（cmd_promote 傳入）：false＝原樣
+    核准（確認≠修改，planner 段自我指涉排除）；true＝IE 改過 plan 內容
+    （D3-022 重切型）——真實 ground truth，**計入** Plan 層指標。
+    IE 在草稿 notes 留過的內容（如重切的 v3 列涵蓋對應）保留，轉正註記附加；
+    管線樣板 notes（DRAFT_NOTES_BOILERPLATE）視為無內容，直接取代。"""
     data = json.loads(json.dumps(draft))  # deep copy
     old_id = data.get("id")
     data["id"] = new_id
     data["approved_by"] = approved_by
     data["approved_date"] = approved_date
     data["review_status"] = "approved"
-    data["ie_modified"] = False  # 原樣核准（確認≠修改；planner 段自我指涉排除）
+    data["ie_modified"] = bool(ie_modified)
     data["split"] = split
-    data["notes"] = (
+    promo_note = (
         f"自草稿 {old_id} 轉正（IE 覆核核准；docs/llm/gold-review/README.md 工作流）。"
         "取樣為 challenge-oversampled（coverage-optimized），本案分數不可外推為"
         "母體表現。切分/判型/方向數確認與 TMU=0 裁決見 ie_review 與 "
         "tests/gold/wi_plans_draft/review-state.json。"
     )
+    prev_notes = (data.get("notes") or "").strip()
+    if prev_notes and prev_notes != DRAFT_NOTES_BOILERPLATE:
+        data["notes"] = prev_notes + "\n" + promo_note
+    else:
+        data["notes"] = promo_note
     return data
 
 
@@ -2900,12 +3016,16 @@ async def cmd_promote(
         target = GOLD_DIR / f"{new_id}.json"
         if target.exists():
             raise SystemExit(f"{target} 已存在——不覆蓋已核准 gold")
+        entry = entries[draft_sha8(data)]  # 資格已驗（entry 必存在）
         payload = promoted_case_payload(
             data,
             new_id=new_id,
             approved_by=approved_by,
             approved_date=approved_date,
             split=split,
+            # ie_modified 宣告的唯一出處＝state entry（IE 裁決載體）：
+            # true＝IE 重切過 plan（D3-022）→ 計入 Plan 層指標
+            ie_modified=bool(entry.get("ie_modified")),
         )
         compile_res = await evaluate_gold_case(payload)
         if not compile_res.ok:

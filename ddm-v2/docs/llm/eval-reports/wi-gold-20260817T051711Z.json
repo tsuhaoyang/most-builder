@@ -2,14 +2,14 @@
   "report_kind": "wi-gold-eval",
   "report_schema_version": "wi-gold-report-v4",
   "gold_schema_version": "wi-gold-v1",
-  "generated_at": "2026-08-17T05:40:27.975954+00:00",
+  "generated_at": "2026-08-17T05:17:11.042500+00:00",
   "gold_dir": "/home/howard/workspace/most-builder/ddm-v2/tests/gold/wi_plans",
-  "dataset_note": "n=31；seed 3 筆；IE 核准 28/50，未達 docs/architecture/wi-ai-parser-system-spec.md §19 P0 前置；其中 ie_modified≠true 的預標註 25 筆（原樣核准，不計 planner 段證據力——見 self_referential_excluded）",
+  "dataset_note": "n=27；seed 3 筆；IE 核准 24/50，未達 docs/architecture/wi-ai-parser-system-spec.md §19 P0 前置；其中 ie_modified≠true 的預標註 24 筆（原樣核准，不計 planner 段證據力——見 self_referential_excluded）",
   "gold_load_errors": [],
   "unapproved_cases": [],
   "summary": {
-    "total": 31,
-    "passed": 31,
+    "total": 27,
+    "passed": 27,
     "failed": 0
   },
   "cases": [
@@ -594,114 +594,6 @@
         "engine_ok": 1,
         "routing_status": "review"
       }
-    },
-    {
-      "case_id": "g30_pick_dummy_dimm_debag",
-      "ok": true,
-      "action_count": 2,
-      "routing_status": "review",
-      "routing_reasons": [
-        "next_operation"
-      ],
-      "cycle_checks": [
-        {
-          "action_id": "a1",
-          "ok": true,
-          "errors": []
-        },
-        {
-          "action_id": "a2",
-          "ok": true,
-          "errors": []
-        }
-      ],
-      "errors": [],
-      "metrics": {
-        "action_count": 2,
-        "complete_drafts": 2,
-        "engine_ok": 2,
-        "routing_status": "review"
-      }
-    },
-    {
-      "case_id": "g31_confirm_points_press_handle",
-      "ok": true,
-      "action_count": 2,
-      "routing_status": "review",
-      "routing_reasons": [],
-      "cycle_checks": [
-        {
-          "action_id": "a1",
-          "ok": true,
-          "errors": []
-        },
-        {
-          "action_id": "a2",
-          "ok": true,
-          "errors": []
-        }
-      ],
-      "errors": [],
-      "metrics": {
-        "action_count": 2,
-        "complete_drafts": 2,
-        "engine_ok": 2,
-        "routing_status": "review"
-      }
-    },
-    {
-      "case_id": "g32_pick_board_debag_place_bench",
-      "ok": true,
-      "action_count": 3,
-      "routing_status": "review",
-      "routing_reasons": [
-        "next_operation"
-      ],
-      "cycle_checks": [
-        {
-          "action_id": "a1",
-          "ok": true,
-          "errors": []
-        },
-        {
-          "action_id": "a2",
-          "ok": true,
-          "errors": []
-        },
-        {
-          "action_id": "a3",
-          "ok": true,
-          "errors": []
-        }
-      ],
-      "errors": [],
-      "metrics": {
-        "action_count": 3,
-        "complete_drafts": 3,
-        "engine_ok": 3,
-        "routing_status": "review"
-      }
-    },
-    {
-      "case_id": "g33_take_board_place_press_fixture",
-      "ok": true,
-      "action_count": 1,
-      "routing_status": "review",
-      "routing_reasons": [],
-      "cycle_checks": [
-        {
-          "action_id": "a1",
-          "ok": true,
-          "errors": []
-        }
-      ],
-      "errors": [],
-      "metrics": {
-        "action_count": 1,
-        "complete_drafts": 1,
-        "engine_ok": 1,
-        "routing_status": "review"
-      }
     }
   ],
   "compile_eval_note": "頂層 summary/cases 為 compile 段（gold plan → link/compile/engine），planner 段見 planner_eval",
@@ -709,10 +601,10 @@
     "db_required": false,
     "summary": {
       "planner": "rule_based_v1",
-      "n": 31,
-      "plan_metrics_n": 6,
+      "n": 27,
+      "plan_metrics_n": 3,
       "self_referential_excluded": {
-        "count": 25,
+        "count": 24,
         "cases": [
           "g06_board_to_press_fixture",
           "g07_dimm_latch_press_x16",
@@ -737,25 +629,24 @@
           "g26_dimm_box_to_position",
           "g27_pick_dimm_box_to_bench",
           "g28_pick_board_hold",
-          "g29_pick_dummy_dimm_hold_to_line",
-          "g33_take_board_place_press_fixture"
+          "g29_pick_dummy_dimm_hold_to_line"
         ],
         "reason": "這些案例的 gold plan 即受測 planner 的預標註輸出（plan_origin=<planner>_preannotation）且 IE 未修改內容（ie_modified≠true）：拿 planner 自己的輸出當標準答案評 planner＝自我指涉，對 Plan 層指標零證據力，故排除。IE 實際改過（ie_modified=true）的案例是真實 ground truth，照常計入；compile 段不受影響（驗 compiler+engine，非 planner）。"
       },
-      "action_count_accuracy": 0.3333333333333333,
+      "action_count_accuracy": 0.6666666666666666,
       "action_count_matches": 2,
       "boundary_span": {
-        "annotated_cases": 6,
-        "scored_cases": 6,
+        "annotated_cases": 3,
+        "scored_cases": 3,
         "unannotated_cases": [],
         "trivially_empty_cases": [],
         "micro": {
           "tp": 2,
-          "fp": 4,
-          "fn": 9,
-          "precision": 0.3333333333333333,
-          "recall": 0.18181818181818182,
-          "f1": 0.23529411764705882
+          "fp": 1,
+          "fn": 2,
+          "precision": 0.6666666666666666,
+          "recall": 0.5,
+          "f1": 0.5714285714285714
         }
       },
       "dependency_f1": null,
@@ -1550,138 +1441,6 @@
           [
             0,
             19
-          ]
-        ],
-        "errors": []
-      },
-      {
-        "case_id": "g30_pick_dummy_dimm_debag",
-        "ok": true,
-        "gold_action_count": 2,
-        "pred_action_count": 1,
-        "action_count_match": false,
-        "boundary_annotated": true,
-        "boundary_comparable": true,
-        "boundary_trivially_empty": false,
-        "boundary_tp": 0,
-        "boundary_fp": 1,
-        "boundary_fn": 2,
-        "boundary_span_f1": 0.0,
-        "plan_origin": "rule_based_v1_preannotation",
-        "ie_modified": true,
-        "gold_spans": [
-          [
-            0,
-            11
-          ],
-          [
-            12,
-            18
-          ]
-        ],
-        "pred_spans": [
-          [
-            0,
-            18
-          ]
-        ],
-        "errors": []
-      },
-      {
-        "case_id": "g31_confirm_points_press_handle",
-        "ok": true,
-        "gold_action_count": 2,
-        "pred_action_count": 1,
-        "action_count_match": false,
-        "boundary_annotated": true,
-        "boundary_comparable": true,
-        "boundary_trivially_empty": false,
-        "boundary_tp": 0,
-        "boundary_fp": 1,
-        "boundary_fn": 2,
-        "boundary_span_f1": 0.0,
-        "plan_origin": "rule_based_v1_preannotation",
-        "ie_modified": true,
-        "gold_spans": [
-          [
-            0,
-            8
-          ],
-          [
-            9,
-            40
-          ]
-        ],
-        "pred_spans": [
-          [
-            0,
-            40
-          ]
-        ],
-        "errors": []
-      },
-      {
-        "case_id": "g32_pick_board_debag_place_bench",
-        "ok": true,
-        "gold_action_count": 3,
-        "pred_action_count": 1,
-        "action_count_match": false,
-        "boundary_annotated": true,
-        "boundary_comparable": true,
-        "boundary_trivially_empty": false,
-        "boundary_tp": 0,
-        "boundary_fp": 1,
-        "boundary_fn": 3,
-        "boundary_span_f1": 0.0,
-        "plan_origin": "rule_based_v1_preannotation",
-        "ie_modified": true,
-        "gold_spans": [
-          [
-            0,
-            5
-          ],
-          [
-            6,
-            11
-          ],
-          [
-            12,
-            21
-          ]
-        ],
-        "pred_spans": [
-          [
-            0,
-            21
-          ]
-        ],
-        "errors": []
-      },
-      {
-        "case_id": "g33_take_board_place_press_fixture",
-        "ok": true,
-        "gold_action_count": 1,
-        "pred_action_count": 1,
-        "action_count_match": true,
-        "boundary_annotated": true,
-        "boundary_comparable": true,
-        "boundary_trivially_empty": false,
-        "boundary_tp": 1,
-        "boundary_fp": 0,
-        "boundary_fn": 0,
-        "boundary_span_f1": 1.0,
-        "plan_origin": "rule_based_v1_preannotation",
-        "ie_modified": false,
-        "gold_spans": [
-          [
-            0,
-            16
-          ]
-        ],
-        "pred_spans": [
-          [
-            0,
-            16
           ]
         ],
         "errors": []

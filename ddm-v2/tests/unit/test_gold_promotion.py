@@ -22,6 +22,13 @@ mutation 證據（CI_GATES 規則 7）：
   （`test_promoted_marker_removal_detected` 以 in-memory mutation 證明偵測活著）。
 - 把 `substance_blockers` 的 `> 0` 改回 `is not None` →
   `test_zero_tmu_without_ruling_blocks` 紅。
+- D3-022：ie_edited 草稿以未修改身分轉正 →
+  `test_edited_draft_without_entry_declaration_blocks` 紅；重切 gold 的
+  ie_modified 被改回 false（錯誤排除出 Plan 層指標）→
+  `test_repo_ie_modified_promotions_pinned`＋test_planner_eval 分母釘值紅；
+  d016（標題句不硬切）被轉正 →
+  `test_repo_d016_title_sentence_stays_draft_not_promoted`／
+  `test_resegmentation_ruling_blocks_promotion_fail_closed` 紅。
 """
 from __future__ import annotations
 
@@ -42,9 +49,11 @@ GOLD_DIR = ROOT / "tests" / "gold" / "wi_plans"
 DRAFT_DIR = ROOT / "tests" / "gold" / "wi_plans_draft"
 
 sys.path.insert(0, str(ROOT / "scripts"))
-from _seed_gold_baseline import PROMOTED_GOLD_N  # noqa: E402
+from _seed_gold_baseline import IE_MODIFIED_GOLD_N, PROMOTED_GOLD_N  # noqa: E402
 from gold_harvest import (  # noqa: E402
+    DRAFT_NOTES_BOILERPLATE,
     PROMOTION_SPLITS,
+    RESEGMENTATION_RULING_TITLE_SENTENCE,
     REVIEW_SEGMENTATION_SOURCE_BATCH,
     REVIEW_STATE_FILENAME,
     TYPING_CHANGED_CAVEAT,
@@ -325,6 +334,99 @@ def test_provenance_mismatch_blocks():
     assert not provenance_matches_normalized_text(draft)
 
 
+# ── 1b. D3-022：IE 重切（ie_modified=true）的轉正路徑 ────────────────────────
+
+
+def _ie_modified_pair() -> tuple[dict[str, Any], dict[str, Any]]:
+    """模擬 D3-022 重切後的合格草稿＋entry：plan 2 action（ie_edited）、
+    entry 宣告 ie_modified=true＋切分裁決 multi_cycle_2（重切後結構）。"""
+    draft, entry = _eligible_pair()
+    entry = {
+        **entry,
+        "ie_modified": True,
+        "segmentation_source": "ie_ruling",
+        "ie_ruling": "multi_cycle_2",
+        "ie_ruling_notes": "D3-022 測試：重切為 2 段誠實 span",
+    }
+    norm = draft["plan"]["normalized_text"]
+    draft["review_status"] = "ie_edited"
+    draft["notes"] = "IE 重切（測試）：涵蓋對應記於此"
+    draft["plan"]["actions"] = [
+        {"action_id": "a1", "action_type": "acquire", "sequence_order": 1,
+         "evidence": [{"start": 0, "end": 4, "text": norm[0:4]}]},
+        {"action_id": "a2", "action_type": "move_place", "sequence_order": 2,
+         "evidence": [{"start": 4, "end": len(norm), "text": norm[4:]}]},
+    ]
+    draft["expected_cycles"] = [
+        {"action_id": "a1", "complete": True, "seq": "GM", "total_tmu": 10.0},
+        {"action_id": "a2", "complete": True, "seq": "GM", "total_tmu": 16.0},
+    ]
+    draft["expected"] = {"action_count": 2, "routing_status": "review"}
+    draft["ie_review"] = review_block_from_entry(entry)
+    return draft, entry
+
+
+def test_ie_modified_reseg_eligible_and_payload_carries_flag():
+    """D3-022：重切草稿（entry 宣告 ie_modified=true＋ie_edited＋結構一致）
+    可走工具轉正；payload 的 ie_modified 以 entry 為準（true＝計入 Plan 層
+    指標），IE 留在 notes 的涵蓋對應保留、轉正註記附加。"""
+    draft, entry = _ie_modified_pair()
+    assert promotion_blockers(draft, entry) == []
+    payload = promoted_case_payload(
+        draft, new_id="g98_reseg", approved_by=IE,
+        approved_date="2026-08-17", split="test", ie_modified=True,
+    )
+    assert payload["ie_modified"] is True, "重切轉正必須保留 ie_modified=true（真 ground truth）"
+    assert "IE 重切（測試）" in payload["notes"], "IE 的 notes 內容不得被轉正註記蓋掉"
+    assert draft["id"] in payload["notes"], "草稿 id 仍須進 notes 供追溯"
+    # 未宣告時預設 false（原樣核准路徑不變）；管線樣板 notes 直接被取代
+    draft2, _ = _eligible_pair()
+    draft2["notes"] = DRAFT_NOTES_BOILERPLATE
+    payload2 = promoted_case_payload(
+        draft2, new_id="g97_plain", approved_by=IE,
+        approved_date="2026-08-17", split="test",
+    )
+    assert payload2["ie_modified"] is False
+    assert DRAFT_NOTES_BOILERPLATE not in payload2["notes"]
+
+
+def test_edited_draft_without_entry_declaration_blocks():
+    """mutation 證據（D3-022）：ie_edited 草稿但 entry 未宣告 ie_modified=true
+    → 擋——編輯過的 plan 以「未修改」身分轉正會被 Plan 層指標錯誤排除
+    （真 ground truth 被丟掉）。"""
+    draft, entry = _ie_modified_pair()
+    entry2 = {**entry, "ie_modified": False}
+    draft["ie_review"] = review_block_from_entry(entry2)
+    blockers = promotion_blockers(draft, entry2)
+    assert any("不得以未修改身分轉正" in b for b in blockers)
+
+
+def test_entry_declared_modified_but_draft_not_edited_blocks():
+    """反方向：entry 宣告 ie_modified=true 但草稿不是 ie_edited → 擋
+    （「IE 改過」的宣告掛在管線原樣 plan 上＝說謊）。"""
+    draft, entry = _eligible_pair()
+    entry2 = {**entry, "ie_modified": True}
+    blockers = promotion_blockers(draft, entry2)
+    assert any("review_status 非 ie_edited" in b for b in blockers)
+
+
+def test_resegmentation_ruling_blocks_promotion_fail_closed():
+    """mutation 證據（D3-022 d016 型）：entry 帶 title_sentence_no_resegmentation
+    → 即使其他資格全滿足也擋——「d016 被錯誤轉正」必紅。"""
+    draft, entry = _eligible_pair()
+    entry2 = {
+        **entry,
+        "resegmentation_ruling": RESEGMENTATION_RULING_TITLE_SENTENCE,
+        "resegmentation_ruled_by": IE,
+        "resegmentation_ruled_date": "2026-08-17",
+    }
+    draft["ie_review"] = review_block_from_entry(entry2)
+    blockers = promotion_blockers(draft, entry2)
+    assert any("resegmentation_ruling" in b for b in blockers), (
+        "IE 裁決「不硬切、不轉正」的案例竟然可轉正——fail-closed 守門死了"
+    )
+
+
 # ── 2. promoted_case_payload（純轉換） ───────────────────────────────────────
 
 
@@ -440,8 +542,12 @@ def test_repo_promoted_gold_passes_promotion_invariants():
         assert entry is not None, f"{gid}：無 promoted entry（另測已擋，防連鎖誤導）"
         assert d.get("approved_by") not in (None, "", "seed")
         assert d.get("review_status") == "approved"
-        assert d.get("ie_modified") is False, (
-            f"{gid}：本批全部原樣核准——ie_modified 必為 false（自我指涉防線）"
+        # D3-022 起 ie_modified 分兩類：宣告的唯一出處＝state entry——
+        # false＝原樣核准（自我指涉排除）；true＝IE 重切（計入 Plan 層指標）。
+        # gold 檔與 entry 漂移＝指標分母被竄改。
+        assert isinstance(d.get("ie_modified"), bool)
+        assert d.get("ie_modified") == bool(entry.get("ie_modified")), (
+            f"{gid}：gold 檔 ie_modified 與 state entry 宣告不一致（自我指涉防線）"
         )
         assert isinstance(d.get("plan_origin"), str) and d["plan_origin"]
         assert d.get("split") in PROMOTION_SPLITS
@@ -489,3 +595,66 @@ def test_promoted_sentences_no_longer_in_drafts():
         draft_sha8s.add(draft_sha8(json.loads(p.read_text(encoding="utf-8"))))
     dupes = promoted_sha8 & draft_sha8s
     assert not dupes, f"已轉正句子仍在草稿目錄：{sorted(dupes)}"
+
+
+def test_repo_ie_modified_promotions_pinned():
+    """D3-022 釘值：ie_modified=true 的正式 gold 恰為重切 3 筆（g30–g32），
+    宣告與 state entry 一致、結構裁決與 plan action 數一致。
+
+    mutation 證據：把任一筆的 ie_modified 改回 false（或 entry 宣告拆掉）→
+    本測試與 test_planner_eval 的分母釘值（plan_metrics_n）同時紅——
+    「ie_modified=true 者被錯誤排除」在兩層都會被抓到。"""
+    entries = _state_entries()
+    modified_gold = {
+        gid: d for gid, d in (
+            (str(d["id"]), d) for d in _gold_cases().values()
+        ) if d.get("ie_modified") is True
+    }
+    assert set(modified_gold) == {
+        "g30_pick_dummy_dimm_debag",
+        "g31_confirm_points_press_handle",
+        "g32_pick_board_debag_place_bench",
+    }, "ie_modified=true 的 gold 名單漂移（D3-022 重切 3 筆）"
+    assert len(modified_gold) == IE_MODIFIED_GOLD_N
+    by_promoted = {
+        e["promoted_to"]: e for e in entries.values() if e.get("promoted_to")
+    }
+    expected_actions = {
+        "g30_pick_dummy_dimm_debag": 2,   # v3_structure_confirmed multi_cycle_2 照切
+        "g31_confirm_points_press_handle": 2,   # ie_ruling multi_cycle_2（部分重切）
+        "g32_pick_board_debag_place_bench": 3,  # ie_ruling multi_cycle_3（部分重切）
+    }
+    for gid, d in modified_gold.items():
+        entry = by_promoted.get(gid)
+        assert entry is not None and entry.get("ie_modified") is True, (
+            f"{gid}：state entry 未宣告 ie_modified=true（宣告的唯一出處）"
+        )
+        assert len(d["plan"]["actions"]) == expected_actions[gid], (
+            f"{gid}：重切後 action 數與裁決結構不符"
+        )
+        assert d.get("notes") and "重切" in d["notes"], (
+            f"{gid}：涵蓋對應／建模差異必須留在案例 notes（D3-022 指示）"
+        )
+
+
+def test_repo_d016_title_sentence_stays_draft_not_promoted():
+    """D3-022 釘值（d016）：「拿取風槍清潔放置DIMM材料盒的DIMM」＝標題句
+    不硬切——entry 帶 resegmentation_ruling、未轉正、句子仍在草稿目錄、
+    資格檢查必擋。
+
+    mutation 證據：把它轉正（gold 目錄出現同句）或把 fail-closed 擋拆掉 →
+    本測試紅（「d016 被錯誤轉正」）。"""
+    entries = _state_entries()
+    entry = entries.get("d0350279")
+    assert entry is not None, "d0350279 entry 遺失"
+    assert entry.get("resegmentation_ruling") == RESEGMENTATION_RULING_TITLE_SENTENCE
+    assert not entry.get("promoted_to"), "IE 裁決不轉正的標題句竟被標 promoted"
+    # 句子不得出現在正式 gold（以 normalized_text sha8 比對，不靠檔名）
+    gold_sha8s = {draft_sha8(d) for d in _gold_cases().values()}
+    assert "d0350279" not in gold_sha8s, "d016 被錯誤轉正——標題句進了正式 gold"
+    # 草稿仍在（多動作辨識參考），且資格檢查擋下
+    draft_path = next(DRAFT_DIR.glob("*_d0350279.json"), None)
+    assert draft_path is not None, "d016 草稿應留在草稿目錄當多動作辨識參考"
+    draft = json.loads(draft_path.read_text(encoding="utf-8"))
+    blockers = promotion_blockers(draft, entry)
+    assert any("resegmentation_ruling" in b for b in blockers)

@@ -2,7 +2,7 @@
   "report_kind": "wi-gold-eval",
   "report_schema_version": "wi-gold-report-v4",
   "gold_schema_version": "wi-gold-v1",
-  "generated_at": "2026-08-17T05:40:27.975954+00:00",
+  "generated_at": "2026-08-17T05:36:44.770108+00:00",
   "gold_dir": "/home/howard/workspace/most-builder/ddm-v2/tests/gold/wi_plans",
   "dataset_note": "n=31；seed 3 筆；IE 核准 28/50，未達 docs/architecture/wi-ai-parser-system-spec.md §19 P0 前置；其中 ie_modified≠true 的預標註 25 筆（原樣核准，不計 planner 段證據力——見 self_referential_excluded）",
   "gold_load_errors": [],

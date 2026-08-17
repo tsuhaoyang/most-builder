@@ -138,6 +138,8 @@
   "ie_review": {
     "segmentation_confirmed_by": "IEC141289",
     "segmentation_confirmed_date": "2026-08-16",
-    "segmentation_source": "v3_structure_confirmed"
+    "segmentation_source": "ie_ruling",
+    "ie_ruling": "single_cycle",
+    "ie_ruling_notes": "IE 裁決（D3-022，2026-08-17 親答「照重切建議稿」）：本句本身＝單一 GM cycle（「取＋組於」配對同 cycle，D3-014 裁決 1 的單 cycle 方向；×16 證據在括註內、span 含括註）。multi_cycle_2 hint 的結構證據指的是 provenance module（motion_modules/6366f744-6791-4e84-a3ac-5305d4f07679）的 2 列，不是本句的切分：rows[1]「左手抓握假DIMM的包裝袋丟至垃圾桶」是獨立完整子句（已是正式 gold g25_toss_dimm_bag）、原句無「包裝袋」任何字面。plan 維持 1 action、內容不動（ie_modified=false，照 d026 前例留痕更正）。本筆另有第五輪新判型旗標（typing_changed_by_verb_lexicon，null→GM）IE 未確認——切分裁決不解判型旗，轉正仍被擋（D3-022 不越權）。"
   }
 }

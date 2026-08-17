@@ -1,12 +1,12 @@
 {
-  "id": "d008_72dc0511",
+  "id": "g30_pick_dummy_dimm_debag",
   "source_text": "從料架上拿取假DIMM，去除其包裝袋",
-  "notes": "預標註草稿（rule pipeline 自動產生；scripts/gold_harvest.py）。非 gold——IE 覆核核准前不得移入 tests/gold/wi_plans/。",
-  "review_status": "pending_ie",
-  "approved_by": null,
+  "notes": "IE 重切（D3-022，2026-08-17，照重切建議稿 docs/llm/gold-review/resegmentation-proposals.md d008 節）：2 action 與 v3 module（motion_modules/d9203ed2-8138-4d2a-8ab6-480ff29daafb）發布版 2 列 1:1 乾淨對應。a1=[0,11)「從料架上拿取假dimm」→rows[0]（v3＝GM g_pick_sel＋p_hold 75.0——reach35/b_stand/b_eye 與「保持住」均非 span 字面可得，照 g01 先例建 acquire、不補步驟；期望＝引擎對 span 的誠實輸出 G10=10.0，與 v3 值的差異在此留痕）。a2=[12,18)「去除其包裝袋」→rows[1]（v3＝CM m_teartape@2.5cm 61.0——span 字面「去除」→m_remove；距離未述＝0cm、TMU 0.0 記 expected_incomplete_reason=distance_unstated（F3：不發明距離、不回填 v3 值）；動詞 option 差異（v3 列文字「撕除」→m_teartape）留痕，該列文字另為獨立 gold g23_tear_dummy_dimm_bag）。\n自草稿 d008_72dc0511 轉正（IE 覆核核准；docs/llm/gold-review/README.md 工作流）。取樣為 challenge-oversampled（coverage-optimized），本案分數不可外推為母體表現。切分/判型/方向數確認與 TMU=0 裁決見 ie_review 與 tests/gold/wi_plans_draft/review-state.json。",
+  "review_status": "approved",
+  "approved_by": "IEC141289",
   "plan_origin": "rule_based_v1_preannotation",
-  "ie_modified": false,
-  "split": null,
+  "ie_modified": true,
+  "split": "test",
   "split_groups": [
     "module:d9203ed2-8138-4d2a-8ab6-480ff29daafb"
   ],
@@ -45,14 +45,9 @@
     "simo_both_hands"
   ],
   "preannotation_caveat": [
-    "typing_changed_by_verb_lexicon",
     "likely_multi_action_undercounted",
     "zero_tmu_distance_unstated"
   ],
-  "typing_change": {
-    "noun_only_seq": null,
-    "lexicon_seq": "CM"
-  },
   "v3_structure_hint": "multi_cycle_2",
   "v3_structure_evidence": {
     "note": "hint 是證據不是判決：來源＝IE 驗證過的 v3 生產資料的結構（module/cycle 邊界）；覆核表預設依 v3 結構、IE 可推翻；本欄位絕不寫進 expected.*",
@@ -73,7 +68,9 @@
     "rule_set_code": "MINIMOST_FACTORY_V2",
     "lexicon_source": "rule_option_synonyms",
     "lexicon_size": 22,
-    "routing_reasons": []
+    "routing_reasons": [
+      "next_operation"
+    ]
   },
   "plan": {
     "schema_version": "wi-plan-v1",
@@ -89,17 +86,31 @@
     "actions": [
       {
         "action_id": "a1",
-        "action_type": "controlled_move",
+        "action_type": "acquire",
         "sequence_order": 1,
         "roles": {},
         "evidence": [
           {
             "start": 0,
-            "end": 18,
-            "text": "從料架上拿取假dimm,去除其包裝袋"
+            "end": 11,
+            "text": "從料架上拿取假dimm"
           }
         ],
-        "notes": "rule_based_v1"
+        "notes": "ie_reseg_d3_022"
+      },
+      {
+        "action_id": "a2",
+        "action_type": "controlled_move",
+        "sequence_order": 2,
+        "roles": {},
+        "evidence": [
+          {
+            "start": 12,
+            "end": 18,
+            "text": "去除其包裝袋"
+          }
+        ],
+        "notes": "ie_reseg_d3_022"
       }
     ],
     "dependencies": [],
@@ -123,6 +134,19 @@
     {
       "action_id": "a1",
       "complete": true,
+      "seq": "GM",
+      "g_code": "g_pick_sel",
+      "p_base_code": null,
+      "frequency": 1.0,
+      "total_tmu": 10.0,
+      "tech_line": "A0 B0 G10 A0 B0 P0 A0",
+      "issues_contain": [
+        "next_operation"
+      ]
+    },
+    {
+      "action_id": "a2",
+      "complete": true,
       "seq": "CM",
       "m_verb": "m_remove",
       "distance_cm": 0.0,
@@ -133,7 +157,7 @@
   ],
   "gold_schema_version": "wi-gold-v1",
   "expected": {
-    "action_count": 1,
+    "action_count": 2,
     "routing_status": "review"
   },
   "ie_review": {
@@ -146,5 +170,6 @@
     "zero_tmu_ruled_by": "IEC141289",
     "zero_tmu_ruled_date": "2026-08-17"
   },
-  "expected_incomplete_reason": "distance_unstated"
+  "expected_incomplete_reason": "distance_unstated",
+  "approved_date": "2026-08-17"
 }

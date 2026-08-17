@@ -1,12 +1,12 @@
 {
-  "id": "d005_fe5391c6",
+  "id": "g33_take_board_place_press_fixture",
   "source_text": "拿取主板放置於DIMM壓合治具",
-  "notes": "預標註草稿（rule pipeline 自動產生；scripts/gold_harvest.py）。非 gold——IE 覆核核准前不得移入 tests/gold/wi_plans/。",
-  "review_status": "pending_ie",
-  "approved_by": null,
+  "notes": "自草稿 d005_fe5391c6 轉正（IE 覆核核准；docs/llm/gold-review/README.md 工作流）。取樣為 challenge-oversampled（coverage-optimized），本案分數不可外推為母體表現。切分/判型/方向數確認與 TMU=0 裁決見 ie_review 與 tests/gold/wi_plans_draft/review-state.json。",
+  "review_status": "approved",
+  "approved_by": "IEC141289",
   "plan_origin": "rule_based_v1_preannotation",
   "ie_modified": false,
-  "split": null,
+  "split": "test",
   "split_groups": [
     "module:b5666b80-fd4e-4157-840f-ee61ac3cecc3"
   ],
@@ -140,8 +140,11 @@
   "ie_review": {
     "segmentation_confirmed_by": "IEC141289",
     "segmentation_confirmed_date": "2026-08-16",
-    "segmentation_source": "v3_structure_confirmed",
+    "segmentation_source": "ie_ruling",
+    "ie_ruling": "single_cycle",
+    "ie_ruling_notes": "IE 裁決（D3-022，2026-08-17 親答「照重切建議稿」）：本句本身＝單一 GM cycle（「取＋放」配對同 cycle，D3-014 裁決 1 的單 cycle 方向——本筆 take_place_pair_may_be_single_gm 旗標的解答）。multi_cycle_2 hint 的結構證據指的是 provenance module（motion_modules/b5666b80-fd4e-4157-840f-ee61ac3cecc3）的 2 列，不是本句的切分：rows[1]「雙手接觸DIMM壓合治具推至規定位置」是獨立完整子句（已是正式 gold g10_push_press_fixture）、原句隻字未提。plan 維持 1 action、內容不動（ie_modified=false，照 d026 前例留痕更正）。",
     "p_direction_confirmed_by": "IEC141289",
     "p_direction_confirmed_date": "2026-08-17"
-  }
+  },
+  "approved_date": "2026-08-17"
 }

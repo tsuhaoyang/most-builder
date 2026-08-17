@@ -155,6 +155,10 @@
     "typing_confirmed_by": "IEC141289",
     "typing_confirmed_date": "2026-08-17",
     "p_direction_confirmed_by": "IEC141289",
-    "p_direction_confirmed_date": "2026-08-17"
+    "p_direction_confirmed_date": "2026-08-17",
+    "resegmentation_ruling": "title_sentence_no_resegmentation",
+    "resegmentation_ruled_by": "IEC141289",
+    "resegmentation_ruled_date": "2026-08-17",
+    "resegmentation_ruling_notes": "IE 裁決（D3-022，2026-08-17 親答「d016 不硬切」）：本句是五步驟製程的壓縮標題句（multi_cycle_5＝provenance module motion_modules/8451efa7-7536-48f7-b579-b56d21608c02 發布版的 5 列）；5 列全部是各自獨立的完整子句、無一是本句子字串，切不出 5 段連續互不重疊的誠實 evidence span（d026 型——不編造）。內容已由 5 列的獨立 gold 全數覆蓋：rows[0]=g27_pick_dimm_box_to_bench、rows[1]=g26_dimm_box_to_position、rows[2]=g18_hold_airgun_to_position、rows[3]=g22_hold_dimm_box（SIMO 併行列，不計版本合計）、rows[4]=g15_airgun_clean_dimm（重切建議稿當時 rows[0] 尚為草稿 a062c017，D3-021 已轉正——現 5/5 皆 gold）。本句不重切、不轉正（fail-closed 擋轉正），留在草稿當多動作辨識參考；母句僅存 provenance 對應。"
   }
 }

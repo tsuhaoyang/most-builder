@@ -1,6 +1,6 @@
 {
   "schema_version": "wi-review-state-v1",
-  "note": "IE 覆核狀態檔（D3-015）：本檔是 IE 的裁決記錄，scripts/gold_harvest.py 只讀不寫、--force 不刪；重產草稿時以 normalized_text sha256 前 8 碼配對，合併回草稿的 ie_review 區塊。segmentation_source=v3_structure_confirmed＝確認照 v3 結構預設（切分維度確認，非整筆 gold 核准；確認≠修改，ie_modified 維持 false）；ie_ruling＝IE 對 ambiguous 案例的切分裁決。文字或 v3 結構證據變了的 entry 會被 harvest 標 stale 列入摘要，不靜默套用。首輪內容＝2026-08-16 IE（IEC141289）親答：39 筆確認題全照 v3 結構預設；d045 定 1 列；d026 定 3 列（3 列 wi-template 為正確結構）。第二輪更正（2026-08-16 釐清）：d026 這句本身＝1 列——首輪「3 列」是對整個 wi-template 三步驟製程的回答（提問誤述範本結構為句子切分，已向 User 釐清並獲確認）；更正軌跡（先前答案全文＋為何更正）保留在該 entry 的 ruling_history，標準答案集的更正不無痕覆寫。第三輪答案（2026-08-17 IE 親答，D3-019）：①「拿取」登記 g_pick_sel（拿取(選取)，priority 0）——另兩變體（small/collect）IE 僅答預設、未授權都掛，維持候選待 IE 決定是否列備選 ②24 筆判型修正全照預設確認（typing_confirmed_by/date；typing_change_at_review＝確認當時的舊/新值，為 stale 判定基準）③6 筆放置方向數照預設確認（p_direction_confirmed_by/date；caveat_at_review 同理）④9 筆 TMU=0.0 照預設＝判定句子資訊不足（zero_tmu_ruling=distance_unstated——協調者解讀，已向 User 揭示待確認；合併時草稿記 expected_incomplete_reason，不發明距離）。三筆不在首輪 41 筆內的草稿（d033/d042/d049）新增 entry 僅帶判型/TMU 面向——切分維度 IE 未答，不冒填。entry 標 promoted_to/promoted_date＝該句已轉正 tests/gold/wi_plans/（harvest 合併跳過；軌跡保留不刪）。確認≠修改：ie_modified 全數維持 false。",
+  "note": "IE 覆核狀態檔（D3-015）：本檔是 IE 的裁決記錄，scripts/gold_harvest.py 只讀不寫、--force 不刪；重產草稿時以 normalized_text sha256 前 8 碼配對，合併回草稿的 ie_review 區塊。segmentation_source=v3_structure_confirmed＝確認照 v3 結構預設（切分維度確認，非整筆 gold 核准；確認≠修改，ie_modified 維持 false）；ie_ruling＝IE 對 ambiguous 案例的切分裁決。文字或 v3 結構證據變了的 entry 會被 harvest 標 stale 列入摘要，不靜默套用。首輪內容＝2026-08-16 IE（IEC141289）親答：39 筆確認題全照 v3 結構預設；d045 定 1 列；d026 定 3 列（3 列 wi-template 為正確結構）。第二輪更正（2026-08-16 釐清）：d026 這句本身＝1 列——首輪「3 列」是對整個 wi-template 三步驟製程的回答（提問誤述範本結構為句子切分，已向 User 釐清並獲確認）；更正軌跡（先前答案全文＋為何更正）保留在該 entry 的 ruling_history，標準答案集的更正不無痕覆寫。第三輪答案（2026-08-17 IE 親答，D3-019）：①「拿取」登記 g_pick_sel（拿取(選取)，priority 0）——另兩變體（small/collect）IE 僅答預設、未授權都掛，維持候選待 IE 決定是否列備選 ②24 筆判型修正全照預設確認（typing_confirmed_by/date；typing_change_at_review＝確認當時的舊/新值，為 stale 判定基準）③6 筆放置方向數照預設確認（p_direction_confirmed_by/date；caveat_at_review 同理）④9 筆 TMU=0.0 照預設＝判定句子資訊不足（zero_tmu_ruling=distance_unstated——協調者解讀，已向 User 揭示待確認；合併時草稿記 expected_incomplete_reason，不發明距離）。三筆不在首輪 41 筆內的草稿（d033/d042/d049）新增 entry 僅帶判型/TMU 面向——切分維度 IE 未答，不冒填。entry 標 promoted_to/promoted_date＝該句已轉正 tests/gold/wi_plans/（harvest 合併跳過；軌跡保留不刪）。確認≠修改：ie_modified 全數維持 false。第六輪＝IE 重切裁決落地（2026-08-17 IE 親答，D3-022；重切建議稿 docs/llm/gold-review/resegmentation-proposals.md）：d008（72dc0511）照切 2 action、d001（6fa45cdb）/d005（5cb719bb）部分重切（span 不可得的 v3 列不塞進 plan，該列已是獨立 gold）——此三筆 ie_modified=true（IE 改過 plan 內容＝真 ground truth，計入 planner 段 Plan 層指標；plan 編輯記 review_status=ie_edited，本機制不保 plan 內容，轉正前不得對本目錄 --force）；d012（fe5391c6）/d030（fe1f3a90）＝hint 解讀更正（multi_cycle_2 的結構證據指 module 而非本句），照 d026 前例走 ruling_history 留痕更正為 single_cycle、plan 不動 ie_modified 維持 false；d016（d0350279）＝標題句不硬切（resegmentation_ruling=title_sentence_no_resegmentation，內容由 5 列獨立 gold 覆蓋、fail-closed 不轉正）。ruling_history 條目的 superseded_source=v3_structure_confirmed 標記「由首輪確認更正而來」（切分確認守恆的對帳依據）。未裁事項不動：X/I 判型票、TMU=0.0 解讀（9+1 筆）、6 筆新判型旗（含 fe1f3a90 的 null→GM）。",
   "entries": {
     "0423b4e8": {
       "source_text": "左手從料架拿取假DIMM保持住至流水線",
@@ -189,8 +189,28 @@
       "v3_structure_hint_at_review": "multi_cycle_4",
       "segmentation_confirmed_by": "IEC141289",
       "segmentation_confirmed_date": "2026-08-16",
-      "ie_modified": false,
-      "segmentation_source": "v3_structure_confirmed"
+      "ie_modified": true,
+      "ie_modified_notes": "D3-022（2026-08-17 IE 親答「照重切建議稿」＋部分重切指示）：plan 重切為 3 action——a1=[0,5) 拿取主機板（acquire，照 g01 先例；「保持住」不在 span 內不借 p_hold）、a2=[6,11) 去除包裝袋（CM m_remove；距離未述 TMU=0.0 記 distance_unstated，F3）、a3=[12,21) 將主機板放置工作臺（move_place；工作臺＝盤面類→p_place_none，D3-017 情境規則、建議稿 a4 節）。ie_modified=true＝本筆計入 planner 段 Plan 層指標。",
+      "segmentation_source": "ie_ruling",
+      "ie_ruling": "multi_cycle_3",
+      "ie_ruling_notes": "IE 裁決（D3-022，2026-08-17）：兩個逗號給出 3 段誠實 span——a1=[0,5)→module rows[0]、a2=[6,11)→rows[1]、a3=[12,21)→rows[3]（action 順序照 v3 製程序）。首輪確認的 multi_cycle_4 是 provenance module（motion_modules/8436a0d0-da56-4eee-818a-b1c9bff29f44）發布版的 4 列結構；rows[2]「左手重新抓握主板的包装袋放至料架」在原句無任何字面，切不出誠實 evidence span——不編造、不塞進 plan，該列已是正式 gold g24_board_bag_to_rack。plan 涵蓋範圍與 v3 列的對應關係記進案例 notes。",
+      "ruling_history": [
+        {
+          "ie_ruling": "multi_cycle_4",
+          "superseded_source": "v3_structure_confirmed",
+          "ruled_date": "2026-08-16",
+          "superseded_date": "2026-08-17",
+          "supersede_reason": "首輪確認的 4 列是 module（範本）結構，不是本句的切分——rows[2]（包裝袋放料架）在原句無任何字面，本句無法誠實切出 4 段 evidence span（不編造，d026 教訓）。D3-022 IE 裁決照重切建議稿部分重切：本句 plan 涵蓋 rows[0]、rows[1]、rows[3] 的 3 段誠實 span＝multi_cycle_3；rows[2] 由獨立 gold g24_board_bag_to_rack 覆蓋。"
+        }
+      ],
+      "p_direction_confirmed_by": "IEC141289",
+      "p_direction_confirmed_date": "2026-08-17",
+      "p_direction_caveat_at_review": "p_direction_none_by_context",
+      "zero_tmu_ruling": "distance_unstated",
+      "zero_tmu_ruled_by": "IEC141289",
+      "zero_tmu_ruled_date": "2026-08-17",
+      "promoted_to": "g32_pick_board_debag_place_bench",
+      "promoted_date": "2026-08-17"
     },
     "5cd079e8": {
       "source_text": "左手重新抓握主板的包装袋放至料架",
@@ -289,14 +309,28 @@
       "v3_structure_hint_at_review": "multi_cycle_3",
       "segmentation_confirmed_by": "IEC141289",
       "segmentation_confirmed_date": "2026-08-16",
-      "ie_modified": false,
-      "segmentation_source": "v3_structure_confirmed",
+      "ie_modified": true,
+      "ie_modified_notes": "D3-022（2026-08-17 IE 親答「照重切建議稿」＋部分重切指示）：plan 重切為 2 action——a1=[0,8) 確認dimm點位（inspect，i_confirm＝D3-021 IE 裁「確認→範圍內 i_confirm」；v3 rows[0] 用範圍外 i_confirm_out，差異記案例 notes）、a2=[9,40) 並按壓dimm壓合治具的把手 (依據配置要求-16個dimm)（CM m_press＝現行詞典判型；v3 rows[1] 建 GM 放×16＋a_press 的值非 span 字面可得，不回填，差異記案例 notes）。ie_modified=true＝本筆計入 planner 段 Plan 層指標。",
+      "segmentation_source": "ie_ruling",
+      "ie_ruling": "multi_cycle_2",
+      "ie_ruling_notes": "IE 裁決（D3-022，2026-08-17）：本句誠實 span 只切得出 2 段（唯一標點切點＝逗號）——a1=[0,8)→module rows[0]、a2=[9,40)→rows[1]（×16 證據在括註內，span 含括註）。首輪確認的 multi_cycle_3 是 provenance module（motion_modules/d630108e-643e-4717-94e0-c0c922200076）發布版的 3 列結構；rows[2]「右手接觸DIMM壓合治具的底板拉至對應的點位」（SIMO 併行列）是獨立完整子句、完全不在本句內，切不出誠實 evidence span——不編造、不塞進 plan，該列已是正式 gold g21_pull_fixture_base。plan 涵蓋範圍與 v3 列的對應關係記進案例 notes。",
+      "ruling_history": [
+        {
+          "ie_ruling": "multi_cycle_3",
+          "superseded_source": "v3_structure_confirmed",
+          "ruled_date": "2026-08-16",
+          "superseded_date": "2026-08-17",
+          "supersede_reason": "首輪確認的 3 列是 module（範本）結構，不是本句的切分——rows[2] 列文字完全不在原句內，本句無法誠實切出 3 段 evidence span（不編造，d026 教訓）。D3-022 IE 裁決照重切建議稿部分重切：本句 plan 涵蓋 rows[0..1] 的 2 段誠實 span＝multi_cycle_2；rows[2] 由獨立 gold g21_pull_fixture_base 覆蓋。"
+        }
+      ],
       "typing_confirmed_by": "IEC141289",
       "typing_confirmed_date": "2026-08-17",
       "typing_change_at_review": {
         "noun_only_seq": "GM",
         "lexicon_seq": "CM"
-      }
+      },
+      "promoted_to": "g31_confirm_points_press_handle",
+      "promoted_date": "2026-08-17"
     },
     "72dc0511": {
       "source_text": "從料架上拿取假DIMM，去除其包裝袋",
@@ -304,7 +338,8 @@
       "v3_structure_hint_at_review": "multi_cycle_2",
       "segmentation_confirmed_by": "IEC141289",
       "segmentation_confirmed_date": "2026-08-16",
-      "ie_modified": false,
+      "ie_modified": true,
+      "ie_modified_notes": "D3-022（2026-08-17 IE 親答「d008 照切」）：plan 重切為 2 action（逗號 span，與 module d9203ed2 的 2 列 1:1 乾淨對應）——a1=[0,11) 從料架上拿取假dimm（acquire，照 g01 先例不借用不在子句文字裡的「保持住」p_hold）、a2=[12,18) 去除其包裝袋（CM m_remove，照 span 字面「去除」而非 v3 列的「撕除」m_teartape；距離未述 TMU=0.0 記 distance_unstated，F3 不發明距離、不回填 v3 值）。ie_modified=true＝IE 改過 plan 內容，本筆計入 planner 段 Plan 層指標。",
       "segmentation_source": "v3_structure_confirmed",
       "typing_confirmed_by": "IEC141289",
       "typing_confirmed_date": "2026-08-17",
@@ -314,7 +349,9 @@
       },
       "zero_tmu_ruling": "distance_unstated",
       "zero_tmu_ruled_by": "IEC141289",
-      "zero_tmu_ruled_date": "2026-08-17"
+      "zero_tmu_ruled_date": "2026-08-17",
+      "promoted_to": "g30_pick_dummy_dimm_debag",
+      "promoted_date": "2026-08-17"
     },
     "7c6eb8af": {
       "source_text": "雙手從DIMM材料盒拿取×16DIMM插入×16至主板",
@@ -508,6 +545,10 @@
       "segmentation_confirmed_by": "IEC141289",
       "segmentation_confirmed_date": "2026-08-16",
       "ie_modified": false,
+      "resegmentation_ruling": "title_sentence_no_resegmentation",
+      "resegmentation_ruled_by": "IEC141289",
+      "resegmentation_ruled_date": "2026-08-17",
+      "resegmentation_ruling_notes": "IE 裁決（D3-022，2026-08-17 親答「d016 不硬切」）：本句是五步驟製程的壓縮標題句（multi_cycle_5＝provenance module motion_modules/8451efa7-7536-48f7-b579-b56d21608c02 發布版的 5 列）；5 列全部是各自獨立的完整子句、無一是本句子字串，切不出 5 段連續互不重疊的誠實 evidence span（d026 型——不編造）。內容已由 5 列的獨立 gold 全數覆蓋：rows[0]=g27_pick_dimm_box_to_bench、rows[1]=g26_dimm_box_to_position、rows[2]=g18_hold_airgun_to_position、rows[3]=g22_hold_dimm_box（SIMO 併行列，不計版本合計）、rows[4]=g15_airgun_clean_dimm（重切建議稿當時 rows[0] 尚為草稿 a062c017，D3-021 已轉正——現 5/5 皆 gold）。本句不重切、不轉正（fail-closed 擋轉正），留在草稿當多動作辨識參考；母句僅存 provenance 對應。",
       "segmentation_source": "v3_structure_confirmed",
       "typing_confirmed_by": "IEC141289",
       "typing_confirmed_date": "2026-08-17",
@@ -629,7 +670,18 @@
       "segmentation_confirmed_by": "IEC141289",
       "segmentation_confirmed_date": "2026-08-16",
       "ie_modified": false,
-      "segmentation_source": "v3_structure_confirmed"
+      "segmentation_source": "ie_ruling",
+      "ie_ruling": "single_cycle",
+      "ie_ruling_notes": "IE 裁決（D3-022，2026-08-17 親答「照重切建議稿」）：本句本身＝單一 GM cycle（「取＋組於」配對同 cycle，D3-014 裁決 1 的單 cycle 方向；×16 證據在括註內、span 含括註）。multi_cycle_2 hint 的結構證據指的是 provenance module（motion_modules/6366f744-6791-4e84-a3ac-5305d4f07679）的 2 列，不是本句的切分：rows[1]「左手抓握假DIMM的包裝袋丟至垃圾桶」是獨立完整子句（已是正式 gold g25_toss_dimm_bag）、原句無「包裝袋」任何字面。plan 維持 1 action、內容不動（ie_modified=false，照 d026 前例留痕更正）。本筆另有第五輪新判型旗標（typing_changed_by_verb_lexicon，null→GM）IE 未確認——切分裁決不解判型旗，轉正仍被擋（D3-022 不越權）。",
+      "ruling_history": [
+        {
+          "ie_ruling": "multi_cycle_2",
+          "superseded_source": "v3_structure_confirmed",
+          "ruled_date": "2026-08-16",
+          "superseded_date": "2026-08-17",
+          "supersede_reason": "hint 解讀更正（照 d026 前例）：首輪確認的 2 列是 module（範本）結構＝本句＋獨立句 rows[1]（包裝袋丟垃圾桶＝gold g25），不是本句要切成 2 段——rows[1] 在原句無任何字面，切不出誠實 evidence span。D3-022 IE 親答照重切建議稿：原句本身＝單一 GM 全句（取＋組於同 cycle），更正為 single_cycle。"
+        }
+      ]
     },
     "fe5391c6": {
       "source_text": "拿取主板放置於DIMM壓合治具",
@@ -638,10 +690,23 @@
       "segmentation_confirmed_by": "IEC141289",
       "segmentation_confirmed_date": "2026-08-16",
       "ie_modified": false,
-      "segmentation_source": "v3_structure_confirmed",
+      "segmentation_source": "ie_ruling",
+      "ie_ruling": "single_cycle",
+      "ie_ruling_notes": "IE 裁決（D3-022，2026-08-17 親答「照重切建議稿」）：本句本身＝單一 GM cycle（「取＋放」配對同 cycle，D3-014 裁決 1 的單 cycle 方向——本筆 take_place_pair_may_be_single_gm 旗標的解答）。multi_cycle_2 hint 的結構證據指的是 provenance module（motion_modules/b5666b80-fd4e-4157-840f-ee61ac3cecc3）的 2 列，不是本句的切分：rows[1]「雙手接觸DIMM壓合治具推至規定位置」是獨立完整子句（已是正式 gold g10_push_press_fixture）、原句隻字未提。plan 維持 1 action、內容不動（ie_modified=false，照 d026 前例留痕更正）。",
+      "ruling_history": [
+        {
+          "ie_ruling": "multi_cycle_2",
+          "superseded_source": "v3_structure_confirmed",
+          "ruled_date": "2026-08-16",
+          "superseded_date": "2026-08-17",
+          "supersede_reason": "hint 解讀更正（照 d026 前例）：首輪確認的 2 列是 module（範本）結構＝本句＋獨立句 rows[1]（推至規定位置＝gold g10），不是本句要切成 2 段——rows[1] 在原句無任何字面，切不出誠實 evidence span。D3-022 IE 親答照重切建議稿：原句本身＝單一 GM 全句（取放同 cycle），更正為 single_cycle。"
+        }
+      ],
       "p_direction_confirmed_by": "IEC141289",
       "p_direction_confirmed_date": "2026-08-17",
-      "p_direction_caveat_at_review": "p_direction_single_default"
+      "p_direction_caveat_at_review": "p_direction_single_default",
+      "promoted_to": "g33_take_board_place_press_fixture",
+      "promoted_date": "2026-08-17"
     },
     "1dd7c1d5": {
       "source_text": "按壓功能測試治具",
