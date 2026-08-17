@@ -532,12 +532,24 @@ SYN_COVERAGE_SHA8_BASELINE: dict[str, frozenset[str]] = {
         "fe5391c6": ["G:g_pick_sel", "P:p_place_none", "P:p_place_single"],
     }.items()
 }
-# 第五輪 complete＝19 筆；本輪轉正 3 筆（g27–g29）移出後草稿集等值釘＝16
+# 第五輪 complete＝19 筆；D3-021 轉正 3 筆（g27–g29）移出後草稿集等值釘＝16
 # （TMU=0.0 的 3 筆也在列——「complete」是結構完成度，不是 TMU 可信度）。
+#
+# 第六輪更新（D3-023，2026-08-17）：
+# - **有意識移除 `d0350279`**（「拿取風槍清潔放置DIMM材料盒的DIMM」）：X/I 參與
+#   判型後，此句命中 G＋X（清潔）＋P（放置）＝跨模型混合 → 判型棄權
+#   （composite_unknown），原 GM complete（P 面誤配「放置DIMM材料盒的DIMM」
+#   定語結構）是誤判——這是**誠實降級不是迴歸**（IE 已裁本句為標題句
+#   title_sentence_no_resegmentation，單一 GM cycle 本來就是錯的建法）。
+#   其 entry 隨之 stale（typing_change_changed），釘在
+#   test_gold_harvest_review_state 的已知 stale 名單。
+# - D3-022 轉正 4 筆（72dc0511/6fa45cdb/5cb719bb/fe5391c6）與 D3-023 第三批
+#   7 筆（7c6eb8af/af172fd9/b6ee694d/1c27dc35/fe1f3a90/e945e29e/9c1a987f）
+#   移出草稿集（present 過濾，基線保留無害）。現存草稿 complete＝5 筆。
 COMPLETE_TMU_SHA8_BASELINE: frozenset[str] = frozenset({
     "1c27dc35", "1dd7c1d5", "2e7b2e5a", "51518399", "6be614c5", "6fa45cdb",
     "72dc0511", "7c6eb8af", "7f085e02", "9c1a987f", "af172fd9", "b6ee694d",
-    "d0350279", "e945e29e", "fe1f3a90", "fe5391c6",
+    "e945e29e", "fe1f3a90", "fe5391c6",
 })
 
 

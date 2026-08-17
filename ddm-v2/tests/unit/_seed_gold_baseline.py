@@ -2,7 +2,8 @@
 
 - `SEED_GOLD_N`：seed gold 集（A5 fixture 白名單）的筆數——**seed 基線不動**。
 - `PROMOTED_GOLD_N`：IE 覆核核准後轉正的正式 gold 筆數（D3-019 首批 21 筆＋
-  D3-021 第二批 3 筆（g27–g29）＋D3-022 重切裁決落地 4 筆（g30–g33），
+  D3-021 第二批 3 筆（g27–g29）＋D3-022 重切裁決落地 4 筆（g30–g33）＋
+  D3-023 第三批 7 筆（g34–g40：判型旗照預設確認後解鎖的取放/取組配對 GM），
   全部 2026-08-17，IEC141289）。
 - `IE_MODIFIED_GOLD_N`：其中 `ie_modified: true` 的筆數（D3-022 IE 重切的
   g30/g31/g32——IE 改過 plan 內容＝真實 ground truth，**計入** planner 段
@@ -21,7 +22,7 @@
 from __future__ import annotations
 
 SEED_GOLD_N = 3
-PROMOTED_GOLD_N = 28
+PROMOTED_GOLD_N = 35
 IE_MODIFIED_GOLD_N = 3
 GOLD_TOTAL_N = SEED_GOLD_N + PROMOTED_GOLD_N
 G01_TOTAL_TMU = 6.0

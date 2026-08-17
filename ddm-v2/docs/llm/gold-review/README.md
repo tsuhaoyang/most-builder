@@ -114,7 +114,8 @@
 5b. **第三輪新旗標（D3-017）**：
    - `typing_changed_by_verb_lexicon` — 本筆判型與「僅名詞」舊行為不同
      （草稿 `typing_change` 欄存舊/新值），覆核表標
-     「**第三輪判型已修正，請確認**」（本輪 24 筆）。
+     「**判型已由動詞字典修正，請確認**」（第三輪 24 筆；第六輪起訊號源
+     含 X/I，見 D3-023 節）。
    - `p_direction_single_default`／`p_direction_none_by_context`／
      `p_direction_unclassified_default_single` — 「放至/放置」的方向數已依
      IE 情境規則預選（機構件→`p_place_single` 一種方向、盤面→`p_place_none`
@@ -260,6 +261,52 @@ plan_metrics_n 3→6，accuracy 0.6667→**0.3333**（2/6）、boundary span F1
 拿 0：**分數下降是預期且誠實的**（真 ground truth 進了分母），不是迴歸；
 指標若回跳基線＝ie_modified 案例被錯誤排除（釘值守門在
 `test_planner_eval.py`）。累計 IE 核准 **28/50**。
+
+## IE 第六輪答案：X/I 參與判型＋第三批轉正（D3-023，2026-08-17；User/IE 親答）
+
+1. **X/I 參與判型（核可開票）**：X 與 I 只存在 CM 序列
+   （`docs/core-logic/minimost-sequence-model-core-logic-spec.md` §2）——
+   已登記的 X/I 動詞面（鎖附/清潔/確認）命中＝結構性 CM 訊號，與 M 同級；
+   X/I＋G 不是混合（CM 自有 G 格，g13 型）、X/I＋P＝跨模型混合照 M+P 前例
+   棄權。衝突矩陣與逐格理由：`src/ddm_v2/nlp/rule_based.py` classify_seq。
+   效果：9 筆鎖附/確認/清潔草稿判型解鎖（null→CM，**新旗標未經 IE 確認
+   照擋**，名單見 `harvest-summary.md`）；1 筆誠實降級——
+   「拿取風槍清潔放置DIMM材料盒的DIMM」（d0350279，IE 已裁標題句）命中
+   G＋X＋P 混合 → 判型棄權，原 GM complete 是誤判，其 entry 隨之 stale
+   （`typing_change_changed`，待 IE 重看）。
+2. **判型新旗標（含 d030）照預設確認**：第五輪的 9 筆未確認判型旗
+   （7c6eb8af/b6ee694d/af172fd9/1c27dc35/fe1f3a90/e945e29e/9c1a987f 的
+   null→GM＋7f085e02/2e7b2e5a 的 null→CM）全數落 state entry 判型面向
+   （IEC141289，2026-08-17；7f085e02/2e7b2e5a 不在首輪 41 筆內，entry 僅帶
+   判型面向、切分不冒填）。
+3. **第三批轉正 7 筆（g34–g40）**：判型旗確認後解鎖的取放/取組配對 GM
+   （TMU 16–24），資格檢查全套通過；**d030（fe1f3a90）→ g38 本輪過**
+   （D3-022 被擋原因＝判型旗，已確認）。累計 IE 核准 **35/50**。
+4. **TMU=0.0 不做一刀切**：IE 答「看狀況、逐筆判」——本輪產
+   **距離裁決表** `distance-rulings.md`（11 筆：9 已轉正＋1 已裁草稿＋
+   1 未裁草稿），逐筆問「補典型距離幾 cm，或維持資訊不足」，不預填答案；
+   7f085e02 的 TMU=0 未裁、不轉正。
+
+## 下輪快答清單（IE 待答；D3-023 收尾＋複審整理）
+
+worklog D3-023 各處「列下輪快答」的集中落點（答案落地後逐條清掉並更新
+對應 state entry／文件）：
+
+1. **手動鎖附是否同判 CM？**（D3-023 複審發現 3）D3-021 答②是**條件式
+   裁決**——「鎖附→x_screw_fix」限**電動起子情境**，「手動鎖附遇到再議」。
+   D3-023 的 X/I 判型讓「鎖附」在**所有情境**給 CM 訊號：語料 9 筆判型
+   解鎖中 **4 筆句面無電動起子脈絡**（`bc473698`「鎖附主機板固定螺絲 x6」、
+   `3791550c`、`7ff8b879`、`323b04c1`「鎖附螺絲」），落在「再議」區。
+   現況兩道擋（判型不外溢成錯值）：判型旗未經 IE 確認即擋轉正＋X 面不由
+   linker 掛值（判型解鎖≠`x_screw_fix` 落 cycle）。詳見
+   `src/ddm_v2/nlp/rule_based.py` classify_seq ※1 的情境限縮註記。
+2. **d0350279（標題句）stale 重看**：X/I 上線後本句判型棄權（G＋X＋P
+   混合），entry 判型確認的依據已變（`typing_change_changed`）——先前
+   裁決（標題句不硬切，D3-022）是否維持？維持則更新 entry 的
+   `typing_change_at_review`；覆核表該節 banner 已印先前裁決內容。
+3. **X/I 新判型旗 9 筆確認**（null→CM；名單見 `harvest-summary.md`
+   「判型」節）——含上述 4 筆手動鎖附句（與第 1 題連動）。
+4. **7f085e02 的 TMU=0.0 距離裁決**（`distance-rulings.md` 唯一未裁筆）。
 
 ## 覆核狀態怎麼在重產後存活（D3-015）
 

@@ -63,7 +63,9 @@ sha256 命名、輸出不含任何 timestamp）。守門在
 IE 覆核狀態的存活（D3-015）：out 目錄的 `review-state.json`（IE 的檔案，
 harvest 只讀不寫、`--force` 不刪）記錄切分維度的確認/裁決，重產時以
 normalized_text 的 sha256 前 8 碼配對合併回草稿的 `ie_review` 區塊；文字或
-v3 結構證據變了的 entry 標 stale 列入摘要，**不靜默套用**。詳見檔內
+v3 結構證據變了的 entry 標 stale 列入摘要，**不靜默套用**。stale 筆在覆核表
+該節印 banner（**先前裁決的內容印出來**，不是只給指標——否則 IE 會被確認題
+的預設值引導推翻自己先前的裁決；D3-023 複審必修 1），合併語意不變。詳見檔內
 「IE 覆核狀態」節與 `docs/llm/gold-review/README.md`。
 
 用法（於 ddm-v2/）：
@@ -118,7 +120,7 @@ from ddm_v2.nlp.planner_eval import (  # noqa: E402
     rule_based_plan,
 )
 from ddm_v2.nlp.routing import compute_routing  # noqa: E402
-from ddm_v2.nlp.rule_based import RuleBasedParser, classify_seq  # noqa: E402
+from ddm_v2.nlp.rule_based import RuleBasedParser, _verb_seq, classify_seq  # noqa: E402
 from ddm_v2.nlp.rule_plan_adapter import plan_from_rule_result  # noqa: E402
 
 GOLD_SCHEMA_VERSION = "wi-gold-v1"
@@ -199,12 +201,13 @@ _VERB_COMPOUND_NOUNS = ("治具", "冶具", "機台", "機臺", "夾具", "模�
 # 這幾維的 false 特別容易被 IE 誤讀成「已確認沒有」——逐筆寫進草稿點名。
 HEURISTIC_UNVERIFIED_DIMS = ["quantity", "tool_handling", "simo_both_hands"]
 
-# ── D3-017：判型變更標注 + P 方向數旗標 ─────────────────────────────────────
+# ── D3-017／D3-023：判型變更標注 + P 方向數旗標 ─────────────────────────────
 #
-# 判型變更（第三輪）：rule parser 的 GM/CM 判型自本輪起吃動詞字典
-# （nlp/rule_based.py classify_seq；衝突矩陣見該 docstring）。與「僅名詞」
-# 舊判型（＝classify_seq 傳空詞典）不同者掛本旗標，覆核表標
-# 「第三輪判型已修正，請確認」——舊/新值存草稿 `typing_change` 欄。
+# 判型變更：rule parser 的 GM/CM 判型吃動詞字典（第三輪 D3-017 收 M/G+P；
+# 第六輪 D3-023 收 X/I 為 CM 訊號；nlp/rule_based.py classify_seq；衝突矩陣
+# 見該 docstring）。與「僅名詞」舊判型（＝classify_seq 傳空詞典）不同者掛
+# 本旗標，覆核表標「判型已由動詞字典修正，請確認」——舊/新值存草稿
+# `typing_change` 欄。
 TYPING_CHANGED_CAVEAT = "typing_changed_by_verb_lexicon"
 _ACTION_TYPE_TO_SEQ = {"move_place": "GM", "controlled_move": "CM"}
 
@@ -1098,7 +1101,7 @@ async def preannotate(
     }
     if typing_change is not None:
         # 與 TYPING_CHANGED_CAVEAT 同進同出（schema 守門）：舊/新判型留在草稿上，
-        # 覆核表據此標「第三輪判型已修正，請確認」
+        # 覆核表據此標「判型已由動詞字典修正，請確認」
         out["typing_change"] = typing_change
     if any(c in caveats for c in SEGMENTATION_CAVEATS):
         # D3-014 裁決 3：只對有切分爭點的草稿回填 v3 結構（hint 是證據不是判決）
@@ -1230,8 +1233,9 @@ def _caveat_line_zh(caveat: str, draft: dict[str, Any]) -> str:
     if caveat == TYPING_CHANGED_CAVEAT:
         tc = draft.get("typing_change") or {}
         return (
-            "**第三輪判型已修正，請確認**：動詞字典自本輪參與 GM/CM 判型"
-            "（D3-017，衝突矩陣見 nlp/rule_based.py classify_seq）——"
+            "**判型已由動詞字典修正，請確認**：動詞字典參與 GM/CM 判型"
+            "（D3-017 收 M/G+P、D3-023 收 X/I；衝突矩陣見 nlp/rule_based.py "
+            "classify_seq）——"
             f"舊判型（僅名詞觸發）＝{_seq_zh(tc.get('noun_only_seq'))}，"
             f"新判型（動詞字典參與）＝{_seq_zh(tc.get('lexicon_seq'))}。"
             "不同意新判型請在本筆「判型」題回答"
@@ -1296,7 +1300,7 @@ def _questions_for(draft: dict[str, Any]) -> list[str]:
         if a["action_type"] == "composite_unknown":
             qs.append(
                 f"判型（{a['action_id']}）：預測為 composite_unknown"
-                "（第三輪起動詞字典已參與判型——仍未定＝動詞未登記/單一動詞不足/"
+                "（動詞字典已參與判型（含 X/I）——仍未定＝動詞未登記/單一動詞不足/"
                 "訊號衝突棄權，逐類統計見 harvest-summary）。"
                 "實際動作類型是哪個：acquire / move_place / controlled_move / process / inspect？"
             )
@@ -1309,7 +1313,7 @@ def _questions_for(draft: dict[str, Any]) -> list[str]:
             if TYPING_CHANGED_CAVEAT in (draft.get("preannotation_caveat") or []):
                 tc = draft.get("typing_change") or {}
                 q += (
-                    f"【第三輪判型已修正：{_seq_zh(tc.get('noun_only_seq'))} → "
+                    f"【判型已由動詞字典修正：{_seq_zh(tc.get('noun_only_seq'))} → "
                     f"{_seq_zh(tc.get('lexicon_seq'))}，請確認】"
                 )
             qs.append(q)
@@ -1455,7 +1459,7 @@ def _ie_review_lines(draft: dict[str, Any]) -> list[str]:
     # D3-019：判型／P 方向數／TMU=0 三個面向的覆核狀態（有才顯示）
     if ir.get("typing_confirmed_by"):
         out.append(
-            f"**✅ IE 覆核狀態（判型）**：第三輪判型修正已確認照預設"
+            f"**✅ IE 覆核狀態（判型）**：動詞字典的判型修正已確認照預設"
             f"（{ir['typing_confirmed_by']}，{ir['typing_confirmed_date']}）。"
             "確認≠修改，`ie_modified` 維持 false。"
         )
@@ -1482,7 +1486,71 @@ def _ie_review_lines(draft: dict[str, Any]) -> list[str]:
     return out
 
 
-def build_review_checklist(drafts: list[dict[str, Any]]) -> str:
+def _stale_prior_rulings_zh(entry: dict[str, Any]) -> list[str]:
+    """stale entry 的先前確認/裁決**內容**摘要（覆核表 banner 用；D3-023 複審
+    必修 1）。
+
+    內容要印出來，不是只給指標：IE 在覆核表上看不到自己先前的裁決，就會被
+    確認題的預設值（如「v3 切 5 cycle，預設依此」）引導推翻自己（d004/
+    d0350279 實案——IE 已裁標題句不硬切，覆核表上卻長得像全新草稿）。
+    重切裁決排最前（它是先前狀態的主結論），其餘面向依 entry 欄位逐一列出。"""
+    out: list[str] = []
+    if entry.get("resegmentation_ruling") == RESEGMENTATION_RULING_TITLE_SENTENCE:
+        out.append(
+            "標題句不硬切（D3-022，`title_sentence_no_resegmentation`——"
+            "不重切、不轉正，內容由成分列的獨立 gold 覆蓋）"
+        )
+    src = entry.get("segmentation_source")
+    if src == "ie_ruling":
+        out.append(f"切分裁決 `{entry.get('ie_ruling')}`")
+    elif src == REVIEW_SEGMENTATION_SOURCE_BATCH:
+        out.append("切分批次確認（無爭點案例，`no_contention_batch_confirmed`）")
+    elif src == "v3_structure_confirmed":
+        out.append(
+            f"切分已確認照 v3 結構（`{entry.get('v3_structure_hint_at_review')}`）"
+        )
+    if entry.get("typing_confirmed_by"):
+        tc = entry.get("typing_change_at_review") or {}
+        out.append(
+            f"判型修正已確認（{_seq_zh(tc.get('noun_only_seq'))} → "
+            f"{_seq_zh(tc.get('lexicon_seq'))}）"
+        )
+    if entry.get("p_direction_confirmed_by"):
+        out.append(f"P 方向數已確認（`{entry.get('p_direction_caveat_at_review')}`）")
+    if entry.get("zero_tmu_ruling"):
+        out.append(f"TMU=0 已裁 `{entry['zero_tmu_ruling']}`（句子資訊不足）")
+    return out
+
+
+def _stale_review_lines(stale: dict[str, Any]) -> list[str]:
+    """stale 筆的覆核表 banner（D3-023 複審必修 1）。
+
+    只影響覆核表顯示——**合併語意不變**（stale 照樣不套用、草稿一個欄位都
+    不動，見 apply_review_state_entry）。banner 三要件：stale 原因、先前裁決
+    的**內容**（_stale_prior_rulings_zh）、指回 review-state entry＋「先重新
+    確認再答題」指示。
+
+    mutation 證據：banner 拆掉 → tests/unit/test_gold_harvest_review_state.py
+    ::test_stale_draft_checklist_banner_shows_prior_ruling 紅。"""
+    rulings = _stale_prior_rulings_zh(stale.get("entry") or {})
+    if rulings:
+        content = f"**先前裁決：{'；'.join(rulings)}**"
+    else:  # 防禦性：load_review_state 保證至少一個面向，正常走不到這裡
+        content = "**先前覆核記錄內容未能摘要——請直接開 review-state entry 核對**"
+    return [
+        f"**⚠️ 本筆先前 IE 覆核狀態因 `{stale['reason']}` 未套用**"
+        "（stale——確認/裁決所依據的內容已變，不靜默沿用；本節下方的預設值"
+        f"**未帶入**先前狀態）；{content}，見 review-state entry"
+        f"（`{stale['sha8']}`）。**本次請先重新確認先前裁決是否維持，"
+        "再看下列問題。**"
+    ]
+
+
+def build_review_checklist(
+    drafts: list[dict[str, Any]],
+    review_stale: list[dict[str, Any]] | None = None,
+) -> str:
+    stale_by_sha8 = {s["sha8"]: s for s in (review_stale or [])}
     lines: list[str] = []
     lines.append("# IE 覆核表 — gold set 擴充預標註草稿")
     lines.append("")
@@ -1524,6 +1592,15 @@ def build_review_checklist(drafts: list[dict[str, Any]]) -> str:
             "**不是整筆 gold 核准**——cycle 仍 incomplete 的照樣要覆核 option code，"
             "轉正另有流程（`docs/llm/gold-review/README.md`）。"
         )
+    stale_ids = [d["id"] for d in drafts if draft_sha8(d) in stale_by_sha8]
+    if stale_ids:
+        lines.append("")
+        lines.append(
+            f"**⚠️ {len(stale_ids)} 筆**（{'、'.join(f'`{i}`' for i in stale_ids)}）的"
+            "先前 IE 覆核狀態本輪 **stale 未套用**（確認/裁決所依據的內容已變，"
+            "不靜默沿用）——該筆小節有 banner，**先前裁決的內容印在 banner 上**；"
+            "請先重新確認裁決是否維持，再答該節問題（該節的預設值未帶入先前狀態）。"
+        )
     lines.append("")
     for d in drafts:
         plan = d["plan"]
@@ -1549,6 +1626,9 @@ def build_review_checklist(drafts: list[dict[str, Any]]) -> str:
                 f"**v3 結構**：`{d['v3_structure_hint']}`——{_structure_evidence_brief(d)}"
                 "（hint 是證據不是判決；預設依 v3 結構，IE 可推翻）"
             )
+        stale_rec = stale_by_sha8.get(draft_sha8(d))
+        if stale_rec is not None:
+            lines.extend(_stale_review_lines(stale_rec))
         for line in _ie_review_lines(d):
             lines.append(line)
         for c in d["preannotation_caveat"]:
@@ -1584,16 +1664,16 @@ def build_review_checklist(drafts: list[dict[str, Any]]) -> str:
     return "\n".join(lines) + "\n"
 
 
-# ── D3-017：第三輪判型統計（僅名詞 vs 動詞字典參與）與 unknown 卡點分類 ─────
+# ── D3-017／D3-023：判型統計（僅名詞 vs 動詞字典參與）與 unknown 卡點分類 ───
 
 # composite_unknown 卡點分類（決定性；每筆恰一類，優先序＝列出順序）：
-# 1. verb_mixed_abstain     M＋P 同句（跨模型混合＝多 cycle 證據）→ 設計上棄權
+# 1. verb_mixed_abstain     M/X/I＋P 同句（跨模型混合＝多 cycle 證據）→ 設計上棄權
 # 2. noun_cm_verb_gm_abstain 名詞 CM × 動詞 GM（衝突矩陣 ※2）→ 設計上棄權
 # 3. unregistered_verbs     句面有動詞面但（部分）未登記（`?` 待 IE 裁決）
 # 4. single_verb_insufficient 已登記動詞只有 G 或 P 單獨（單一動詞不足以定型）
 # 5. no_verb_face           句面完全無動詞面命中 → 需 IE 改 plan 或補描述
 _UNKNOWN_BLOCK_ZH = {
-    "verb_mixed_abstain": "動詞跨模型混合（M＋P 同句）→ 棄權（多 cycle 證據，設計如此）",
+    "verb_mixed_abstain": "動詞跨模型混合（M/X/I＋P 同句）→ 棄權（多 cycle 證據，設計如此）",
     "noun_cm_verb_gm_abstain": "名詞 CM × 動詞 GM 衝突 → 棄權（無 IE 裁決，設計如此）",
     "unregistered_verbs": "句面動詞（部分）未登記——卡 `?` 動詞，IE 裁決後可解",
     "single_verb_insufficient": "已登記動詞僅 G 或 P 單獨——單一動詞不足以定型",
@@ -1606,35 +1686,37 @@ def unknown_block_reason(
 ) -> tuple[str, list[str]]:
     """composite_unknown 草稿的卡點分類（單一出處；summary 與測試共用）。
 
+    動詞訊號判定直接用生產端 `_verb_seq`（D3-023：X/I 收進 CM 訊號後，
+    此處若自寫一份 has_m/has_p 就是平行判定路徑——兩邊必然漂移）。
+
     回傳 (類別, 未登記動詞面清單——僅 unregistered_verbs 類非空)。
     """
     lex = build_lexicon(synonyms)
     params_hit = frozenset(e.parameter for _, _, e in match_all(norm, lex))
-    has_m = "M" in params_hit
-    has_p = "P" in params_hit
-    has_g = "G" in params_hit
-    if has_m and has_p:
+    verb = _verb_seq(params_hit)
+    if verb == "mixed":
         return "verb_mixed_abstain", []
-    if classify_seq(norm, raw, frozenset()) == "CM" and has_g and has_p:
+    if verb == "GM" and classify_seq(norm, raw, frozenset()) == "CM":
         return "noun_cm_verb_gm_abstain", []
     registered = {s["synonym_norm"] for s in synonyms}
     unregistered = sorted({v for v in _action_verb_hits(norm) if v not in registered})
     if unregistered:
         return "unregistered_verbs", unregistered
-    if has_g or has_p:
+    if "G" in params_hit or "P" in params_hit:
         return "single_verb_insufficient", []
     return "no_verb_face", []
 
 
 def _round3_typing_lines(drafts: list[dict[str, Any]], synonyms: list[dict]) -> list[str]:
-    """「第三輪判型」摘要節：僅名詞 vs 動詞字典參與的分佈對比＋unknown 卡點逐類。"""
+    """「判型」摘要節：僅名詞 vs 動詞字典參與的分佈對比＋unknown 卡點逐類。"""
     lines: list[str] = []
-    lines.append("## 第三輪判型（D3-017：動詞字典參與 GM/CM 判型）")
+    lines.append("## 判型（D3-017 動詞字典參與＋D3-023 X/I 參與 GM/CM 判型）")
     lines.append("")
     lines.append(
-        "判型自本輪起吃動詞字典（M 命中＝CM 訊號、G+P 組合＝GM 訊號；衝突矩陣與"
-        "棄權路徑見 `src/ddm_v2/nlp/rule_based.py` classify_seq）。「舊」欄＝"
-        "僅名詞觸發詞的第二輪行為（同一函式傳空詞典重算，非手抄數字）："
+        "判型吃動詞字典（第三輪 D3-017：M 命中＝CM 訊號、G+P 組合＝GM 訊號；"
+        "第六輪 D3-023：X/I 命中同為 CM 訊號——X/I 只存在 CM 序列，與 M 同級；"
+        "衝突矩陣與棄權路徑見 `src/ddm_v2/nlp/rule_based.py` classify_seq）。"
+        "「舊」欄＝僅名詞觸發詞的第二輪行為（同一函式傳空詞典重算，非手抄數字）："
     )
     lines.append("")
     dist: dict[str, dict[str, int]] = {
@@ -1658,7 +1740,7 @@ def _round3_typing_lines(drafts: list[dict[str, Any]], synonyms: list[dict]) -> 
     lines.append("")
     lines.append(
         f"判型變更 **{len(changed)} 筆**（草稿帶 `{TYPING_CHANGED_CAVEAT}`＋"
-        "`typing_change` 舊/新值；覆核表逐筆標「第三輪判型已修正，請確認」）："
+        "`typing_change` 舊/新值；覆核表逐筆標「判型已由動詞字典修正，請確認」）："
     )
     lines.append("")
     for d in changed:
@@ -2066,8 +2148,8 @@ def _dump(data: dict[str, Any]) -> str:
 #
 # D3-019 追加——entry 的「覆核面向」（aspects；至少一個）：
 # - 切分（segmentation_*／ie_ruling…）：D3-015 既有欄位，語意不變。
-# - 判型（typing_confirmed_by/date＋typing_change_at_review）：IE 確認第三輪
-#   判型修正照預設。stale 基準＝typing_change_at_review 與草稿 `typing_change`
+# - 判型（typing_confirmed_by/date＋typing_change_at_review）：IE 確認動詞
+#   字典的判型修正照預設。stale 基準＝typing_change_at_review 與草稿 `typing_change`
 #   不同（判型在新一輪又變了 ⇒ 確認所依據的值已不同 ⇒ `typing_change_changed`）。
 # - P 方向數（p_direction_confirmed_by/date＋p_direction_caveat_at_review）：
 #   IE 確認方向數變體照預設。stale 基準＝草稿現行 P 方向旗標與記錄不同
@@ -2532,6 +2614,9 @@ def merge_review_state(
     """整批合併：回傳（已套用草稿 id 排序清單, stale 條目清單）。決定性：
     entry 依 sha8 排序處理，輸出穩定。
 
+    stale 條目附原 entry（`entry` 鍵）——覆核表 banner 要印**先前裁決的內容**
+    （D3-023 複審必修 1），拆掉附帶＝banner 只剩指標，測試會紅。
+
     標 `promoted_to` 的 entry 跳過（不套用也不算 stale）：該句已在正式 gold、
     不再產草稿——entry 保留是轉正軌跡，不是待合併狀態。"""
     by_sha8: dict[str, dict[str, Any]] = {}
@@ -2550,7 +2635,7 @@ def merge_review_state(
         if draft is None:
             stale.append(
                 {"sha8": sha8, "reason": "no_matching_draft",
-                 "source_text": entry.get("source_text")}
+                 "source_text": entry.get("source_text"), "entry": entry}
             )
             continue
         reason = apply_review_state_entry(draft, entry)
@@ -2558,7 +2643,8 @@ def merge_review_state(
             applied.append(draft["id"])
         else:
             stale.append(
-                {"sha8": sha8, "reason": reason, "source_text": entry.get("source_text")}
+                {"sha8": sha8, "reason": reason,
+                 "source_text": entry.get("source_text"), "entry": entry}
             )
     return sorted(applied), stale
 
@@ -2630,8 +2716,9 @@ async def cmd_harvest(args: argparse.Namespace) -> int:
         (out_dir / f"{d['id']}.json").write_text(_dump(d), encoding="utf-8")
 
     review_dir.mkdir(parents=True, exist_ok=True)
+    # stale 清單也進覆核表（該筆印先前裁決 banner）——不只摘要一句話
     (review_dir / "review-checklist.md").write_text(
-        build_review_checklist(drafts), encoding="utf-8"
+        build_review_checklist(drafts, review_stale=review_stale), encoding="utf-8"
     )
     summary = build_summary(
         counts,

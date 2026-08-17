@@ -277,3 +277,53 @@ def test_accepted_cycle_expectation_unchanged():
     check = _check_cycle(now_rejected, exp)
     assert not check.ok
     assert any("expected engine_result" in e for e in check.errors)
+
+
+# ── D3-023：unknown 卡點分類與生產判型同源（_verb_seq；X/I 收進 CM 訊號）────
+#
+# unknown_block_reason 曾自寫一份 has_m/has_p 判定——X/I 擴充後那就是平行
+# 判定路徑（單一引擎原則）；改用生產端 _verb_seq 後，以下測試釘住：
+# mutation 證據＝把 unknown_block_reason 的 verb 判定改回「只認 M」→
+# test_unknown_block_xi_mixed_is_verb_mixed_abstain 必紅（X+P 句會被誤分類
+# 成 unregistered_verbs/single_verb_insufficient）。
+
+
+def _syn_row(param: str, code: str, norm: str) -> dict:
+    return {"parameter": param, "option_code": code, "synonym_norm": norm, "priority": 0}
+
+
+def test_unknown_block_xi_mixed_is_verb_mixed_abstain():
+    """X＋P／I＋P 同句＝跨模型混合 → verb_mixed_abstain（與生產棄權同源）。"""
+    from gold_harvest import unknown_block_reason
+
+    syns = [
+        _syn_row("X", "x_screw_fix", "鎖附"),
+        _syn_row("I", "i_confirm", "確認"),
+        _syn_row("P", "p_place_single", "放至"),
+    ]
+    reason, missing = unknown_block_reason("鎖附螺絲後放至料盒", "鎖附螺絲後放至料盒", syns)
+    assert (reason, missing) == ("verb_mixed_abstain", [])
+    reason2, _ = unknown_block_reason("確認點位後放至流水線", "確認點位後放至流水線", syns)
+    assert reason2 == "verb_mixed_abstain"
+
+
+def test_unknown_block_noun_cm_verb_gm_still_detected():
+    """既有 ※2 象限（名詞 CM × 動詞 G+P）分類不因 X/I 擴充而漂移。"""
+    from gold_harvest import unknown_block_reason
+
+    syns = [
+        _syn_row("G", "g_grasp", "抓握"),
+        _syn_row("P", "p_place_single", "放至"),
+    ]
+    reason, _ = unknown_block_reason("雙手抓握主板放至機台", "雙手抓握主板放至機台", syns)
+    assert reason == "noun_cm_verb_gm_abstain"
+
+
+def test_unknown_block_reason_not_reached_for_xi_typed():
+    """X/I 單獨命中已被生產判型收為 CM（不再是 composite_unknown）——
+    分類函式對這類句子不會再被呼叫；此處驗生產端同一句確實 typed。"""
+    from ddm_v2.nlp.rule_based import RuleBasedParser
+
+    syns = [_syn_row("X", "x_screw_fix", "鎖附")]
+    r = RuleBasedParser(syns).parse("鎖附主機板固定螺絲 x6")
+    assert r.suggested_seq == "CM"

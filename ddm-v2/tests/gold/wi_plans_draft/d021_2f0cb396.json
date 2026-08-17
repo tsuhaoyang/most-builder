@@ -1,0 +1,140 @@
+{
+  "id": "d021_2f0cb396",
+  "source_text": "並確認DIMM點位",
+  "notes": "預標註草稿（rule pipeline 自動產生；scripts/gold_harvest.py）。非 gold——IE 覆核核准前不得移入 tests/gold/wi_plans/。",
+  "review_status": "pending_ie",
+  "approved_by": null,
+  "plan_origin": "rule_based_v1_preannotation",
+  "ie_modified": false,
+  "split": null,
+  "split_groups": [
+    "module:03ceef7d-5939-4ccc-a57c-da17e06e94de",
+    "module:d630108e-643e-4717-94e0-c0c922200076"
+  ],
+  "split_component": "module:03ceef7d-5939-4ccc-a57c-da17e06e94de",
+  "source_provenance": [
+    {
+      "table": "motion_module_versions",
+      "id": "40bb7624-b631-49ed-b35c-d395fc10cf0b",
+      "detail": "rows[0].sub_activity",
+      "group_key": "module:d630108e-643e-4717-94e0-c0c922200076",
+      "db_timestamp": "2026-08-04T06:59:46.545914+00:00",
+      "raw_text": "並確認DIMM點位"
+    },
+    {
+      "table": "motion_module_versions",
+      "id": "61a9b8da-4795-4a5b-b8ef-77953393d0ad",
+      "detail": "rows[0].sub_activity",
+      "group_key": "module:03ceef7d-5939-4ccc-a57c-da17e06e94de",
+      "db_timestamp": "2026-08-04T06:59:46.915219+00:00",
+      "raw_text": "並確認DIMM點位"
+    },
+    {
+      "table": "motion_modules",
+      "id": "03ceef7d-5939-4ccc-a57c-da17e06e94de",
+      "detail": "name_zh (category=action)",
+      "group_key": "module:03ceef7d-5939-4ccc-a57c-da17e06e94de",
+      "db_timestamp": "2026-08-04T06:59:46.902583+00:00",
+      "raw_text": "並確認DIMM點位"
+    }
+  ],
+  "challenge_tags": {
+    "zh_simplified_variant": false,
+    "fullwidth_chars": false,
+    "typo": "unknown",
+    "homophone": "unknown",
+    "mixed_zh_en": true,
+    "english_only": false,
+    "inverted_word_order": "unknown",
+    "colloquial": "unknown",
+    "multi_action": false,
+    "quantity": false,
+    "tool_handling": false,
+    "simo_both_hands": false,
+    "missing_info": "unknown",
+    "ambiguity": "unknown",
+    "diagram_reference_no_image": false,
+    "site_jargon_dirty_import": "unknown"
+  },
+  "heuristic_tags_unverified": [
+    "quantity",
+    "tool_handling",
+    "simo_both_hands"
+  ],
+  "preannotation_caveat": [
+    "typing_changed_by_verb_lexicon"
+  ],
+  "typing_change": {
+    "noun_only_seq": null,
+    "lexicon_seq": "CM"
+  },
+  "preannotation": {
+    "pipeline": "rule_based_v1 -> plan_from_rule_result -> SlotLinker(no-db) -> compile_plan -> engine_gate(most_engine) -> compute_routing(auto=off)",
+    "planner": "rule_based_v1",
+    "rule_set_code": "MINIMOST_FACTORY_V2",
+    "lexicon_source": "rule_option_synonyms",
+    "lexicon_size": 22,
+    "routing_reasons": [
+      "no_candidate_m",
+      "missing_core_m"
+    ]
+  },
+  "plan": {
+    "schema_version": "wi-plan-v1",
+    "source_text": "並確認DIMM點位",
+    "normalized_text": "並確認dimm點位",
+    "language": "zh",
+    "source_ref": {
+      "kind": "interactive",
+      "worksheet_id": null,
+      "import_id": null,
+      "import_row_index": null
+    },
+    "actions": [
+      {
+        "action_id": "a1",
+        "action_type": "controlled_move",
+        "sequence_order": 1,
+        "roles": {},
+        "evidence": [
+          {
+            "start": 0,
+            "end": 9,
+            "text": "並確認dimm點位"
+          }
+        ],
+        "notes": "rule_based_v1"
+      }
+    ],
+    "dependencies": [],
+    "unresolved": []
+  },
+  "synthetic_synonyms": [
+    {
+      "parameter": "I",
+      "option_code": "i_confirm",
+      "synonym_norm": "確認",
+      "priority": 0
+    }
+  ],
+  "expected_cycles": [
+    {
+      "action_id": "a1",
+      "complete": false,
+      "seq": "CM",
+      "issues_contain": [
+        "missing_core_m"
+      ]
+    }
+  ],
+  "gold_schema_version": "wi-gold-v1",
+  "expected": {
+    "action_count": 1,
+    "routing_status": "review"
+  },
+  "ie_review": {
+    "segmentation_confirmed_by": "IEC141289",
+    "segmentation_confirmed_date": "2026-08-17",
+    "segmentation_source": "no_contention_batch_confirmed"
+  }
+}

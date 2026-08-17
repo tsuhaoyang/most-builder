@@ -393,6 +393,100 @@ def test_empty_lexicon_preserves_noun_only_behavior():
     assert r2.suggested_seq is None
 
 
+# ─── D3-023：X/I 參與判型（IE 核可開票）────────────────────────────────────
+#
+# X 與 I 只存在 CM 序列（spec §2：CM＝A B G M X I A；GM 無 X/I）——面命中是
+# 結構性 CM 證據，與 M 同級。動詞面採實際已登記映射（鎖附→x_screw_fix、
+# 清潔→x_blow_clean、確認→i_confirm）。
+
+_X_SCREW = _syn("X", "x_screw_fix", "鎖附")
+_X_CLEAN = _syn("X", "x_blow_clean", "清潔")
+_I_CONFIRM = _syn("I", "i_confirm", "確認")
+
+
+def test_verb_cm_signal_x_alone():
+    """訊號源③：X 面單獨命中（無名詞觸發、無 M/P）→ CM。"""
+    r = _make_parser(_X_SCREW).parse("鎖附主機板固定螺絲 x6")
+    assert r.suggested_seq == "CM"
+
+
+def test_verb_cm_signal_i_alone():
+    """訊號源④：I 面單獨命中（無名詞觸發、無 M/P）→ CM。"""
+    r = _make_parser(_I_CONFIRM).parse("並確認DIMM點位")
+    assert r.suggested_seq == "CM"
+
+
+def test_verb_cm_signal_g_plus_x_not_mixed():
+    """X/I＋G 不是混合：G 在兩序列都有、CM 自有 G 格（工具取得＋工具製程＝
+    單一 CM，g13 型）→ CM。"""
+    g_pick = _syn("G", "g_pick_sel", "拿取")
+    r = _make_parser(g_pick, _X_CLEAN).parse("拿取風槍清潔DIMM卡槽")
+    assert r.suggested_seq == "CM"
+
+
+def test_verb_cm_signal_x_plus_i_same_direction():
+    """X＋I 同向（同一 CM cycle 本來就同時容納 X 與 I）→ CM，不是混合。"""
+    r = _make_parser(_X_SCREW, _I_CONFIRM).parse("並鎖附固定並確認螺絲到位")
+    assert r.suggested_seq == "CM"
+
+
+def test_verb_cm_signal_m_plus_i_same_direction():
+    """M＋I 同向（CM＝A B G M X I A，M 與 I 同 cycle）→ CM。"""
+    m_push = _syn("M", "m_push", "推至")
+    r = _make_parser(m_push, _I_CONFIRM).parse("雙手接觸卡扣推至規定位置並確認到位")
+    assert r.suggested_seq == "CM"
+
+
+def test_x_verb_overrides_gm_noun():
+    """衝突 ※1（X/I 來源）：名詞說 GM（治具）、動詞說 CM（x_screw_fix）→ CM。
+
+    「鎖附治具」＝對治具做工具製程——治具名詞只是操作對象證據，X 是序列
+    參數證據（只存在 CM）；與 d019「接觸治具拉至」的 M 裁決同一論證結構。
+    """
+    r = _make_parser(_X_SCREW).parse("鎖附壓合治具固定螺絲")
+    assert r.suggested_seq == "CM"
+
+
+def test_i_verb_overrides_gm_noun():
+    """衝突 ※1（I 來源）：名詞說 GM（治具）、動詞說 CM（i_confirm）→ CM。"""
+    r = _make_parser(_I_CONFIRM).parse("確認治具到位")
+    assert r.suggested_seq == "CM"
+
+
+def test_x_verb_with_cm_noun_same_direction():
+    """名詞 CM（機台）× 動詞 CM（X）→ CM（同向，無衝突）。"""
+    r = _make_parser(_X_CLEAN).parse("清潔機台表面")
+    assert r.suggested_seq == "CM"
+
+
+def test_xi_with_p_abstains_even_with_noun():
+    """棄權路徑：X/I＋P 同句＝跨模型混合（X/I 只在 CM、P 只在 GM）→ None，
+    名詞在場也不救——「鎖附後放至」型＝≥2 cycle 證據，照 M+P 棄權前例。"""
+    p_place = _syn("P", "p_place_single", "放至")
+    r = _make_parser(_X_SCREW, p_place).parse("鎖附螺絲後放至壓合治具")
+    assert r.suggested_seq is None
+    r2 = _make_parser(_I_CONFIRM, p_place).parse("確認點位後放至流水線")
+    assert r2.suggested_seq is None
+
+
+def test_gxp_with_x_abstains_mixed():
+    """G＋X＋P 同句仍是混合（cm_core＋P 蓋過 G+P 的 GM 組合）→ None。"""
+    r = _make_parser(
+        _syn("G", "g_pick_sel", "拿取"), _X_CLEAN, _syn("P", "p_place_zhi", "放置")
+    ).parse("拿取風槍清潔放置料盒的DIMM")
+    assert r.suggested_seq is None
+
+
+def test_xi_unregistered_preserves_old_behavior():
+    """空詞典回歸不變式（X/I 面）：X/I 未登記＝訊號恆無＝舊（僅名詞）行為。"""
+    # 有名詞觸發：維持名詞判（治具→GM）
+    r1 = _make_parser().parse("鎖附壓合治具固定螺絲")
+    assert r1.suggested_seq == "GM"
+    # 無名詞觸發：維持 None
+    r2 = _make_parser().parse("並確認DIMM點位")
+    assert r2.suggested_seq is None
+
+
 # ─── v2_0038：同 norm 多 code 的決定性 tie-break（priority 0＝預設先匹配）────
 
 

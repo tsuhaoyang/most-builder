@@ -31,6 +31,8 @@ mutation 證據（CI_GATES 規則 7）：
 - 把 `draft_json_files` 的排除拆掉 → `test_review_state_file_is_not_a_draft` 紅。
 - 把 `load_review_state` 的 ruling_history 驗證拆掉 →
   `test_load_review_state_rejects_bad_ruling_history` 紅。
+- 把覆核表的 stale banner 拆掉（或 stale 記錄不再附 entry）→
+  `test_stale_draft_checklist_banner_shows_prior_ruling` 紅（D3-023 複審必修 1）。
 """
 from __future__ import annotations
 
@@ -48,10 +50,12 @@ DRAFT_DIR = ROOT / "tests" / "gold" / "wi_plans_draft"
 
 sys.path.insert(0, str(ROOT / "scripts"))
 from gold_harvest import (  # noqa: E402
+    DIM_KEYS,
     REVIEW_SEGMENTATION_SOURCE_BATCH,
     REVIEW_STATE_FILENAME,
     REVIEW_STATE_SCHEMA_VERSION,
     apply_review_state_entry,
+    build_review_checklist,
     draft_json_files,
     draft_sha8,
     load_review_state,
@@ -454,6 +458,119 @@ def test_repo_batch_confirmed_answer_b_pinned():
         assert e.get("segmentation_confirmed_date") == "2026-08-17"
 
 
+# ── 2c. stale 筆的覆核表 banner（D3-023 複審必修 1）──────────────────────────
+#
+# stale 只列 harvest 摘要時，該筆在覆核表長得像全新草稿——確認題的預設值
+# （「v3 切 5 cycle，預設依此」）會引導 IE 推翻自己先前的裁決（d004/d0350279
+# 實案：IE 已裁標題句不硬切（D3-022），覆核表上卻看不到）。banner 必須印
+# **先前裁決的內容**，不是只給指標。合併語意不變（stale 照樣不套用、草稿不動）。
+# mutation：banner 拆掉 → test_stale_draft_checklist_banner_shows_prior_ruling 紅；
+# merge_review_state 的 stale 記錄不再附 entry → 同測紅（banner 摘要不出內容）。
+
+
+def _checklist_draft(norm: str, idx: int = 1) -> dict[str, Any]:
+    """build_review_checklist 需要的完整草稿形狀（自建，不依賴 repo/DB）。"""
+    d = _draft(norm, idx=idx, hint="multi_cycle_5")
+    d["v3_structure_evidence"]["sources"][0]["cycles"] = 5
+    d["preannotation_caveat"] = ["likely_multi_action_undercounted"]
+    d["challenge_tags"] = dict.fromkeys(DIM_KEYS, "unknown")
+    d["source_provenance"] = [
+        {"table": "motion_modules", "id": "mm-1", "detail": "name_zh"}
+    ]
+    d["plan"]["actions"] = [
+        {
+            "action_id": "a1",
+            "action_type": "composite_unknown",
+            "sequence_order": 1,
+            "evidence": [{"start": 0, "end": len(norm), "text": norm}],
+        }
+    ]
+    d["expected_cycles"] = [
+        {"action_id": "a1", "complete": False, "issues_contain": ["composite_unknown"]}
+    ]
+    d["expected"] = {"action_count": 1, "routing_status": "abstain"}
+    d["preannotation"] = {"routing_reasons": ["composite_unknown"]}
+    return d
+
+
+def _reseg_typing_entry(norm: str) -> dict[str, Any]:
+    """d004/d0350279 型 entry：標題句裁決＋判型確認（確認依據將與草稿不同
+    → typing_change_changed stale）。"""
+    return _entry(
+        norm,
+        hint="multi_cycle_5",
+        resegmentation_ruling="title_sentence_no_resegmentation",
+        resegmentation_ruled_by="IEC141289",
+        resegmentation_ruled_date="2026-08-17",
+        typing_confirmed_by="IEC141289",
+        typing_confirmed_date="2026-08-17",
+        typing_change_at_review={"noun_only_seq": None, "lexicon_seq": "GM"},
+    )
+
+
+def test_stale_draft_checklist_banner_shows_prior_ruling():
+    """banner 三要件都在該筆小節內：stale 原因、先前裁決**內容**（裁決值本身，
+    不是只給指標）、指回 entry＋「先重新確認再答題」指示。"""
+    norm = "拿取風槍清潔放置dimm材料盒的dimm"
+    d = _checklist_draft(norm)
+    entry = _reseg_typing_entry(norm)
+    applied, stale = merge_review_state([d], {_sha(norm)[:8]: entry})
+    assert applied == []
+    assert [s["reason"] for s in stale] == ["typing_change_changed"]
+    assert "ie_review" not in d, "合併語意不變——stale 照樣不套用"
+
+    text = build_review_checklist([d], review_stale=stale)
+    section = text.split(f"## {d['id']}", 1)[1]
+    # 1) stale 原因
+    assert "因 `typing_change_changed` 未套用" in section
+    # 2) 先前裁決內容（不是只給指標）：裁決名目與裁決值本身都要印
+    assert "先前裁決" in section
+    assert "標題句不硬切" in section and "D3-022" in section
+    assert "title_sentence_no_resegmentation" in section
+    assert "判型修正已確認" in section, "entry 有的面向都要看得到"
+    assert "切分已確認照 v3 結構" in section and "multi_cycle_5" in section
+    # 3) 指回 entry＋先確認指示
+    assert "review-state entry" in section and f"`{_sha(norm)[:8]}`" in section
+    assert "重新確認" in section and "再看下列問題" in section
+    # 檔頭總覽也點名該筆
+    head = text.split("\n---\n", 1)[0]
+    assert d["id"] in head and "stale 未套用" in head
+
+
+def test_checklist_no_banner_without_stale():
+    norm = "拿取風槍清潔放置dimm材料盒的dimm"
+    d = _checklist_draft(norm)
+    text = build_review_checklist([d])
+    assert "未套用" not in text and "先前裁決" not in text
+
+
+def test_checklist_ignores_stale_without_matching_draft():
+    """no_matching_draft 型 stale（句子已不在本輪）：無對應小節，覆核表不炸、
+    不出 banner（該型只列 harvest 摘要）。"""
+    norm = "拿取風槍清潔放置dimm材料盒的dimm"
+    d = _checklist_draft(norm)
+    stale = [
+        {
+            "sha8": "deadbeef",
+            "reason": "no_matching_draft",
+            "source_text": "已改寫的舊句子",
+            "entry": _entry("已改寫的舊句子"),
+        }
+    ]
+    text = build_review_checklist([d], review_stale=stale)
+    assert "未套用" not in text
+
+
+def test_stale_record_carries_entry_for_checklist():
+    """merge_review_state 的 stale 記錄必須附原 entry——banner 內容的來源
+    （拆掉＝banner 只剩指標，違反必修 1）。"""
+    norm = "拿取風槍清潔放置dimm材料盒的dimm"
+    d = _checklist_draft(norm)
+    entry = _reseg_typing_entry(norm)
+    _applied, stale = merge_review_state([d], {_sha(norm)[:8]: entry})
+    assert stale[0]["entry"] is entry
+
+
 # ── 3. state 檔驗證（硬紅，不靜默）──────────────────────────────────────────
 
 
@@ -756,9 +873,20 @@ def _repo_drafts() -> list[dict]:
     ]
 
 
+# D3-023 已知 stale（有意識釘名單，不是放寬）：X/I 參與判型後，
+# 「拿取風槍清潔放置DIMM材料盒的DIMM」（d0350279）命中 G＋X＋P＝跨模型混合
+# → 判型棄權，原 typing_change {null→GM} 消失——entry 的判型確認所依據的值
+# 已不同 ⇒ stale（typing_change_changed），設計如此（不靜默沿用）。此句 IE
+# 已裁為標題句（title_sentence_no_resegmentation，不轉正），棄權判型比原
+# GM 誤判誠實；entry 待 IE 下輪重看（快答清單見 worklog D3-023）。
+# 名單**恰等**：多一筆＝新的未預期 stale（必須查）；少一筆＝IE 已重看，
+# 名單要同步清掉。
+REPO_KNOWN_STALE: dict[str, str] = {"d0350279": "typing_change_changed"}
+
+
 def test_repo_review_state_all_entries_fresh_and_applied():
-    """active（未轉正）entry 全部配對到現有草稿且非 stale；草稿上的 ie_review
-    與重放合併結果一致（決定性）。
+    """active（未轉正）entry 全部配對到現有草稿且非 stale（已知 stale 名單
+    除外，恰等比對）；草稿上的 ie_review 與重放合併結果一致（決定性）。
 
     D3-019 起 entry 分兩類：標 `promoted_to` 的（已轉正 tests/gold/wi_plans/，
     句子不再產草稿——合併跳過、不算 stale、軌跡保留）與 active 的（必須全數
@@ -773,8 +901,28 @@ def test_repo_review_state_all_entries_fresh_and_applied():
         pytest.skip("wi_plans_draft 目前沒有草稿")
 
     # 重放合併：在剝掉 ie_review 的 deep copy 上重跑，結果必須與 repo 檔一致
+    stripped, applied, stale = _stripped_replay()
+    assert {s["sha8"]: s["reason"] for s in stale} == REPO_KNOWN_STALE, (
+        f"repo state 的 stale 集合與已知名單不符（多＝新的未預期 stale 必須查；"
+        f"少＝IE 已重看、名單要同步清掉）：{stale}"
+    )
+    assert len(applied) == len(active) - len(REPO_KNOWN_STALE), (
+        "active entry 沒有全數套用（promoted 與已知 stale 以外的 entry "
+        "必須逐筆配對到草稿）"
+    )
+    by_id_repo = {d["id"]: d for d in drafts}
+    for c in stripped:
+        assert c == by_id_repo[c["id"]], f"{c['id']}：重放合併與 repo 檔不一致"
+
+
+def _stripped_replay() -> tuple[list[dict], list[str], list[dict]]:
+    """repo 草稿剝掉合併產物後重放 merge——回傳（合併後草稿, applied, stale）。
+
+    test_repo_review_state_all_entries_fresh_and_applied 與覆核表重生測試
+    共用（同一剝除規則，不允許兩邊漂移）。"""
+    entries = load_review_state(DRAFT_DIR / REVIEW_STATE_FILENAME)
     stripped = []
-    for d in drafts:
+    for d in _repo_drafts():
         c = copy.deepcopy(d)
         c.pop("ie_review", None)
         c.pop("expected_incomplete_reason", None)  # TMU=0 裁決的合併產物（D3-019）
@@ -783,13 +931,46 @@ def test_repo_review_state_all_entries_fresh_and_applied():
             s.pop("ie_ruling_rejected", None)
         stripped.append(c)
     applied, stale = merge_review_state(stripped, entries)
-    assert stale == [], f"repo state 有 stale entry（IE 需重看）：{stale}"
-    assert len(applied) == len(active), (
-        "active entry 沒有全數套用（promoted 以外的 entry 必須逐筆配對到草稿）"
+    return stripped, applied, stale
+
+
+def test_repo_checklist_regeneration_matches_committed():
+    """覆核表可離線重生且與 commit 檔 byte 一致（決定性維持；stale banner
+    含在內）——覆核表過時（改了 harvest 沒重產）或 build_review_checklist
+    行為漂移都在這裡紅。"""
+    checklist_path = ROOT / "docs" / "llm" / "gold-review" / "review-checklist.md"
+    state_path = DRAFT_DIR / REVIEW_STATE_FILENAME
+    if not checklist_path.exists() or not state_path.exists():
+        pytest.skip("repo 無覆核表或 review-state.json")
+    if not draft_json_files(DRAFT_DIR):
+        pytest.skip("wi_plans_draft 目前沒有草稿")
+    merged, _applied, stale = _stripped_replay()
+    regenerated = build_review_checklist(merged, review_stale=stale)
+    assert regenerated == checklist_path.read_text(encoding="utf-8"), (
+        "docs/llm/gold-review/review-checklist.md 與離線重生結果不一致——"
+        "重跑 harvest 重產覆核表，或查 build_review_checklist 行為漂移"
     )
-    by_id_repo = {d["id"]: d for d in drafts}
-    for c in stripped:
-        assert c == by_id_repo[c["id"]], f"{c['id']}：重放合併與 repo 檔不一致"
+
+
+def test_repo_checklist_known_stale_have_banner():
+    """已知 stale（REPO_KNOWN_STALE）逐筆：commit 的覆核表該節必須有 banner
+    且印出先前裁決內容（D3-023 複審必修 1 的 repo 落地）。IE 重看後名單清掉，
+    本測自動空轉——banner 隨 stale 消失是正確行為。"""
+    checklist_path = ROOT / "docs" / "llm" / "gold-review" / "review-checklist.md"
+    if not checklist_path.exists():
+        pytest.skip("repo 無覆核表")
+    text = checklist_path.read_text(encoding="utf-8")
+    drafts = {draft_sha8(d): d for d in _repo_drafts()}
+    for sha8, reason in REPO_KNOWN_STALE.items():
+        d = drafts.get(sha8)
+        if d is None:
+            continue  # no_matching_draft 型——無小節即無 banner
+        section = text.split(f"## {d['id']}", 1)[1].split("\n---\n", 1)[0]
+        assert f"因 `{reason}` 未套用" in section, f"{d['id']}：banner 缺 stale 原因"
+        assert "先前裁決" in section, f"{d['id']}：banner 缺先前裁決內容"
+        # d0350279（現行唯一已知 stale）：先前裁決＝標題句不硬切（D3-022）
+        if sha8 == "d0350279":
+            assert "標題句不硬切" in section and "D3-022" in section
 
 
 def test_repo_ie_rulings_present_after_round2_correction():
@@ -801,15 +982,28 @@ def test_repo_ie_rulings_present_after_round2_correction():
     先前裁決全文＋為何更正保留在 state entry 的 `ruling_history`。
 
     配對用 sha8（跟句子不跟流水號）：第五輪重產後流水號位移（原 d026→d014、
-    原 d045→d026），id 前綴配對會抓錯句子。"""
+    原 d045→d026），id 前綴配對會抓錯句子。D3-023 起 d026（1c27dc35）已轉正
+    g37——裁決軌跡（ie_review／ruling_history／被否定證據標記）隨轉正 payload
+    保留在正式 gold，改從 gold 目錄取；本測試不再因轉正而 skip（skip 會連帶
+    棄掉下方的切分確認守恆）。"""
     state_path = DRAFT_DIR / REVIEW_STATE_FILENAME
     if not state_path.exists():
         pytest.skip("repo 無 review-state.json（草稿可能已全數轉正）")
     drafts = {draft_sha8(d): d for d in _repo_drafts()}
-    d026 = drafts.get("1c27dc35")  # 「雙手抓握主板組至機箱」（首輪 d026）
-    d045 = drafts.get("35372a96")  # 「拿取排線並對準接頭」（首輪 d045）
-    if d026 is None or d045 is None:
-        pytest.skip("d026/d045 已不在草稿目錄（可能已轉正或重編號）")
+    gold_cases = {
+        draft_sha8(d): d
+        for d in (
+            json.loads(p.read_text(encoding="utf-8"))
+            for p in sorted((ROOT / "tests" / "gold" / "wi_plans").glob("*.json"))
+        )
+        if d.get("plan")
+    }
+    # 「雙手抓握主板組至機箱」（首輪 d026）＝D3-023 第三批轉正 g37；
+    # 「拿取排線並對準接頭」（首輪 d045）仍在草稿
+    d026 = drafts.get("1c27dc35") or gold_cases.get("1c27dc35")
+    d045 = drafts.get("35372a96")
+    assert d026 is not None, "d026（1c27dc35）草稿與正式 gold 都找不到——軌跡遺失"
+    assert d045 is not None, "d045（35372a96）不在草稿目錄——句子遺失或未預期轉正"
 
     ir26 = d026["ie_review"]
     assert ir26["ie_ruling"] == "single_cycle", "第二輪更正：這句本身＝1 列"
@@ -870,17 +1064,34 @@ def test_repo_ie_rulings_present_after_round2_correction():
             for h in e.get("ruling_history") or []
         )
     ]
+    # D3-023 追加第四項：已知 stale 的確認 entry（d0350279——確認記錄仍在
+    # state 檔、暫未套用到草稿；名單恰等釘在 REPO_KNOWN_STALE，兩測試共用）
+    stale_confirmed = [
+        sha8
+        for sha8, e in state_entries.items()
+        if sha8 in REPO_KNOWN_STALE
+        and not e.get("promoted_to")
+        and e.get("segmentation_source") == "v3_structure_confirmed"
+    ]
     assert (
-        len(confirmed) + promoted_confirmed + len(superseded_confirmed) == 39
+        len(confirmed) + promoted_confirmed + len(superseded_confirmed)
+        + len(stale_confirmed) == 39
     ), (
         f"切分確認守恆破了：草稿 {len(confirmed)} ＋ 已轉正 {promoted_confirmed} "
-        f"＋ D3-022 更正為裁決 {len(superseded_confirmed)} ≠ 39"
+        f"＋ D3-022 更正為裁決 {len(superseded_confirmed)} "
+        f"＋ 已知 stale {len(stale_confirmed)} ≠ 39"
     )
-    assert len(confirmed) == 10
-    assert promoted_confirmed == 25
+    # D3-023 第三批轉正 5 筆 v3_structure_confirmed（7c6eb8af/af172fd9/
+    # b6ee694d/e945e29e/9c1a987f；另 2 筆 1c27dc35/fe1f3a90 是 ie_ruling）：
+    # 草稿 10→4（含 d0350279 轉入 stale 項）、已轉正 25→30
+    assert len(confirmed) == 4
+    assert promoted_confirmed == 30
     assert len(superseded_confirmed) == 4, (
         "D3-022 更正（v3_structure_confirmed → ie_ruling）恰 4 筆"
         "（6fa45cdb/5cb719bb/fe5391c6/fe1f3a90）——增減都要有意識更新"
+    )
+    assert stale_confirmed == ["d0350279"], (
+        "已知 stale 的切分確認 entry 恰 1 筆（d0350279，D3-023 X/I 判型棄權）"
     )
     for e in superseded_confirmed:
         # 更正不是無痕覆寫：先前確認的結構值必須保留在軌跡裡
