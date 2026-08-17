@@ -1,41 +1,41 @@
 {
-  "id": "d022_9f3d6515",
-  "source_text": "雙手接觸DIMM卡槽的左右卡扣按壓並確認卡扣按壓規定位置",
-  "notes": "預標註草稿（rule pipeline 自動產生；scripts/gold_harvest.py）。非 gold——IE 覆核核准前不得移入 tests/gold/wi_plans/。",
-  "review_status": "pending_ie",
-  "approved_by": null,
+  "id": "g10_push_press_fixture",
+  "source_text": "雙手接觸DIMM壓合治具推至規定位置",
+  "notes": "自草稿 d011_7e40706c 轉正（IE 覆核核准；docs/llm/gold-review/README.md 工作流）。取樣為 challenge-oversampled（coverage-optimized），本案分數不可外推為母體表現。切分/判型/方向數確認與 TMU=0 裁決見 ie_review 與 tests/gold/wi_plans_draft/review-state.json。",
+  "review_status": "approved",
+  "approved_by": "IEC141289",
   "plan_origin": "rule_based_v1_preannotation",
   "ie_modified": false,
-  "split": null,
+  "split": "test",
   "split_groups": [
-    "module:45915347-cc29-4ee1-a4c7-e696d05cdd7a",
-    "module:f495f90c-adf9-43d3-8ab9-2af73a6b5c21"
+    "module:8028b635-6c72-4198-b207-c398345104de",
+    "module:b5666b80-fd4e-4157-840f-ee61ac3cecc3"
   ],
-  "split_component": "module:45915347-cc29-4ee1-a4c7-e696d05cdd7a",
+  "split_component": "module:310981d5-6069-4303-9c05-38dc618e0b74",
   "source_provenance": [
     {
-      "table": "motion_modules",
-      "id": "45915347-cc29-4ee1-a4c7-e696d05cdd7a",
-      "detail": "name_zh (category=wi-template)",
-      "group_key": "module:45915347-cc29-4ee1-a4c7-e696d05cdd7a",
-      "db_timestamp": "2026-08-04T06:59:46.616701+00:00",
-      "raw_text": "雙手接觸DIMM卡槽的左右卡扣按壓並確認卡扣按壓規定位置"
+      "table": "motion_module_versions",
+      "id": "62d5bebb-5897-4d46-aaee-aad4d1c742ca",
+      "detail": "rows[1].sub_activity",
+      "group_key": "module:b5666b80-fd4e-4157-840f-ee61ac3cecc3",
+      "db_timestamp": "2026-08-04T06:59:46.520918+00:00",
+      "raw_text": "雙手接觸DIMM壓合治具推至規定位置"
     },
     {
       "table": "motion_module_versions",
-      "id": "fc8b5371-a123-48c6-8f9f-1f6cf3cbd352",
+      "id": "b7eefdb5-eaf7-4e58-b645-cb7ec56cb010",
       "detail": "rows[0].sub_activity",
-      "group_key": "module:f495f90c-adf9-43d3-8ab9-2af73a6b5c21",
-      "db_timestamp": "2026-08-04T06:59:47.078007+00:00",
-      "raw_text": "雙手接觸DIMM卡槽的左右卡扣按壓並確認卡扣按壓規定位置"
+      "group_key": "module:8028b635-6c72-4198-b207-c398345104de",
+      "db_timestamp": "2026-08-04T06:59:46.898249+00:00",
+      "raw_text": "雙手接觸DIMM壓合治具推至規定位置"
     },
     {
       "table": "motion_modules",
-      "id": "f495f90c-adf9-43d3-8ab9-2af73a6b5c21",
+      "id": "8028b635-6c72-4198-b207-c398345104de",
       "detail": "name_zh (category=action)",
-      "group_key": "module:f495f90c-adf9-43d3-8ab9-2af73a6b5c21",
-      "db_timestamp": "2026-08-04T06:59:47.065326+00:00",
-      "raw_text": "雙手接觸DIMM卡槽的左右卡扣按壓並確認卡扣按壓規定位置"
+      "group_key": "module:8028b635-6c72-4198-b207-c398345104de",
+      "db_timestamp": "2026-08-04T06:59:46.884907+00:00",
+      "raw_text": "雙手接觸DIMM壓合治具推至規定位置"
     }
   ],
   "challenge_tags": {
@@ -47,9 +47,9 @@
     "english_only": false,
     "inverted_word_order": "unknown",
     "colloquial": "unknown",
-    "multi_action": true,
+    "multi_action": false,
     "quantity": false,
-    "tool_handling": false,
+    "tool_handling": true,
     "simo_both_hands": true,
     "missing_info": "unknown",
     "ambiguity": "unknown",
@@ -63,10 +63,11 @@
   ],
   "preannotation_caveat": [
     "typing_changed_by_verb_lexicon",
-    "likely_multi_action_undercounted"
+    "take_move_pair_may_be_single_cm",
+    "zero_tmu_distance_unstated"
   ],
   "typing_change": {
-    "noun_only_seq": null,
+    "noun_only_seq": "GM",
     "lexicon_seq": "CM"
   },
   "v3_structure_hint": "single_cycle",
@@ -74,16 +75,16 @@
     "note": "hint 是證據不是判決：來源＝IE 驗證過的 v3 生產資料的結構（module/cycle 邊界）；覆核表預設依 v3 結構、IE 可推翻；本欄位絕不寫進 expected.*",
     "sources": [
       {
-        "table": "motion_modules",
-        "id": "45915347-cc29-4ee1-a4c7-e696d05cdd7a",
-        "detail": "name_zh (category=wi-template)",
+        "table": "motion_module_versions",
+        "id": "62d5bebb-5897-4d46-aaee-aad4d1c742ca",
+        "detail": "rows[1].sub_activity",
         "cycles": 1,
         "v3_migrated": true,
-        "basis": "module 名稱句對應發布版 v1 共 1 列＝IE 把這段話切成 1 個 cycle"
+        "basis": "版本 rows[] 一列＝一個 cycle（rows[*].cycle 為單一 CycleIn）"
       },
       {
         "table": "motion_module_versions",
-        "id": "fc8b5371-a123-48c6-8f9f-1f6cf3cbd352",
+        "id": "b7eefdb5-eaf7-4e58-b645-cb7ec56cb010",
         "detail": "rows[0].sub_activity",
         "cycles": 1,
         "v3_migrated": true,
@@ -91,7 +92,7 @@
       },
       {
         "table": "motion_modules",
-        "id": "f495f90c-adf9-43d3-8ab9-2af73a6b5c21",
+        "id": "8028b635-6c72-4198-b207-c398345104de",
         "detail": "name_zh (category=action)",
         "cycles": 1,
         "v3_migrated": true,
@@ -104,13 +105,13 @@
     "planner": "rule_based_v1",
     "rule_set_code": "MINIMOST_FACTORY_V2",
     "lexicon_source": "rule_option_synonyms",
-    "lexicon_size": 15,
+    "lexicon_size": 16,
     "routing_reasons": []
   },
   "plan": {
     "schema_version": "wi-plan-v1",
-    "source_text": "雙手接觸DIMM卡槽的左右卡扣按壓並確認卡扣按壓規定位置",
-    "normalized_text": "雙手接觸dimm卡槽的左右卡扣按壓並確認卡扣按壓規定位置",
+    "source_text": "雙手接觸DIMM壓合治具推至規定位置",
+    "normalized_text": "雙手接觸dimm壓合治具推至規定位置",
     "language": "zh",
     "source_ref": {
       "kind": "interactive",
@@ -127,8 +128,8 @@
         "evidence": [
           {
             "start": 0,
-            "end": 28,
-            "text": "雙手接觸dimm卡槽的左右卡扣按壓並確認卡扣按壓規定位置"
+            "end": 18,
+            "text": "雙手接觸dimm壓合治具推至規定位置"
           }
         ],
         "notes": "rule_based_v1"
@@ -146,8 +147,8 @@
     },
     {
       "parameter": "M",
-      "option_code": "m_press",
-      "synonym_norm": "按壓",
+      "option_code": "m_push",
+      "synonym_norm": "推至",
       "priority": 0
     }
   ],
@@ -156,11 +157,11 @@
       "action_id": "a1",
       "complete": true,
       "seq": "CM",
-      "m_verb": "m_press",
+      "m_verb": "m_push",
       "distance_cm": 0.0,
       "frequency": 1.0,
-      "total_tmu": 3.0,
-      "tech_line": "A0 B0 G0 M3 X0 I0 A0"
+      "total_tmu": 0.0,
+      "tech_line": "A0 B0 G0 M0 X0 I0 A0"
     }
   ],
   "gold_schema_version": "wi-gold-v1",
@@ -171,6 +172,13 @@
   "ie_review": {
     "segmentation_confirmed_by": "IEC141289",
     "segmentation_confirmed_date": "2026-08-16",
-    "segmentation_source": "v3_structure_confirmed"
-  }
+    "segmentation_source": "v3_structure_confirmed",
+    "typing_confirmed_by": "IEC141289",
+    "typing_confirmed_date": "2026-08-17",
+    "zero_tmu_ruling": "distance_unstated",
+    "zero_tmu_ruled_by": "IEC141289",
+    "zero_tmu_ruled_date": "2026-08-17"
+  },
+  "expected_incomplete_reason": "distance_unstated",
+  "approved_date": "2026-08-17"
 }

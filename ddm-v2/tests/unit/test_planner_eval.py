@@ -36,9 +36,9 @@ ROOT = Path(__file__).resolve().parents[2]
 GOLD_DIR = ROOT / "tests" / "gold" / "wi_plans"
 DRAFT_DIR = ROOT / "tests" / "gold" / "wi_plans_draft"
 
-# seed gold 基線釘值的唯一出處＝tests/unit/_seed_gold_baseline.py
+# gold 基線釘值的唯一出處＝tests/unit/_seed_gold_baseline.py
 # （與 test_gold_harvest_recompile.py 共用；不得在本檔另寫死）。
-from _seed_gold_baseline import SEED_GOLD_N  # noqa: E402
+from _seed_gold_baseline import GOLD_TOTAL_N, PROMOTED_GOLD_N, SEED_GOLD_N  # noqa: E402
 
 # wi_ai_eval 的核准判定與 dataset_note（R4/R6 守門直接打函式，不繞 CLI）
 sys.path.insert(0, str(ROOT / "scripts"))
@@ -368,7 +368,12 @@ async def test_rubber_stamp_promotion_does_not_move_plan_metrics(tmp_path: Path)
     _results, stamped = await evaluate_planner_all(gold)
 
     assert stamped["n"] == base["n"] + len(draft_files)
-    assert stamped["self_referential_excluded"]["count"] == len(draft_files)
+    # 基線 gold 本身已含 D3-019 轉正的自我指涉排除（PROMOTED_GOLD_N 筆）；
+    # 橡皮圖章再加 len(draft_files) 筆
+    assert (
+        stamped["self_referential_excluded"]["count"]
+        == base["self_referential_excluded"]["count"] + len(draft_files)
+    )
     assert stamped["plan_metrics_n"] == base["plan_metrics_n"]
     # Plan 層指標不得因未修改的轉正而動（更不得往 1.0 跳）
     assert stamped["action_count_accuracy"] == base["action_count_accuracy"]
@@ -398,24 +403,32 @@ def test_load_gold_cases_checked_flags_malformed_and_missing_plan(tmp_path: Path
 def test_load_gold_cases_checked_passes_valid_gold():
     cases, errors = load_gold_cases_checked(GOLD_DIR)
     assert errors == []
-    assert len(cases) == SEED_GOLD_N
+    assert len(cases) == GOLD_TOTAL_N
 
 
-# ── seed gold 基線（全 seed；rule_based planner 的實際分數釘值） ─────────────
+# ── gold 基線（seed 3＋D3-019 轉正 21；rule_based planner 的實際分數釘值） ───
 
 
 async def test_seed_gold_baseline_pinned():
     """基線釘值：planner 改進時同步更新（如同黃金值）。
 
     也同時殺掉兩類 mutation：accuracy 恆 1.0（數值不符）與 planner 段恆空
-    （n≠SEED_GOLD_N）。
+    （n≠GOLD_TOTAL_N）。
+
+    D3-019 轉正後的關鍵不變量：21 筆轉正案例全部 `ie_modified: false`
+    （原樣核准）→ **全數排除出 Plan 層指標**，分數必須停在 seed 基線
+    （2/3、4/7）——指標若動了，就是自我指涉排除破了（橡皮圖章假象）。
     """
     results, summary = await evaluate_planner_all(GOLD_DIR)
     assert summary["planner"] == RULE_PLANNER_NAME
-    assert summary["n"] == SEED_GOLD_N
-    # seed gold 不是預標註轉正（無 plan_origin）——不觸發自我指涉排除
+    assert summary["n"] == GOLD_TOTAL_N
+    # seed gold 不是預標註轉正（無 plan_origin）——不觸發自我指涉排除；
+    # 轉正 21 筆＝rule planner 預標註且 ie_modified=false → 全數排除
     assert summary["plan_metrics_n"] == SEED_GOLD_N
-    assert summary["self_referential_excluded"]["count"] == 0
+    assert summary["self_referential_excluded"]["count"] == PROMOTED_GOLD_N
+    assert all(
+        c.startswith("g") for c in summary["self_referential_excluded"]["cases"]
+    )
     assert all(r.ok for r in results), [r.errors for r in results]
 
     # rule_based_v1 永遠單 action：g01/g05 數對、g02（2 actions）數錯
@@ -490,15 +503,18 @@ def test_cli_report_contains_both_segments(tmp_path: Path):
     assert report["report_schema_version"] == "wi-gold-report-v4"
     assert report["unapproved_cases"] == []
     # 向後相容：頂層 summary/cases（compile 段）維持 v1 形狀
-    assert report["summary"] == {"total": SEED_GOLD_N, "passed": SEED_GOLD_N, "failed": 0}
-    assert len(report["cases"]) == SEED_GOLD_N
+    assert report["summary"] == {"total": GOLD_TOTAL_N, "passed": GOLD_TOTAL_N, "failed": 0}
+    assert len(report["cases"]) == GOLD_TOTAL_N
     assert report["gold_load_errors"] == []
 
     planner = report["planner_eval"]
     assert planner["db_required"] is False
-    assert planner["summary"]["n"] == SEED_GOLD_N
+    assert planner["summary"]["n"] == GOLD_TOTAL_N
     assert planner["summary"]["planner"] == RULE_PLANNER_NAME
-    assert len(planner["cases"]) == SEED_GOLD_N
+    assert len(planner["cases"]) == GOLD_TOTAL_N
+    # D3-019 轉正 21 筆全數自我指涉排除 → Plan 層指標停在 seed 基線不動
+    assert planner["summary"]["plan_metrics_n"] == SEED_GOLD_N
+    assert planner["summary"]["self_referential_excluded"]["count"] == PROMOTED_GOLD_N
     assert planner["summary"]["action_count_accuracy"] == pytest.approx(2 / 3)
     assert planner["summary"]["boundary_span"]["micro"]["f1"] == pytest.approx(4 / 7)
     # 缺口要寫在報告裡，不是靠人記得：dependency F1 未實作、rule 分數退化
@@ -506,10 +522,12 @@ def test_cli_report_contains_both_segments(tmp_path: Path):
     assert "未實作" in planner["summary"]["dependency_f1_note"]
     assert "退化" in planner["summary"]["degenerate_planner_note"]
 
-    # dataset_note 動態生成（不寫死「未達 50 筆」字串）
-    assert f"n={SEED_GOLD_N}" in report["dataset_note"]
+    # dataset_note 動態生成（不寫死「未達 50 筆」字串）；轉正後頭條句必須
+    # 自帶「原樣核准不計 planner 段證據力」的但書（R4）
+    assert f"n={GOLD_TOTAL_N}" in report["dataset_note"]
     assert "seed" in report["dataset_note"]
-    assert "0/50" in report["dataset_note"]
+    assert f"IE 核准 {PROMOTED_GOLD_N}/50" in report["dataset_note"]
+    assert "不計 planner 段證據力" in report["dataset_note"]
 
     assert "[planner]" in proc.stdout
     assert "[compile]" in proc.stdout

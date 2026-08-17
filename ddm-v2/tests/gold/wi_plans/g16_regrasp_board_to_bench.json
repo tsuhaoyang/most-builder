@@ -1,41 +1,41 @@
 {
-  "id": "d002_6017ab5e",
-  "source_text": "雙手抓握主板放至DIMM壓合治具",
-  "notes": "預標註草稿（rule pipeline 自動產生；scripts/gold_harvest.py）。非 gold——IE 覆核核准前不得移入 tests/gold/wi_plans/。",
-  "review_status": "pending_ie",
-  "approved_by": null,
+  "id": "g16_regrasp_board_to_bench",
+  "source_text": "雙手重新抓握主板放至潔淨棚的工作台",
+  "notes": "自草稿 d024_813bca06 轉正（IE 覆核核准；docs/llm/gold-review/README.md 工作流）。取樣為 challenge-oversampled（coverage-optimized），本案分數不可外推為母體表現。切分/判型/方向數確認與 TMU=0 裁決見 ie_review 與 tests/gold/wi_plans_draft/review-state.json。",
+  "review_status": "approved",
+  "approved_by": "IEC141289",
   "plan_origin": "rule_based_v1_preannotation",
   "ie_modified": false,
-  "split": null,
+  "split": "test",
   "split_groups": [
-    "module:310981d5-6069-4303-9c05-38dc618e0b74",
-    "module:b5666b80-fd4e-4157-840f-ee61ac3cecc3"
+    "module:8436a0d0-da56-4eee-818a-b1c9bff29f44",
+    "module:d4106090-aaf0-4eef-b28c-9e832f53630b"
   ],
-  "split_component": "module:310981d5-6069-4303-9c05-38dc618e0b74",
+  "split_component": "module:8436a0d0-da56-4eee-818a-b1c9bff29f44",
   "source_provenance": [
     {
       "table": "motion_module_versions",
-      "id": "62d5bebb-5897-4d46-aaee-aad4d1c742ca",
+      "id": "47007c24-4f34-40b3-9767-1501fb2d2b6a",
       "detail": "rows[0].sub_activity",
-      "group_key": "module:b5666b80-fd4e-4157-840f-ee61ac3cecc3",
-      "db_timestamp": "2026-08-04T06:59:46.520918+00:00",
-      "raw_text": "雙手抓握主板放至DIMM壓合治具"
+      "group_key": "module:d4106090-aaf0-4eef-b28c-9e832f53630b",
+      "db_timestamp": "2026-08-04T06:59:46.794364+00:00",
+      "raw_text": "雙手重新抓握主板放至潔淨棚的工作台"
     },
     {
       "table": "motion_module_versions",
-      "id": "89add432-49cf-4028-ae0e-1643593d8849",
-      "detail": "rows[0].sub_activity",
-      "group_key": "module:310981d5-6069-4303-9c05-38dc618e0b74",
-      "db_timestamp": "2026-08-04T06:59:46.880533+00:00",
-      "raw_text": "雙手抓握主板放至DIMM壓合治具"
+      "id": "fb1bde71-16d0-4988-ab3d-adeb4f1da929",
+      "detail": "rows[3].sub_activity",
+      "group_key": "module:8436a0d0-da56-4eee-818a-b1c9bff29f44",
+      "db_timestamp": "2026-08-04T06:59:46.418241+00:00",
+      "raw_text": "雙手重新抓握主板放至潔淨棚的工作台"
     },
     {
       "table": "motion_modules",
-      "id": "310981d5-6069-4303-9c05-38dc618e0b74",
+      "id": "d4106090-aaf0-4eef-b28c-9e832f53630b",
       "detail": "name_zh (category=action)",
-      "group_key": "module:310981d5-6069-4303-9c05-38dc618e0b74",
-      "db_timestamp": "2026-08-04T06:59:46.868014+00:00",
-      "raw_text": "雙手抓握主板放至DIMM壓合治具"
+      "group_key": "module:d4106090-aaf0-4eef-b28c-9e832f53630b",
+      "db_timestamp": "2026-08-04T06:59:46.782636+00:00",
+      "raw_text": "雙手重新抓握主板放至潔淨棚的工作台"
     }
   ],
   "challenge_tags": {
@@ -43,13 +43,13 @@
     "fullwidth_chars": false,
     "typo": "unknown",
     "homophone": "unknown",
-    "mixed_zh_en": true,
+    "mixed_zh_en": false,
     "english_only": false,
     "inverted_word_order": "unknown",
     "colloquial": "unknown",
     "multi_action": false,
     "quantity": false,
-    "tool_handling": true,
+    "tool_handling": false,
     "simo_both_hands": true,
     "missing_info": "unknown",
     "ambiguity": "unknown",
@@ -62,16 +62,21 @@
     "simo_both_hands"
   ],
   "preannotation_caveat": [
-    "p_direction_single_default",
+    "typing_changed_by_verb_lexicon",
+    "p_direction_none_by_context",
     "take_place_pair_may_be_single_gm"
   ],
+  "typing_change": {
+    "noun_only_seq": null,
+    "lexicon_seq": "GM"
+  },
   "v3_structure_hint": "single_cycle",
   "v3_structure_evidence": {
     "note": "hint 是證據不是判決：來源＝IE 驗證過的 v3 生產資料的結構（module/cycle 邊界）；覆核表預設依 v3 結構、IE 可推翻；本欄位絕不寫進 expected.*",
     "sources": [
       {
         "table": "motion_module_versions",
-        "id": "62d5bebb-5897-4d46-aaee-aad4d1c742ca",
+        "id": "47007c24-4f34-40b3-9767-1501fb2d2b6a",
         "detail": "rows[0].sub_activity",
         "cycles": 1,
         "v3_migrated": true,
@@ -79,15 +84,15 @@
       },
       {
         "table": "motion_module_versions",
-        "id": "89add432-49cf-4028-ae0e-1643593d8849",
-        "detail": "rows[0].sub_activity",
+        "id": "fb1bde71-16d0-4988-ab3d-adeb4f1da929",
+        "detail": "rows[3].sub_activity",
         "cycles": 1,
         "v3_migrated": true,
         "basis": "版本 rows[] 一列＝一個 cycle（rows[*].cycle 為單一 CycleIn）"
       },
       {
         "table": "motion_modules",
-        "id": "310981d5-6069-4303-9c05-38dc618e0b74",
+        "id": "d4106090-aaf0-4eef-b28c-9e832f53630b",
         "detail": "name_zh (category=action)",
         "cycles": 1,
         "v3_migrated": true,
@@ -100,13 +105,13 @@
     "planner": "rule_based_v1",
     "rule_set_code": "MINIMOST_FACTORY_V2",
     "lexicon_source": "rule_option_synonyms",
-    "lexicon_size": 15,
+    "lexicon_size": 16,
     "routing_reasons": []
   },
   "plan": {
     "schema_version": "wi-plan-v1",
-    "source_text": "雙手抓握主板放至DIMM壓合治具",
-    "normalized_text": "雙手抓握主機板放至dimm壓合治具",
+    "source_text": "雙手重新抓握主板放至潔淨棚的工作台",
+    "normalized_text": "雙手重新抓握主機板放至潔淨棚的工作臺",
     "language": "zh",
     "source_ref": {
       "kind": "interactive",
@@ -123,8 +128,8 @@
         "evidence": [
           {
             "start": 0,
-            "end": 17,
-            "text": "雙手抓握主機板放至dimm壓合治具"
+            "end": 18,
+            "text": "雙手重新抓握主機板放至潔淨棚的工作臺"
           }
         ],
         "notes": "rule_based_v1"
@@ -159,10 +164,10 @@
       "complete": true,
       "seq": "GM",
       "g_code": null,
-      "p_base_code": "p_place_single",
+      "p_base_code": "p_place_none",
       "frequency": 1.0,
-      "total_tmu": 16.0,
-      "tech_line": "A0 B0 G0 A0 B0 P16 A0"
+      "total_tmu": 6.0,
+      "tech_line": "A0 B0 G0 A0 B0 P6 A0"
     }
   ],
   "gold_schema_version": "wi-gold-v1",
@@ -173,6 +178,11 @@
   "ie_review": {
     "segmentation_confirmed_by": "IEC141289",
     "segmentation_confirmed_date": "2026-08-16",
-    "segmentation_source": "v3_structure_confirmed"
-  }
+    "segmentation_source": "v3_structure_confirmed",
+    "typing_confirmed_by": "IEC141289",
+    "typing_confirmed_date": "2026-08-17",
+    "p_direction_confirmed_by": "IEC141289",
+    "p_direction_confirmed_date": "2026-08-17"
+  },
+  "approved_date": "2026-08-17"
 }

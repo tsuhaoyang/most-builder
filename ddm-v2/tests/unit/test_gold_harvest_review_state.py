@@ -243,6 +243,118 @@ def test_full_sha_mismatch_is_integrity_failure_not_stale():
         apply_review_state_entry(d, entry)
 
 
+# ── 2b. D3-019 面向（判型/P 方向/TMU=0）：套用、stale、promoted 跳過 ─────────
+
+
+def _typed_draft(norm: str, **over: Any) -> dict[str, Any]:
+    """帶判型/P 方向/TMU=0 旗標素材的草稿（自建）。"""
+    d = _draft(norm, hint=None)
+    d["preannotation_caveat"] = ["typing_changed_by_verb_lexicon"]
+    d["typing_change"] = {"noun_only_seq": None, "lexicon_seq": "CM"}
+    d.update(over)
+    return d
+
+
+def _aspect_entry(norm: str, **over: Any) -> dict[str, Any]:
+    """僅帶 D3-019 面向（無切分面向）的 entry——d042 型（不在首輪 41 筆內）。"""
+    e: dict[str, Any] = {
+        "source_text": norm,
+        "norm_sha256": _sha(norm),
+        "ie_modified": False,
+        "typing_confirmed_by": "IEC141289",
+        "typing_confirmed_date": "2026-08-17",
+        "typing_change_at_review": {"noun_only_seq": None, "lexicon_seq": "CM"},
+    }
+    e.update(over)
+    return e
+
+
+def test_typing_only_entry_applies_without_segmentation_aspect():
+    """d042 型：entry 只有判型面向（切分不在 41 筆內，不冒填）→ 照樣合併。"""
+    norm = "按壓功能測試治具面板"
+    d = _typed_draft(norm)
+    applied, stale = merge_review_state([d], {_sha(norm)[:8]: _aspect_entry(norm)})
+    assert applied == [d["id"]] and stale == []
+    assert d["ie_review"]["typing_confirmed_by"] == "IEC141289"
+    assert "segmentation_source" not in d["ie_review"]
+    assert d["ie_modified"] is False
+
+
+def test_stale_when_typing_change_changed():
+    """mutation 證據：新一輪判型與確認當時不同 → 整筆 stale（拆掉比對必紅）。"""
+    norm = "按壓功能測試治具面板"
+    d = _typed_draft(norm)
+    d["typing_change"] = {"noun_only_seq": None, "lexicon_seq": "GM"}  # 判型又變了
+    before = copy.deepcopy(d)
+    applied, stale = merge_review_state([d], {_sha(norm)[:8]: _aspect_entry(norm)})
+    assert applied == []
+    assert [s["reason"] for s in stale] == ["typing_change_changed"]
+    assert d == before, "stale 不得動草稿"
+
+
+def test_stale_when_p_direction_context_changed():
+    norm = "左手抓握治具放至定位"
+    d = _typed_draft(norm)
+    d["preannotation_caveat"] = ["p_direction_none_by_context"]  # 情境分類變了
+    del d["typing_change"]
+    entry = _aspect_entry(norm)
+    for k in ("typing_confirmed_by", "typing_confirmed_date", "typing_change_at_review"):
+        del entry[k]
+    entry.update(
+        p_direction_confirmed_by="IEC141289",
+        p_direction_confirmed_date="2026-08-17",
+        p_direction_caveat_at_review="p_direction_single_default",
+    )
+    applied, stale = merge_review_state([d], {_sha(norm)[:8]: entry})
+    assert applied == []
+    assert [s["reason"] for s in stale] == ["p_direction_context_changed"]
+
+
+def test_zero_tmu_ruling_applies_reason_and_stale_when_flag_absent():
+    """TMU=0 裁決：套用時草稿記 expected_incomplete_reason（值原樣）；
+    旗標消失（裁決前提不成立）→ stale。"""
+    norm = "左手抓握包裝袋去除表面"
+    entry = _aspect_entry(norm)
+    for k in ("typing_confirmed_by", "typing_confirmed_date", "typing_change_at_review"):
+        del entry[k]
+    entry.update(
+        zero_tmu_ruling="distance_unstated",
+        zero_tmu_ruled_by="IEC141289",
+        zero_tmu_ruled_date="2026-08-17",
+    )
+    d = _typed_draft(norm)
+    d["preannotation_caveat"] = ["zero_tmu_distance_unstated"]
+    del d["typing_change"]
+    applied, stale = merge_review_state([d], {_sha(norm)[:8]: entry})
+    assert applied == [d["id"]] and stale == []
+    assert d["expected_incomplete_reason"] == "distance_unstated"
+    assert d["ie_review"]["zero_tmu_ruling"] == "distance_unstated"
+
+    # 旗標消失（例如距離補上、TMU 變真值）→ 裁決前提不成立 → stale
+    d2 = _typed_draft(norm)
+    d2["preannotation_caveat"] = []
+    del d2["typing_change"]
+    applied, stale = merge_review_state([d2], {_sha(norm)[:8]: entry})
+    assert applied == []
+    assert [s["reason"] for s in stale] == ["zero_tmu_flag_absent"]
+    assert "expected_incomplete_reason" not in d2
+
+
+def test_promoted_entry_skipped_not_stale():
+    """轉正 entry：合併跳過（不套用、不算 stale）——即使 sha 配不到草稿也不進
+    stale 名單（句子已在正式 gold，本來就不該有草稿）。"""
+    norm = "雙手抓握主機板放至治具"
+    entry = _entry(norm, promoted_to="g06_board_to_press_fixture", promoted_date="2026-08-17")
+    applied, stale = merge_review_state([], {_sha(norm)[:8]: entry})
+    assert applied == [] and stale == []
+
+    # 就算草稿存在（理論上不會——gold 重複守門另擋），也不套用
+    d = _draft(norm)
+    applied, stale = merge_review_state([d], {_sha(norm)[:8]: entry})
+    assert applied == [] and stale == []
+    assert "ie_review" not in d
+
+
 # ── 3. state 檔驗證（硬紅，不靜默）──────────────────────────────────────────
 
 
@@ -362,6 +474,72 @@ def test_load_review_state_rejects_bad_ruling_history(tmp_path: Path, history, m
         load_review_state(p)
 
 
+@pytest.mark.parametrize(
+    ("over", "match"),
+    [
+        # 判型面向：欄位群不完整/形狀錯
+        ({"typing_confirmed_by": "IEC141289"}, "typing_confirmed_date"),
+        (
+            {
+                "typing_confirmed_by": "IEC141289",
+                "typing_confirmed_date": "2026-08-17",
+                "typing_change_at_review": {"noun_only_seq": None},
+            },
+            "typing_change_at_review",
+        ),
+        (
+            {
+                "typing_confirmed_by": "IEC141289",
+                "typing_confirmed_date": "2026-08-17",
+                "typing_change_at_review": {"noun_only_seq": "GM", "lexicon_seq": "GM"},
+            },
+            "舊/新判型相同",
+        ),
+        # P 方向面向：caveat 名不在名單
+        (
+            {
+                "p_direction_confirmed_by": "IEC141289",
+                "p_direction_confirmed_date": "2026-08-17",
+                "p_direction_caveat_at_review": "not_a_flag",
+            },
+            "p_direction_caveat_at_review",
+        ),
+        # TMU=0 面向：裁決值不合法
+        (
+            {
+                "zero_tmu_ruling": "just_zero_is_fine",
+                "zero_tmu_ruled_by": "IEC141289",
+                "zero_tmu_ruled_date": "2026-08-17",
+            },
+            "distance_unstated",
+        ),
+        # promoted 標記：形狀錯／缺日期
+        ({"promoted_to": "not-a-gold-id", "promoted_date": "2026-08-17"}, "promoted_to"),
+        ({"promoted_to": "g06_board_to_press_fixture"}, "promoted_date"),
+    ],
+)
+def test_load_review_state_rejects_bad_aspect_shapes(tmp_path: Path, over, match: str):
+    """D3-019 面向欄位驗證是硬的：半套面向/非法值＝IE 裁決可能靜默漏套——擋下。"""
+    norm = "雙手抓握主機板放至治具"
+    entry = _entry(norm, **over)
+    p = _write_state(tmp_path / REVIEW_STATE_FILENAME, {_sha(norm)[:8]: entry})
+    with pytest.raises(SystemExit, match=match):
+        load_review_state(p)
+
+
+def test_load_review_state_rejects_entry_without_any_aspect(tmp_path: Path):
+    """空 entry（無任何覆核面向）不是覆核記錄——擋下。"""
+    norm = "雙手抓握主機板放至治具"
+    entry = {
+        "source_text": norm,
+        "norm_sha256": _sha(norm),
+        "ie_modified": False,
+    }
+    p = _write_state(tmp_path / REVIEW_STATE_FILENAME, {_sha(norm)[:8]: entry})
+    with pytest.raises(SystemExit, match="至少要有一個覆核面向"):
+        load_review_state(p)
+
+
 def test_load_review_state_ruling_requires_valid_ruling(tmp_path: Path):
     norm = "雙手抓握主機板組至機箱"
     entry = _entry(norm, hint="ambiguous", segmentation_source="ie_ruling")  # 缺 ie_ruling
@@ -404,12 +582,17 @@ def _repo_drafts() -> list[dict]:
 
 
 def test_repo_review_state_all_entries_fresh_and_applied():
-    """41 筆 entry（39 確認＋2 裁決）全部配對到現有草稿且非 stale；
-    草稿上的 ie_review 與重放合併結果一致（決定性）。"""
+    """active（未轉正）entry 全部配對到現有草稿且非 stale；草稿上的 ie_review
+    與重放合併結果一致（決定性）。
+
+    D3-019 起 entry 分兩類：標 `promoted_to` 的（已轉正 tests/gold/wi_plans/，
+    句子不再產草稿——合併跳過、不算 stale、軌跡保留）與 active 的（必須全數
+    套用）。promoted ↔ 正式 gold 的同進同出守門在 test_gold_promotion.py。"""
     state_path = DRAFT_DIR / REVIEW_STATE_FILENAME
     if not state_path.exists():
         pytest.skip("repo 無 review-state.json（草稿可能已全數轉正）")
     entries = load_review_state(state_path)
+    active = {k: v for k, v in entries.items() if not v.get("promoted_to")}
     drafts = _repo_drafts()
     if not drafts:
         pytest.skip("wi_plans_draft 目前沒有草稿")
@@ -419,13 +602,16 @@ def test_repo_review_state_all_entries_fresh_and_applied():
     for d in drafts:
         c = copy.deepcopy(d)
         c.pop("ie_review", None)
+        c.pop("expected_incomplete_reason", None)  # TMU=0 裁決的合併產物（D3-019）
         c["ie_modified"] = None
         for s in (c.get("v3_structure_evidence") or {}).get("sources") or []:
             s.pop("ie_ruling_rejected", None)
         stripped.append(c)
     applied, stale = merge_review_state(stripped, entries)
     assert stale == [], f"repo state 有 stale entry（IE 需重看）：{stale}"
-    assert len(applied) == len(entries)
+    assert len(applied) == len(active), (
+        "active entry 沒有全數套用（promoted 以外的 entry 必須逐筆配對到草稿）"
+    )
     by_id_repo = {d["id"]: d for d in drafts}
     for c in stripped:
         assert c == by_id_repo[c["id"]], f"{c['id']}：重放合併與 repo 檔不一致"
@@ -479,7 +665,20 @@ def test_repo_ie_rulings_present_after_round2_correction():
         d for d in drafts.values()
         if (d.get("ie_review") or {}).get("segmentation_source") == "v3_structure_confirmed"
     ]
-    assert len(confirmed) == 39
+    # 首輪 39 筆確認；D3-019 首批轉正把其中 21 筆（全部 v3_structure_confirmed）
+    # 搬進 tests/gold/wi_plans/ → 草稿目錄剩 18 筆帶確認。促成守恆的另一半
+    # （promoted entry ↔ 正式 gold 檔）在 test_gold_promotion.py。
+    state_entries = load_review_state(DRAFT_DIR / REVIEW_STATE_FILENAME)
+    promoted_confirmed = sum(
+        1
+        for e in state_entries.values()
+        if e.get("promoted_to")
+        and e.get("segmentation_source") == "v3_structure_confirmed"
+    )
+    assert len(confirmed) + promoted_confirmed == 39, (
+        f"切分確認守恆破了：草稿 {len(confirmed)} ＋ 已轉正 {promoted_confirmed} ≠ 39"
+    )
+    assert len(confirmed) == 18
     for d in confirmed:
         assert d["v3_structure_hint"] != "ambiguous"
         assert d["ie_modified"] is False

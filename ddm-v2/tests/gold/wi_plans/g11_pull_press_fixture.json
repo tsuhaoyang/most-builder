@@ -1,41 +1,41 @@
 {
-  "id": "d052_d58a53a7",
-  "source_text": "左手抓握假DIMM的包裝袋丟至垃圾桶",
-  "notes": "預標註草稿（rule pipeline 自動產生；scripts/gold_harvest.py）。非 gold——IE 覆核核准前不得移入 tests/gold/wi_plans/。",
-  "review_status": "pending_ie",
-  "approved_by": null,
+  "id": "g11_pull_press_fixture",
+  "source_text": "雙手接觸DIMM壓合治具拉至規定位置",
+  "notes": "自草稿 d019_d9190952 轉正（IE 覆核核准；docs/llm/gold-review/README.md 工作流）。取樣為 challenge-oversampled（coverage-optimized），本案分數不可外推為母體表現。切分/判型/方向數確認與 TMU=0 裁決見 ie_review 與 tests/gold/wi_plans_draft/review-state.json。",
+  "review_status": "approved",
+  "approved_by": "IEC141289",
   "plan_origin": "rule_based_v1_preannotation",
   "ie_modified": false,
-  "split": null,
+  "split": "test",
   "split_groups": [
-    "module:6366f744-6791-4e84-a3ac-5305d4f07679",
-    "module:c8728419-2083-40ea-910c-a7fef43e7659"
+    "module:3725c049-1450-4788-ad75-80a337fa40e0",
+    "module:dcbb30a8-44f0-4218-aafb-b6882a66aca0"
   ],
-  "split_component": "module:6366f744-6791-4e84-a3ac-5305d4f07679",
+  "split_component": "module:32a29bba-fabe-4332-baee-9785d4c2525d",
   "source_provenance": [
     {
       "table": "motion_module_versions",
-      "id": "0be9daab-eb7b-4158-8ce6-096de65c6ae2",
-      "detail": "rows[1].sub_activity",
-      "group_key": "module:6366f744-6791-4e84-a3ac-5305d4f07679",
-      "db_timestamp": "2026-08-04T06:59:46.611879+00:00",
-      "raw_text": "左手抓握假DIMM的包裝袋丟至垃圾桶"
+      "id": "437a60f0-ef7a-4f52-a91f-419b7f8ce1eb",
+      "detail": "rows[0].sub_activity",
+      "group_key": "module:3725c049-1450-4788-ad75-80a337fa40e0",
+      "db_timestamp": "2026-08-04T06:59:46.963044+00:00",
+      "raw_text": "雙手接觸DIMM壓合治具拉至規定位置"
     },
     {
       "table": "motion_module_versions",
-      "id": "9a0c3806-a20b-4b33-a2a1-014771a01490",
+      "id": "b91e9fca-a311-496a-bbdb-db6f76f460c2",
       "detail": "rows[0].sub_activity",
-      "group_key": "module:c8728419-2083-40ea-910c-a7fef43e7659",
-      "db_timestamp": "2026-08-04T06:59:47.061638+00:00",
-      "raw_text": "左手抓握假DIMM的包裝袋丟至垃圾桶"
+      "group_key": "module:dcbb30a8-44f0-4218-aafb-b6882a66aca0",
+      "db_timestamp": "2026-08-04T06:59:46.569688+00:00",
+      "raw_text": "雙手接觸DIMM壓合治具拉至規定位置"
     },
     {
       "table": "motion_modules",
-      "id": "c8728419-2083-40ea-910c-a7fef43e7659",
+      "id": "3725c049-1450-4788-ad75-80a337fa40e0",
       "detail": "name_zh (category=action)",
-      "group_key": "module:c8728419-2083-40ea-910c-a7fef43e7659",
-      "db_timestamp": "2026-08-04T06:59:47.049633+00:00",
-      "raw_text": "左手抓握假DIMM的包裝袋丟至垃圾桶"
+      "group_key": "module:3725c049-1450-4788-ad75-80a337fa40e0",
+      "db_timestamp": "2026-08-04T06:59:46.949867+00:00",
+      "raw_text": "雙手接觸DIMM壓合治具拉至規定位置"
     }
   ],
   "challenge_tags": {
@@ -49,8 +49,8 @@
     "colloquial": "unknown",
     "multi_action": false,
     "quantity": false,
-    "tool_handling": false,
-    "simo_both_hands": false,
+    "tool_handling": true,
+    "simo_both_hands": true,
     "missing_info": "unknown",
     "ambiguity": "unknown",
     "diagram_reference_no_image": false,
@@ -63,11 +63,12 @@
   ],
   "preannotation_caveat": [
     "typing_changed_by_verb_lexicon",
-    "take_place_pair_may_be_single_gm"
+    "take_move_pair_may_be_single_cm",
+    "zero_tmu_distance_unstated"
   ],
   "typing_change": {
-    "noun_only_seq": null,
-    "lexicon_seq": "GM"
+    "noun_only_seq": "GM",
+    "lexicon_seq": "CM"
   },
   "v3_structure_hint": "single_cycle",
   "v3_structure_evidence": {
@@ -75,15 +76,15 @@
     "sources": [
       {
         "table": "motion_module_versions",
-        "id": "0be9daab-eb7b-4158-8ce6-096de65c6ae2",
-        "detail": "rows[1].sub_activity",
+        "id": "437a60f0-ef7a-4f52-a91f-419b7f8ce1eb",
+        "detail": "rows[0].sub_activity",
         "cycles": 1,
         "v3_migrated": true,
         "basis": "版本 rows[] 一列＝一個 cycle（rows[*].cycle 為單一 CycleIn）"
       },
       {
         "table": "motion_module_versions",
-        "id": "9a0c3806-a20b-4b33-a2a1-014771a01490",
+        "id": "b91e9fca-a311-496a-bbdb-db6f76f460c2",
         "detail": "rows[0].sub_activity",
         "cycles": 1,
         "v3_migrated": true,
@@ -91,7 +92,7 @@
       },
       {
         "table": "motion_modules",
-        "id": "c8728419-2083-40ea-910c-a7fef43e7659",
+        "id": "3725c049-1450-4788-ad75-80a337fa40e0",
         "detail": "name_zh (category=action)",
         "cycles": 1,
         "v3_migrated": true,
@@ -104,13 +105,13 @@
     "planner": "rule_based_v1",
     "rule_set_code": "MINIMOST_FACTORY_V2",
     "lexicon_source": "rule_option_synonyms",
-    "lexicon_size": 15,
+    "lexicon_size": 16,
     "routing_reasons": []
   },
   "plan": {
     "schema_version": "wi-plan-v1",
-    "source_text": "左手抓握假DIMM的包裝袋丟至垃圾桶",
-    "normalized_text": "左手抓握假dimm的包裝袋丟至垃圾桶",
+    "source_text": "雙手接觸DIMM壓合治具拉至規定位置",
+    "normalized_text": "雙手接觸dimm壓合治具拉至規定位置",
     "language": "zh",
     "source_ref": {
       "kind": "interactive",
@@ -121,14 +122,14 @@
     "actions": [
       {
         "action_id": "a1",
-        "action_type": "move_place",
+        "action_type": "controlled_move",
         "sequence_order": 1,
         "roles": {},
         "evidence": [
           {
             "start": 0,
             "end": 18,
-            "text": "左手抓握假dimm的包裝袋丟至垃圾桶"
+            "text": "雙手接觸dimm壓合治具拉至規定位置"
           }
         ],
         "notes": "rule_based_v1"
@@ -140,14 +141,14 @@
   "synthetic_synonyms": [
     {
       "parameter": "G",
-      "option_code": "g_grasp",
-      "synonym_norm": "抓握",
+      "option_code": "g_touch",
+      "synonym_norm": "接觸",
       "priority": 0
     },
     {
-      "parameter": "P",
-      "option_code": "p_toss",
-      "synonym_norm": "丟至",
+      "parameter": "M",
+      "option_code": "m_pull",
+      "synonym_norm": "拉至",
       "priority": 0
     }
   ],
@@ -155,12 +156,12 @@
     {
       "action_id": "a1",
       "complete": true,
-      "seq": "GM",
-      "g_code": null,
-      "p_base_code": "p_toss",
+      "seq": "CM",
+      "m_verb": "m_pull",
+      "distance_cm": 0.0,
       "frequency": 1.0,
-      "total_tmu": 3.0,
-      "tech_line": "A0 B0 G0 A0 B0 P3 A0"
+      "total_tmu": 0.0,
+      "tech_line": "A0 B0 G0 M0 X0 I0 A0"
     }
   ],
   "gold_schema_version": "wi-gold-v1",
@@ -171,6 +172,13 @@
   "ie_review": {
     "segmentation_confirmed_by": "IEC141289",
     "segmentation_confirmed_date": "2026-08-16",
-    "segmentation_source": "v3_structure_confirmed"
-  }
+    "segmentation_source": "v3_structure_confirmed",
+    "typing_confirmed_by": "IEC141289",
+    "typing_confirmed_date": "2026-08-17",
+    "zero_tmu_ruling": "distance_unstated",
+    "zero_tmu_ruled_by": "IEC141289",
+    "zero_tmu_ruled_date": "2026-08-17"
+  },
+  "expected_incomplete_reason": "distance_unstated",
+  "approved_date": "2026-08-17"
 }

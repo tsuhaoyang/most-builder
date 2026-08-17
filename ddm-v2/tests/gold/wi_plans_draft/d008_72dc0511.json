@@ -72,7 +72,7 @@
     "planner": "rule_based_v1",
     "rule_set_code": "MINIMOST_FACTORY_V2",
     "lexicon_source": "rule_option_synonyms",
-    "lexicon_size": 15,
+    "lexicon_size": 16,
     "routing_reasons": []
   },
   "plan": {
@@ -107,6 +107,12 @@
   },
   "synthetic_synonyms": [
     {
+      "parameter": "G",
+      "option_code": "g_pick_sel",
+      "synonym_norm": "拿取",
+      "priority": 0
+    },
+    {
       "parameter": "M",
       "option_code": "m_remove",
       "synonym_norm": "去除",
@@ -133,6 +139,12 @@
   "ie_review": {
     "segmentation_confirmed_by": "IEC141289",
     "segmentation_confirmed_date": "2026-08-16",
-    "segmentation_source": "v3_structure_confirmed"
-  }
+    "segmentation_source": "v3_structure_confirmed",
+    "typing_confirmed_by": "IEC141289",
+    "typing_confirmed_date": "2026-08-17",
+    "zero_tmu_ruling": "distance_unstated",
+    "zero_tmu_ruled_by": "IEC141289",
+    "zero_tmu_ruled_date": "2026-08-17"
+  },
+  "expected_incomplete_reason": "distance_unstated"
 }

@@ -67,7 +67,7 @@
     "planner": "rule_based_v1",
     "rule_set_code": "MINIMOST_FACTORY_V2",
     "lexicon_source": "rule_option_synonyms",
-    "lexicon_size": 15,
+    "lexicon_size": 16,
     "routing_reasons": [
       "composite_unknown"
     ]
@@ -104,7 +104,14 @@
       "composite_unknown"
     ]
   },
-  "synthetic_synonyms": [],
+  "synthetic_synonyms": [
+    {
+      "parameter": "G",
+      "option_code": "g_pick_sel",
+      "synonym_norm": "拿取",
+      "priority": 0
+    }
+  ],
   "expected_cycles": [
     {
       "action_id": "a1",

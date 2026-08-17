@@ -170,6 +170,28 @@ action module，conflicting）；22 筆 likely_multi 中 **21 筆**拿到結構�
    在 state entry 的 `ruling_history`（先前答案全文＋為何更正）——標準答案集
    的更正不是無痕覆寫。
 
+## IE 第三輪答案與首批轉正（D3-019，2026-08-17；User/IE 親答）
+
+1. **「拿取」→ 預設「選取」`g_pick_sel`**（G，priority 0）已登記（詞典
+   15→16 條）。只登這條——small/collect 變體 IE 未授權都掛，維持候選
+   （`synonym-candidates.md`）。
+2. **24 筆判型修正：全部照預設（確認）**。落地：state entry 記
+   `typing_confirmed_by/date`＋`typing_change_at_review`（確認當時的舊/新值＝
+   stale 判定基準——新一輪判型又變即 `typing_change_changed`，不靜默沿用）。
+3. **6 筆放置方向數：照預設**（single/none 如旗標）。落地：
+   `p_direction_confirmed_by/date`＋`p_direction_caveat_at_review`。
+4. **9 筆 TMU=0.0：照預設**——協調者解讀為「判定句子資訊不足」，記
+   `zero_tmu_ruling: "distance_unstated"`（**此解讀已向 User 揭示待確認**）；
+   harvest 合併時草稿記 `expected_incomplete_reason: "distance_unstated"`
+   （走 D3-018 M1 空殼守門的誠實記錄路徑，不發明距離）。
+5. 三筆不在首輪 41 筆內的草稿（d033/d042/d049）新增 entry **只帶判型/TMU
+   面向**——切分維度 IE 未答，不冒填（它們因此仍不可轉正）。
+6. **首批轉正 21 筆**（`--promote`；approved_by=IEC141289、approved_date=
+   2026-08-17、split=test、`ie_modified: false` 全數維持——原樣核准對 planner
+   段零證據力，Plan 層指標釘在 seed 基線 0.6667/0.5714 不動）。資格與被擋
+   清單見 worklog D3-019；轉正後 state entry 標 `promoted_to`/`promoted_date`
+   （軌跡保留不刪），harvest 合併跳過 promoted entry。
+
 ## 覆核狀態怎麼在重產後存活（D3-015）
 
 問題：`--force` 整批重寫草稿檔，覆核記錄若寫在草稿上會被第二輪
@@ -223,6 +245,26 @@ mutation 逐條）＋`tests/unit/test_gold_draft_schema.py` 5d（草稿 `ie_revi
 
 ## 核准→轉正（草稿 → 正式 gold）
 
+**D3-019 起有工具路徑**：IE 各面向答案已入 `review-state.json` 且 harvest
+合併後，走 `--promote`（資格檢查＝`promotion_blockers` 唯一出處；整批先驗再
+動手，compile／planner 段預檢全綠才落筆；正式 gold 落檔、草稿檔移除、state
+entry 標 `promoted_to`——守門在 `tests/unit/test_gold_promotion.py`）：
+
+```bash
+PYTHONPATH=src .venv/bin/python scripts/gold_harvest.py \
+  --promote tests/gold/wi_plans_draft/dXXX_XXXXXXXX.json ... \
+  --approved-by IEC141289 --approved-date YYYY-MM-DD --split test \
+  --slugs slug_a,slug_b,...
+```
+
+轉正資格（全部滿足才轉；任一不合格＝整批拒絕）：切分已確認（state entry 的
+切分面向）、確認結構與 plan 一致（multi_cycle_n 確認但 plan 未重切＝擋）、
+判型/P 方向/TMU=0 等旗標全部有對應確認或裁決、cycle complete 帶 **TMU>0**
+或帶 `expected_incomplete_reason`、無未解決旗標（acquire_without_place／
+engine_rejected_cycle）、S 檢（provenance 一致）綠。
+
+手動步驟（IE 改過 plan 的 `ie_modified: true` 案例，或工具路徑不適用時）：
+
 1. 草稿 JSON 填上：
    - `approved_by`: IE 工號（如 `IEC141289`）；
    - `review_status`: `"approved"`；
@@ -242,10 +284,13 @@ mutation 逐條）＋`tests/unit/test_gold_draft_schema.py` 5d（草稿 `ie_revi
 3. 檔案**移入** `tests/gold/wi_plans/`，依既有慣例改名與改 `id`
    （下一個流水號＋語意 slug，如 `g06_dimm_press_fixture.json` / `id: "g06_dimm_press_fixture"`）。
    保留 `source_provenance` 與草稿 id 供追溯（可放 `notes`）。
-4. 更新釘值測試：`tests/unit/_seed_gold_baseline.py` 的 `SEED_GOLD_N`（基線釘值
-   唯一出處；`test_planner_eval.py` 與 `test_gold_harvest_recompile.py` 共用）
-   與對應分數釘值。**分數解讀**：`ie_modified: false` 的案例不進
-   Plan 層指標；指標若在轉正後大幅上跳，先檢查是不是自我指涉假象。
+4. 更新釘值測試：`tests/unit/_seed_gold_baseline.py`（基線釘值唯一出處；
+   `test_planner_eval.py`／`test_gold_harvest_recompile.py`／
+   `test_gold_promotion.py` 共用）——`SEED_GOLD_N` 是 seed 基線**不動**；
+   轉正改 `PROMOTED_GOLD_N`（`GOLD_TOTAL_N` 隨算）。**分數解讀**：
+   `ie_modified: false` 的案例不進 Plan 層指標——本批全數原樣核准，Plan 層
+   指標必須停在 seed 基線（0.6667/0.5714）；指標若在轉正後大幅上跳，
+   先檢查是不是自我指涉假象。
 5. 重跑驗證，全綠才算轉正完成：
 
    ```bash

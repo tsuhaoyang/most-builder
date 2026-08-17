@@ -1,41 +1,41 @@
 {
-  "id": "d011_7e40706c",
-  "source_text": "雙手接觸DIMM壓合治具推至規定位置",
-  "notes": "預標註草稿（rule pipeline 自動產生；scripts/gold_harvest.py）。非 gold——IE 覆核核准前不得移入 tests/gold/wi_plans/。",
-  "review_status": "pending_ie",
-  "approved_by": null,
+  "id": "g26_dimm_box_to_position",
+  "source_text": "左手抓握DIMM材料盒放至規定位置處",
+  "notes": "自草稿 d053_631c3ece 轉正（IE 覆核核准；docs/llm/gold-review/README.md 工作流）。取樣為 challenge-oversampled（coverage-optimized），本案分數不可外推為母體表現。切分/判型/方向數確認與 TMU=0 裁決見 ie_review 與 tests/gold/wi_plans_draft/review-state.json。",
+  "review_status": "approved",
+  "approved_by": "IEC141289",
   "plan_origin": "rule_based_v1_preannotation",
   "ie_modified": false,
-  "split": null,
+  "split": "test",
   "split_groups": [
-    "module:8028b635-6c72-4198-b207-c398345104de",
-    "module:b5666b80-fd4e-4157-840f-ee61ac3cecc3"
+    "module:8451efa7-7536-48f7-b579-b56d21608c02",
+    "module:c1fde19a-49b6-4249-8af0-84e81493bffa"
   ],
-  "split_component": "module:310981d5-6069-4303-9c05-38dc618e0b74",
+  "split_component": "module:0c944bee-3c4f-4e72-a071-2b45c118a6af",
   "source_provenance": [
     {
       "table": "motion_module_versions",
-      "id": "62d5bebb-5897-4d46-aaee-aad4d1c742ca",
+      "id": "687ed233-54bd-4b49-ab1c-2f39e39fc9d3",
       "detail": "rows[1].sub_activity",
-      "group_key": "module:b5666b80-fd4e-4157-840f-ee61ac3cecc3",
-      "db_timestamp": "2026-08-04T06:59:46.520918+00:00",
-      "raw_text": "雙手接觸DIMM壓合治具推至規定位置"
+      "group_key": "module:8451efa7-7536-48f7-b579-b56d21608c02",
+      "db_timestamp": "2026-08-04T06:59:46.363497+00:00",
+      "raw_text": "左手抓握DIMM材料盒放至規定位置處"
     },
     {
       "table": "motion_module_versions",
-      "id": "b7eefdb5-eaf7-4e58-b645-cb7ec56cb010",
+      "id": "b7ba9e33-b235-4dbb-9caa-a2aa9ea7fd66",
       "detail": "rows[0].sub_activity",
-      "group_key": "module:8028b635-6c72-4198-b207-c398345104de",
-      "db_timestamp": "2026-08-04T06:59:46.898249+00:00",
-      "raw_text": "雙手接觸DIMM壓合治具推至規定位置"
+      "group_key": "module:c1fde19a-49b6-4249-8af0-84e81493bffa",
+      "db_timestamp": "2026-08-04T06:59:46.699509+00:00",
+      "raw_text": "左手抓握DIMM材料盒放至規定位置處"
     },
     {
       "table": "motion_modules",
-      "id": "8028b635-6c72-4198-b207-c398345104de",
+      "id": "c1fde19a-49b6-4249-8af0-84e81493bffa",
       "detail": "name_zh (category=action)",
-      "group_key": "module:8028b635-6c72-4198-b207-c398345104de",
-      "db_timestamp": "2026-08-04T06:59:46.884907+00:00",
-      "raw_text": "雙手接觸DIMM壓合治具推至規定位置"
+      "group_key": "module:c1fde19a-49b6-4249-8af0-84e81493bffa",
+      "db_timestamp": "2026-08-04T06:59:46.685631+00:00",
+      "raw_text": "左手抓握DIMM材料盒放至規定位置處"
     }
   ],
   "challenge_tags": {
@@ -49,8 +49,8 @@
     "colloquial": "unknown",
     "multi_action": false,
     "quantity": false,
-    "tool_handling": true,
-    "simo_both_hands": true,
+    "tool_handling": false,
+    "simo_both_hands": false,
     "missing_info": "unknown",
     "ambiguity": "unknown",
     "diagram_reference_no_image": false,
@@ -63,12 +63,12 @@
   ],
   "preannotation_caveat": [
     "typing_changed_by_verb_lexicon",
-    "take_move_pair_may_be_single_cm",
-    "zero_tmu_distance_unstated"
+    "p_direction_unclassified_default_single",
+    "take_place_pair_may_be_single_gm"
   ],
   "typing_change": {
-    "noun_only_seq": "GM",
-    "lexicon_seq": "CM"
+    "noun_only_seq": null,
+    "lexicon_seq": "GM"
   },
   "v3_structure_hint": "single_cycle",
   "v3_structure_evidence": {
@@ -76,7 +76,7 @@
     "sources": [
       {
         "table": "motion_module_versions",
-        "id": "62d5bebb-5897-4d46-aaee-aad4d1c742ca",
+        "id": "687ed233-54bd-4b49-ab1c-2f39e39fc9d3",
         "detail": "rows[1].sub_activity",
         "cycles": 1,
         "v3_migrated": true,
@@ -84,7 +84,7 @@
       },
       {
         "table": "motion_module_versions",
-        "id": "b7eefdb5-eaf7-4e58-b645-cb7ec56cb010",
+        "id": "b7ba9e33-b235-4dbb-9caa-a2aa9ea7fd66",
         "detail": "rows[0].sub_activity",
         "cycles": 1,
         "v3_migrated": true,
@@ -92,7 +92,7 @@
       },
       {
         "table": "motion_modules",
-        "id": "8028b635-6c72-4198-b207-c398345104de",
+        "id": "c1fde19a-49b6-4249-8af0-84e81493bffa",
         "detail": "name_zh (category=action)",
         "cycles": 1,
         "v3_migrated": true,
@@ -105,13 +105,13 @@
     "planner": "rule_based_v1",
     "rule_set_code": "MINIMOST_FACTORY_V2",
     "lexicon_source": "rule_option_synonyms",
-    "lexicon_size": 15,
+    "lexicon_size": 16,
     "routing_reasons": []
   },
   "plan": {
     "schema_version": "wi-plan-v1",
-    "source_text": "雙手接觸DIMM壓合治具推至規定位置",
-    "normalized_text": "雙手接觸dimm壓合治具推至規定位置",
+    "source_text": "左手抓握DIMM材料盒放至規定位置處",
+    "normalized_text": "左手抓握dimm材料盒放至規定位置處",
     "language": "zh",
     "source_ref": {
       "kind": "interactive",
@@ -122,14 +122,14 @@
     "actions": [
       {
         "action_id": "a1",
-        "action_type": "controlled_move",
+        "action_type": "move_place",
         "sequence_order": 1,
         "roles": {},
         "evidence": [
           {
             "start": 0,
             "end": 18,
-            "text": "雙手接觸dimm壓合治具推至規定位置"
+            "text": "左手抓握dimm材料盒放至規定位置處"
           }
         ],
         "notes": "rule_based_v1"
@@ -141,14 +141,20 @@
   "synthetic_synonyms": [
     {
       "parameter": "G",
-      "option_code": "g_touch",
-      "synonym_norm": "接觸",
+      "option_code": "g_grasp",
+      "synonym_norm": "抓握",
       "priority": 0
     },
     {
-      "parameter": "M",
-      "option_code": "m_push",
-      "synonym_norm": "推至",
+      "parameter": "P",
+      "option_code": "p_place_none",
+      "synonym_norm": "放至",
+      "priority": 1
+    },
+    {
+      "parameter": "P",
+      "option_code": "p_place_single",
+      "synonym_norm": "放至",
       "priority": 0
     }
   ],
@@ -156,12 +162,12 @@
     {
       "action_id": "a1",
       "complete": true,
-      "seq": "CM",
-      "m_verb": "m_push",
-      "distance_cm": 0.0,
+      "seq": "GM",
+      "g_code": null,
+      "p_base_code": "p_place_single",
       "frequency": 1.0,
-      "total_tmu": 0.0,
-      "tech_line": "A0 B0 G0 M0 X0 I0 A0"
+      "total_tmu": 16.0,
+      "tech_line": "A0 B0 G0 A0 B0 P16 A0"
     }
   ],
   "gold_schema_version": "wi-gold-v1",
@@ -172,6 +178,11 @@
   "ie_review": {
     "segmentation_confirmed_by": "IEC141289",
     "segmentation_confirmed_date": "2026-08-16",
-    "segmentation_source": "v3_structure_confirmed"
-  }
+    "segmentation_source": "v3_structure_confirmed",
+    "typing_confirmed_by": "IEC141289",
+    "typing_confirmed_date": "2026-08-17",
+    "p_direction_confirmed_by": "IEC141289",
+    "p_direction_confirmed_date": "2026-08-17"
+  },
+  "approved_date": "2026-08-17"
 }

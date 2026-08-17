@@ -1,41 +1,41 @@
 {
-  "id": "d037_6ae5a84f",
-  "source_text": "右手接觸DIMM壓合治具的底板拉至對應的點位",
-  "notes": "預標註草稿（rule pipeline 自動產生；scripts/gold_harvest.py）。非 gold——IE 覆核核准前不得移入 tests/gold/wi_plans/。",
-  "review_status": "pending_ie",
-  "approved_by": null,
+  "id": "g15_airgun_clean_dimm",
+  "source_text": "右手抓握風槍按動按鈕並吹風清潔DIMM",
+  "notes": "自草稿 d023_f8b21a01 轉正（IE 覆核核准；docs/llm/gold-review/README.md 工作流）。取樣為 challenge-oversampled（coverage-optimized），本案分數不可外推為母體表現。切分/判型/方向數確認與 TMU=0 裁決見 ie_review 與 tests/gold/wi_plans_draft/review-state.json。",
+  "review_status": "approved",
+  "approved_by": "IEC141289",
   "plan_origin": "rule_based_v1_preannotation",
   "ie_modified": false,
-  "split": null,
+  "split": "test",
   "split_groups": [
-    "module:9af1d144-b89e-4397-84a8-f8b64c70ea90",
-    "module:d630108e-643e-4717-94e0-c0c922200076"
+    "module:7b395f7d-891c-4951-a2e1-170c8c76b856",
+    "module:8451efa7-7536-48f7-b579-b56d21608c02"
   ],
-  "split_component": "module:03ceef7d-5939-4ccc-a57c-da17e06e94de",
+  "split_component": "module:0c944bee-3c4f-4e72-a071-2b45c118a6af",
   "source_provenance": [
     {
       "table": "motion_module_versions",
-      "id": "40bb7624-b631-49ed-b35c-d395fc10cf0b",
-      "detail": "rows[2].sub_activity",
-      "group_key": "module:d630108e-643e-4717-94e0-c0c922200076",
-      "db_timestamp": "2026-08-04T06:59:46.545914+00:00",
-      "raw_text": "右手接觸DIMM壓合治具的底板拉至對應的點位"
+      "id": "687ed233-54bd-4b49-ab1c-2f39e39fc9d3",
+      "detail": "rows[4].sub_activity",
+      "group_key": "module:8451efa7-7536-48f7-b579-b56d21608c02",
+      "db_timestamp": "2026-08-04T06:59:46.363497+00:00",
+      "raw_text": "右手抓握風槍按動按鈕並吹風清潔DIMM"
     },
     {
       "table": "motion_module_versions",
-      "id": "739d25e9-f9ac-4d07-80fb-81a53751a9f6",
+      "id": "83f8be04-4dc6-4315-904b-eca942c55d79",
       "detail": "rows[0].sub_activity",
-      "group_key": "module:9af1d144-b89e-4397-84a8-f8b64c70ea90",
-      "db_timestamp": "2026-08-04T06:59:46.946278+00:00",
-      "raw_text": "右手接觸DIMM壓合治具的底板拉至對應的點位"
+      "group_key": "module:7b395f7d-891c-4951-a2e1-170c8c76b856",
+      "db_timestamp": "2026-08-04T06:59:46.665111+00:00",
+      "raw_text": "右手抓握風槍按動按鈕並吹風清潔DIMM"
     },
     {
       "table": "motion_modules",
-      "id": "9af1d144-b89e-4397-84a8-f8b64c70ea90",
+      "id": "7b395f7d-891c-4951-a2e1-170c8c76b856",
       "detail": "name_zh (category=action)",
-      "group_key": "module:9af1d144-b89e-4397-84a8-f8b64c70ea90",
-      "db_timestamp": "2026-08-04T06:59:46.934451+00:00",
-      "raw_text": "右手接觸DIMM壓合治具的底板拉至對應的點位"
+      "group_key": "module:7b395f7d-891c-4951-a2e1-170c8c76b856",
+      "db_timestamp": "2026-08-04T06:59:46.653064+00:00",
+      "raw_text": "右手抓握風槍按動按鈕並吹風清潔DIMM"
     }
   ],
   "challenge_tags": {
@@ -47,7 +47,7 @@
     "english_only": false,
     "inverted_word_order": "unknown",
     "colloquial": "unknown",
-    "multi_action": false,
+    "multi_action": true,
     "quantity": false,
     "tool_handling": true,
     "simo_both_hands": false,
@@ -63,11 +63,10 @@
   ],
   "preannotation_caveat": [
     "typing_changed_by_verb_lexicon",
-    "take_move_pair_may_be_single_cm",
-    "zero_tmu_distance_unstated"
+    "likely_multi_action_undercounted"
   ],
   "typing_change": {
-    "noun_only_seq": "GM",
+    "noun_only_seq": null,
     "lexicon_seq": "CM"
   },
   "v3_structure_hint": "single_cycle",
@@ -76,15 +75,15 @@
     "sources": [
       {
         "table": "motion_module_versions",
-        "id": "40bb7624-b631-49ed-b35c-d395fc10cf0b",
-        "detail": "rows[2].sub_activity",
+        "id": "687ed233-54bd-4b49-ab1c-2f39e39fc9d3",
+        "detail": "rows[4].sub_activity",
         "cycles": 1,
         "v3_migrated": true,
         "basis": "版本 rows[] 一列＝一個 cycle（rows[*].cycle 為單一 CycleIn）"
       },
       {
         "table": "motion_module_versions",
-        "id": "739d25e9-f9ac-4d07-80fb-81a53751a9f6",
+        "id": "83f8be04-4dc6-4315-904b-eca942c55d79",
         "detail": "rows[0].sub_activity",
         "cycles": 1,
         "v3_migrated": true,
@@ -92,7 +91,7 @@
       },
       {
         "table": "motion_modules",
-        "id": "9af1d144-b89e-4397-84a8-f8b64c70ea90",
+        "id": "7b395f7d-891c-4951-a2e1-170c8c76b856",
         "detail": "name_zh (category=action)",
         "cycles": 1,
         "v3_migrated": true,
@@ -105,13 +104,13 @@
     "planner": "rule_based_v1",
     "rule_set_code": "MINIMOST_FACTORY_V2",
     "lexicon_source": "rule_option_synonyms",
-    "lexicon_size": 15,
+    "lexicon_size": 16,
     "routing_reasons": []
   },
   "plan": {
     "schema_version": "wi-plan-v1",
-    "source_text": "右手接觸DIMM壓合治具的底板拉至對應的點位",
-    "normalized_text": "右手接觸dimm壓合治具的底板拉至對應的點位",
+    "source_text": "右手抓握風槍按動按鈕並吹風清潔DIMM",
+    "normalized_text": "右手抓握風槍按動按鈕並吹風清潔dimm",
     "language": "zh",
     "source_ref": {
       "kind": "interactive",
@@ -128,8 +127,8 @@
         "evidence": [
           {
             "start": 0,
-            "end": 22,
-            "text": "右手接觸dimm壓合治具的底板拉至對應的點位"
+            "end": 19,
+            "text": "右手抓握風槍按動按鈕並吹風清潔dimm"
           }
         ],
         "notes": "rule_based_v1"
@@ -141,14 +140,14 @@
   "synthetic_synonyms": [
     {
       "parameter": "G",
-      "option_code": "g_touch",
-      "synonym_norm": "接觸",
+      "option_code": "g_grasp",
+      "synonym_norm": "抓握",
       "priority": 0
     },
     {
       "parameter": "M",
-      "option_code": "m_pull",
-      "synonym_norm": "拉至",
+      "option_code": "m_btn",
+      "synonym_norm": "按動按鈕",
       "priority": 0
     }
   ],
@@ -157,11 +156,11 @@
       "action_id": "a1",
       "complete": true,
       "seq": "CM",
-      "m_verb": "m_pull",
+      "m_verb": "m_btn",
       "distance_cm": 0.0,
       "frequency": 1.0,
-      "total_tmu": 0.0,
-      "tech_line": "A0 B0 G0 M0 X0 I0 A0"
+      "total_tmu": 3.0,
+      "tech_line": "A0 B0 G0 M3 X0 I0 A0"
     }
   ],
   "gold_schema_version": "wi-gold-v1",
@@ -172,6 +171,9 @@
   "ie_review": {
     "segmentation_confirmed_by": "IEC141289",
     "segmentation_confirmed_date": "2026-08-16",
-    "segmentation_source": "v3_structure_confirmed"
-  }
+    "segmentation_source": "v3_structure_confirmed",
+    "typing_confirmed_by": "IEC141289",
+    "typing_confirmed_date": "2026-08-17"
+  },
+  "approved_date": "2026-08-17"
 }

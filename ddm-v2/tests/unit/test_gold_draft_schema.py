@@ -85,18 +85,9 @@ from gold_harvest import (  # noqa: E402
     draft_sha8,
     has_zero_tmu_complete_cycle,
     load_review_state,
+    provenance_matches_normalized_text,  # R5 判定單一出處（同一支 normalize）
     review_block_from_entry,
 )
-
-
-def provenance_matches_normalized_text(data: dict) -> bool:
-    """R5：plan.normalized_text 是否與至少一筆 source_provenance.raw_text
-    正規化後一致（同一支 normalize——harvest 的去重鍵就是 normalize(raw)）。"""
-    norm_text = (data.get("plan") or {}).get("normalized_text")
-    return any(
-        normalize(str(s.get("raw_text") or "")) == norm_text
-        for s in data.get("source_provenance") or []
-    )
 
 
 def _draft_files() -> list[Path]:
@@ -352,15 +343,25 @@ async def test_draft_case(
             f"{fname}：已合併覆核狀態的草稿 ie_modified 必為 false（確認≠修改——"
             "自我指涉設計不計 planner 證據力）"
         )
-        if ir["segmentation_source"] == "v3_structure_confirmed":
+        # D3-019 起 ie_review 是多面向（切分/判型/P 方向/TMU=0）——切分子檢查
+        # 只對帶切分面向的 entry 做（typing-only entry 如 d042 無 segmentation_*）
+        seg_source = ir.get("segmentation_source")
+        if seg_source == "v3_structure_confirmed":
             # 「照 v3 結構預設 OK」只有在預設存在時才成立
             assert isinstance(hint, str) and hint != STRUCTURE_HINT_AMBIGUOUS, (
                 f"{fname}：v3_structure_confirmed 但草稿 hint={hint!r}——確認的對象不存在"
             )
             assert "ie_ruling" not in ir
-        else:
-            assert ir["segmentation_source"] == "ie_ruling"
+        elif seg_source is not None:
+            assert seg_source == "ie_ruling"
             assert isinstance(ir.get("ie_ruling"), str)
+        else:
+            # 無切分面向：entry 必有其他面向（load_review_state 已硬驗），
+            # 且草稿不得有切分爭點（否則切分確認缺漏）
+            assert any(
+                k in ir
+                for k in ("typing_confirmed_by", "p_direction_confirmed_by", "zero_tmu_ruling")
+            ), f"{fname}：ie_review 無任何覆核面向"
         # 「IE 裁決否定的結構」標記 ↔ entry 的 ie_rejected_evidence 同進同出
         rejected_state = {
             (r["table"], r["id"]) for r in entry.get("ie_rejected_evidence") or []
@@ -372,7 +373,7 @@ async def test_draft_case(
         assert not rejected_marks, (
             f"{fname}：無 ie_review 卻帶 ie_ruling_rejected 證據標記——標記只能由合併產生"
         )
-        if entry is not None:
+        if entry is not None and not entry.get("promoted_to"):
             # entry 存在但未合併：唯一合法原因是 stale（apply 會回報原因）；
             # apply 在 deep copy 上重放——回 None＝本應套用卻沒套（harvest 漏合併）
             import copy
@@ -384,6 +385,21 @@ async def test_draft_case(
                 f"{fname}：review-state 有可套用的 entry 但草稿無 ie_review——"
                 "harvest 未跑合併或草稿被手動剝除"
             )
+
+    # 5h. D3-019：expected_incomplete_reason 的唯一出處＝TMU=0 裁決的合併——
+    # 草稿帶 reason ⟺ ie_review 帶 zero_tmu_ruling（值原樣），且該筆必有
+    # zero_tmu 旗標（裁決前提）。草稿不得單方面長出/遺失 reason。
+    reason_val = data.get("expected_incomplete_reason")
+    ruling_val = (ir or {}).get("zero_tmu_ruling")
+    assert (reason_val is not None) == (ruling_val is not None), (
+        f"{fname}：expected_incomplete_reason（{reason_val!r}）與 ie_review 的 "
+        f"zero_tmu_ruling（{ruling_val!r}）必須同進同出"
+    )
+    if reason_val is not None:
+        assert reason_val == ruling_val, f"{fname}：reason 與裁決值不一致"
+        assert ZERO_TMU_CAVEAT in caveats, (
+            f"{fname}：帶 TMU=0 裁決但無 {ZERO_TMU_CAVEAT} 旗標——裁決前提不成立"
+        )
 
     # 2+6. planner 段重放：offset 守衛（gold_* 具名錯誤＝標註缺損）永遠檢查；
     # 「與 rule planner 重放整份 plan 相等」只對 pending_ie（原樣草稿）要求——
@@ -421,7 +437,7 @@ def test_provenance_mutation_detected(drafts: list[tuple[Path, dict]]):
     )
 
 
-# ── 第三輪基線（2026-08-16：D3-017 放至/放置登記＋判型吃字典後的既成事實）───
+# ── 第四輪基線（2026-08-17：D3-019「拿取→g_pick_sel」登記後的既成事實）─────
 #
 # 為什麼要釘：同義詞登記後，草稿的 slot 命中（synthetic_synonyms）與 cycle
 # 完成度是「已達成的管線能力」——下一輪 harvest 若因 DB 同義詞被誤刪/改壞而
@@ -429,63 +445,77 @@ def test_provenance_mutation_detected(drafts: list[tuple[Path, dict]]):
 # 必須紅燈，不准靜默。基線是**既成事實的記錄**，更新它必須是有意識的編輯
 # （新一輪 harvest 後 coverage 只增不減：superset 斷言下增長自動綠）。
 #
-# 第三輪記錄（前值：第二輪 complete＝0、slot 命中 32 筆）：
-# - 「放至/放置」各掛兩變體（p_place_single 預設／p_place_none 盤面；v2_0038
-#   一面多 code），同 norm 變體整組進 synthetic_synonyms（重放等價）。
-# - 判型吃字典（rule_based.classify_seq）後 typed 60→29 筆（GM 13＋CM 16），
-#   complete 帶 TMU＝27 筆——其中 9 筆 TMU=0.0（距離未述＋非核心 slot 未掛，
-#   見 harvest-summary 誠實旗標），complete≠可信 TMU。
+# 第四輪記錄（前值：第三輪 complete＝27、slot 命中 37 筆；第二輪 complete＝0）：
+# - 「拿取」→ g_pick_sel（G，priority 0；2026-08-16→17 IE 第三輪答案，D3-019）
+#   ——詞典 15→16 條，slot 命中 37→48 筆。
+# - 判型：typed 29→33 筆（GM 13→17＋CM 16），complete 帶 TMU 27→31 筆——
+#   其中 9 筆 TMU=0.0 不變（距離未述；IE 已裁 distance_unstated，草稿記
+#   expected_incomplete_reason），complete≠可信 TMU。
 # COMPLETE_TMU_SHA8_BASELINE 是**等值釘**：complete 集合任何變動（增或減）
-# 都必須有意識地更新本常數——IE 覆核工作量的數字不准漂移。
+# 都必須有意識地更新本常數——IE 覆核工作量的數字不准漂移。已轉正（不在
+# 草稿集）的 sha8 保留在基線中無害（present 過濾）。
 SYN_COVERAGE_SHA8_BASELINE: dict[str, frozenset[str]] = {
     sha8: frozenset(pairs)
     for sha8, pairs in {
-        "0423b4e8": ["P:p_hold"],
+        "0423b4e8": ["G:g_pick_sel", "P:p_hold"],
+        "0461f75d": ["G:g_pick_sel"],
         "0acd56df": ["G:g_touch", "M:m_press"],
         "1c27dc35": ["G:g_grasp"],
         "1dd7c1d5": ["M:m_press"],
+        "28f9ed7e": ["G:g_pick_sel"],
         "30d9b858": ["G:g_grasp", "P:p_hold"],
         "314f0644": ["G:g_grasp", "P:p_place_none", "P:p_place_single"],
+        "35372a96": ["G:g_pick_sel"],
         "37fbd2a6": ["P:p_place_none", "P:p_place_single"],
         "3ba13f82": ["G:g_grasp", "P:p_hold"],
         "3eab7c3e": ["G:g_grasp", "M:m_btn"],
         "4765e5f2": ["G:g_grasp", "M:m_teartape"],
+        "51077fd1": ["G:g_pick_sel"],
         "51518399": ["M:m_attach"],
-        "5cb719bb": ["M:m_remove", "P:p_place_none", "P:p_place_single"],
+        "5cb719bb": ["G:g_pick_sel", "M:m_remove", "P:p_place_none", "P:p_place_single"],
         "5cd079e8": ["G:g_grasp", "P:p_place_none", "P:p_place_single"],
         "6017ab5e": ["G:g_grasp", "P:p_place_none", "P:p_place_single"],
         "631c3ece": ["G:g_grasp", "P:p_place_none", "P:p_place_single"],
-        "650ee42f": ["P:p_hold"],
+        "650ee42f": ["G:g_pick_sel", "P:p_hold"],
         "6678c378": ["G:g_grasp"],
         "6ae5a84f": ["G:g_touch", "M:m_pull"],
         "6be614c5": ["M:m_press"],
         "6fa45cdb": ["M:m_press"],
-        "72dc0511": ["M:m_remove"],
+        "72dc0511": ["G:g_pick_sel", "M:m_remove"],
+        "7c6eb8af": ["G:g_pick_sel"],
         "7e40706c": ["G:g_touch", "M:m_push"],
         "813bca06": ["G:g_grasp", "P:p_place_none", "P:p_place_single"],
+        "9c1a987f": ["G:g_pick_sel"],
         "9f3d6515": ["G:g_touch", "M:m_press"],
         "a00f4953": ["G:g_touch", "M:m_push"],
-        "a062c017": ["P:p_place_none", "P:p_place_single"],
+        "a062c017": ["G:g_pick_sel", "P:p_place_none", "P:p_place_single"],
         "aa72871a": ["G:g_grasp", "P:p_hold"],
+        "ac155900": ["G:g_pick_sel"],
+        "af172fd9": ["G:g_pick_sel"],
+        "b2618d31": ["G:g_pick_sel"],
         "b49a90ee": ["G:g_touch"],
+        "b6ee694d": ["G:g_pick_sel"],
         "c6add069": ["G:g_grasp", "P:p_hold"],
-        "d0350279": ["P:p_place_none", "P:p_place_single"],
+        "d0350279": ["G:g_pick_sel", "P:p_place_none", "P:p_place_single"],
         "d58a53a7": ["G:g_grasp", "P:p_toss"],
         "d9190952": ["G:g_touch", "M:m_pull"],
-        "e55d16c7": ["M:m_attach"],
+        "e55d16c7": ["G:g_pick_sel", "M:m_attach"],
+        "e945e29e": ["G:g_pick_sel"],
         "f721bbfc": ["G:g_grasp", "M:m_remove"],
         "f8b21a01": ["G:g_grasp", "M:m_btn"],
-        "fe5391c6": ["P:p_place_none", "P:p_place_single"],
+        "fe1f3a90": ["G:g_pick_sel"],
+        "fe5391c6": ["G:g_pick_sel", "P:p_place_none", "P:p_place_single"],
     }.items()
 }
-# 第三輪 complete＝27 筆（等值釘；13 GM＋16 CM 中 core 參數有值者；
+# 第四輪 complete＝31 筆（等值釘；17 GM＋16 CM 中 core 參數有值者；
 # 9 筆 TMU=0.0 也在列——「complete」是結構完成度，不是 TMU 可信度）。
 COMPLETE_TMU_SHA8_BASELINE: frozenset[str] = frozenset({
-    "0acd56df", "1dd7c1d5", "30d9b858", "314f0644", "3ba13f82", "3eab7c3e",
-    "4765e5f2", "51518399", "5cd079e8", "6017ab5e", "631c3ece", "6ae5a84f",
-    "6be614c5", "6fa45cdb", "72dc0511", "7e40706c", "813bca06", "9f3d6515",
-    "a00f4953", "aa72871a", "c6add069", "d58a53a7", "d9190952", "e55d16c7",
-    "f721bbfc", "f8b21a01", "fe5391c6",
+    "0423b4e8", "0acd56df", "1dd7c1d5", "30d9b858", "314f0644", "3ba13f82",
+    "3eab7c3e", "4765e5f2", "51518399", "5cd079e8", "6017ab5e", "631c3ece",
+    "650ee42f", "6ae5a84f", "6be614c5", "6fa45cdb", "72dc0511", "7e40706c",
+    "813bca06", "9f3d6515", "a00f4953", "a062c017", "aa72871a", "c6add069",
+    "d0350279", "d58a53a7", "d9190952", "e55d16c7", "f721bbfc", "f8b21a01",
+    "fe5391c6",
 })
 
 

@@ -1,41 +1,32 @@
 {
-  "id": "d038_aa72871a",
-  "source_text": "左手抓握DIMM材料盒保持住",
-  "notes": "預標註草稿（rule pipeline 自動產生；scripts/gold_harvest.py）。非 gold——IE 覆核核准前不得移入 tests/gold/wi_plans/。",
-  "review_status": "pending_ie",
-  "approved_by": null,
+  "id": "g12_push_dimm_latches_confirm",
+  "source_text": "雙手接觸DIMM卡槽的左右卡扣推至規定位置並確認到位",
+  "notes": "自草稿 d020_a00f4953 轉正（IE 覆核核准；docs/llm/gold-review/README.md 工作流）。取樣為 challenge-oversampled（coverage-optimized），本案分數不可外推為母體表現。切分/判型/方向數確認與 TMU=0 裁決見 ie_review 與 tests/gold/wi_plans_draft/review-state.json。",
+  "review_status": "approved",
+  "approved_by": "IEC141289",
   "plan_origin": "rule_based_v1_preannotation",
   "ie_modified": false,
-  "split": null,
+  "split": "test",
   "split_groups": [
-    "module:8451efa7-7536-48f7-b579-b56d21608c02",
-    "module:ef3a2924-ed66-4429-9c98-8ab96a8e9de3"
+    "module:b55f8099-c382-4f21-ae4e-9ba327479a2d"
   ],
-  "split_component": "module:0c944bee-3c4f-4e72-a071-2b45c118a6af",
+  "split_component": "module:b55f8099-c382-4f21-ae4e-9ba327479a2d",
   "source_provenance": [
     {
       "table": "motion_module_versions",
-      "id": "687ed233-54bd-4b49-ab1c-2f39e39fc9d3",
-      "detail": "rows[3].sub_activity",
-      "group_key": "module:8451efa7-7536-48f7-b579-b56d21608c02",
-      "db_timestamp": "2026-08-04T06:59:46.363497+00:00",
-      "raw_text": "左手抓握DIMM材料盒保持住"
-    },
-    {
-      "table": "motion_module_versions",
-      "id": "87f0fddc-5ce7-4e0f-9099-82c8b14b39f1",
+      "id": "ab031277-6869-4bbf-8f16-3884e31937b6",
       "detail": "rows[0].sub_activity",
-      "group_key": "module:ef3a2924-ed66-4429-9c98-8ab96a8e9de3",
-      "db_timestamp": "2026-08-04T06:59:46.731074+00:00",
-      "raw_text": "左手抓握DIMM材料盒保持住"
+      "group_key": "module:b55f8099-c382-4f21-ae4e-9ba327479a2d",
+      "db_timestamp": "2026-08-04T06:59:46.846443+00:00",
+      "raw_text": "雙手接觸DIMM卡槽的左右卡扣推至規定位置並確認到位"
     },
     {
       "table": "motion_modules",
-      "id": "ef3a2924-ed66-4429-9c98-8ab96a8e9de3",
+      "id": "b55f8099-c382-4f21-ae4e-9ba327479a2d",
       "detail": "name_zh (category=action)",
-      "group_key": "module:ef3a2924-ed66-4429-9c98-8ab96a8e9de3",
-      "db_timestamp": "2026-08-04T06:59:46.720228+00:00",
-      "raw_text": "左手抓握DIMM材料盒保持住"
+      "group_key": "module:b55f8099-c382-4f21-ae4e-9ba327479a2d",
+      "db_timestamp": "2026-08-04T06:59:46.832287+00:00",
+      "raw_text": "雙手接觸DIMM卡槽的左右卡扣推至規定位置並確認到位"
     }
   ],
   "challenge_tags": {
@@ -50,7 +41,7 @@
     "multi_action": true,
     "quantity": false,
     "tool_handling": false,
-    "simo_both_hands": false,
+    "simo_both_hands": true,
     "missing_info": "unknown",
     "ambiguity": "unknown",
     "diagram_reference_no_image": false,
@@ -63,11 +54,12 @@
   ],
   "preannotation_caveat": [
     "typing_changed_by_verb_lexicon",
-    "likely_multi_action_undercounted"
+    "likely_multi_action_undercounted",
+    "zero_tmu_distance_unstated"
   ],
   "typing_change": {
     "noun_only_seq": null,
-    "lexicon_seq": "GM"
+    "lexicon_seq": "CM"
   },
   "v3_structure_hint": "single_cycle",
   "v3_structure_evidence": {
@@ -75,15 +67,7 @@
     "sources": [
       {
         "table": "motion_module_versions",
-        "id": "687ed233-54bd-4b49-ab1c-2f39e39fc9d3",
-        "detail": "rows[3].sub_activity",
-        "cycles": 1,
-        "v3_migrated": true,
-        "basis": "版本 rows[] 一列＝一個 cycle（rows[*].cycle 為單一 CycleIn）"
-      },
-      {
-        "table": "motion_module_versions",
-        "id": "87f0fddc-5ce7-4e0f-9099-82c8b14b39f1",
+        "id": "ab031277-6869-4bbf-8f16-3884e31937b6",
         "detail": "rows[0].sub_activity",
         "cycles": 1,
         "v3_migrated": true,
@@ -91,7 +75,7 @@
       },
       {
         "table": "motion_modules",
-        "id": "ef3a2924-ed66-4429-9c98-8ab96a8e9de3",
+        "id": "b55f8099-c382-4f21-ae4e-9ba327479a2d",
         "detail": "name_zh (category=action)",
         "cycles": 1,
         "v3_migrated": true,
@@ -104,13 +88,13 @@
     "planner": "rule_based_v1",
     "rule_set_code": "MINIMOST_FACTORY_V2",
     "lexicon_source": "rule_option_synonyms",
-    "lexicon_size": 15,
+    "lexicon_size": 16,
     "routing_reasons": []
   },
   "plan": {
     "schema_version": "wi-plan-v1",
-    "source_text": "左手抓握DIMM材料盒保持住",
-    "normalized_text": "左手抓握dimm材料盒保持住",
+    "source_text": "雙手接觸DIMM卡槽的左右卡扣推至規定位置並確認到位",
+    "normalized_text": "雙手接觸dimm卡槽的左右卡扣推至規定位置並確認到位",
     "language": "zh",
     "source_ref": {
       "kind": "interactive",
@@ -121,14 +105,14 @@
     "actions": [
       {
         "action_id": "a1",
-        "action_type": "move_place",
+        "action_type": "controlled_move",
         "sequence_order": 1,
         "roles": {},
         "evidence": [
           {
             "start": 0,
-            "end": 14,
-            "text": "左手抓握dimm材料盒保持住"
+            "end": 26,
+            "text": "雙手接觸dimm卡槽的左右卡扣推至規定位置並確認到位"
           }
         ],
         "notes": "rule_based_v1"
@@ -140,14 +124,14 @@
   "synthetic_synonyms": [
     {
       "parameter": "G",
-      "option_code": "g_grasp",
-      "synonym_norm": "抓握",
+      "option_code": "g_touch",
+      "synonym_norm": "接觸",
       "priority": 0
     },
     {
-      "parameter": "P",
-      "option_code": "p_hold",
-      "synonym_norm": "保持住",
+      "parameter": "M",
+      "option_code": "m_push",
+      "synonym_norm": "推至",
       "priority": 0
     }
   ],
@@ -155,12 +139,12 @@
     {
       "action_id": "a1",
       "complete": true,
-      "seq": "GM",
-      "g_code": null,
-      "p_base_code": "p_hold",
+      "seq": "CM",
+      "m_verb": "m_push",
+      "distance_cm": 0.0,
       "frequency": 1.0,
-      "total_tmu": 3.0,
-      "tech_line": "A0 B0 G0 A0 B0 P3 A0"
+      "total_tmu": 0.0,
+      "tech_line": "A0 B0 G0 M0 X0 I0 A0"
     }
   ],
   "gold_schema_version": "wi-gold-v1",
@@ -171,6 +155,13 @@
   "ie_review": {
     "segmentation_confirmed_by": "IEC141289",
     "segmentation_confirmed_date": "2026-08-16",
-    "segmentation_source": "v3_structure_confirmed"
-  }
+    "segmentation_source": "v3_structure_confirmed",
+    "typing_confirmed_by": "IEC141289",
+    "typing_confirmed_date": "2026-08-17",
+    "zero_tmu_ruling": "distance_unstated",
+    "zero_tmu_ruled_by": "IEC141289",
+    "zero_tmu_ruled_date": "2026-08-17"
+  },
+  "expected_incomplete_reason": "distance_unstated",
+  "approved_date": "2026-08-17"
 }

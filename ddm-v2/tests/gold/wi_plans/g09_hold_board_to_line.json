@@ -1,45 +1,45 @@
 {
-  "id": "d031_c6add069",
-  "source_text": "右手抓握風槍保持住至規定位置處",
-  "notes": "預標註草稿（rule pipeline 自動產生；scripts/gold_harvest.py）。非 gold——IE 覆核核准前不得移入 tests/gold/wi_plans/。",
-  "review_status": "pending_ie",
-  "approved_by": null,
+  "id": "g09_hold_board_to_line",
+  "source_text": "雙手抓握主板保持住至流水線",
+  "notes": "自草稿 d010_30d9b858 轉正（IE 覆核核准；docs/llm/gold-review/README.md 工作流）。取樣為 challenge-oversampled（coverage-optimized），本案分數不可外推為母體表現。切分/判型/方向數確認與 TMU=0 裁決見 ie_review 與 tests/gold/wi_plans_draft/review-state.json。",
+  "review_status": "approved",
+  "approved_by": "IEC141289",
   "plan_origin": "rule_based_v1_preannotation",
   "ie_modified": false,
-  "split": null,
+  "split": "test",
   "split_groups": [
-    "module:0c944bee-3c4f-4e72-a071-2b45c118a6af",
-    "module:8451efa7-7536-48f7-b579-b56d21608c02"
+    "module:dcbb30a8-44f0-4218-aafb-b6882a66aca0",
+    "module:ea8ebe0c-3ad3-438a-ac76-79a7bfcd778d"
   ],
-  "split_component": "module:0c944bee-3c4f-4e72-a071-2b45c118a6af",
+  "split_component": "module:32a29bba-fabe-4332-baee-9785d4c2525d",
   "source_provenance": [
     {
       "table": "motion_module_versions",
-      "id": "1ec11b2a-c8ca-40f0-80a8-1ce7239fa464",
+      "id": "55e93ed7-d891-4026-84d6-e1beea1c10e0",
       "detail": "rows[0].sub_activity",
-      "group_key": "module:0c944bee-3c4f-4e72-a071-2b45c118a6af",
-      "db_timestamp": "2026-08-04T06:59:46.716419+00:00",
-      "raw_text": "右手抓握風槍保持住至規定位置處"
+      "group_key": "module:ea8ebe0c-3ad3-438a-ac76-79a7bfcd778d",
+      "db_timestamp": "2026-08-04T06:59:46.978975+00:00",
+      "raw_text": "雙手抓握主板保持住至流水線"
     },
     {
       "table": "motion_module_versions",
-      "id": "687ed233-54bd-4b49-ab1c-2f39e39fc9d3",
-      "detail": "rows[2].sub_activity",
-      "group_key": "module:8451efa7-7536-48f7-b579-b56d21608c02",
-      "db_timestamp": "2026-08-04T06:59:46.363497+00:00",
-      "raw_text": "右手抓握風槍保持住至規定位置處"
+      "id": "b91e9fca-a311-496a-bbdb-db6f76f460c2",
+      "detail": "rows[1].sub_activity",
+      "group_key": "module:dcbb30a8-44f0-4218-aafb-b6882a66aca0",
+      "db_timestamp": "2026-08-04T06:59:46.569688+00:00",
+      "raw_text": "雙手抓握主板保持住至流水線"
     },
     {
       "table": "motion_modules",
-      "id": "0c944bee-3c4f-4e72-a071-2b45c118a6af",
+      "id": "ea8ebe0c-3ad3-438a-ac76-79a7bfcd778d",
       "detail": "name_zh (category=action)",
-      "group_key": "module:0c944bee-3c4f-4e72-a071-2b45c118a6af",
-      "db_timestamp": "2026-08-04T06:59:46.703469+00:00",
-      "raw_text": "右手抓握風槍保持住至規定位置處"
+      "group_key": "module:ea8ebe0c-3ad3-438a-ac76-79a7bfcd778d",
+      "db_timestamp": "2026-08-04T06:59:46.967556+00:00",
+      "raw_text": "雙手抓握主板保持住至流水線"
     }
   ],
   "challenge_tags": {
-    "zh_simplified_variant": false,
+    "zh_simplified_variant": true,
     "fullwidth_chars": false,
     "typo": "unknown",
     "homophone": "unknown",
@@ -49,8 +49,8 @@
     "colloquial": "unknown",
     "multi_action": true,
     "quantity": false,
-    "tool_handling": true,
-    "simo_both_hands": false,
+    "tool_handling": false,
+    "simo_both_hands": true,
     "missing_info": "unknown",
     "ambiguity": "unknown",
     "diagram_reference_no_image": false,
@@ -75,7 +75,7 @@
     "sources": [
       {
         "table": "motion_module_versions",
-        "id": "1ec11b2a-c8ca-40f0-80a8-1ce7239fa464",
+        "id": "55e93ed7-d891-4026-84d6-e1beea1c10e0",
         "detail": "rows[0].sub_activity",
         "cycles": 1,
         "v3_migrated": true,
@@ -83,15 +83,15 @@
       },
       {
         "table": "motion_module_versions",
-        "id": "687ed233-54bd-4b49-ab1c-2f39e39fc9d3",
-        "detail": "rows[2].sub_activity",
+        "id": "b91e9fca-a311-496a-bbdb-db6f76f460c2",
+        "detail": "rows[1].sub_activity",
         "cycles": 1,
         "v3_migrated": true,
         "basis": "版本 rows[] 一列＝一個 cycle（rows[*].cycle 為單一 CycleIn）"
       },
       {
         "table": "motion_modules",
-        "id": "0c944bee-3c4f-4e72-a071-2b45c118a6af",
+        "id": "ea8ebe0c-3ad3-438a-ac76-79a7bfcd778d",
         "detail": "name_zh (category=action)",
         "cycles": 1,
         "v3_migrated": true,
@@ -104,13 +104,13 @@
     "planner": "rule_based_v1",
     "rule_set_code": "MINIMOST_FACTORY_V2",
     "lexicon_source": "rule_option_synonyms",
-    "lexicon_size": 15,
+    "lexicon_size": 16,
     "routing_reasons": []
   },
   "plan": {
     "schema_version": "wi-plan-v1",
-    "source_text": "右手抓握風槍保持住至規定位置處",
-    "normalized_text": "右手抓握風槍保持住至規定位置處",
+    "source_text": "雙手抓握主板保持住至流水線",
+    "normalized_text": "雙手抓握主機板保持住至流水線",
     "language": "zh",
     "source_ref": {
       "kind": "interactive",
@@ -127,8 +127,8 @@
         "evidence": [
           {
             "start": 0,
-            "end": 15,
-            "text": "右手抓握風槍保持住至規定位置處"
+            "end": 14,
+            "text": "雙手抓握主機板保持住至流水線"
           }
         ],
         "notes": "rule_based_v1"
@@ -171,6 +171,9 @@
   "ie_review": {
     "segmentation_confirmed_by": "IEC141289",
     "segmentation_confirmed_date": "2026-08-16",
-    "segmentation_source": "v3_structure_confirmed"
-  }
+    "segmentation_source": "v3_structure_confirmed",
+    "typing_confirmed_by": "IEC141289",
+    "typing_confirmed_date": "2026-08-17"
+  },
+  "approved_date": "2026-08-17"
 }

@@ -1,55 +1,55 @@
 {
-  "id": "d053_631c3ece",
-  "source_text": "左手抓握DIMM材料盒放至規定位置處",
-  "notes": "預標註草稿（rule pipeline 自動產生；scripts/gold_harvest.py）。非 gold——IE 覆核核准前不得移入 tests/gold/wi_plans/。",
-  "review_status": "pending_ie",
-  "approved_by": null,
+  "id": "g08_hold_driver_to_chassis",
+  "source_text": "右手抓握电动起子保持住至機箱",
+  "notes": "自草稿 d007_3ba13f82 轉正（IE 覆核核准；docs/llm/gold-review/README.md 工作流）。取樣為 challenge-oversampled（coverage-optimized），本案分數不可外推為母體表現。切分/判型/方向數確認與 TMU=0 裁決見 ie_review 與 tests/gold/wi_plans_draft/review-state.json。",
+  "review_status": "approved",
+  "approved_by": "IEC141289",
   "plan_origin": "rule_based_v1_preannotation",
   "ie_modified": false,
-  "split": null,
+  "split": "test",
   "split_groups": [
-    "module:8451efa7-7536-48f7-b579-b56d21608c02",
-    "module:c1fde19a-49b6-4249-8af0-84e81493bffa"
+    "module:2ea27e92-e4e5-4a67-91c5-a1b1359c96b9",
+    "module:50ed054b-9461-4fbf-bc00-acde2cd482b7"
   ],
-  "split_component": "module:0c944bee-3c4f-4e72-a071-2b45c118a6af",
+  "split_component": "module:2ea27e92-e4e5-4a67-91c5-a1b1359c96b9",
   "source_provenance": [
     {
       "table": "motion_module_versions",
-      "id": "687ed233-54bd-4b49-ab1c-2f39e39fc9d3",
+      "id": "9569aeaf-11a0-407d-a9c7-613c0b994be5",
       "detail": "rows[1].sub_activity",
-      "group_key": "module:8451efa7-7536-48f7-b579-b56d21608c02",
-      "db_timestamp": "2026-08-04T06:59:46.363497+00:00",
-      "raw_text": "左手抓握DIMM材料盒放至規定位置處"
+      "group_key": "module:50ed054b-9461-4fbf-bc00-acde2cd482b7",
+      "db_timestamp": "2026-08-04T06:59:46.649296+00:00",
+      "raw_text": "右手抓握电动起子保持住至機箱"
     },
     {
       "table": "motion_module_versions",
-      "id": "b7ba9e33-b235-4dbb-9caa-a2aa9ea7fd66",
+      "id": "b66a74ed-c2be-46ab-9cb5-f17b8568a7d6",
       "detail": "rows[0].sub_activity",
-      "group_key": "module:c1fde19a-49b6-4249-8af0-84e81493bffa",
-      "db_timestamp": "2026-08-04T06:59:46.699509+00:00",
-      "raw_text": "左手抓握DIMM材料盒放至規定位置處"
+      "group_key": "module:2ea27e92-e4e5-4a67-91c5-a1b1359c96b9",
+      "db_timestamp": "2026-08-04T06:59:47.094238+00:00",
+      "raw_text": "右手抓握电动起子保持住至機箱"
     },
     {
       "table": "motion_modules",
-      "id": "c1fde19a-49b6-4249-8af0-84e81493bffa",
+      "id": "2ea27e92-e4e5-4a67-91c5-a1b1359c96b9",
       "detail": "name_zh (category=action)",
-      "group_key": "module:c1fde19a-49b6-4249-8af0-84e81493bffa",
-      "db_timestamp": "2026-08-04T06:59:46.685631+00:00",
-      "raw_text": "左手抓握DIMM材料盒放至規定位置處"
+      "group_key": "module:2ea27e92-e4e5-4a67-91c5-a1b1359c96b9",
+      "db_timestamp": "2026-08-04T06:59:47.082443+00:00",
+      "raw_text": "右手抓握电动起子保持住至機箱"
     }
   ],
   "challenge_tags": {
-    "zh_simplified_variant": false,
+    "zh_simplified_variant": true,
     "fullwidth_chars": false,
     "typo": "unknown",
     "homophone": "unknown",
-    "mixed_zh_en": true,
+    "mixed_zh_en": false,
     "english_only": false,
     "inverted_word_order": "unknown",
     "colloquial": "unknown",
-    "multi_action": false,
+    "multi_action": true,
     "quantity": false,
-    "tool_handling": false,
+    "tool_handling": true,
     "simo_both_hands": false,
     "missing_info": "unknown",
     "ambiguity": "unknown",
@@ -63,8 +63,7 @@
   ],
   "preannotation_caveat": [
     "typing_changed_by_verb_lexicon",
-    "p_direction_unclassified_default_single",
-    "take_place_pair_may_be_single_gm"
+    "likely_multi_action_undercounted"
   ],
   "typing_change": {
     "noun_only_seq": null,
@@ -76,7 +75,7 @@
     "sources": [
       {
         "table": "motion_module_versions",
-        "id": "687ed233-54bd-4b49-ab1c-2f39e39fc9d3",
+        "id": "9569aeaf-11a0-407d-a9c7-613c0b994be5",
         "detail": "rows[1].sub_activity",
         "cycles": 1,
         "v3_migrated": true,
@@ -84,7 +83,7 @@
       },
       {
         "table": "motion_module_versions",
-        "id": "b7ba9e33-b235-4dbb-9caa-a2aa9ea7fd66",
+        "id": "b66a74ed-c2be-46ab-9cb5-f17b8568a7d6",
         "detail": "rows[0].sub_activity",
         "cycles": 1,
         "v3_migrated": true,
@@ -92,7 +91,7 @@
       },
       {
         "table": "motion_modules",
-        "id": "c1fde19a-49b6-4249-8af0-84e81493bffa",
+        "id": "2ea27e92-e4e5-4a67-91c5-a1b1359c96b9",
         "detail": "name_zh (category=action)",
         "cycles": 1,
         "v3_migrated": true,
@@ -105,13 +104,13 @@
     "planner": "rule_based_v1",
     "rule_set_code": "MINIMOST_FACTORY_V2",
     "lexicon_source": "rule_option_synonyms",
-    "lexicon_size": 15,
+    "lexicon_size": 16,
     "routing_reasons": []
   },
   "plan": {
     "schema_version": "wi-plan-v1",
-    "source_text": "左手抓握DIMM材料盒放至規定位置處",
-    "normalized_text": "左手抓握dimm材料盒放至規定位置處",
+    "source_text": "右手抓握电动起子保持住至機箱",
+    "normalized_text": "右手抓握電動起子保持住至機箱",
     "language": "zh",
     "source_ref": {
       "kind": "interactive",
@@ -128,8 +127,8 @@
         "evidence": [
           {
             "start": 0,
-            "end": 18,
-            "text": "左手抓握dimm材料盒放至規定位置處"
+            "end": 14,
+            "text": "右手抓握電動起子保持住至機箱"
           }
         ],
         "notes": "rule_based_v1"
@@ -147,14 +146,8 @@
     },
     {
       "parameter": "P",
-      "option_code": "p_place_none",
-      "synonym_norm": "放至",
-      "priority": 1
-    },
-    {
-      "parameter": "P",
-      "option_code": "p_place_single",
-      "synonym_norm": "放至",
+      "option_code": "p_hold",
+      "synonym_norm": "保持住",
       "priority": 0
     }
   ],
@@ -164,10 +157,10 @@
       "complete": true,
       "seq": "GM",
       "g_code": null,
-      "p_base_code": "p_place_single",
+      "p_base_code": "p_hold",
       "frequency": 1.0,
-      "total_tmu": 16.0,
-      "tech_line": "A0 B0 G0 A0 B0 P16 A0"
+      "total_tmu": 3.0,
+      "tech_line": "A0 B0 G0 A0 B0 P3 A0"
     }
   ],
   "gold_schema_version": "wi-gold-v1",
@@ -178,6 +171,9 @@
   "ie_review": {
     "segmentation_confirmed_by": "IEC141289",
     "segmentation_confirmed_date": "2026-08-16",
-    "segmentation_source": "v3_structure_confirmed"
-  }
+    "segmentation_source": "v3_structure_confirmed",
+    "typing_confirmed_by": "IEC141289",
+    "typing_confirmed_date": "2026-08-17"
+  },
+  "approved_date": "2026-08-17"
 }

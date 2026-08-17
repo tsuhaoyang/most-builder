@@ -1,41 +1,41 @@
 {
-  "id": "d010_30d9b858",
-  "source_text": "雙手抓握主板保持住至流水線",
-  "notes": "預標註草稿（rule pipeline 自動產生；scripts/gold_harvest.py）。非 gold——IE 覆核核准前不得移入 tests/gold/wi_plans/。",
-  "review_status": "pending_ie",
-  "approved_by": null,
+  "id": "g17_remove_board_bag",
+  "source_text": "左手抓握主板的包装袋去除",
+  "notes": "自草稿 d027_f721bbfc 轉正（IE 覆核核准；docs/llm/gold-review/README.md 工作流）。取樣為 challenge-oversampled（coverage-optimized），本案分數不可外推為母體表現。切分/判型/方向數確認與 TMU=0 裁決見 ie_review 與 tests/gold/wi_plans_draft/review-state.json。",
+  "review_status": "approved",
+  "approved_by": "IEC141289",
   "plan_origin": "rule_based_v1_preannotation",
   "ie_modified": false,
-  "split": null,
+  "split": "test",
   "split_groups": [
-    "module:dcbb30a8-44f0-4218-aafb-b6882a66aca0",
-    "module:ea8ebe0c-3ad3-438a-ac76-79a7bfcd778d"
+    "module:8436a0d0-da56-4eee-818a-b1c9bff29f44",
+    "module:8a2348c0-b072-4679-a00f-806afd11d653"
   ],
-  "split_component": "module:32a29bba-fabe-4332-baee-9785d4c2525d",
+  "split_component": "module:8436a0d0-da56-4eee-818a-b1c9bff29f44",
   "source_provenance": [
     {
       "table": "motion_module_versions",
-      "id": "55e93ed7-d891-4026-84d6-e1beea1c10e0",
+      "id": "549e17e8-156a-482e-bf17-042324c029a5",
       "detail": "rows[0].sub_activity",
-      "group_key": "module:ea8ebe0c-3ad3-438a-ac76-79a7bfcd778d",
-      "db_timestamp": "2026-08-04T06:59:46.978975+00:00",
-      "raw_text": "雙手抓握主板保持住至流水線"
+      "group_key": "module:8a2348c0-b072-4679-a00f-806afd11d653",
+      "db_timestamp": "2026-08-04T06:59:46.763087+00:00",
+      "raw_text": "左手抓握主板的包装袋去除"
     },
     {
       "table": "motion_module_versions",
-      "id": "b91e9fca-a311-496a-bbdb-db6f76f460c2",
+      "id": "fb1bde71-16d0-4988-ab3d-adeb4f1da929",
       "detail": "rows[1].sub_activity",
-      "group_key": "module:dcbb30a8-44f0-4218-aafb-b6882a66aca0",
-      "db_timestamp": "2026-08-04T06:59:46.569688+00:00",
-      "raw_text": "雙手抓握主板保持住至流水線"
+      "group_key": "module:8436a0d0-da56-4eee-818a-b1c9bff29f44",
+      "db_timestamp": "2026-08-04T06:59:46.418241+00:00",
+      "raw_text": "左手抓握主板的包装袋去除"
     },
     {
       "table": "motion_modules",
-      "id": "ea8ebe0c-3ad3-438a-ac76-79a7bfcd778d",
+      "id": "8a2348c0-b072-4679-a00f-806afd11d653",
       "detail": "name_zh (category=action)",
-      "group_key": "module:ea8ebe0c-3ad3-438a-ac76-79a7bfcd778d",
-      "db_timestamp": "2026-08-04T06:59:46.967556+00:00",
-      "raw_text": "雙手抓握主板保持住至流水線"
+      "group_key": "module:8a2348c0-b072-4679-a00f-806afd11d653",
+      "db_timestamp": "2026-08-04T06:59:46.750957+00:00",
+      "raw_text": "左手抓握主板的包装袋去除"
     }
   ],
   "challenge_tags": {
@@ -50,7 +50,7 @@
     "multi_action": true,
     "quantity": false,
     "tool_handling": false,
-    "simo_both_hands": true,
+    "simo_both_hands": false,
     "missing_info": "unknown",
     "ambiguity": "unknown",
     "diagram_reference_no_image": false,
@@ -63,11 +63,12 @@
   ],
   "preannotation_caveat": [
     "typing_changed_by_verb_lexicon",
-    "likely_multi_action_undercounted"
+    "likely_multi_action_undercounted",
+    "zero_tmu_distance_unstated"
   ],
   "typing_change": {
     "noun_only_seq": null,
-    "lexicon_seq": "GM"
+    "lexicon_seq": "CM"
   },
   "v3_structure_hint": "single_cycle",
   "v3_structure_evidence": {
@@ -75,7 +76,7 @@
     "sources": [
       {
         "table": "motion_module_versions",
-        "id": "55e93ed7-d891-4026-84d6-e1beea1c10e0",
+        "id": "549e17e8-156a-482e-bf17-042324c029a5",
         "detail": "rows[0].sub_activity",
         "cycles": 1,
         "v3_migrated": true,
@@ -83,7 +84,7 @@
       },
       {
         "table": "motion_module_versions",
-        "id": "b91e9fca-a311-496a-bbdb-db6f76f460c2",
+        "id": "fb1bde71-16d0-4988-ab3d-adeb4f1da929",
         "detail": "rows[1].sub_activity",
         "cycles": 1,
         "v3_migrated": true,
@@ -91,7 +92,7 @@
       },
       {
         "table": "motion_modules",
-        "id": "ea8ebe0c-3ad3-438a-ac76-79a7bfcd778d",
+        "id": "8a2348c0-b072-4679-a00f-806afd11d653",
         "detail": "name_zh (category=action)",
         "cycles": 1,
         "v3_migrated": true,
@@ -104,13 +105,13 @@
     "planner": "rule_based_v1",
     "rule_set_code": "MINIMOST_FACTORY_V2",
     "lexicon_source": "rule_option_synonyms",
-    "lexicon_size": 15,
+    "lexicon_size": 16,
     "routing_reasons": []
   },
   "plan": {
     "schema_version": "wi-plan-v1",
-    "source_text": "雙手抓握主板保持住至流水線",
-    "normalized_text": "雙手抓握主機板保持住至流水線",
+    "source_text": "左手抓握主板的包装袋去除",
+    "normalized_text": "左手抓握主機板的包裝袋去除",
     "language": "zh",
     "source_ref": {
       "kind": "interactive",
@@ -121,14 +122,14 @@
     "actions": [
       {
         "action_id": "a1",
-        "action_type": "move_place",
+        "action_type": "controlled_move",
         "sequence_order": 1,
         "roles": {},
         "evidence": [
           {
             "start": 0,
-            "end": 14,
-            "text": "雙手抓握主機板保持住至流水線"
+            "end": 13,
+            "text": "左手抓握主機板的包裝袋去除"
           }
         ],
         "notes": "rule_based_v1"
@@ -145,9 +146,9 @@
       "priority": 0
     },
     {
-      "parameter": "P",
-      "option_code": "p_hold",
-      "synonym_norm": "保持住",
+      "parameter": "M",
+      "option_code": "m_remove",
+      "synonym_norm": "去除",
       "priority": 0
     }
   ],
@@ -155,12 +156,12 @@
     {
       "action_id": "a1",
       "complete": true,
-      "seq": "GM",
-      "g_code": null,
-      "p_base_code": "p_hold",
+      "seq": "CM",
+      "m_verb": "m_remove",
+      "distance_cm": 0.0,
       "frequency": 1.0,
-      "total_tmu": 3.0,
-      "tech_line": "A0 B0 G0 A0 B0 P3 A0"
+      "total_tmu": 0.0,
+      "tech_line": "A0 B0 G0 M0 X0 I0 A0"
     }
   ],
   "gold_schema_version": "wi-gold-v1",
@@ -171,6 +172,13 @@
   "ie_review": {
     "segmentation_confirmed_by": "IEC141289",
     "segmentation_confirmed_date": "2026-08-16",
-    "segmentation_source": "v3_structure_confirmed"
-  }
+    "segmentation_source": "v3_structure_confirmed",
+    "typing_confirmed_by": "IEC141289",
+    "typing_confirmed_date": "2026-08-17",
+    "zero_tmu_ruling": "distance_unstated",
+    "zero_tmu_ruled_by": "IEC141289",
+    "zero_tmu_ruled_date": "2026-08-17"
+  },
+  "expected_incomplete_reason": "distance_unstated",
+  "approved_date": "2026-08-17"
 }

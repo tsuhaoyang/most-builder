@@ -93,7 +93,11 @@ from ddm_v2.most_compiler.compile import allow_lists_from_rule_set, compile_plan
 from ddm_v2.most_compiler.engine_gate import apply_engine_gate  # noqa: E402
 from ddm_v2.most_engine.providers import build_from_seed_v2  # noqa: E402
 from ddm_v2.nlp.contracts import SourceRef, WorkInstructionPlan  # noqa: E402
-from ddm_v2.nlp.gold_eval import DEFAULT_RULE_SET_CODE, case_rule_set_code  # noqa: E402
+from ddm_v2.nlp.gold_eval import (  # noqa: E402
+    DEFAULT_RULE_SET_CODE,
+    case_rule_set_code,
+    evaluate_gold_case,
+)
 from ddm_v2.nlp.lexicon import build_lexicon, match_all  # noqa: E402
 from ddm_v2.nlp.linking import (  # noqa: E402
     P_DEST_MECHANISM,
@@ -104,7 +108,12 @@ from ddm_v2.nlp.linking import (  # noqa: E402
     classify_p_destination,
 )
 from ddm_v2.nlp.normalization import normalize  # noqa: E402
-from ddm_v2.nlp.planner_eval import RULE_PLANNER_NAME, planner_preannotation_origin  # noqa: E402
+from ddm_v2.nlp.planner_eval import (  # noqa: E402
+    RULE_PLANNER_NAME,
+    evaluate_planner_case,
+    planner_preannotation_origin,
+    rule_based_plan,
+)
 from ddm_v2.nlp.routing import compute_routing  # noqa: E402
 from ddm_v2.nlp.rule_based import RuleBasedParser, classify_seq  # noqa: E402
 from ddm_v2.nlp.rule_plan_adapter import plan_from_rule_result  # noqa: E402
@@ -1365,29 +1374,47 @@ def _ie_review_lines(draft: dict[str, Any]) -> list[str]:
             "僅確認切分，不是整筆 gold 核准；`ie_modified: false`"
             "（確認≠修改——本筆不計入 planner 段 Plan 層證據力）。"
         )
-        return out
-    ruling = ir.get("ie_ruling")
-    out.append(
-        f"**✅ IE 裁決（切分維度）**：`{ruling}`（{who}，{date}）——"
-        "裁決取代本節 v3 結構的 ambiguous/開放題。僅裁決切分，不是整筆 gold 核准。"
-    )
-    if ir.get("ie_ruling_notes"):
-        out.append(f"  - 裁決註記：{ir['ie_ruling_notes']}")
-    if ir.get("plan_pending_resegmentation"):
+    elif ir.get("segmentation_source") == "ie_ruling":
+        ruling = ir.get("ie_ruling")
         out.append(
-            "  - **切分裁決已下，plan 重切等第二輪（需子句對應）**：裁決的各 cycle "
-            "子句不是原句的子字串，無法誠實切出對應 evidence span——不編造 span，"
-            "plan 維持單 action 待第二輪以子句對應重切。"
+            f"**✅ IE 裁決（切分維度）**：`{ruling}`（{who}，{date}）——"
+            "裁決取代本節 v3 結構的 ambiguous/開放題。僅裁決切分，不是整筆 gold 核准。"
         )
-    rejected = [
-        s
-        for s in (draft.get("v3_structure_evidence") or {}).get("sources") or []
-        if s.get("ie_ruling_rejected")
-    ]
-    for s in rejected:
+        if ir.get("ie_ruling_notes"):
+            out.append(f"  - 裁決註記：{ir['ie_ruling_notes']}")
+        if ir.get("plan_pending_resegmentation"):
+            out.append(
+                "  - **切分裁決已下，plan 重切等第二輪（需子句對應）**：裁決的各 cycle "
+                "子句不是原句的子字串，無法誠實切出對應 evidence span——不編造 span，"
+                "plan 維持單 action 待第二輪以子句對應重切。"
+            )
+        rejected = [
+            s
+            for s in (draft.get("v3_structure_evidence") or {}).get("sources") or []
+            if s.get("ie_ruling_rejected")
+        ]
+        for s in rejected:
+            out.append(
+                f"  - IE 裁決否定的結構（證據保留不刪）：`{s['table']}/{str(s['id'])[:8]}…`"
+                f"（{s['detail']}；{s['cycles']} cycle）"
+            )
+    # D3-019：判型／P 方向數／TMU=0 三個面向的覆核狀態（有才顯示）
+    if ir.get("typing_confirmed_by"):
         out.append(
-            f"  - IE 裁決否定的結構（證據保留不刪）：`{s['table']}/{str(s['id'])[:8]}…`"
-            f"（{s['detail']}；{s['cycles']} cycle）"
+            f"**✅ IE 覆核狀態（判型）**：第三輪判型修正已確認照預設"
+            f"（{ir['typing_confirmed_by']}，{ir['typing_confirmed_date']}）。"
+            "確認≠修改，`ie_modified` 維持 false。"
+        )
+    if ir.get("p_direction_confirmed_by"):
+        out.append(
+            f"**✅ IE 覆核狀態（P 方向數）**：方向數變體已確認照預設"
+            f"（{ir['p_direction_confirmed_by']}，{ir['p_direction_confirmed_date']}）。"
+        )
+    if ir.get("zero_tmu_ruling"):
+        out.append(
+            f"**✅ IE 裁決（TMU=0.0）**：`{ir['zero_tmu_ruling']}`——句子未述距離、"
+            f"判定資訊不足（{ir['zero_tmu_ruled_by']}，{ir['zero_tmu_ruled_date']}）；"
+            "草稿已記 `expected_incomplete_reason`（轉正走誠實記錄路徑，不發明距離）。"
         )
     return out
 
@@ -1635,10 +1662,12 @@ def build_summary(
     review_state_present: bool = False,
     review_applied: list[str] | None = None,
     review_stale: list[dict[str, Any]] | None = None,
+    review_promoted: list[dict[str, Any]] | None = None,
 ) -> str:
     drafts = drafts or []
     review_applied = review_applied or []
     review_stale = review_stale or []
+    review_promoted = review_promoted or []
     lines: list[str] = []
     lines.append("# Harvest 摘要 — gold set 擴充候選採集")
     lines.append("")
@@ -1874,6 +1903,18 @@ def build_summary(
                 )
         else:
             lines.append("stale：0 筆（所有覆核狀態都配對到內容未變的草稿）。")
+        if review_promoted:
+            lines.append("")
+            lines.append(
+                f"已轉正（promoted）entry：**{len(review_promoted)} 筆**——跳過合併"
+                "（句子已在 tests/gold/wi_plans/，不再產草稿；entry 保留為轉正軌跡）："
+            )
+            lines.append("")
+            for s in review_promoted:
+                lines.append(
+                    f"- `{s['sha8']}` → `{s['promoted_to']}`："
+                    f"「{s.get('source_text') or '（無原文記錄）'}」"
+                )
     lines.append("")
     dropped = [c for c in all_candidates if c not in selected]
     lines.append(f"## 未入選候選（{len(dropped)} 筆；多樣性選擇額度用罄，非品質淘汰）")
@@ -1959,15 +2000,64 @@ def _dump(data: dict[str, Any]) -> str:
 #   目錄 --force，或第二輪人工重套。
 # - sha8 相符但完整 sha 不符 ⇒ 不是 stale，是 state 檔損毀/雜湊碰撞 ⇒ 大聲
 #   失敗（No error bypass：IE 的裁決寧可擋下重產也不可錯掛）。
+#
+# D3-019 追加——entry 的「覆核面向」（aspects；至少一個）：
+# - 切分（segmentation_*／ie_ruling…）：D3-015 既有欄位，語意不變。
+# - 判型（typing_confirmed_by/date＋typing_change_at_review）：IE 確認第三輪
+#   判型修正照預設。stale 基準＝typing_change_at_review 與草稿 `typing_change`
+#   不同（判型在新一輪又變了 ⇒ 確認所依據的值已不同 ⇒ `typing_change_changed`）。
+# - P 方向數（p_direction_confirmed_by/date＋p_direction_caveat_at_review）：
+#   IE 確認方向數變體照預設。stale 基準＝草稿現行 P 方向旗標與記錄不同
+#   （`p_direction_context_changed`）。
+# - TMU=0 裁決（zero_tmu_ruling="distance_unstated"＋ruled_by/date）：IE 裁定
+#   句子未述距離＝資訊不足——合併時草稿記 `expected_incomplete_reason`
+#   （轉正走既有空殼守門的 reason 路徑，不發明距離）。stale 基準＝草稿已無
+#   `zero_tmu_distance_unstated` 旗標（`zero_tmu_flag_absent`）。
+# stale 判定是 entry 級 all-or-nothing：任何一個面向的依據變了就整筆 stale
+# （確認所依據的證據已不同——IE 重看，不部分沿用）。
+#
+# 轉正標記：entry 標 `promoted_to`（正式 gold id）＋`promoted_date` ⇒ 該句已
+# 在 tests/gold/wi_plans/，harvest 合併時**跳過**（不套用也不算 stale——軌跡
+# 保留不刪 entry）；正式 gold ↔ promoted 標記的同進同出守門在
+# tests/unit/test_gold_promotion.py。
 
 REVIEW_STATE_FILENAME = "review-state.json"
 REVIEW_STATE_SCHEMA_VERSION = "wi-review-state-v1"
 REVIEW_SEGMENTATION_SOURCES = ("v3_structure_confirmed", "ie_ruling")
+# TMU=0 裁決的唯一合法值（D3-019：IE 判定「句子資訊不足——距離未述」；
+# 合併時原樣寫進草稿 expected_incomplete_reason）
+ZERO_TMU_RULING_DISTANCE_UNSTATED = "distance_unstated"
 _RULING_RE = re.compile(r"^(single_cycle|multi_cycle_[2-9]\d*)$")
 _DATE_RE = re.compile(r"^\d{4}-\d{2}-\d{2}$")
 _SHA8_RE = re.compile(r"^[0-9a-f]{8}$")
 _SHA256_RE = re.compile(r"^[0-9a-f]{64}$")
-# entry → 草稿 ie_review 區塊要帶的欄位（review_block_from_entry 的唯一出處）
+_GOLD_ID_RE = re.compile(r"^g\d{2,}_[a-z0-9_]+$")
+_SEQ_VALUES = (None, "GM", "CM")
+# 各覆核面向的欄位群（load_review_state 驗證「有其一必有全群」，不留半套）
+_SEG_ENTRY_KEYS = (
+    "segmentation_confirmed_by",
+    "segmentation_confirmed_date",
+    "segmentation_source",
+    "ie_ruling",
+    "ie_ruling_notes",
+    "plan_pending_resegmentation",
+    "ie_rejected_evidence",
+    "ruling_history",
+)
+_TYPING_ENTRY_KEYS = (
+    "typing_confirmed_by",
+    "typing_confirmed_date",
+    "typing_change_at_review",
+)
+_P_DIR_ENTRY_KEYS = (
+    "p_direction_confirmed_by",
+    "p_direction_confirmed_date",
+    "p_direction_caveat_at_review",
+)
+_ZERO_TMU_ENTRY_KEYS = ("zero_tmu_ruling", "zero_tmu_ruled_by", "zero_tmu_ruled_date")
+_PROMOTED_ENTRY_KEYS = ("promoted_to", "promoted_date")
+# entry → 草稿 ie_review 區塊要帶的欄位（review_block_from_entry 的唯一出處；
+# *_at_review 是 stale 判定基準、promoted_* 是轉正軌跡——都不投影進草稿）
 _REVIEW_BLOCK_KEYS = (
     "segmentation_confirmed_by",
     "segmentation_confirmed_date",
@@ -1975,6 +2065,13 @@ _REVIEW_BLOCK_KEYS = (
     "ie_ruling",
     "ie_ruling_notes",
     "plan_pending_resegmentation",
+    "typing_confirmed_by",
+    "typing_confirmed_date",
+    "p_direction_confirmed_by",
+    "p_direction_confirmed_date",
+    "zero_tmu_ruling",
+    "zero_tmu_ruled_by",
+    "zero_tmu_ruled_date",
 )
 
 
@@ -1993,6 +2090,70 @@ def draft_sha8(draft: dict[str, Any]) -> str:
 
 def _fail_state(path: Path | str, msg: str) -> None:
     raise SystemExit(f"review-state 無效（{path}）：{msg}——IE 覆核狀態不可靜默丟棄，修檔後再跑")
+
+
+def _require_by_date(path: Path | str, ctx: str, entry: dict, by_key: str, date_key: str) -> None:
+    if not (isinstance(entry.get(by_key), str) and entry[by_key].strip()):
+        _fail_state(path, f"{ctx}：{by_key} 必填（IE 工號）")
+    if not (isinstance(entry.get(date_key), str) and _DATE_RE.match(entry[date_key])):
+        _fail_state(path, f"{ctx}：{date_key} 必須是 YYYY-MM-DD")
+
+
+def _validate_typing_aspect(path: Path | str, ctx: str, entry: dict) -> None:
+    """判型確認面向（D3-019）：typing_change_at_review 是 stale 判定基準，
+    形狀必須與草稿 `typing_change` 欄相同（舊/新判型且兩者不同）。"""
+    _require_by_date(path, ctx, entry, "typing_confirmed_by", "typing_confirmed_date")
+    tc = entry.get("typing_change_at_review")
+    if not (isinstance(tc, dict) and set(tc) == {"noun_only_seq", "lexicon_seq"}):
+        _fail_state(
+            path,
+            f"{ctx}：typing_change_at_review 必須是 {{noun_only_seq, lexicon_seq}}"
+            "（確認所依據的判型值必須記錄，否則 stale 偵測不了）",
+        )
+    if tc["noun_only_seq"] not in _SEQ_VALUES or tc["lexicon_seq"] not in _SEQ_VALUES:
+        _fail_state(path, f"{ctx}：typing_change_at_review 值必須是 GM/CM/null")
+    if tc["noun_only_seq"] == tc["lexicon_seq"]:
+        _fail_state(path, f"{ctx}：typing_change_at_review 舊/新判型相同——沒有變更就沒有確認題")
+
+
+def _validate_p_direction_aspect(path: Path | str, ctx: str, entry: dict) -> None:
+    _require_by_date(
+        path, ctx, entry, "p_direction_confirmed_by", "p_direction_confirmed_date"
+    )
+    caveat = entry.get("p_direction_caveat_at_review")
+    if caveat not in P_DIRECTION_CAVEAT_NAMES:
+        _fail_state(
+            path,
+            f"{ctx}：p_direction_caveat_at_review 必須是 {sorted(P_DIRECTION_CAVEAT_NAMES)}"
+            "（確認所依據的方向數旗標必須記錄）",
+        )
+
+
+def _validate_zero_tmu_aspect(path: Path | str, ctx: str, entry: dict) -> None:
+    ruling = entry.get("zero_tmu_ruling")
+    if ruling != ZERO_TMU_RULING_DISTANCE_UNSTATED:
+        _fail_state(
+            path,
+            f"{ctx}：zero_tmu_ruling 目前唯一合法值是 "
+            f"{ZERO_TMU_RULING_DISTANCE_UNSTATED!r}（IE 判定句子資訊不足；"
+            "補距離請改 plan/cycle 走 --recompile，不在本欄）",
+        )
+    _require_by_date(path, ctx, entry, "zero_tmu_ruled_by", "zero_tmu_ruled_date")
+
+
+def _validate_promoted_marker(path: Path | str, ctx: str, entry: dict) -> None:
+    """轉正標記：promoted_to（正式 gold id）＋promoted_date 同進同出——
+    軌跡保留（entry 不刪），harvest 合併時跳過。"""
+    target = entry.get("promoted_to")
+    if not (isinstance(target, str) and _GOLD_ID_RE.match(target)):
+        _fail_state(
+            path, f"{ctx}：promoted_to 必須是正式 gold id（gNN_slug 形式）"
+        )
+    if not (
+        isinstance(entry.get("promoted_date"), str)
+        and _DATE_RE.match(entry["promoted_date"])
+    ):
+        _fail_state(path, f"{ctx}：promoted_date 必須是 YYYY-MM-DD")
 
 
 def load_review_state(path: Path) -> dict[str, dict[str, Any]]:
@@ -2030,6 +2191,30 @@ def load_review_state(path: Path) -> dict[str, dict[str, Any]]:
             _fail_state(path, f"{ctx}：norm_sha256 前 8 碼 {full[:8]} 與鍵不一致")
         if not (isinstance(entry.get("source_text"), str) and entry["source_text"].strip()):
             _fail_state(path, f"{ctx}：source_text 必填（人讀對照用）")
+        if not isinstance(entry.get("ie_modified"), bool):
+            _fail_state(path, f"{ctx}：ie_modified 必填 true|false")
+        # 面向偵測（D3-019）：有其一欄位＝宣告該面向 ⇒ 該面向欄位群必須完整
+        has_seg = any(k in entry for k in _SEG_ENTRY_KEYS)
+        has_typing = any(k in entry for k in _TYPING_ENTRY_KEYS)
+        has_pdir = any(k in entry for k in _P_DIR_ENTRY_KEYS)
+        has_zero = any(k in entry for k in _ZERO_TMU_ENTRY_KEYS)
+        has_promoted = any(k in entry for k in _PROMOTED_ENTRY_KEYS)
+        if not (has_seg or has_typing or has_pdir or has_zero):
+            _fail_state(
+                path,
+                f"{ctx}：entry 至少要有一個覆核面向"
+                "（切分／判型／P 方向數／TMU=0 裁決）——空 entry 不是覆核記錄",
+            )
+        if has_typing:
+            _validate_typing_aspect(path, ctx, entry)
+        if has_pdir:
+            _validate_p_direction_aspect(path, ctx, entry)
+        if has_zero:
+            _validate_zero_tmu_aspect(path, ctx, entry)
+        if has_promoted:
+            _validate_promoted_marker(path, ctx, entry)
+        if not has_seg:
+            continue
         if not (
             isinstance(entry.get("segmentation_confirmed_by"), str)
             and entry["segmentation_confirmed_by"].strip()
@@ -2045,8 +2230,6 @@ def load_review_state(path: Path) -> dict[str, dict[str, Any]]:
             _fail_state(
                 path, f"{ctx}：segmentation_source 必須是 {REVIEW_SEGMENTATION_SOURCES}"
             )
-        if not isinstance(entry.get("ie_modified"), bool):
-            _fail_state(path, f"{ctx}：ie_modified 必填 true|false")
         if "v3_structure_hint_at_review" not in entry:
             _fail_state(
                 path,
@@ -2135,7 +2318,8 @@ def review_block_from_entry(entry: dict[str, Any]) -> dict[str, Any]:
 def apply_review_state_entry(draft: dict[str, Any], entry: dict[str, Any]) -> str | None:
     """把單筆覆核狀態合併進草稿；回傳 None＝已套用、字串＝stale 原因（未動草稿）。
 
-    所有前置檢查先做完才落筆——不留半套狀態。"""
+    所有前置檢查先做完才落筆——不留半套狀態。stale 是 entry 級 all-or-nothing：
+    任一面向的依據變了就整筆不套（確認所依據的證據已不同，IE 重看）。"""
     norm = draft["plan"]["normalized_text"]
     full = hashlib.sha256(norm.encode("utf-8")).hexdigest()
     if entry["norm_sha256"] != full:
@@ -2153,6 +2337,20 @@ def apply_review_state_entry(draft: dict[str, Any], entry: dict[str, Any]) -> st
     source_keys = {(s["table"], s["id"]) for s in sources}
     if any((r["table"], r["id"]) not in source_keys for r in rejected):
         return "rejected_evidence_missing"
+    caveats = draft.get("preannotation_caveat") or []
+    if "typing_change_at_review" in entry:
+        # 判型確認的依據＝當時的舊/新判型值；新一輪判型又變了就不得沿用確認
+        if draft.get("typing_change") != entry["typing_change_at_review"]:
+            return "typing_change_changed"
+    if "p_direction_caveat_at_review" in entry:
+        current = [c for c in caveats if c in P_DIRECTION_CAVEAT_NAMES]
+        if current != [entry["p_direction_caveat_at_review"]]:
+            return "p_direction_context_changed"
+    if "zero_tmu_ruling" in entry:
+        # 裁決前提＝該筆 complete 但 TMU=0.0；旗標消失（TMU 變真值或退回
+        # incomplete）＝前提已不成立
+        if ZERO_TMU_CAVEAT not in caveats:
+            return "zero_tmu_flag_absent"
     draft["ie_review"] = review_block_from_entry(entry)
     draft["ie_modified"] = False  # 確認≠修改（entry 的 ie_modified=true 已在上面拒絕）
     for r in rejected:
@@ -2160,6 +2358,10 @@ def apply_review_state_entry(draft: dict[str, Any], entry: dict[str, Any]) -> st
             if (s["table"], s["id"]) == (r["table"], r["id"]):
                 # IE 裁決否定的結構：證據保留不刪，標記讓覆核表/後人看得到
                 s["ie_ruling_rejected"] = True
+    if entry.get("zero_tmu_ruling"):
+        # D3-019：TMU=0 裁決落地＝走既有 expected_incomplete_reason 機制
+        # （空殼守門的誠實記錄路徑；不發明距離）
+        draft["expected_incomplete_reason"] = entry["zero_tmu_ruling"]
     return None
 
 
@@ -2167,7 +2369,10 @@ def merge_review_state(
     drafts: list[dict[str, Any]], entries: dict[str, dict[str, Any]]
 ) -> tuple[list[str], list[dict[str, Any]]]:
     """整批合併：回傳（已套用草稿 id 排序清單, stale 條目清單）。決定性：
-    entry 依 sha8 排序處理，輸出穩定。"""
+    entry 依 sha8 排序處理，輸出穩定。
+
+    標 `promoted_to` 的 entry 跳過（不套用也不算 stale）：該句已在正式 gold、
+    不再產草稿——entry 保留是轉正軌跡，不是待合併狀態。"""
     by_sha8: dict[str, dict[str, Any]] = {}
     for d in drafts:
         key = draft_sha8(d)
@@ -2178,6 +2383,8 @@ def merge_review_state(
     stale: list[dict[str, Any]] = []
     for sha8 in sorted(entries):
         entry = entries[sha8]
+        if entry.get("promoted_to"):
+            continue
         draft = by_sha8.get(sha8)
         if draft is None:
             stale.append(
@@ -2248,6 +2455,15 @@ async def cmd_harvest(args: argparse.Namespace) -> int:
     state_path = out_dir / REVIEW_STATE_FILENAME
     review_entries = load_review_state(state_path)
     review_applied, review_stale = merge_review_state(drafts, review_entries)
+    review_promoted = [
+        {
+            "sha8": sha8,
+            "promoted_to": e["promoted_to"],
+            "source_text": e.get("source_text"),
+        }
+        for sha8, e in sorted(review_entries.items())
+        if e.get("promoted_to")
+    ]
 
     for d in drafts:
         (out_dir / f"{d['id']}.json").write_text(_dump(d), encoding="utf-8")
@@ -2267,6 +2483,7 @@ async def cmd_harvest(args: argparse.Namespace) -> int:
         review_state_present=bool(review_entries),
         review_applied=review_applied,
         review_stale=review_stale,
+        review_promoted=review_promoted,
     )
     (review_dir / "harvest-summary.md").write_text(summary, encoding="utf-8")
 
@@ -2353,6 +2570,270 @@ async def cmd_recompile(
     return rc
 
 
+# ── 轉正（草稿 → 正式 gold；docs/llm/gold-review/README.md「核准→轉正」工作流）──
+#
+# 資格（D3-019 首批轉正；**全部滿足才轉**，promotion_blockers 是唯一出處，
+# repo 守門在 tests/unit/test_gold_promotion.py）：
+# 1. 切分已確認（review-state entry 的切分面向；41 筆內）。
+# 2. 確認/裁決的結構與 plan 一致——multi_cycle_n 確認但 plan 未重切（rule
+#    planner 恆 1 action）不得原樣轉正。
+# 3. 判型/P 方向數/TMU=0 等旗標全部有對應確認或裁決（未確認旗標＝未解決的
+#    覆核提問）；acquire_without_place／engine_rejected_cycle 未解決＝擋。
+# 4. 實質內容：至少一個 complete 帶 total_tmu > 0 的 cycle，或顯式
+#    expected_incomplete_reason（D3-018 M1 空殼守門的兩條合法路徑）。
+# 5. S 檢：plan.normalized_text 與至少一筆 source_provenance.raw_text 正規化後
+#    一致（真實案例守門）。
+# 落筆語意：整批先驗再動手（一筆不合格＝一筆都不寫）；compile 段預檢全綠才
+# 落筆（任何一筆紅＝該筆期望值有問題，撤回該筆，不准為過而改期望）；轉正後
+# review-state entry 標 promoted_to/promoted_date（軌跡保留不刪）。
+
+PROMOTION_SPLITS = ("train", "calibration", "test", "temporal_holdout")
+_SLUG_RE = re.compile(r"^[a-z0-9_]+$")
+
+
+def provenance_matches_normalized_text(data: dict[str, Any]) -> bool:
+    """S 檢（R5）：plan.normalized_text 與至少一筆 source_provenance.raw_text
+    正規化後一致（同一支 normalize——harvest 的去重鍵就是 normalize(raw)）。
+    schema 守門測試與 promotion_blockers 共用本函式。"""
+    norm_text = (data.get("plan") or {}).get("normalized_text")
+    return any(
+        normalize(str(s.get("raw_text") or "")) == norm_text
+        for s in data.get("source_provenance") or []
+    )
+
+
+def substance_blockers(data: dict[str, Any]) -> list[str]:
+    """空殼守門（D3-018 M1 同語意）：complete 帶 TMU>0，或顯式
+    expected_incomplete_reason——TMU=0.0 非真值，不算實質內容。"""
+    cycles = data.get("expected_cycles") or []
+    has_substance = any(
+        c.get("complete") is True and (c.get("total_tmu") or 0) > 0 for c in cycles
+    )
+    reason = data.get("expected_incomplete_reason")
+    if not has_substance and not (isinstance(reason, str) and reason.strip()):
+        return [
+            "無任何 complete=true 帶 total_tmu > 0 的 cycle，也無顯式 "
+            "expected_incomplete_reason（TMU=0.0 非真值；資訊不足要誠實寫出來）"
+        ]
+    return []
+
+
+def caveat_resolution_blockers(data: dict[str, Any]) -> list[str]:
+    """逐旗標檢查「未解決的 caveat 提問」：每個 preannotation_caveat 都要有
+    對應的 IE 確認/裁決（檔內 ie_review／expected_incomplete_reason），否則擋。
+    未知旗標 fail-closed——新旗標必須先定義解法才可轉正。"""
+    ir = data.get("ie_review") or {}
+    blockers: list[str] = []
+    for c in data.get("preannotation_caveat") or []:
+        if c in SEGMENTATION_CAVEATS:
+            if not ir.get("segmentation_confirmed_by"):
+                blockers.append(f"{c}：切分未確認（無 IE 確認/裁決）")
+        elif c == TYPING_CHANGED_CAVEAT:
+            if not ir.get("typing_confirmed_by"):
+                blockers.append(f"{c}：判型修正未經 IE 確認")
+        elif c in P_DIRECTION_CAVEAT_NAMES:
+            if not ir.get("p_direction_confirmed_by"):
+                blockers.append(f"{c}：P 方向數未經 IE 確認")
+        elif c == ZERO_TMU_CAVEAT:
+            reason = data.get("expected_incomplete_reason")
+            if not (
+                ir.get("zero_tmu_ruling")
+                and isinstance(reason, str)
+                and reason.strip()
+            ):
+                blockers.append(
+                    f"{c}：TMU=0.0 未經 IE 裁決（需 zero_tmu_ruling＋"
+                    "expected_incomplete_reason）"
+                )
+        else:
+            blockers.append(f"{c}：未解決的覆核旗標（無對應確認機制，fail-closed）")
+    return blockers
+
+
+def structure_consistency_blockers(data: dict[str, Any]) -> list[str]:
+    """確認/裁決的切分結構 ⇄ plan 一致性：single_cycle → plan 恰 1 action；
+    multi_cycle_n → plan 恰 n action。rule planner 恆 1 action——multi_cycle
+    確認下原樣轉正＝把 IE 已否定的切分寫進標準答案。"""
+    ir = data.get("ie_review") or {}
+    if not ir.get("segmentation_confirmed_by"):
+        return []  # 切分未確認由 promotion_blockers 另擋
+    if ir.get("segmentation_source") == "ie_ruling":
+        confirmed = ir.get("ie_ruling")
+    else:
+        confirmed = data.get("v3_structure_hint")
+    n = _structure_hint_cycles(confirmed)
+    if n is None:
+        return [f"確認的切分結構 {confirmed!r} 無法對應 cycle 數"]
+    actions = len((data.get("plan") or {}).get("actions") or [])
+    if actions != n:
+        return [
+            f"切分確認為 {confirmed}（{n} cycle）但 plan 有 {actions} 個 action——"
+            "plan 未重切，不得原樣轉正"
+        ]
+    return []
+
+
+def promotion_blockers(
+    draft: dict[str, Any], entry: dict[str, Any] | None
+) -> list[str]:
+    """單筆草稿的轉正資格檢查（唯一出處；空 list＝合格）。"""
+    blockers: list[str] = []
+    if entry is None:
+        blockers.append("review-state 無對應 entry（切分未確認——不在 IE 覆核集合內）")
+    elif entry.get("promoted_to"):
+        blockers.append(f"entry 已標 promoted_to={entry['promoted_to']}（不可重複轉正）")
+    ir = draft.get("ie_review")
+    if not ir:
+        blockers.append("草稿無 ie_review（覆核狀態未合併或 stale——先跑 harvest 合併）")
+    else:
+        if not ir.get("segmentation_confirmed_by"):
+            blockers.append("切分維度未確認（ie_review 無 segmentation_confirmed_by）")
+        if entry is not None and ir != review_block_from_entry(entry):
+            blockers.append("ie_review 與 state entry 投影不一致（草稿過時，重跑 harvest）")
+    if draft.get("ie_modified") is True:
+        blockers.append("ie_modified=true 的 plan 編輯不在本工作流（走 --recompile 後人工轉正）")
+    blockers += structure_consistency_blockers(draft)
+    blockers += caveat_resolution_blockers(draft)
+    blockers += substance_blockers(draft)
+    if not provenance_matches_normalized_text(draft):
+        blockers.append("S 檢失敗：normalized_text 與所有 source_provenance.raw_text 不一致")
+    return blockers
+
+
+def promoted_case_payload(
+    draft: dict[str, Any],
+    *,
+    new_id: str,
+    approved_by: str,
+    approved_date: str,
+    split: str,
+) -> dict[str, Any]:
+    """草稿 → 正式 gold 檔內容（純轉換，不落盤）：改身分欄位、保留全部
+    覆核軌跡（ie_review／caveat／provenance／草稿 id 進 notes 供追溯）。"""
+    data = json.loads(json.dumps(draft))  # deep copy
+    old_id = data.get("id")
+    data["id"] = new_id
+    data["approved_by"] = approved_by
+    data["approved_date"] = approved_date
+    data["review_status"] = "approved"
+    data["ie_modified"] = False  # 原樣核准（確認≠修改；planner 段自我指涉排除）
+    data["split"] = split
+    data["notes"] = (
+        f"自草稿 {old_id} 轉正（IE 覆核核准；docs/llm/gold-review/README.md 工作流）。"
+        "取樣為 challenge-oversampled（coverage-optimized），本案分數不可外推為"
+        "母體表現。切分/判型/方向數確認與 TMU=0 裁決見 ie_review 與 "
+        "tests/gold/wi_plans_draft/review-state.json。"
+    )
+    return data
+
+
+async def cmd_promote(
+    paths: list[str],
+    *,
+    approved_by: str,
+    approved_date: str,
+    split: str,
+    slugs: list[str],
+) -> int:
+    """草稿轉正（整批先驗再動手；一筆不合格＝一筆都不寫）。"""
+    if split not in PROMOTION_SPLITS:
+        raise SystemExit(f"--split 必須是 {PROMOTION_SPLITS}")
+    if not _DATE_RE.match(approved_date or ""):
+        raise SystemExit("--approved-date 必須是 YYYY-MM-DD")
+    if not (approved_by or "").strip() or approved_by == "seed":
+        raise SystemExit("--approved-by 必須是 IE 工號（seed 是 fixture 慣例，不是核准人）")
+    if len(slugs) != len(paths):
+        raise SystemExit(f"--slugs 數量（{len(slugs)}）必須與 --promote 檔數（{len(paths)}）一致")
+    for slug in slugs:
+        if not _SLUG_RE.match(slug):
+            raise SystemExit(f"slug {slug!r} 不合法（^[a-z0-9_]+$）")
+    if len(set(slugs)) != len(slugs):
+        raise SystemExit("slug 重複")
+
+    drafts: list[tuple[Path, dict[str, Any]]] = []
+    for p in paths:
+        path = Path(p)
+        if is_formal_gold_path(path):
+            raise SystemExit(f"{path} 已在正式 gold 目錄——轉正的輸入是草稿")
+        drafts.append((path, json.loads(path.read_text(encoding="utf-8"))))
+    draft_dirs = {path.parent.resolve() for path, _ in drafts}
+    if len(draft_dirs) != 1:
+        raise SystemExit("一次只轉正同一個草稿目錄（review-state 的歸屬要唯一）")
+    state_path = draft_dirs.pop() / REVIEW_STATE_FILENAME
+    state_raw = json.loads(state_path.read_text(encoding="utf-8"))
+    entries = load_review_state(state_path)
+
+    # 1) 資格：整批先驗（promotion_blockers 唯一出處）
+    problems: list[str] = []
+    for path, data in drafts:
+        blockers = promotion_blockers(data, entries.get(draft_sha8(data)))
+        if blockers:
+            problems.append(f"{path.name}：\n  - " + "\n  - ".join(blockers))
+    if problems:
+        raise SystemExit("轉正資格不符（整批拒絕，一筆都不寫）：\n" + "\n".join(problems))
+
+    # 2) split 防 leakage：既有正式 gold 同 split_component 不得跨 split
+    gold_component_split: dict[str, str] = {}
+    for gp in sorted(GOLD_DIR.glob("*.json")):
+        gd = json.loads(gp.read_text(encoding="utf-8"))
+        if gd.get("split_component") and gd.get("split"):
+            gold_component_split[gd["split_component"]] = gd["split"]
+    for path, data in drafts:
+        comp = data.get("split_component")
+        prev = gold_component_split.get(comp or "")
+        if prev is not None and prev != split:
+            raise SystemExit(
+                f"{path.name}：split_component {comp} 已有正式 gold 在 split={prev}，"
+                "同 component 不得跨 split（防 leakage）"
+            )
+
+    # 3) 編號與 payload；compile／planner 段預檢全綠才落筆
+    serials = [
+        int(m.group(1))
+        for m in (re.match(r"^g(\d+)_", p.name) for p in GOLD_DIR.glob("*.json"))
+        if m
+    ]
+    next_no = max(serials, default=0) + 1
+    payloads: list[tuple[Path, dict[str, Any], dict[str, Any]]] = []
+    for (path, data), slug in zip(drafts, slugs):
+        new_id = f"g{next_no:02d}_{slug}"
+        next_no += 1
+        target = GOLD_DIR / f"{new_id}.json"
+        if target.exists():
+            raise SystemExit(f"{target} 已存在——不覆蓋已核准 gold")
+        payload = promoted_case_payload(
+            data,
+            new_id=new_id,
+            approved_by=approved_by,
+            approved_date=approved_date,
+            split=split,
+        )
+        compile_res = await evaluate_gold_case(payload)
+        if not compile_res.ok:
+            problems.append(f"{path.name} → {new_id}：compile 段紅（{compile_res.errors}）")
+        planner_res = await evaluate_planner_case(payload, rule_based_plan)
+        if not planner_res.ok:
+            problems.append(f"{path.name} → {new_id}：gold 標註缺損（{planner_res.errors}）")
+        payloads.append((path, data, payload))
+    if problems:
+        raise SystemExit(
+            "轉正預檢紅燈（該筆期望值有問題——撤回該筆，不准為過而改期望）：\n"
+            + "\n".join(problems)
+        )
+
+    # 4) 落筆：寫正式 gold → 標 promoted → 刪草稿檔（entry 保留＝軌跡）
+    for path, data, payload in payloads:
+        (GOLD_DIR / f"{payload['id']}.json").write_text(_dump(payload), encoding="utf-8")
+        entry = state_raw["entries"][draft_sha8(data)]
+        entry["promoted_to"] = payload["id"]
+        entry["promoted_date"] = approved_date
+        path.unlink()
+        print(f"promoted {path.name} → {payload['id']}.json（split={split}）")
+    state_path.write_text(_dump(state_raw), encoding="utf-8")
+    print(f"review-state 已標 promoted_to（{len(payloads)} 筆；entry 保留不刪）")
+    return 0
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(description="Gold set 擴充：候選採集＋預標註草稿（唯讀 DB）")
     parser.add_argument("--out", default=str(ROOT / "tests" / "gold" / "wi_plans_draft"))
@@ -2376,9 +2857,45 @@ def main() -> int:
         default=None,
         help="--relock-approved 的重鎖原因（會寫進被改檔案的 notes 留痕）",
     )
+    parser.add_argument(
+        "--promote",
+        nargs="+",
+        metavar="DRAFT_JSON",
+        help="IE 核准後轉正：草稿 → tests/gold/wi_plans/（資格檢查＋compile 預檢"
+        "全綠才落筆；review-state entry 標 promoted_to）",
+    )
+    parser.add_argument("--approved-by", default=None, help="--promote 的核准 IE 工號")
+    parser.add_argument(
+        "--approved-date", default=None, help="--promote 的核准日期（YYYY-MM-DD）"
+    )
+    parser.add_argument(
+        "--split",
+        default=None,
+        choices=PROMOTION_SPLITS,
+        help="--promote 的 split 分配（同 split_component 必同 split）",
+    )
+    parser.add_argument(
+        "--slugs",
+        default=None,
+        help="--promote 的語意 slug 清單（逗號分隔，數量與檔數一致；gNN_<slug>）",
+    )
     args = parser.parse_args()
     if args.relock_approved and not args.recompile:
         parser.error("--relock-approved 只在 --recompile 模式有意義")
+    if args.promote:
+        if args.recompile:
+            parser.error("--promote 與 --recompile 不可同時使用")
+        if not (args.approved_by and args.approved_date and args.split and args.slugs):
+            parser.error("--promote 需要 --approved-by、--approved-date、--split、--slugs")
+        return asyncio.run(
+            cmd_promote(
+                args.promote,
+                approved_by=args.approved_by,
+                approved_date=args.approved_date,
+                split=args.split,
+                slugs=[s.strip() for s in args.slugs.split(",") if s.strip()],
+            )
+        )
     if args.recompile:
         return asyncio.run(
             cmd_recompile(

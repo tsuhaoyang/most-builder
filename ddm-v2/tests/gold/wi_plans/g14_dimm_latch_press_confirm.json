@@ -1,24 +1,41 @@
 {
-  "id": "d003_0acd56df",
-  "source_text": "雙手接觸×16DIMM卡槽的左右卡扣按壓×16並確認卡扣按壓規定位置",
-  "notes": "預標註草稿（rule pipeline 自動產生；scripts/gold_harvest.py）。非 gold——IE 覆核核准前不得移入 tests/gold/wi_plans/。",
-  "review_status": "pending_ie",
-  "approved_by": null,
+  "id": "g14_dimm_latch_press_confirm",
+  "source_text": "雙手接觸DIMM卡槽的左右卡扣按壓並確認卡扣按壓規定位置",
+  "notes": "自草稿 d022_9f3d6515 轉正（IE 覆核核准；docs/llm/gold-review/README.md 工作流）。取樣為 challenge-oversampled（coverage-optimized），本案分數不可外推為母體表現。切分/判型/方向數確認與 TMU=0 裁決見 ie_review 與 tests/gold/wi_plans_draft/review-state.json。",
+  "review_status": "approved",
+  "approved_by": "IEC141289",
   "plan_origin": "rule_based_v1_preannotation",
   "ie_modified": false,
-  "split": null,
+  "split": "test",
   "split_groups": [
-    "module:45915347-cc29-4ee1-a4c7-e696d05cdd7a"
+    "module:45915347-cc29-4ee1-a4c7-e696d05cdd7a",
+    "module:f495f90c-adf9-43d3-8ab9-2af73a6b5c21"
   ],
   "split_component": "module:45915347-cc29-4ee1-a4c7-e696d05cdd7a",
   "source_provenance": [
     {
-      "table": "motion_module_versions",
-      "id": "6e6f8d3d-1b37-4eb8-b753-67c6997400e4",
-      "detail": "rows[0].sub_activity",
+      "table": "motion_modules",
+      "id": "45915347-cc29-4ee1-a4c7-e696d05cdd7a",
+      "detail": "name_zh (category=wi-template)",
       "group_key": "module:45915347-cc29-4ee1-a4c7-e696d05cdd7a",
-      "db_timestamp": "2026-08-04T06:59:46.630827+00:00",
-      "raw_text": "雙手接觸×16DIMM卡槽的左右卡扣按壓×16並確認卡扣按壓規定位置"
+      "db_timestamp": "2026-08-04T06:59:46.616701+00:00",
+      "raw_text": "雙手接觸DIMM卡槽的左右卡扣按壓並確認卡扣按壓規定位置"
+    },
+    {
+      "table": "motion_module_versions",
+      "id": "fc8b5371-a123-48c6-8f9f-1f6cf3cbd352",
+      "detail": "rows[0].sub_activity",
+      "group_key": "module:f495f90c-adf9-43d3-8ab9-2af73a6b5c21",
+      "db_timestamp": "2026-08-04T06:59:47.078007+00:00",
+      "raw_text": "雙手接觸DIMM卡槽的左右卡扣按壓並確認卡扣按壓規定位置"
+    },
+    {
+      "table": "motion_modules",
+      "id": "f495f90c-adf9-43d3-8ab9-2af73a6b5c21",
+      "detail": "name_zh (category=action)",
+      "group_key": "module:f495f90c-adf9-43d3-8ab9-2af73a6b5c21",
+      "db_timestamp": "2026-08-04T06:59:47.065326+00:00",
+      "raw_text": "雙手接觸DIMM卡槽的左右卡扣按壓並確認卡扣按壓規定位置"
     }
   ],
   "challenge_tags": {
@@ -31,7 +48,7 @@
     "inverted_word_order": "unknown",
     "colloquial": "unknown",
     "multi_action": true,
-    "quantity": true,
+    "quantity": false,
     "tool_handling": false,
     "simo_both_hands": true,
     "missing_info": "unknown",
@@ -57,12 +74,28 @@
     "note": "hint 是證據不是判決：來源＝IE 驗證過的 v3 生產資料的結構（module/cycle 邊界）；覆核表預設依 v3 結構、IE 可推翻；本欄位絕不寫進 expected.*",
     "sources": [
       {
+        "table": "motion_modules",
+        "id": "45915347-cc29-4ee1-a4c7-e696d05cdd7a",
+        "detail": "name_zh (category=wi-template)",
+        "cycles": 1,
+        "v3_migrated": true,
+        "basis": "module 名稱句對應發布版 v1 共 1 列＝IE 把這段話切成 1 個 cycle"
+      },
+      {
         "table": "motion_module_versions",
-        "id": "6e6f8d3d-1b37-4eb8-b753-67c6997400e4",
+        "id": "fc8b5371-a123-48c6-8f9f-1f6cf3cbd352",
         "detail": "rows[0].sub_activity",
         "cycles": 1,
         "v3_migrated": true,
         "basis": "版本 rows[] 一列＝一個 cycle（rows[*].cycle 為單一 CycleIn）"
+      },
+      {
+        "table": "motion_modules",
+        "id": "f495f90c-adf9-43d3-8ab9-2af73a6b5c21",
+        "detail": "name_zh (category=action)",
+        "cycles": 1,
+        "v3_migrated": true,
+        "basis": "module 名稱句對應發布版 v1 共 1 列＝IE 把這段話切成 1 個 cycle"
       }
     ]
   },
@@ -71,13 +104,13 @@
     "planner": "rule_based_v1",
     "rule_set_code": "MINIMOST_FACTORY_V2",
     "lexicon_source": "rule_option_synonyms",
-    "lexicon_size": 15,
+    "lexicon_size": 16,
     "routing_reasons": []
   },
   "plan": {
     "schema_version": "wi-plan-v1",
-    "source_text": "雙手接觸×16DIMM卡槽的左右卡扣按壓×16並確認卡扣按壓規定位置",
-    "normalized_text": "雙手接觸×16dimm卡槽的左右卡扣按壓×16並確認卡扣按壓規定位置",
+    "source_text": "雙手接觸DIMM卡槽的左右卡扣按壓並確認卡扣按壓規定位置",
+    "normalized_text": "雙手接觸dimm卡槽的左右卡扣按壓並確認卡扣按壓規定位置",
     "language": "zh",
     "source_ref": {
       "kind": "interactive",
@@ -94,8 +127,8 @@
         "evidence": [
           {
             "start": 0,
-            "end": 34,
-            "text": "雙手接觸×16dimm卡槽的左右卡扣按壓×16並確認卡扣按壓規定位置"
+            "end": 28,
+            "text": "雙手接觸dimm卡槽的左右卡扣按壓並確認卡扣按壓規定位置"
           }
         ],
         "notes": "rule_based_v1"
@@ -138,6 +171,9 @@
   "ie_review": {
     "segmentation_confirmed_by": "IEC141289",
     "segmentation_confirmed_date": "2026-08-16",
-    "segmentation_source": "v3_structure_confirmed"
-  }
+    "segmentation_source": "v3_structure_confirmed",
+    "typing_confirmed_by": "IEC141289",
+    "typing_confirmed_date": "2026-08-17"
+  },
+  "approved_date": "2026-08-17"
 }

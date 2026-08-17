@@ -5,7 +5,7 @@
   "review_status": "pending_ie",
   "approved_by": null,
   "plan_origin": "rule_based_v1_preannotation",
-  "ie_modified": null,
+  "ie_modified": false,
   "split": null,
   "split_groups": [
     "worksheet:55555555-5555-5555-5555-555555555555"
@@ -56,7 +56,7 @@
     "planner": "rule_based_v1",
     "rule_set_code": "MINIMOST_FACTORY_V2",
     "lexicon_source": "rule_option_synonyms",
-    "lexicon_size": 15,
+    "lexicon_size": 16,
     "routing_reasons": []
   },
   "plan": {
@@ -113,5 +113,9 @@
   "expected": {
     "action_count": 1,
     "routing_status": "review"
+  },
+  "ie_review": {
+    "typing_confirmed_by": "IEC141289",
+    "typing_confirmed_date": "2026-08-17"
   }
 }
