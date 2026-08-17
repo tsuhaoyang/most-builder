@@ -57,7 +57,7 @@
 完整狀態與主題索引見 [decisions/README.md](decisions/README.md)。
 
 - **Accepted：** ADR-011～015、ADR-018～027、ADR-029。
-- **Proposed：** ADR-016、ADR-017、ADR-028。
+- **Proposed：** ADR-016、ADR-017、ADR-028、ADR-030、ADR-031（ADR-031＝空間佈局與距離取得：座標→引擎距離輸入的建議層，待 User 核可；臂展閾值與產線實體粒度尚未定值）。
 - ADR-026/027 已於 2026-08-10 accepted；實作仍依 roadmap 分批（L4 jobs 先於 worksheet revision／outbox）。
 - ADR-028（most_engine 邊界驗證與單一權威）**仍 proposed**，且**不應在正式環境掃描之前簽署**——
   §7 的執行順序把 User 核可放在「正式環境掃描報告」之後（第 2 步），先簽等於在缺證據時授權加嚴。
