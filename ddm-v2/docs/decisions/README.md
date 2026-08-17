@@ -32,7 +32,7 @@
 | [ADR-028-most-engine-boundary-validation-and-single-authority.md](ADR-028-most-engine-boundary-validation-and-single-authority.md) | most_engine 邊界驗證加嚴（三層權威、無 strict 旗標）與刪除重複計算實作 | 🟡 proposed |
 | [ADR-029-python-dependency-locking-and-audit-gate.md](ADR-029-python-dependency-locking-and-audit-gate.md) | Python 依賴鎖版（hash-pinned 雙鎖檔、pip 格式）＋阻斷式 pip-audit＋nightly 上游漂移偵測 | 🟡 proposed |
 | [ADR-030-in-process-parse-worker-topology.md](ADR-030-in-process-parse-worker-topology.md) | ai_parse_jobs 背景 worker 部署拓撲：in-process 預設開啟＝過渡；per-process 迴圈語意與 dedicated worker 觸發條件 | 🟡 proposed |
-| [ADR-031-spatial-layout-and-distance-acquisition.md](ADR-031-spatial-layout-and-distance-acquisition.md) | 空間佈局與距離取得：物件擺放表（與詞彙身分分離）＋佈局版本 → 產生帶出處的 `reach_cm`／`foot_cm`／`distance_cm` 建議；引擎仍是唯一換算權威 | 🟡 proposed |
+| [ADR-031-spatial-layout-and-distance-acquisition.md](ADR-031-spatial-layout-and-distance-acquisition.md) | 空間佈局與距離取得（2026-08-17 修訂：空間單位＝**工位（站）**，原「佈局跟產線走」作廢）：`stations` 主數據＋站內局部座標擺放表（與詞彙身分分離）＋列級工位綁定 `wi_rows.station_id` → 產生帶出處的 `reach_cm`／`foot_cm`／`distance_cm` 建議；引擎仍是唯一換算權威 | 🟡 proposed |
 
 ## 狀態說明
 
