@@ -106,11 +106,17 @@ jobs:
           pip install --no-deps --no-build-isolation -e .
       - name: 乾淨 import（app 建得起來，含所有 router/service）
         run: python -c "from ddm_v2.main import create_app; create_app(); print('app OK')"
-      - name: Migrate + seed（整合測試要有 rule-set/worksheet，否則 skip）
+      # dev_seed_synonyms.py 不是可有可無的裝飾：同義詞守門測試
+      # （tests/integration/test_synonym_registration_governance.py）的判定對象是
+      # **DB 現存的 rule_option_synonyms**，沒有這一步的話乾淨 DB 上它必紅
+      # （主守門的 `assert rows` ＋ allowlist stale 檢查，實測 3 failed）。
+      # 詞典先前只活在開發機的執行期資料裡＝守門在 CI 上從未真的守過（D3-030 B1）。
+      - name: Migrate + seed（整合測試要有 rule-set/worksheet/詞典，否則 skip 或紅）
         run: |
           alembic upgrade head
           python scripts/dev_seed_v2.py
           python scripts/dev_seed_templates.py
+          python scripts/dev_seed_synonyms.py
       - name: 核心邏輯黃金/反例（GM=28 / CM=29 / Level R1–R9）
         run: python scripts/core_logic/run_all.py
       # ⚠️ 必須分兩段跑（與 CLAUDE.md「unit 與 integration 必須分開跑」一致）：

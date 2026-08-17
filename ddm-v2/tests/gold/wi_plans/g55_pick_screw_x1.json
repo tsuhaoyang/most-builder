@@ -1,0 +1,127 @@
+{
+  "id": "g55_pick_screw_x1",
+  "source_text": "拿取螺絲 x1",
+  "notes": "IE 判型答案（D3-028 Q5，2026-08-17，IEC141289）：單 G 動詞「拿取」不足以定型（G 存在於 GM/CM 兩序列，classify_seq 設計如此）——IE 裁 **acquire**（單純取料）。工程端只改 action_type（composite_unknown→acquire）與 unresolved，evidence span 與 action 數維持 planner 輸出不動；TMU 由 --recompile 交 most_engine 重算（g_pick_sel＝10.0，A 段伸手距離句面未述＝A0，與 g30-a1／g01 同口徑）。「x1」掛 frequency=1（IE 答②）＝引擎實算值，非手填。取而無放（裁決 2／D3-029 四類歸宿）：IE 裁 **`consumed_by_later_action`**——螺絲沒有獨立的「放」，它的「放」被後續的鎖附動作消耗。依據＝v3 module『拿取電動起子，依圖示鎖附兩顆螺絲』（wi-template `50ed054b`／version `9569aeaf`）的三列結構：rows[0] **左手**從螺絲料盒拿取螺絲（CM）、rows[1] **右手**抓握電動起子保持住至機箱（GM，`p_hold` 保持住＝工具留在手上不放）、rows[2] 右手鎖附固定並確認螺絲到位（CM）——兩手各取一物、一起到目標執行：螺絲的「放」被**鎖附消耗**（不是獨立列），起子則**根本不放**（那是 `tool_held`，不是本句）。本句仍不發明後續步驟（g01 前例）。**更正軌跡**：D3-028 原記 `place_in_next_row`（工程推定「放在下一列」），IE 2026-08-17 以領域知識否決——「不一定都會是下一步才有放，要看是什麼物件也要看是什麼動作」——改判四類歸宿之一的 `consumed_by_later_action`；推定與撤回過程見 review-state entry 的 `ruling_history`。\n自草稿 d005_28f9ed7e 轉正（IE 覆核核准；docs/llm/gold-review/README.md 工作流）。取樣為 challenge-oversampled（coverage-optimized），本案分數不可外推為母體表現。切分確認、取而無放裁決見 ie_review 與 tests/gold/wi_plans_draft/review-state.json。",
+  "review_status": "approved",
+  "approved_by": "IEC141289",
+  "plan_origin": "rule_based_v1_preannotation",
+  "ie_modified": true,
+  "split": "test",
+  "split_groups": [
+    "worksheet:55555555-5555-5555-5555-555555555555"
+  ],
+  "split_component": "worksheet:55555555-5555-5555-5555-555555555555",
+  "source_provenance": [
+    {
+      "table": "wi_rows",
+      "id": "34ea3fe5-9bfa-445b-90fb-4b167cd633ef",
+      "detail": "sub_activity",
+      "group_key": "worksheet:55555555-5555-5555-5555-555555555555",
+      "db_timestamp": "2026-08-11T14:26:06.268970+00:00",
+      "raw_text": "拿取螺絲 x1"
+    }
+  ],
+  "challenge_tags": {
+    "zh_simplified_variant": false,
+    "fullwidth_chars": false,
+    "typo": "unknown",
+    "homophone": "unknown",
+    "mixed_zh_en": true,
+    "english_only": false,
+    "inverted_word_order": "unknown",
+    "colloquial": "unknown",
+    "multi_action": false,
+    "quantity": true,
+    "tool_handling": false,
+    "simo_both_hands": false,
+    "missing_info": "unknown",
+    "ambiguity": "unknown",
+    "diagram_reference_no_image": false,
+    "site_jargon_dirty_import": "unknown"
+  },
+  "heuristic_tags_unverified": [
+    "quantity",
+    "tool_handling",
+    "simo_both_hands"
+  ],
+  "preannotation_caveat": [
+    "acquire_without_place"
+  ],
+  "preannotation": {
+    "pipeline": "rule_based_v1 -> plan_from_rule_result -> SlotLinker(no-db) -> compile_plan -> engine_gate(most_engine) -> compute_routing(auto=off)",
+    "planner": "rule_based_v1",
+    "rule_set_code": "MINIMOST_FACTORY_V2",
+    "lexicon_source": "rule_option_synonyms",
+    "lexicon_size": 22,
+    "routing_reasons": [
+      "next_operation"
+    ]
+  },
+  "plan": {
+    "schema_version": "wi-plan-v1",
+    "source_text": "拿取螺絲 x1",
+    "normalized_text": "拿取螺絲 x1",
+    "language": "zh",
+    "source_ref": {
+      "kind": "interactive",
+      "worksheet_id": null,
+      "import_id": null,
+      "import_row_index": null
+    },
+    "actions": [
+      {
+        "action_id": "a1",
+        "action_type": "acquire",
+        "sequence_order": 1,
+        "roles": {},
+        "evidence": [
+          {
+            "start": 0,
+            "end": 7,
+            "text": "拿取螺絲 x1"
+          }
+        ],
+        "notes": "ie_typing_d3_028"
+      }
+    ],
+    "dependencies": [],
+    "unresolved": []
+  },
+  "synthetic_synonyms": [
+    {
+      "parameter": "G",
+      "option_code": "g_pick_sel",
+      "synonym_norm": "拿取",
+      "priority": 0
+    }
+  ],
+  "expected_cycles": [
+    {
+      "action_id": "a1",
+      "complete": true,
+      "seq": "GM",
+      "g_code": "g_pick_sel",
+      "p_base_code": null,
+      "frequency": 1.0,
+      "total_tmu": 10.0,
+      "tech_line": "A0 B0 G10 A0 B0 P0 A0",
+      "issues_contain": [
+        "next_operation"
+      ]
+    }
+  ],
+  "gold_schema_version": "wi-gold-v1",
+  "expected": {
+    "action_count": 1,
+    "routing_status": "review"
+  },
+  "ie_review": {
+    "segmentation_confirmed_by": "IEC141289",
+    "segmentation_confirmed_date": "2026-08-17",
+    "segmentation_source": "no_contention_batch_confirmed",
+    "acquire_lint_ruling": "consumed_by_later_action",
+    "acquire_lint_ruled_by": "IEC141289",
+    "acquire_lint_ruled_date": "2026-08-17"
+  },
+  "approved_date": "2026-08-17"
+}

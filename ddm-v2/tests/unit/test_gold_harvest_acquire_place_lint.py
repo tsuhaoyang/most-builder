@@ -12,12 +12,19 @@
    是合法建模，標它「取而無放」會跟裁決 1 打架。composite_unknown **不算**收尾
    （判不出型不能宣稱「有放」）。
 4. **單一出處**：preannotate 的旗標、覆核表的「取而無放」提問、schema 守門
-   （tests/unit/test_gold_draft_schema.py）共用 `acquire_without_place` 同一函式。
+   （tests/unit/test_gold_draft_schema.py）共用 `acquire_without_place` 同一函式
+   （其內核＝`unclosed_acquires`，裁決自動推導也讀同一份）。
+5. **四類歸宿**（D3-029，IE 2026-08-17）：提問與旗標說明必須列全四類；plan 已用
+   `tool_held_for` 表達工具持有時，裁決自動推得 `tool_held`、該題不再問 IE。
 
 mutation 證據（CI_GATES 規則 7）：把 `acquire_without_place` 的「其後」序列判定
 拆掉（永遠回 False）→ 本檔真值表與 `test_question_shares_predicate` 必紅；把
 `_questions_for` 的取而無放題改成自寫條件 → 條件漂移時 `test_question_shares_predicate`
-必紅；把 `_CAVEAT_ZH` 的旗標說明刪掉 → `test_caveat_text_registered` 必紅。
+必紅；把 `_CAVEAT_ZH` 的旗標說明刪掉 → `test_caveat_text_registered` 必紅；
+四類只列三類（漏 `genuinely_missing`）→ `test_question_lists_all_four_rulings` 紅；
+自動推導拆掉或改成無條件推得 →
+`test_question_auto_derived_when_plan_declares_tool_held_for`／
+`test_auto_ruling_needs_every_unclosed_acquire_covered` 紅。
 """
 from __future__ import annotations
 
@@ -25,15 +32,20 @@ import sys
 from pathlib import Path
 from typing import Any
 
+import pytest
+
 from ddm_v2.nlp.normalization import normalize
 
 ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(ROOT / "scripts"))
 from gold_harvest import (  # noqa: E402
     _CAVEAT_ZH,
+    ACQUIRE_LINT_RULING_TOKENS,
     _questions_for,
+    acquire_lint_auto_ruling,
     acquire_without_place,
     detect_challenge_tags,
+    unclosed_acquires,
 )
 
 
@@ -103,6 +115,17 @@ def test_sequence_order_not_list_order():
 # ── 2：不用文字啟發式 ────────────────────────────────────────────────────────
 
 
+def test_flag_and_unclosed_list_are_one_predicate():
+    """旗標＝`unclosed_acquires` 的布林投影（裁決自動推導讀的是同一份清單）——
+    兩邊各判各的就會出現「旗標說有、推導說沒有」。"""
+    actions = [_a("acquire", 1), _a("move_place", 2), _a("acquire", 3)]
+    assert [a["action_id"] for a in unclosed_acquires(actions)] == ["a3"]
+    assert acquire_without_place(actions) is bool(unclosed_acquires(actions))
+    closed = [_a("acquire", 1), _a("move_place", 2)]
+    assert unclosed_acquires(closed) == []
+    assert acquire_without_place(closed) is False
+
+
 def test_lint_ignores_text_entirely():
     """同一 action 序列，句面有沒有「放」字都不影響——lint 只看 action_type。"""
     assert acquire_without_place(
@@ -129,18 +152,84 @@ def _draft_stub(actions: list[dict[str, Any]]) -> dict[str, Any]:
 def test_question_shares_predicate():
     qs = "\n".join(_questions_for(_draft_stub([_a("acquire", 1)])))
     assert "取而無放" in qs
-    assert "放」在哪" in qs
+    assert "歸宿是哪一類" in qs
 
     qs = "\n".join(_questions_for(_draft_stub([_a("acquire", 1), _a("move_place", 2)])))
     assert "取而無放" not in qs
 
 
+def test_question_lists_all_four_rulings():
+    """覆核表的提問必須把**四類**都列出來（D3-029）——只列合法三類，IE 就
+    沒有「這筆建模錯了」可答；四類的中文說明取自單一出處
+    `ACQUIRE_LINT_RULING_ZH`，不在提問裡另抄一份。"""
+    qs = "\n".join(_questions_for(_draft_stub([_a("acquire", 1)])))
+    for token in ACQUIRE_LINT_RULING_TOKENS:
+        assert f"`{token}`" in qs, f"四類歸宿 {token} 沒出現在提問裡"
+    assert "螺絲→被鎖附" in qs, "consumed 類要帶 IE 給的實例（螺絲被鎖附消耗）"
+    assert "補 action" in qs, "genuinely_missing 的解法是補 action，不是登記裁決"
+
+
+def test_question_auto_derived_when_plan_declares_tool_held_for():
+    """D3-029 要求 4：plan 已標 `tool_held_for` → 覆核表**不再問**這題，改印
+    「自動推得 tool_held」（減少 IE 逐筆答；g02 型）。"""
+    draft = _draft_stub([_a("acquire", 1), _a("process", 2)])
+    draft["plan"]["dependencies"] = [
+        {"from_action": "a1", "to_action": "a2", "type": "tool_held_for"}
+    ]
+    assert acquire_lint_auto_ruling(draft["plan"]) == "tool_held"
+    qs = "\n".join(_questions_for(draft))
+    assert "自動推得" in qs and "不需回答" in qs
+    assert "歸宿是哪一類" not in qs, "自動推得就不該再問 IE"
+
+
+def test_auto_ruling_needs_every_unclosed_acquire_covered():
+    """fail-closed：只覆蓋部分未閉合 acquire 的 dependency 推不出裁決——
+    剩下那個「取」的歸宿仍未知，仍要 IE 答。"""
+    plan = {
+        "actions": [_a("acquire", 1), _a("acquire", 2), _a("process", 3)],
+        "dependencies": [{"from_action": "a1", "to_action": "a3", "type": "tool_held_for"}],
+    }
+    assert acquire_lint_auto_ruling(plan) is None
+    plan["dependencies"].append(
+        {"from_action": "a2", "to_action": "a3", "type": "tool_held_for"}
+    )
+    assert acquire_lint_auto_ruling(plan) == "tool_held"
+
+
+@pytest.mark.parametrize("dep_type", ["same_object", "uses_tool", "precedes"])
+def test_auto_ruling_only_accepts_tool_held_for(dep_type: str):
+    """自動推導**只認 `tool_held_for`**（D3-029 要求 4）：`same_object` 可以是
+    放好之後再對同一物件作業、`uses_tool` 只說用到工具——兩者都不主張物件停在
+    手上。拿它們推導＝自動幫 IE 答錯（把「放了又拿」判成「沒放」），所以推不得
+    時 fail-closed 交回 IE。"""
+    plan = {
+        "actions": [_a("acquire", 1), _a("process", 2)],
+        "dependencies": [{"from_action": "a1", "to_action": "a2", "type": dep_type}],
+    }
+    assert acquire_without_place(plan["actions"]) is True
+    assert acquire_lint_auto_ruling(plan) is None
+
+
+def test_auto_ruling_rejects_backwards_dependency():
+    """dependency 必須指向**更後面**的 action：指回前面＝不是「持有到後續」，
+    推不得（方向判定拆掉本測試紅）。"""
+    plan = {
+        "actions": [_a("process", 1), _a("acquire", 2)],
+        "dependencies": [{"from_action": "a2", "to_action": "a1", "type": "tool_held_for"}],
+    }
+    assert acquire_without_place(plan["actions"]) is True
+    assert acquire_lint_auto_ruling(plan) is None
+
+
 def test_caveat_text_registered():
-    """旗標必須有中文說明（覆核表不得 fallback 成裸 key），且說清楚 WARN 邊界。"""
+    """旗標必須有中文說明（覆核表不得 fallback 成裸 key），且說清楚 WARN 邊界
+    與四類歸宿。"""
     text = _CAVEAT_ZH["acquire_without_place"]
     assert "取最後一定有放" in text
     assert "WARN" in text
     assert "下一句/下一列" in text, "邊界必須寫明：單句 acquire 可能合法"
+    for token in ACQUIRE_LINT_RULING_TOKENS:
+        assert token in text, f"旗標說明必須列出四類歸宿（缺 {token}）"
 
 
 async def test_preannotate_emits_flag_for_acquire_plan(monkeypatch):

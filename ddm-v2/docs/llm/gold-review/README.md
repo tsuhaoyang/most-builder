@@ -26,7 +26,9 @@
    裁決 3 的 v3 結構回填（見下）。
 2. **不變式「取最後一定有放」**：plan 裡有 acquire 而下游無收尾＝錯。落地：
    `acquire_without_place` lint（見「先讀（二）」第 4 點；WARN 標給 IE，
-   非 BLOCK——單句 acquire 可能合法，「放」在下一句/下一列，如 gold g01）。
+   非 BLOCK——單句 acquire 可能合法，如 gold g01）。**D3-029 補充**：不變式
+   仍然成立，但「放」有**三種合法形態**（放置到位／被後續動作消耗／工具持有
+   不放），檢查真正要抓的是第四類（真的漏了）——四類歸宿見下方 D3-029 節。
 3. **v3 遷移資料是 IE 驗證過並提供的**：不只文字，**結構（module/cycle 邊界）
    就是 IE 的切分裁決**。落地：帶切分旗標的草稿逐筆回填
    `v3_structure_hint`＋`v3_structure_evidence`，配對題從開放題改成**確認題**
@@ -95,9 +97,10 @@
 4. `acquire_without_place` — D3-014 裁決 2「取最後一定有放」：plan 含 acquire
    而其後**同 plan 內**無任何收尾 action（move_place／release_return／
    controlled_move——CM 無 P 參數，M 即閉合，且裁決 1 明言 acquire＋
-   controlled_move 是合法建模）。覆核表醒目提問：**這句的「放」在哪？被截斷
-   了還是描述缺漏？** WARN 不 BLOCK：只在同 plan 內判——單句 acquire 可能
-   合法（「放」在下一句/下一列，如 g01「拿起DIMM」不發明後續步驟）。判定用
+   controlled_move 是合法建模）。覆核表醒目提問（D3-029 起）：**這個「取」的
+   歸宿是四類的哪一類？**（`placed`／`consumed_by_later_action`／`tool_held`／
+   `genuinely_missing`，見下方 D3-029 節）。WARN 不 BLOCK：只在同 plan 內判——
+   單句 acquire 可能合法（如 g01「拿起DIMM」不發明後續步驟）。判定用
    plan 的 action_type 序列，**不用文字啟發式**（R1 教訓：動詞面會被名詞
    擊穿）。本輪 60 筆 0 命中——**結構使然，非 lint 失效**：rule planner 的
    adapter 只產 move_place／controlled_move／composite_unknown，永遠不出
@@ -347,16 +350,152 @@ D3-024 快答清單第 2 題（「X 承載做工時 M 可為零」）的答案�
 3. **第五批轉正 9 筆 g41–g49**（1 筆真 TMU＋8 筆誠實 incomplete；split=test、
    approved 2026-08-17、ie_modified 全 false）。累計 IE 核准 **44/50**。
 
-## 下輪快答清單（IE 待答；D3-026 收尾）
+## IE 答案：衝線批五題＋同義詞登記準則（D3-028，2026-08-17；User/IE 親答）
 
-答案落地後逐條清掉並更新對應 state entry／文件：
+> 輪次編號在本檔與 `review-state.json` 的 note 曾各數各的（本檔第八輪＝
+> D3-026，state note 記第九輪）——自本節起兩邊都只認 **D3 編號**，不再數輪。
 
-1. **7f085e02 的 TMU=0.0 距離裁決**（`distance-rulings.md` 唯一未裁筆；
-   自 D3-023 懸至今；第五批轉正後草稿重編號＝`d029_7f085e02`）。
-2. **佈局 Phase B 拆列頻率參數**（D3-026 設計註記待裁）：重複鎖附拆列＋
+衝線批覆核材料＝`final-stretch.md`（逐題答案與落地結果記在該檔 §七）。
+
+1. **Q1 三筆按壓句切分批次確認**（`1dd7c1d5`／`6be614c5`／`2e7b2e5a`）→ 轉正
+   `g50`／`g51`／`g52`，各帶真 TMU **3.0**（`A0 B0 G0 M3 X0 I0 A0`，m_press）。
+2. **Q2 `51518399`（貼附Label到主板規定位置處）切分批次確認** → 轉正 `g53`，
+   **誠實 incomplete**（`distance_unstated`，D3-019 已裁，本輪只補切分面向）。
+3. **Q3 `7f085e02`（撕除螢幕保護膜）距離裁決＝維持**——IE 原話
+   **「維持不考慮要撕多遠」** → `zero_tmu_ruling: distance_unstated`
+   （**不是補距離**）＋切分批次確認 → 轉正 `g54`，誠實 incomplete。
+   `distance-rulings.md` C11 標「已裁：維持」，該表待裁筆數 **11→0**。
+4. **Q4 兩筆不登記同義詞**（`0e83128f`「下壓 CPU 拉桿鎖定」、`00104439`
+   「按下電源測試按鈕」）→ **留草稿**，卡點記為「動詞不在字典標籤內、
+   無 IE 裁決」。見下節「同義詞登記準則」。
+5. **Q5 三筆判型答案落地**：`28f9ed7e`→acquire、`8ef772ab`→acquire、
+   `37fbd2a6`→move_place＋機構件 `p_place_single`。工作流照 D3-022：
+   edit plan（只改 `action_type`／`unresolved`，span 與 action 數不動）→
+   `review_status: ie_edited` → `--recompile` → entry 宣告 `ie_modified: true`
+   → `--promote` → `g55_pick_screw_x1`（10.0）／`g56_place_heatsink_on_cpu`
+   （16.0）／`g57_lh_pick_screw_from_box`（10.0）。
+6. **第六批轉正 8 筆 g50–g57**（split=test、approved 2026-08-17）。累計 IE 核准
+   **52/50 — spec §19 P0 的「至少 50 筆」門檻已跨過**（其中 6 筆帶引擎真 TMU、
+   2 筆誠實 incomplete；引用時分開陳述）。
+7. **Plan 層指標 0.3333/0.2353 → 0.5556/0.4348**（plan_metrics_n 6→9）：Q5 三筆
+   `ie_modified: true` 進分母，各為單 action 且 span 與 planner 輸出相同 → 三筆
+   全對。**上移是合法的真實進步，但證據力要說清楚**：IE 改的是 `action_type`，
+   evidence span 與 action 數維持 planner 輸出——那 3 分 boundary 是「planner
+   自己的 span 經 IE 覆核未改」，弱於 D3-022 重切族（IE 真的重畫邊界）。
+   橡皮圖章回歸仍綠（本輪 5 筆 `ie_modified: false` 照樣排除，累計排除 46 筆）。
+8. **新覆核面向 `acquire_lint_ruling`**（當時定為唯一合法值 `place_in_next_row`
+   ——**已被 D3-029 否決，見下節**）：`acquire_without_place` 自 D3-014 起是
+   「未解決的覆核提問」且列在轉正資格裡，但**先前沒有記錄答案的地方**——Q5
+   兩筆判 acquire 後旗標必然出現，答了也照擋。本輪補上載體。**不綁前提**
+   （與 zero_tmu/incomplete 的 stale 檢查刻意不同）：裁決是句子的性質、不寫
+   任何期望值，旗標不在時惰性；綁前提會讓「先答、後改 plan」這個唯一的合法
+   順序走不通（草稿在 `--recompile` 前還不是 acquire）。
+   **誠實揭露**（當時就寫在這裡的風險，D3-029 證實了它）：這個答案取自 Q5
+   預設答案的字面「單純取料、放在後續列」與候選 9 的結構證據，IE 對兩題都答
+   OK——**不是被單獨問到的**。
+
+## IE 裁決：取而無放的四類歸宿（D3-029，2026-08-17；User/IE 親答）
+
+**IE 否決了 D3-028 的單一 token。** 原話：「**不一定都會是下一步才有放，
+要看是什麼物件也要看是什麼動作**」。`acquire_lint_ruling` 改為四類列舉：
+
+| token | 意思 | 例 |
+|---|---|---|
+| `placed` | 放置到位（同列 P 格或後續列的放置動作） | 拿取 DIMM → 放至治具 |
+| `consumed_by_later_action` | 無獨立的「放」，物件被後續動作消耗/固定 | **螺絲→被鎖附**、膠帶→被貼附 |
+| `tool_held` | 工具跨列持有本來就不放 | **起子→保持住**（plan 層以 `tool_held_for` 表達同一事實） |
+| `genuinely_missing` | 建模錯誤——取了之後物件消失 | **這才是這條檢查真正要抓的** |
+
+IE 的不變式「取最後一定有放，不然會出錯」**依然成立**：「放」有三種合法形態，
+lint 要抓的是第四類。實據＝v3 module『拿取電動起子，依圖示鎖附兩顆螺絲』
+（wi-template `50ed054b`／version `9569aeaf`）三列：rows[0] **左手**從螺絲料盒
+拿取螺絲(CM)／rows[1] **右手**抓握電動起子保持住至機箱(GM，`p_hold`)／rows[2]
+右手鎖附固定並確認螺絲到位(CM)——兩手各取一物、一起到目標執行：螺絲的「放」
+被鎖附消耗，起子根本不放。
+
+落地重點（實作在 `scripts/gold_harvest.py`，`src/` 與 migration 零改動）：
+
+- **`genuinely_missing` 不解除轉正阻擋**：它是「這筆建模錯了」的宣告，不是
+  通過條件——答它＝補收尾 action 走 `--recompile`（旗標會因 plan 改變自然
+  消失）。放行等於把 IE 已判定為錯的建模寫進標準答案。
+- **`place_in_next_row` 撤回**：列入 `ACQUIRE_LINT_RETRACTED_RULINGS`，
+  **只在 `ruling_history` 的更正軌跡裡合法**，entry 本體與正式 gold 一律拒收。
+- **g55／g57 改判 `consumed_by_later_action`**（IEC141289，2026-08-17）：
+  兩筆不撤回（P0 維持 52/50），只改裁決欄與 notes；推定與撤回過程記在
+  review-state entry 的 `ruling_history`（新型條目 `superseded_rulings`
+  ——面向還在、只有值被改判，不變量與「面向退場」相反：本體必須**有**那些鍵
+  且**值不同**）。
+- **`tool_held` ⇄ `tool_held_for` 的關係**（查證結論）：兩者是同一事實的兩層
+  ——dependency 是**契約層**（`nlp/contracts.py`），會讓 compile 端
+  `most_compiler/policies.py::is_tool_held` 把後續 action 的 G 留空＝**改 TMU**；
+  裁決是**覆核層**，只解除阻擋。因此：
+  1. **能自動推就自動推**：每個未閉合 acquire 都有 `tool_held_for` 指向同 plan
+     內更後面的 action ⇒ 裁決自動推得 `tool_held`，覆核表印「自動推得、不需
+     回答」，轉正端不再要求 IE 逐筆答（正式 gold `g02` 即此型）。
+  2. **互相驗證**：IE 裁 `tool_held` 但同 plan 內**可表達卻沒表達**
+     `tool_held_for` ⇒ **擋**（`is_tool_held` 不會生效，後續 action 的 G 會被
+     當成重新抓取而多算 TMU）。
+  3. **邊界**：acquire 是 plan 最後一個 action＝跨列持有（g08「右手抓握電動
+     起子保持住至機箱」下一列才鎖附）——dependency 是 plan 內的、跨列表達
+     不了，此時不擋（也推不得，仍由 IE 答）。
+  4. 自動推導**只認 `tool_held_for`**：`same_object` 可以是放好之後再對同一
+     物件作業、`uses_tool` 只說用到工具，都不主張物件停在手上。
+
+> **教訓（比 token 本身更重要）**：上輪的單一 token 是**工程推定**——IE 對 Q5
+> 答 OK，工程端把「IE 沒反對」讀成「IE 裁定只有一種歸宿」，再用 fail-closed 的
+> 口吻寫成「目前唯一合法值是…」。**fail-closed 保護的是「未定義的值不得登記」，
+> 保護不了「定義本身是猜的」**——值域是領域知識，唯一出處是 IE，不從單一案例
+> 外推。反證其實早就在手上（D3-026 查過同一個 module 的「起子在手」接續配對），
+> 只是沒拿來檢驗自己的 token。
+
+## 同義詞登記準則（D3-028；ADR-023 §3.3 規則 1 補節二）
+
+Q4 的答案不只是「這兩個詞不對」。IE 反問：「**動詞應該要按照 most 字典庫去查吧？**」
+查證 22 條既有登記：**21 條的詞本身就與該 option 的標籤/句面文字有子串關係**
+（`拿取` ⊆ `拿取(選取)`；`放` ⊆ `放至`——雙向都算，字典句面用單字動詞、工單寫
+複合詞），唯一例外「插入」→`p_asm_single` 有明確 IE 裁決（D3-021）。
+
+> **同義詞登記的合法來源只有二：(a) 該詞出現在對應選項自己的標籤/句面文字裡
+> （正規化後子串比對），或 (b) 有明確的 IE 裁決紀錄。工程端不得以相似性自行判定。**
+
+理由：同義詞決定 option code、option code 決定 TMU——工程端憑相似度造映射
+＝讓工程判斷改工時，從側門繞過 ADR-014 的值權威。「下壓≈按壓」「按下≈按動按鈕」
+字典查無，屬相似性判斷，故 **不登記**。v3 認證字典**無 alias 欄位**可匯入
+（欄位名已逐一查證），所以 (a) 只能靠標籤/句面文字。
+
+守門：`tests/integration/test_synonym_registration_governance.py`（讀 DB 現況，
+無 DATABASE_URL 時 skip）；(b) 的例外走該檔的 `IE_RULING_ALLOWLIST`
+（鍵＝`(parameter, synonym_norm, option_code)`，值＝裁決引用；**不新增 DB 欄位、
+無 migration**）。誠實邊界：這是 **provenance** 測試不是語意正確性測試——標籤
+只有一個字時子串判定本來就寬（`放棄` 也會通過），它擋的是「字典裡完全沒有這個
+詞素」的相似性判斷。
+
+**「下壓」「按下」的解鎖路徑**（二選一）：IE 裁決（→ allowlist ＋ 登記），或
+字典本身新增該詞面（→ 改 `minimost_ai_dictionary_v1.json`、重跑
+`import_v3_dictionary.py`、新版本，走 ADR-014 既有路徑）。
+
+## 下輪快答清單（IE 待答；D3-029 收尾）
+
+答案落地後逐條清掉並更新對應 state entry／文件。
+
+**已清（D3-029）**：~~取而無放裁決只有一種歸宿嗎~~ → IE 裁**四類**
+（`placed`／`consumed_by_later_action`／`tool_held`／`genuinely_missing`），
+g55/g57 改判 `consumed_by_later_action`；見上方 D3-029 節。
+
+0. **觀察項（不阻塞）：四類歸宿夠不夠用**。IE 明示「**目前先以這四類考量**」
+   ——遇到不屬四類的歸宿時，`_validate_acquire_lint_aspect` 會 fail-closed 擋下
+   （未知 token 拒收），該筆帶著案例回報 IE 再裁，**工程端不得自行加第五類**
+   （D3-029 教訓：值域是領域知識，不從單一案例外推）。
+1. **佈局 Phase B 拆列頻率參數**（D3-026 設計註記待裁）：重複鎖附拆列＋
    頻率模式（列1 長移×1＋列2 短移×(N−1)，`tool_held_for` 表達起子在手）
    ——**列 2 頻率取 N−1 還是 N**（首顆是否已含於列1 的長移放置）記為
    Phase B 待裁參數，佈局資料進來前不落值。
+2. **「下壓」「按下」要不要裁**（D3-028 Q4 未登記兩筆，草稿
+   `0e83128f`／`00104439` 卡在此）：裁了走 allowlist＋登記；不裁就等字典本身
+   長出該詞面。**不裁也是合法答案**——兩筆留草稿不影響 P0（已 52/50）。
+3. **`m_wipe`（擦拭）、`x_press`（壓合）、`i_align1` vs P addon `a_align`
+   （對準）等 `?` 候選**：`synonym-candidates.md` 未裁項——同準則，字典標籤
+   查無者需 IE 裁決才可登記。
 
 ## 覆核狀態怎麼在重產後存活（D3-015）
 
@@ -426,9 +565,21 @@ PYTHONPATH=src .venv/bin/python scripts/gold_harvest.py \
 
 轉正資格（全部滿足才轉；任一不合格＝整批拒絕）：切分已確認（state entry 的
 切分面向）、確認結構與 plan 一致（multi_cycle_n 確認但 plan 未重切＝擋）、
-判型/P 方向/TMU=0 等旗標全部有對應確認或裁決、cycle complete 帶 **TMU>0**
-或帶 `expected_incomplete_reason`、無未解決旗標（acquire_without_place／
-engine_rejected_cycle）、S 檢（provenance 一致）綠。
+判型/P 方向/TMU=0/incomplete/**取而無放**等旗標全部有對應確認或裁決
+（取而無放的四類中 `genuinely_missing` **不算解除**，見下）、
+cycle complete 帶 **TMU>0** 或帶 `expected_incomplete_reason`、
+`engine_rejected_cycle` 未解決＝擋（此旗標**仍無**確認機制，fail-closed）、
+S 檢（provenance 一致）綠。
+
+**`acquire_without_place`（取而無放）自 D3-028 起有答案載體、D3-029 改為四類**：
+state entry 的 `acquire_lint_ruling` ∈ {`placed`, `consumed_by_later_action`,
+`tool_held`, `genuinely_missing`}＋`_ruled_by`／`_ruled_date`。放行的是**前三類**；
+**`genuinely_missing` 照擋**（建模錯誤的宣告不是通過條件——補收尾 action 後
+`--recompile`，旗標會自然消失）；未知/已撤回 token fail-closed。
+**plan 已用 `tool_held_for` 表達工具持有者，裁決自動推得 `tool_held`、不需 IE
+逐筆答**；反之裁 `tool_held` 但同 plan 內可表達卻沒標 dependency ⇒ 擋
+（TMU 會多算，見上方 D3-029 節）。此面向**不綁前提**（旗標不在時惰性），因為
+裁決是句子的性質、不寫任何期望值——這也讓「先答、後改 plan」的合法順序走得通。
 
 **D3-022 起 `ie_modified: true`（IE 重切）也走工具路徑**：宣告的唯一出處＝
 state entry 的 `ie_modified`；草稿必須是 `review_status: "ie_edited"`（兩者

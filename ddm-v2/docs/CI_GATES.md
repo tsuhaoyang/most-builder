@@ -29,12 +29,20 @@
 7. **測試必須自足，且反向斷言必須附 mutation 證據。** 兩條都是 2026-08-12 這一輪
    各抓到實例後成文的（一輪內共三條假測試），不是預防性條文：
    - **不得依賴環境既存資料。** 不要撈「第一列」「任一筆」——自己建。CI 後端 job 的 seed
-     只有 `dev_seed_v2` + `dev_seed_templates`（**不含** `dev_seed_30rows`），
+     只有 `dev_seed_v2` + `dev_seed_templates` + `dev_seed_synonyms`（**不含** `dev_seed_30rows`），
      e2e job 的 DB 也**沒有**跑過 `migrate_v3_user_data.py`，所以 `most_cycles`、`wi_rows`、
      `wi_set_projects`、`category='wi-template'` 的 motion modules 在 CI 上**都是 0 列**。
      實例：`test_delete_referenced_draft_returns_409_*`（撈 `most_cycles` → CI `NoResultFound`）、
      `wi-add-live.spec.ts`（需 v3 遷移資料 → CI 永遠 0）。
      本機綠不代表通過——複現 CI 請建乾淨 DB 只跑 CI 那幾支 seed（指令見文末）。
+   - **反過來的那一面（D3-030 B1，2026-08-17 抓到）：判定對象本來就是「環境資料」的守門，
+     那份資料必須有版控 seed。** 同義詞守門（`test_synonym_registration_governance`）判的是
+     DB 現存的 `rule_option_synonyms`，而當時 seed 鏈一步都不寫它——22 條詞典只活在開發機的
+     執行期資料裡，於是**本機 8 綠、乾淨 DB 3 紅**（拋棄式庫實測），守門在 CI 上從未真的守過。
+     修法不是把測試改成自建資料（那會讓守門對象變成測試自己造的東西、失去「守 DB 現況」的
+     語意），是把該批資料本身納入版控 seed（`scripts/dev_seed_synonyms.py`，逐條標 IE 裁決
+     出處、冪等）並在 CI seed 鏈補一步。判準：**這份資料是不是「規格的一部分」**——是就進
+     seed，不是就由測試自建。
    - **反向斷言（`toHaveCount(0)`／`not.toBeVisible`／`assert not …`）必須證明它會紅。**
      正向斷言用壞掉的定位器會**大聲失敗**；反向斷言用壞掉的定位器會**安靜變成恆真**。
      實例：`ux-compliance.spec.ts` 的 E-04-4 用 `getByText('B2', {exact:true})` 斷言
@@ -346,6 +354,8 @@ pip install --require-hashes --no-build-isolation -r requirements-dev.lock
 pip install --no-deps --no-build-isolation -e .
 DATABASE_URL=... PYTHONPATH=src alembic upgrade head
 DATABASE_URL=... PYTHONPATH=src python scripts/dev_seed_v2.py
+DATABASE_URL=... PYTHONPATH=src python scripts/dev_seed_templates.py
+DATABASE_URL=... PYTHONPATH=src python scripts/dev_seed_synonyms.py
 DATABASE_URL=... PYTHONPATH=src python scripts/core_logic/run_all.py
 PYTHONPATH=src pytest tests/unit -q                       # 免 DB
 DATABASE_URL=... PYTHONPATH=src pytest tests/integration -q
@@ -359,7 +369,7 @@ DATABASE_URL=... PYTHONPATH=src pytest tests/integration -q
 ./scripts/docker_smoke.sh
 ```
 
-⚠️ **本機 DB ≠ CI DB**：backend job 只跑 `dev_seed_v2.py` ＋ `dev_seed_templates.py`，
+⚠️ **本機 DB ≠ CI DB**：backend job 只跑 `dev_seed_v2.py` ＋ `dev_seed_templates.py` ＋ `dev_seed_synonyms.py`，
 **不跑 `dev_seed_30rows.py`**（那支只在 e2e job）——所以 CI 的 `most_cycles` / `wi_rows` 是 **0 列**，
 而開發機通常早就被 30rows 種過。任何「撈一列既有資料來用」的整合測試都會**本機綠、CI 紅**
 （2026-08 `test_delete_referenced_draft_returns_409_with_reference_count` 即此）。
@@ -372,5 +382,6 @@ createdb ddm_ci_repro   # 或 docker compose exec db psql -U ... -c 'CREATE DATA
 export DATABASE_URL=postgresql+asyncpg://.../ddm_ci_repro
 PYTHONPATH=src alembic upgrade head
 PYTHONPATH=src python scripts/dev_seed_v2.py && PYTHONPATH=src python scripts/dev_seed_templates.py
+PYTHONPATH=src python scripts/dev_seed_synonyms.py   # 同義詞詞典（守門判定對象；漏跑＝守門 3 紅）
 PYTHONPATH=src pytest tests/integration -q     # 這裡綠才算真的綠
 ```

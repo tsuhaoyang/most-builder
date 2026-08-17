@@ -1,0 +1,144 @@
+{
+  "id": "g57_lh_pick_screw_from_box",
+  "source_text": "左手從螺絲料盒拿取螺絲",
+  "notes": "IE 判型答案（D3-028 Q5，2026-08-17，IEC141289）：同 d005 型（單 G 動詞不足以定型）——IE 裁 **acquire**。只改 action_type 與 unresolved，evidence span 與 action 數維持 planner 輸出不動；TMU 由 --recompile 交 most_engine 重算（g_pick_sel＝10.0，A 段未述＝A0）。切分＝single_cycle（v3 一列＝一 cycle）併入無爭點批次確認。取而無放（D3-029 四類歸宿）：IE 裁 **`consumed_by_later_action`**——螺絲沒有獨立的「放」，它的「放」被後續的鎖附動作消耗。依據＝v3 module『拿取電動起子，依圖示鎖附兩顆螺絲』（wi-template `50ed054b`／version `9569aeaf`）的三列結構：rows[0] **左手**從螺絲料盒拿取螺絲（CM）、rows[1] **右手**抓握電動起子保持住至機箱（GM，`p_hold` 保持住＝工具留在手上不放）、rows[2] 右手鎖附固定並確認螺絲到位（CM）——兩手各取一物、一起到目標執行：螺絲的「放」被**鎖附消耗**（不是獨立列），起子則**根本不放**（那是 `tool_held`，不是本句）。本句即該 module 的 rows[0]（下方 SIMO 註記的同一結構證據）。**更正軌跡**：D3-028 原記 `place_in_next_row`（工程推定「放在下一列」），IE 2026-08-17 以領域知識否決——「不一定都會是下一步才有放，要看是什麼物件也要看是什麼動作」——改判四類歸宿之一的 `consumed_by_later_action`；推定與撤回過程見 review-state entry 的 `ruling_history`。**SIMO 註記**（IE 答③）：本句出自 v3 wi-template『拿取電動起子，依圖示鎖附兩顆螺絲』版本 9569aeaf 的 rows[0]，與右手持起子列（g08_hold_driver_to_chassis 同族）並行＝左右手對手列；現行 wi-plan 契約未表達 SIMO，照 g22 前例僅記 notes，不在 plan 造欄位。\n自草稿 d046_8ef772ab 轉正（IE 覆核核准；docs/llm/gold-review/README.md 工作流）。取樣為 challenge-oversampled（coverage-optimized），本案分數不可外推為母體表現。切分確認、取而無放裁決見 ie_review 與 tests/gold/wi_plans_draft/review-state.json。",
+  "review_status": "approved",
+  "approved_by": "IEC141289",
+  "plan_origin": "rule_based_v1_preannotation",
+  "ie_modified": true,
+  "split": "test",
+  "split_groups": [
+    "module:1c0e39ae-abd0-42db-a277-c6490b1c8f78",
+    "module:50ed054b-9461-4fbf-bc00-acde2cd482b7"
+  ],
+  "split_component": "module:1c0e39ae-abd0-42db-a277-c6490b1c8f78",
+  "source_provenance": [
+    {
+      "table": "motion_module_versions",
+      "id": "587d379b-12be-4749-85df-dc0f6ee04cf5",
+      "detail": "rows[0].sub_activity",
+      "group_key": "module:1c0e39ae-abd0-42db-a277-c6490b1c8f78",
+      "db_timestamp": "2026-08-04T06:59:47.125314+00:00",
+      "raw_text": "左手從螺絲料盒拿取螺絲"
+    },
+    {
+      "table": "motion_module_versions",
+      "id": "9569aeaf-11a0-407d-a9c7-613c0b994be5",
+      "detail": "rows[0].sub_activity",
+      "group_key": "module:50ed054b-9461-4fbf-bc00-acde2cd482b7",
+      "db_timestamp": "2026-08-04T06:59:46.649296+00:00",
+      "raw_text": "左手從螺絲料盒拿取螺絲"
+    },
+    {
+      "table": "motion_modules",
+      "id": "1c0e39ae-abd0-42db-a277-c6490b1c8f78",
+      "detail": "name_zh (category=action)",
+      "group_key": "module:1c0e39ae-abd0-42db-a277-c6490b1c8f78",
+      "db_timestamp": "2026-08-04T06:59:47.113217+00:00",
+      "raw_text": "左手從螺絲料盒拿取螺絲"
+    }
+  ],
+  "challenge_tags": {
+    "zh_simplified_variant": false,
+    "fullwidth_chars": false,
+    "typo": "unknown",
+    "homophone": "unknown",
+    "mixed_zh_en": false,
+    "english_only": false,
+    "inverted_word_order": "unknown",
+    "colloquial": "unknown",
+    "multi_action": false,
+    "quantity": false,
+    "tool_handling": false,
+    "simo_both_hands": false,
+    "missing_info": "unknown",
+    "ambiguity": "unknown",
+    "diagram_reference_no_image": false,
+    "site_jargon_dirty_import": "unknown"
+  },
+  "heuristic_tags_unverified": [
+    "quantity",
+    "tool_handling",
+    "simo_both_hands"
+  ],
+  "preannotation_caveat": [
+    "acquire_without_place"
+  ],
+  "preannotation": {
+    "pipeline": "rule_based_v1 -> plan_from_rule_result -> SlotLinker(no-db) -> compile_plan -> engine_gate(most_engine) -> compute_routing(auto=off)",
+    "planner": "rule_based_v1",
+    "rule_set_code": "MINIMOST_FACTORY_V2",
+    "lexicon_source": "rule_option_synonyms",
+    "lexicon_size": 22,
+    "routing_reasons": [
+      "next_operation"
+    ]
+  },
+  "plan": {
+    "schema_version": "wi-plan-v1",
+    "source_text": "左手從螺絲料盒拿取螺絲",
+    "normalized_text": "左手從螺絲料盒拿取螺絲",
+    "language": "zh",
+    "source_ref": {
+      "kind": "interactive",
+      "worksheet_id": null,
+      "import_id": null,
+      "import_row_index": null
+    },
+    "actions": [
+      {
+        "action_id": "a1",
+        "action_type": "acquire",
+        "sequence_order": 1,
+        "roles": {},
+        "evidence": [
+          {
+            "start": 0,
+            "end": 11,
+            "text": "左手從螺絲料盒拿取螺絲"
+          }
+        ],
+        "notes": "ie_typing_d3_028"
+      }
+    ],
+    "dependencies": [],
+    "unresolved": []
+  },
+  "synthetic_synonyms": [
+    {
+      "parameter": "G",
+      "option_code": "g_pick_sel",
+      "synonym_norm": "拿取",
+      "priority": 0
+    }
+  ],
+  "expected_cycles": [
+    {
+      "action_id": "a1",
+      "complete": true,
+      "seq": "GM",
+      "g_code": "g_pick_sel",
+      "p_base_code": null,
+      "frequency": 1.0,
+      "total_tmu": 10.0,
+      "tech_line": "A0 B0 G10 A0 B0 P0 A0",
+      "issues_contain": [
+        "next_operation"
+      ]
+    }
+  ],
+  "gold_schema_version": "wi-gold-v1",
+  "expected": {
+    "action_count": 1,
+    "routing_status": "review"
+  },
+  "ie_review": {
+    "segmentation_confirmed_by": "IEC141289",
+    "segmentation_confirmed_date": "2026-08-17",
+    "segmentation_source": "no_contention_batch_confirmed",
+    "acquire_lint_ruling": "consumed_by_later_action",
+    "acquire_lint_ruled_by": "IEC141289",
+    "acquire_lint_ruled_date": "2026-08-17"
+  },
+  "approved_date": "2026-08-17"
+}

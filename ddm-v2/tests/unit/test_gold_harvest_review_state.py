@@ -22,10 +22,12 @@
    句子切分）。更正軌跡保留在該 entry 的 `ruling_history`（先前答案全文＋
    為何更正）——標準答案集的更正不能是無痕覆寫。
 7. `ruling_history`（更正軌跡）若存在必須形狀完整——「保留軌跡」不可是
-   空殼宣稱。條目兩型（fail-closed）：切分更正（先前 ie_ruling＋
+   空殼宣稱。條目**三型**（fail-closed）：切分更正（先前 ie_ruling＋
    supersede_reason＋superseded_date）；面向退場（D3-024，d0350279 型：
    `superseded_aspects` 帶退場面向原值全文——判型/P 方向/TMU=0 依據消失時
-   不無痕刪除，切分面向不得走此型）。
+   不無痕刪除，切分面向不得走此型）；**裁決改判**（D3-029，g55/g57 型：
+   `superseded_rulings` 帶被改判面向的原值全文——面向還在、只有值被更正，
+   不變量與退場型相反：本體必須**有**那些鍵且**值不同**）。
 
 mutation 證據（CI_GATES 規則 7）：
 - 把 `merge_review_state` 的 sha 配對改成流水號配對 → `test_renumbered_draft_still_matched` 紅。
@@ -34,6 +36,16 @@ mutation 證據（CI_GATES 規則 7）：
 - 把 `draft_json_files` 的排除拆掉 → `test_review_state_file_is_not_a_draft` 紅。
 - 把 `load_review_state` 的 ruling_history 驗證拆掉 →
   `test_load_review_state_rejects_bad_ruling_history` 紅。
+- D3-029：把改判型（superseded_rulings）的「本體必須有該鍵且值不同」拆掉 →
+  `test_load_review_state_rejects_bad_ruling_correction` 紅；把已撤回 token
+  放回 entry 本體的合法值域 → `test_retracted_ruling_only_legal_in_history` 紅。
+- D3-030 M1：把假改判判準退回「不是每一欄都相同」（`set(same) == set(corrected)`）
+  → `test_load_review_state_rejects_bad_ruling_correction` 的假改判 3／4 紅
+  （裁決值一字未動、只改日期或登記人的假軌跡會被收下）。
+- D3-030 B2：把 `date_shape_error` 的「不得晚於今天」拆掉（只留 regex）→
+  `test_date_shape_error_accepts_today_and_past_rejects_future`、
+  `test_load_review_state_rejects_future_dates`、
+  `test_load_review_state_rejects_future_superseded_date` 紅。
 - 把覆核表的 stale banner 拆掉（或 stale 記錄不再附 entry）→
   `test_stale_draft_checklist_banner_shows_prior_ruling` 紅（D3-023 複審必修 1）。
 """
@@ -43,6 +55,7 @@ import copy
 import hashlib
 import json
 import sys
+from datetime import date, timedelta
 from pathlib import Path
 from typing import Any
 
@@ -53,12 +66,16 @@ DRAFT_DIR = ROOT / "tests" / "gold" / "wi_plans_draft"
 
 sys.path.insert(0, str(ROOT / "scripts"))
 from gold_harvest import (  # noqa: E402
+    ACQUIRE_LINT_RETRACTED_RULINGS,
+    ACQUIRE_LINT_RULING_CONSUMED,
+    ACQUIRE_LINT_RULING_TOKENS,
     DIM_KEYS,
     REVIEW_SEGMENTATION_SOURCE_BATCH,
     REVIEW_STATE_FILENAME,
     REVIEW_STATE_SCHEMA_VERSION,
     apply_review_state_entry,
     build_review_checklist,
+    date_shape_error,
     draft_json_files,
     draft_sha8,
     load_review_state,
@@ -535,9 +552,13 @@ def test_load_review_state_rejects_batch_with_ruling(tmp_path: Path):
         load_review_state(p)
 
 
-# D3-026 第五批：批次確認案例中已轉正的恰 5 筆（實質內容守門的兩條合法路徑
-# 已解——g41 帶真 I TMU（E 型豁免）、其餘 4 筆 incomplete 裁決的
-# expected_incomplete_reason）。名單恰等：多＝未預期轉正必須查；少＝被撤回，
+# 批次切分確認的累計筆數：D3-021 答案 B 的 16 筆＋D3-028 Q1/Q2/Q3/Q5 的 6 筆
+# （1dd7c1d5／6be614c5／2e7b2e5a／51518399／7f085e02 補切分面向；8ef772ab 新建
+# entry）＝22。增減都要有意識更新。
+REPO_BATCH_CONFIRMED_N = 22
+# 批次確認案例中已轉正的：D3-026 五筆（g41 帶真 I TMU（E 型豁免）、其餘 4 筆
+# incomplete 裁決的 expected_incomplete_reason）＋D3-028 八筆（切分確認解鎖的
+# g50–g54 與判型答案的 g55–g57）。名單恰等：多＝未預期轉正必須查；少＝被撤回，
 # 名單要同步更新。
 REPO_BATCH_PROMOTED: dict[str, str] = {
     "2f0cb396": "g41_confirm_dimm_points",
@@ -545,13 +566,26 @@ REPO_BATCH_PROMOTED: dict[str, str] = {
     "bc473698": "g43_screw_board_fix_x6",
     "323b04c1": "g44_screw_fix_single",
     "130bb1ad": "g48_screw_fix_multi",
+    "1dd7c1d5": "g50_press_function_test_fixture",
+    "6be614c5": "g51_press_dimm_latch_to_position",
+    "2e7b2e5a": "g52_press_button_template",
+    "51518399": "g53_attach_label_to_board_position",
+    "7f085e02": "g54_tear_screen_film",
+    "28f9ed7e": "g55_pick_screw_x1",
+    "37fbd2a6": "g56_place_heatsink_on_cpu",
+    "8ef772ab": "g57_lh_pick_screw_from_box",
 }
+# 各批確認日（同一 IE、分輪回答——日期是哪一輪答的，不得混寫）。
+# D3-030 B2：D3-021 與 D3-028 兩批的登記日先前寫成 2026-08-17／2026-08-18，
+# 後者比評測報告時戳（wi-gold-20260817T131338Z）還晚一天＝算錯，已全批訂正回
+# 2026-08-17（兩批同日答完），故本集合只剩一個值。
+REPO_BATCH_CONFIRMED_DATES = {"2026-08-17"}
 
 
 def test_repo_batch_confirmed_answer_b_pinned():
-    """repo 釘值（D3-021 答案 B）：批次確認恰 16 筆；D3-026 起其中恰 5 筆
-    轉正（REPO_BATCH_PROMOTED 名單恰等），其餘 11 筆逐筆配對到無爭點草稿
-    且 ie_review 帶批次來源。"""
+    """repo 釘值（D3-021 答案 B ＋ D3-028 補批）：批次確認恰
+    REPO_BATCH_CONFIRMED_N 筆；其中已轉正者名單恰等 REPO_BATCH_PROMOTED，
+    其餘逐筆配對到無爭點草稿且 ie_review 帶批次來源。"""
     state_path = DRAFT_DIR / REVIEW_STATE_FILENAME
     if not state_path.exists():
         pytest.skip("repo 無 review-state.json")
@@ -561,7 +595,9 @@ def test_repo_batch_confirmed_answer_b_pinned():
         for k, e in entries.items()
         if e.get("segmentation_source") == REVIEW_SEGMENTATION_SOURCE_BATCH
     }
-    assert len(batch) == 16, "D3-021 答案 B＝16 筆批次切分確認（增減都要有意識更新）"
+    assert len(batch) == REPO_BATCH_CONFIRMED_N, (
+        "批次切分確認筆數漂移（增減都要有意識更新）"
+    )
     promoted = {k: e["promoted_to"] for k, e in batch.items() if e.get("promoted_to")}
     assert promoted == REPO_BATCH_PROMOTED, (
         "批次確認的轉正名單漂移（多＝未預期轉正；少＝被撤回，名單同步更新）"
@@ -569,7 +605,7 @@ def test_repo_batch_confirmed_answer_b_pinned():
     drafts = {draft_sha8(d): d for d in _repo_drafts()}
     for sha8, e in batch.items():
         assert e.get("segmentation_confirmed_by") == "IEC141289"
-        assert e.get("segmentation_confirmed_date") == "2026-08-17"
+        assert e.get("segmentation_confirmed_date") in REPO_BATCH_CONFIRMED_DATES
         if sha8 in REPO_BATCH_PROMOTED:
             continue  # 已轉正——promoted ↔ gold 同進同出守門在 test_gold_promotion
         d = drafts.get(sha8)
@@ -849,8 +885,8 @@ def test_load_review_state_accepts_aspect_retirement_history(tmp_path: Path):
 @pytest.mark.parametrize(
     ("item_over", "match"),
     [
-        # 同條目混兩型：切分更正與面向退場必須分開記
-        ({"ie_ruling": "multi_cycle_5"}, "兩型分開記"),
+        # 同條目混多型：切分更正／面向退場／裁決改判必須分開記
+        ({"ie_ruling": "multi_cycle_5"}, "多型"),
         # 空殼退場：沒有原值全文＝無痕刪除
         ({"superseded_aspects": {}}, "非空 object"),
         # 切分面向不得走退場型（切分更正走 ie_ruling 型）
@@ -978,6 +1014,125 @@ def test_load_review_state_rejects_fake_retirement(tmp_path: Path):
         load_review_state(p)
 
 
+# D3-029（g55/g57 型）：**裁決改判**——面向還在、只有值被更正（工程推定
+# `place_in_next_row` 被 IE 以領域知識否決、改判 `consumed_by_later_action`）。
+# 與退場型的不變量剛好相反：退場要求本體沒有那些鍵，改判要求本體有那些鍵且
+# 值不同。撤回的 token 只在軌跡裡合法——原值全文要看得見才叫留痕。
+_RETRACTED = ACQUIRE_LINT_RETRACTED_RULINGS[0]
+_SUPERSEDED_RULING = {
+    "acquire_lint_ruling": _RETRACTED,
+    "acquire_lint_ruled_by": "IEC141289",
+    "acquire_lint_ruled_date": "2026-08-17",
+}
+_CORRECTION_ITEM = {
+    "superseded_rulings": dict(_SUPERSEDED_RULING),
+    "superseded_date": "2026-08-17",
+    "supersede_reason": "工程推定「放在下一列」，IE 以領域知識否決並改判四類歸宿",
+}
+_CORRECTED_BODY = {
+    "acquire_lint_ruling": ACQUIRE_LINT_RULING_CONSUMED,
+    "acquire_lint_ruled_by": "IEC141289",
+    "acquire_lint_ruled_date": "2026-08-17",
+}
+
+
+def test_load_review_state_accepts_ruling_correction_history(tmp_path: Path):
+    """裁決改判軌跡：本體帶新裁決、軌跡帶被撤回的原值全文——可載入，且原值
+    （已撤回 token）在軌跡裡讀得回來。"""
+    norm = "拿取螺絲 x1"
+    entry = _entry(norm, ruling_history=[dict(_CORRECTION_ITEM)], **_CORRECTED_BODY)
+    p = _write_state(tmp_path / REVIEW_STATE_FILENAME, {_sha(norm)[:8]: entry})
+    loaded = load_review_state(p)[_sha(norm)[:8]]
+    assert loaded["acquire_lint_ruling"] == ACQUIRE_LINT_RULING_CONSUMED
+    assert loaded["ruling_history"][0]["superseded_rulings"][
+        "acquire_lint_ruling"
+    ] == _RETRACTED, "被撤回的原值必須全文保留（不無痕覆寫）"
+
+
+def test_retracted_ruling_only_legal_in_history(tmp_path: Path):
+    """已撤回 token 在 entry 本體＝把 IE 否決掉的答案當現行裁決——擋下
+    （軌跡裡合法，本體裡非法：兩邊值域刻意不同）。"""
+    norm = "拿取螺絲 x1"
+    entry = _entry(norm, **{**_CORRECTED_BODY, "acquire_lint_ruling": _RETRACTED})
+    p = _write_state(tmp_path / REVIEW_STATE_FILENAME, {_sha(norm)[:8]: entry})
+    with pytest.raises(SystemExit, match="acquire_lint_ruling"):
+        load_review_state(p)
+    assert _RETRACTED not in ACQUIRE_LINT_RULING_TOKENS
+
+
+@pytest.mark.parametrize(
+    ("item_over", "body_over", "match"),
+    [
+        # 同條目混型：改判與切分更正／面向退場必須分開記
+        ({"ie_ruling": "multi_cycle_3"}, {}, "多型"),
+        ({"superseded_aspects": {"zero_tmu_ruling": "x"}}, {}, "多型"),
+        # 空殼改判：沒有原值全文
+        ({"superseded_rulings": {}}, {}, "非空 object"),
+        # 不可改判的欄位（切分走 ie_ruling 型、依據消失走 superseded_aspects）
+        (
+            {"superseded_rulings": {"segmentation_confirmed_by": "IEC141289"}},
+            {},
+            "不可改判",
+        ),
+        # 軌跡值 garbage：原值全文若是壞值，軌跡即空殼（同退場型的標準）
+        (
+            {
+                "superseded_rulings": {
+                    **_SUPERSEDED_RULING,
+                    "acquire_lint_ruled_date": "18/08/2026",
+                }
+            },
+            {},
+            "YYYY-MM-DD",
+        ),
+        # 自創 token 連軌跡也不收（撤回值只有登記過的那些）
+        (
+            {"superseded_rulings": {**_SUPERSEDED_RULING, "acquire_lint_ruling": "made_up"}},
+            {},
+            "acquire_lint_ruling",
+        ),
+        # 假改判 1：本體沒有該面向＝其實是退場（走錯型），不是改判
+        ({}, {"_drop_body": True}, "不在 entry"),
+        # 假改判 2：本體與軌跡逐欄相同＝沒有任何值被改判（軌跡是空殼）
+        ({"superseded_rulings": dict(_CORRECTED_BODY)}, {}, "沒有任何裁決值被更正"),
+        # 假改判 3（D3-030 M1）：**裁決值一字未動、只改日期**——舊判準「不是每
+        # 一欄都相同」會放行（複審實測 ACCEPTED），新判準看的是裁決欄本身。
+        (
+            {
+                "superseded_rulings": {
+                    **_CORRECTED_BODY,
+                    "acquire_lint_ruled_date": "2026-08-16",
+                }
+            },
+            {},
+            "只改日期/登記人不是改判",
+        ),
+        # 假改判 4：只改登記人（同上，輔助欄的差異不構成改判）
+        (
+            {
+                "superseded_rulings": {
+                    **_CORRECTED_BODY,
+                    "acquire_lint_ruled_by": "IEC999999",
+                }
+            },
+            {},
+            "只改日期/登記人不是改判",
+        ),
+    ],
+)
+def test_load_review_state_rejects_bad_ruling_correction(
+    tmp_path: Path, item_over: dict, body_over: dict, match: str
+):
+    """改判型的 fail-closed：混型、空殼、不可改判欄位、軌跡壞值、假改判都擋。"""
+    norm = "拿取螺絲 x1"
+    item = {**_CORRECTION_ITEM, **item_over}
+    body = {} if body_over.pop("_drop_body", False) else {**_CORRECTED_BODY, **body_over}
+    entry = _entry(norm, ruling_history=[item], **body)
+    p = _write_state(tmp_path / REVIEW_STATE_FILENAME, {_sha(norm)[:8]: entry})
+    with pytest.raises(SystemExit, match=match):
+        load_review_state(p)
+
+
 @pytest.mark.parametrize(
     ("over", "match"),
     [
@@ -1029,6 +1184,91 @@ def test_load_review_state_rejects_bad_aspect_shapes(tmp_path: Path, over, match
     p = _write_state(tmp_path / REVIEW_STATE_FILENAME, {_sha(norm)[:8]: entry})
     with pytest.raises(SystemExit, match=match):
         load_review_state(p)
+
+
+# ── 裁決日期不得在未來（D3-030 B2）────────────────────────────────────────────
+#
+# 動機是真事故：D3-028/029 的 8 筆裁決日被寫成 2026-08-18——比當批評測報告的
+# 時戳（wi-gold-20260817T131338Z）晚一天，形狀檢查（YYYY-MM-DD）全數通過，
+# 沒有任何守門看得出來。日期是人手打的，未來日期一律是筆誤或算錯。
+# 比對基準取**執行當下**（date.today），不是寫死常數——寫死的「今天」跨過
+# 那天就靜默失效，而且會變成另一個要維護的釘值。
+
+
+def test_date_shape_error_accepts_today_and_past_rejects_future():
+    """純函式判準：今天/過去 → 過；未來 → 拒（訊息點名晚於今天）。"""
+    ref = date(2026, 8, 17)
+    assert date_shape_error("2026-08-17", today=ref) is None
+    assert date_shape_error("2026-08-16", today=ref) is None
+    assert date_shape_error("2020-01-01", today=ref) is None
+    assert "晚於今天" in (date_shape_error("2026-08-18", today=ref) or "")
+    assert "晚於今天" in (date_shape_error("2027-01-01", today=ref) or "")
+    # 形狀本身照舊擋
+    assert date_shape_error("18/08/2026", today=ref) == "必須是 YYYY-MM-DD"
+    assert date_shape_error(None, today=ref) == "必須是 YYYY-MM-DD"
+    # 形狀對但不是合法日期（2 月 30 日）——不得被 regex 放行
+    assert "不是合法日期" in (date_shape_error("2026-02-30", today=ref) or "")
+
+
+@pytest.mark.parametrize(
+    "over",
+    [
+        # 面向裁決日（_require_by_date 路徑）
+        {
+            "zero_tmu_ruling": "distance_unstated",
+            "zero_tmu_ruled_by": "IEC141289",
+            "zero_tmu_ruled_date": "__TOMORROW__",
+        },
+        # 切分確認日
+        {"segmentation_confirmed_date": "__TOMORROW__"},
+        # 轉正日
+        {"promoted_to": "g06_board_to_press_fixture", "promoted_date": "__TOMORROW__"},
+    ],
+)
+def test_load_review_state_rejects_future_dates(tmp_path: Path, over: dict):
+    """未來日期在任何一個日期欄都擋（明天由執行當下推算，不寫死）。"""
+    tomorrow = (date.today() + timedelta(days=1)).isoformat()
+    over = {k: (tomorrow if v == "__TOMORROW__" else v) for k, v in over.items()}
+    norm = "雙手抓握主機板放至治具"
+    entry = _entry(norm, **over)
+    p = _write_state(tmp_path / REVIEW_STATE_FILENAME, {_sha(norm)[:8]: entry})
+    with pytest.raises(SystemExit, match="晚於今天"):
+        load_review_state(p)
+
+
+def test_load_review_state_rejects_future_superseded_date(tmp_path: Path):
+    """更正軌跡的 superseded_date 同樣不得在未來。"""
+    tomorrow = (date.today() + timedelta(days=1)).isoformat()
+    norm = "拿取螺絲 x1"
+    item = {**_CORRECTION_ITEM, "superseded_date": tomorrow}
+    entry = _entry(norm, ruling_history=[item], **_CORRECTED_BODY)
+    p = _write_state(tmp_path / REVIEW_STATE_FILENAME, {_sha(norm)[:8]: entry})
+    with pytest.raises(SystemExit, match="晚於今天"):
+        load_review_state(p)
+
+
+def test_repo_review_state_has_no_future_dates():
+    """repo 現況自洽：state 檔裡每一個日期欄都不在未來（B2 訂正的回歸）。"""
+    state_path = DRAFT_DIR / REVIEW_STATE_FILENAME
+    if not state_path.exists():
+        pytest.skip("repo 無 review-state.json")
+    raw = json.loads(state_path.read_text(encoding="utf-8"))
+    today = date.today()
+    bad: list[str] = []
+
+    def _walk(node: Any, trail: str) -> None:
+        if isinstance(node, dict):
+            for k, v in node.items():
+                _walk(v, f"{trail}.{k}")
+        elif isinstance(node, list):
+            for i, v in enumerate(node):
+                _walk(v, f"{trail}[{i}]")
+        elif isinstance(node, str) and trail.split(".")[-1].endswith("date"):
+            if date_shape_error(node, today=today):
+                bad.append(f"{trail}={node}")
+
+    _walk(raw.get("entries", {}), "entries")
+    assert bad == [], f"review-state 有未來/壞日期：{bad}"
 
 
 def test_load_review_state_accepts_valid_reseg_ruling(tmp_path: Path):

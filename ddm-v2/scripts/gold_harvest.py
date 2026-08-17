@@ -86,7 +86,9 @@ import json
 import os
 import re
 import sys
+from collections.abc import Iterable
 from dataclasses import dataclass, field
+from datetime import date
 from pathlib import Path
 from typing import Any
 
@@ -388,7 +390,7 @@ def detect_challenge_tags(raw: str, norm: str) -> dict[str, Any]:
     return tags
 
 
-# ── 「取必有放」lint（D3-014 裁決 2）────────────────────────────────────────
+# ── 「取必有放」lint（D3-014 裁決 2）＋四類歸宿裁決（D3-029）──────────────────
 
 # acquire 的收尾 action 類型（消耗掉「取」的抓握者）：
 # - move_place／release_return：字面上的「放」。
@@ -398,28 +400,176 @@ def detect_challenge_tags(raw: str, norm: str) -> dict[str, Any]:
 #   合法建模，把它標成「取而無放」會跟裁決 1 打架。
 # - composite_unknown **不算**收尾：判不出型的 action 不能拿來宣稱「有放」。
 _ACQUIRE_CLOSER_TYPES = ("move_place", "release_return", "controlled_move")
+# 旗標名的單一出處（preannotate／--recompile 同步／覆核表／轉正資格共用一個
+# 字面；先前四處各寫字串，改名會漏改其中一處而靜默失效）。
+ACQUIRE_LINT_CAVEAT = "acquire_without_place"
+
+# ── 四類歸宿（D3-029；IE 2026-08-17 裁決，取代 D3-028 的單一 token）──────────
+#
+# D3-028 只定義了一個 token `place_in_next_row`（「『放』在下一句/下一列」）。
+# 那是**工程推定**，IE 以領域知識否決：「不一定都會是下一步才有放，要看是什麼
+# 物件也要看是什麼動作」。v3 module『拿取電動起子，依圖示鎖附兩顆螺絲』
+# （wi-template `50ed054b` / version `9569aeaf`）三列即反例：
+#   rows[0] **左手** 從螺絲料盒拿取螺絲（CM）
+#   rows[1] **右手** 抓握電動起子保持住至機箱（GM，p_hold＝保持住，工具不放）
+#   rows[2] 右手 鎖附固定並確認螺絲到位（CM）
+# 兩手各取一物 → 一起到目標執行：螺絲的「放」**被鎖附消耗**（不是獨立列）、
+# 起子**根本不放**。IE 的不變式（「取最後一定有放，不然會出錯」）依然成立——
+# 「放」有三種**合法形態**，這條檢查真正要抓的是第四類。
+ACQUIRE_LINT_RULING_PLACED = "placed"
+ACQUIRE_LINT_RULING_CONSUMED = "consumed_by_later_action"
+ACQUIRE_LINT_RULING_TOOL_HELD = "tool_held"
+ACQUIRE_LINT_RULING_GENUINELY_MISSING = "genuinely_missing"
+# 合法裁決值的單一出處（state 檔驗證／轉正資格／覆核表共用；未列即拒＝
+# fail-closed，新歸宿型態必須先定義才可登記）。
+ACQUIRE_LINT_RULING_TOKENS = (
+    ACQUIRE_LINT_RULING_PLACED,
+    ACQUIRE_LINT_RULING_CONSUMED,
+    ACQUIRE_LINT_RULING_TOOL_HELD,
+    ACQUIRE_LINT_RULING_GENUINELY_MISSING,
+)
+# 解除轉正阻擋的**三**類。`genuinely_missing` 刻意不在其中：它是「這筆建模
+# 錯了」的宣告，不是通過條件——答它＝補收尾 action 走 `--recompile`（旗標會
+# 因 plan 改變自然消失），原樣轉正等於把 IE 已判定為錯的建模寫進標準答案。
+ACQUIRE_LINT_CLEARING_RULINGS = frozenset(
+    {
+        ACQUIRE_LINT_RULING_PLACED,
+        ACQUIRE_LINT_RULING_CONSUMED,
+        ACQUIRE_LINT_RULING_TOOL_HELD,
+    }
+)
+# 已撤回 token（D3-028 的工程推定，D3-029 由 IE 否決）：**只在 ruling_history
+# 的更正軌跡裡合法**——「原值全文保留」要驗得出來不是 garbage，但撤回的答案
+# 不得再出現在 entry 本體或正式 gold 上。
+ACQUIRE_LINT_RETRACTED_RULINGS = ("place_in_next_row",)
+# 覆核表／摘要的人讀說明（單一出處；四類的語意寫在這裡，不散在各處字面）
+ACQUIRE_LINT_RULING_ZH: dict[str, str] = {
+    ACQUIRE_LINT_RULING_PLACED: (
+        "放置到位——同列的 P 格或後續列的放置動作（拿取 DIMM → 放至治具）"
+    ),
+    ACQUIRE_LINT_RULING_CONSUMED: (
+        "無獨立的「放」——物件被後續動作消耗/固定（螺絲→被鎖附、膠帶→被貼附）"
+    ),
+    ACQUIRE_LINT_RULING_TOOL_HELD: (
+        "工具跨列持有、本來就不放（起子→保持住；plan 層以 `tool_held_for` "
+        "dependency 表達同一事實）"
+    ),
+    ACQUIRE_LINT_RULING_GENUINELY_MISSING: (
+        "**建模錯誤**——取了之後物件消失，這才是本檢查真正要抓的那一類；"
+        "答這類請補收尾 action 走 `--recompile`（**不解除**轉正阻擋）"
+    ),
+}
+
+
+def unclosed_acquires(actions: list[dict]) -> list[dict]:
+    """plan 內「其後同 plan 無收尾 action」的 acquire（依 sequence_order 排序）。
+
+    判定用 plan 的 action_type 序列，**不用文字啟發式**——R1 的教訓：動詞面會被
+    名詞擊穿。`acquire_without_place`（旗標）與 `acquire_lint_auto_ruling`
+    （裁決自動推導）共用本函式，兩者不允許各判各的。"""
+    ordered = sorted(actions, key=lambda a: (a.get("sequence_order") or 0))
+    return [
+        a
+        for i, a in enumerate(ordered)
+        if a.get("action_type") == "acquire"
+        and not any(
+            b.get("action_type") in _ACQUIRE_CLOSER_TYPES for b in ordered[i + 1:]
+        )
+    ]
 
 
 def acquire_without_place(actions: list[dict]) -> bool:
     """plan 內「取而無放」lint（裁決 2：取最後一定有放）。
 
-    判定用 plan 的 action_type 序列（依 sequence_order），**不用文字啟發式**——
-    R1 的教訓：動詞面會被名詞擊穿。任何 acquire 之後（同 plan 內）沒有收尾
-    action（`_ACQUIRE_CLOSER_TYPES`）即命中。
-
     旗標語意＝WARN 標給 IE，不是 BLOCK：只在**同 plan 內**判——單句 acquire
-    可能合法（「放」在下一句/下一列的 plan 裡，正式 gold g01「拿起DIMM」即此型），
-    所以問題是「這句的放在哪？被截斷了還是描述缺漏？」，不是「本句必錯」。
+    可能合法（正式 gold g01「拿起DIMM」即此型），所以問題是「這個『取』的歸宿
+    是哪一類？」，不是「本句必錯」。四類歸宿（D3-029）見
+    `ACQUIRE_LINT_RULING_TOKENS`：前三類合法，`genuinely_missing` 才是要抓的。
 
     preannotate（發旗標）、`_questions_for`（覆核表提問）、schema 守門測試
     共用本函式——單一判定，不允許條件漂移。"""
-    ordered = sorted(actions, key=lambda a: (a.get("sequence_order") or 0))
-    for i, a in enumerate(ordered):
-        if a.get("action_type") != "acquire":
+    return bool(unclosed_acquires(actions))
+
+
+def _later_action_ids(plan: dict[str, Any], action: dict[str, Any]) -> set[str]:
+    """同 plan 內 sequence_order 大於 action 的 action_id 集合。"""
+    order = action.get("sequence_order") or 0
+    return {
+        str(a.get("action_id"))
+        for a in plan.get("actions") or []
+        if (a.get("sequence_order") or 0) > order
+    }
+
+
+def acquire_lint_auto_ruling(plan: dict[str, Any]) -> str | None:
+    """plan 已用 `tool_held_for` 表達「工具留在手上」⇒ 裁決自動推得 `tool_held`
+    （回 token）；推不得回 None（IE 逐筆答）。
+
+    **`tool_held`（覆核層裁決）與 `tool_held_for`（plan 層 dependency）的關係**
+    ——查證結果（D3-029 要求 4）：兩者是**同一事實的兩個層面**，所以既能自動
+    推導、也應互相驗證。
+
+    - `tool_held_for` 是契約層的 dependency 型別（`nlp/contracts.py`
+      `DependencyType`），語意＝工具自 `from_action`（acquire）持有到
+      `to_action`；compile 端 `most_compiler/policies.py::is_tool_held` 讀它讓
+      後續 action 的 **G 留空**（已持有＝0 TMU）。它會**改變 TMU**。
+    - `tool_held` 是覆核層對「這個取的歸宿是哪一類」的答案＝不放、留在手上。
+      它不改任何期望值，只解除轉正阻擋。
+    - **自動推導（本函式）**：每個未閉合的 acquire 都有一條 `tool_held_for`
+      指向**同 plan 內更後面**的 action ⇒ 歸宿已由 plan 自己說明白，不必再問
+      IE（正式 gold g02「拿取電動起子…鎖附兩顆螺絲」即此型：a1 acquire ＋ a2
+      process ＋ dep a1→a2）。**只認 `tool_held_for`**：`same_object`／
+      `uses_tool` 不主張物件停在手上（前者可以是放好之後再對同一物件作業、
+      後者只說用到工具），拿它們推導會把「放了又拿」誤判成「沒放」。
+    - **反向驗證**（`acquire_lint_tool_held_unexpressed`）：IE 裁 `tool_held`
+      但同 plan 內有更後面的 action 卻沒標 dependency ⇒ 擋。那是**可表達卻沒
+      表達**——`is_tool_held` 不會生效，後續 action 的 G 會被當成重新抓取而
+      多算 TMU，裁決與期望值不一致。
+    - **邊界**：acquire 是 plan 的最後一個 action（跨列持有，如 g08「右手抓握
+      電動起子保持住至機箱」，下一列才鎖附）——dependency 是 **plan 內**的，
+      跨列表達不了，此時 `tool_held` 合法且**不擋**（否則真實的跨列持有無路
+      可走）；也因為表達不了，這種情形推不出來，仍要 IE 逐筆答。
+    - **為什麼不乾脆讓旗標對 `tool_held_for` 靜音**：旗標是 plan 的函數且與
+      schema 守門（`tests/unit/test_gold_draft_schema.py` 5c）同進同出，靜音會
+      讓覆核表看不到「這裡有一個未閉合的取」。自動推導做在**裁決層**：IE 仍
+      看得見，只是不必逐筆答。"""
+    unclosed = unclosed_acquires(plan.get("actions") or [])
+    if not unclosed:
+        return None
+    deps = plan.get("dependencies") or []
+    for a in unclosed:
+        later = _later_action_ids(plan, a)
+        if not any(
+            d.get("type") == "tool_held_for"
+            and str(d.get("from_action")) == str(a.get("action_id"))
+            and str(d.get("to_action")) in later
+            for d in deps
+        ):
+            return None
+    return ACQUIRE_LINT_RULING_TOOL_HELD
+
+
+def acquire_lint_tool_held_unexpressed(plan: dict[str, Any]) -> list[str]:
+    """裁決 `tool_held` 的反向驗證：**同 plan 內可表達卻沒表達**的未閉合
+    acquire（回 action_id 清單；空＝一致）。
+
+    「可表達」＝該 acquire 之後同 plan 內還有 action，卻沒有 `tool_held_for`
+    指過去。跨列持有（acquire 是最後一個 action）表達不了，不算漏標——理由見
+    `acquire_lint_auto_ruling` docstring。"""
+    gaps: list[str] = []
+    deps = plan.get("dependencies") or []
+    for a in unclosed_acquires(plan.get("actions") or []):
+        later = _later_action_ids(plan, a)
+        if not later:
             continue
-        if not any(b.get("action_type") in _ACQUIRE_CLOSER_TYPES for b in ordered[i + 1:]):
-            return True
-    return False
+        if not any(
+            d.get("type") == "tool_held_for"
+            and str(d.get("from_action")) == str(a.get("action_id"))
+            and str(d.get("to_action")) in later
+            for d in deps
+        ):
+            gaps.append(str(a.get("action_id")))
+    return gaps
 
 
 # ── 來源採集（唯讀）─────────────────────────────────────────────────────────
@@ -1053,7 +1203,7 @@ async def preannotate(
     if acquire_without_place(plan_json["actions"]):
         # 裁決 2「取最後一定有放」：plan 有 acquire 而同 plan 內其後無收尾。
         # WARN 不 BLOCK——語意見 acquire_without_place docstring
-        caveats.append("acquire_without_place")
+        caveats.append(ACQUIRE_LINT_CAVEAT)
     if not synonyms:
         caveats.append("empty_lexicon_no_slot_candidates")
     if any(d.complete and d.engine_result is None for d in drafts):
@@ -1151,10 +1301,12 @@ _CAVEAT_ZH = {
         "（G 與 M 各取值）還是 acquire＋controlled_move **兩個 action**"
         "（見下方「取移建模」題；不預設方向）"
     ),
-    "acquire_without_place": (
+    ACQUIRE_LINT_CAVEAT: (
         "本 plan 含 acquire（取）而其後**同 plan 內**沒有任何收尾 action"
         "（move_place／release_return／controlled_move）——裁決 2：「取最後一定有放」。"
-        "**這句的「放」在哪？是句子被截斷了，還是描述缺漏？**"
+        "**這個「取」的歸宿是哪一類？**（D3-029 四類：`placed` 放置到位／"
+        "`consumed_by_later_action` 被後續動作消耗（螺絲→被鎖附）／`tool_held` "
+        "工具跨列持有不放（起子→保持住）／`genuinely_missing` 建模錯誤）。"
         "邊界：本旗標只在同 plan 內判，是 WARN 不是 BLOCK——單句 acquire 可能"
         "合法（「放」在下一句/下一列，如正式 gold g01「拿起DIMM」不發明後續步驟）；"
         "判定用 action_type 序列，不用文字啟發式"
@@ -1383,12 +1535,26 @@ def _questions_for(draft: dict[str, Any]) -> list[str]:
             qs.append(open_q)
     # 「取必有放」提問與旗標共用同一判定（acquire_without_place）——單一出處
     if acquire_without_place(plan["actions"]):
-        qs.append(
-            "取而無放（裁決 2）：plan 有 acquire 而其後同 plan 內無任何收尾"
-            "（move_place／release_return／controlled_move）——**這句的「放」在哪？"
-            "是被截斷了還是描述缺漏？**若「放」在下一句/下一列，請在 notes 註明"
-            "（單句 acquire 合法，如 g01）；若本句就該有「放」，請補 action。"
-        )
+        auto = acquire_lint_auto_ruling(plan)
+        if auto:
+            qs.append(
+                f"取而無放（裁決 2）：本 plan 已用 `tool_held_for` 表達工具跨動作"
+                f"持有 → 裁決**自動推得 `{auto}`**（工具本來就不放，g02 前例）——"
+                "**本題不需回答**；不同意請改 plan，或在 state entry 明寫其他歸宿。"
+            )
+        else:
+            options = "".join(
+                f"{n}`{t}`（{ACQUIRE_LINT_RULING_ZH[t]}）"
+                for n, t in zip("①②③④", ACQUIRE_LINT_RULING_TOKENS)
+            )
+            qs.append(
+                "取而無放（裁決 2／D3-029 四類歸宿）：plan 有 acquire 而其後同 "
+                "plan 內無任何收尾（move_place／release_return／controlled_move）"
+                "——**這個「取」的歸宿是哪一類？**"
+                + options
+                + "。答①②③記 state entry 的 `acquire_lint_ruling`；答④是**補 "
+                "action** 走 `--recompile`（旗標會自然消失），不是登記裁決。"
+            )
     if tags.get("quantity") is True:
         qs.append("數量：句中的數量應掛在哪個 action？frequency=N 還是 repeat？（現行 QuantityPolicyV1 保守處理並標 quantity_policy_review）")
     if tags.get("tool_handling") is True:
@@ -1477,6 +1643,13 @@ def _ie_review_lines(draft: dict[str, Any]) -> list[str]:
             "草稿已記 `expected_incomplete_reason`（誠實 incomplete 轉正路徑，"
             "不發明值）。"
         )
+    if ir.get("acquire_lint_ruling"):
+        ruling = ir["acquire_lint_ruling"]
+        out.append(
+            f"**✅ IE 裁決（取而無放）**：`{ruling}`——"
+            f"{ACQUIRE_LINT_RULING_ZH.get(ruling, '（未知歸宿——fail-closed）')}"
+            f"（{ir['acquire_lint_ruled_by']}，{ir['acquire_lint_ruled_date']}）。"
+        )
     if ir.get("resegmentation_ruling"):
         out.append(
             f"**✅ IE 裁決（重切）**：`{ir['resegmentation_ruling']}`——本句是製程"
@@ -1524,6 +1697,12 @@ def _stale_prior_rulings_zh(entry: dict[str, Any]) -> list[str]:
         out.append(f"TMU=0 已裁 `{entry['zero_tmu_ruling']}`（句子資訊不足）")
     if entry.get("incomplete_ruling"):
         out.append(f"incomplete 已裁 `{entry['incomplete_ruling']}`（缺漏語意逐型釘值）")
+    if entry.get("acquire_lint_ruling"):
+        ruling = entry["acquire_lint_ruling"]
+        out.append(
+            f"取而無放已裁 `{ruling}`"
+            f"（{ACQUIRE_LINT_RULING_ZH.get(ruling, '未知歸宿')}）"
+        )
     return out
 
 
@@ -1581,7 +1760,14 @@ def build_review_checklist(
         "並提供的，結構＝IE 的切分裁決）：有結構答案的是**確認題**（預設依 v3 結構，"
         "不同意再改），缺失/矛盾的維持開放題——hint 是證據不是判決，IE 可推翻。"
         "帶 `acquire_without_place` 的是「取而無放」（裁決 2：取最後一定有放）——"
-        "請回答該筆的「放」在哪（WARN 不 BLOCK；單句 acquire 可能合法）。"
+        "請回答該筆的「取」歸宿是**四類**（D3-029）的哪一類（WARN 不 BLOCK；"
+        "單句 acquire 可能合法）："
+        + "；".join(
+            f"`{t}`＝{ACQUIRE_LINT_RULING_ZH[t]}" for t in ACQUIRE_LINT_RULING_TOKENS
+        )
+        + "。前三類記 state entry 的 `acquire_lint_ruling`，"
+        "第四類是**補 action** 不是登記裁決（旗標會因 plan 改變自然消失）。"
+        "plan 已標 `tool_held_for` 者，裁決自動推得 `tool_held`，不必逐筆答。"
         "另外：`challenge_tags` 裡 9 個可判維度的 `false` 也是啟發式輸出"
         "（`heuristic_tags_unverified` 點名的維度已有實證漏標），true/false 請一併確認。"
     )
@@ -2017,13 +2203,17 @@ def build_summary(
             "「幾乎必然低估」警語已對該筆**降級**（覆核表逐筆標示）。"
         )
         n_awp = sum(
-            1 for d in drafts if "acquire_without_place" in d["preannotation_caveat"]
+            1 for d in drafts if ACQUIRE_LINT_CAVEAT in d["preannotation_caveat"]
         )
         lines.append("")
         lines.append(
             f"「取必有放」lint（D3-014 裁決 2）：**{n_awp} 筆**命中 "
             "`acquire_without_place`（plan 有 acquire 而同 plan 內其後無收尾；"
-            "WARN 標給 IE，非 BLOCK）。"
+            "WARN 標給 IE，非 BLOCK——但轉正端要求該筆帶 IE 裁決 "
+            f"`acquire_lint_ruling` ∈ {ACQUIRE_LINT_RULING_TOKENS}，其中 "
+            f"`{ACQUIRE_LINT_RULING_GENUINELY_MISSING}`（建模錯誤）**不解除**"
+            "阻擋；plan 已標 `tool_held_for` 者自動推得 "
+            f"`{ACQUIRE_LINT_RULING_TOOL_HELD}`，D3-029）。"
         )
         lines.append("")
     # D3-015：IE 覆核狀態合併結果（review-state.json；stale 不靜默套用）
@@ -2212,6 +2402,21 @@ INCOMPLETE_RULING_TOKENS = ("distance_unstated", "count_unstated", "x_seconds_re
 # 多動作辨識參考。轉正端 fail-closed：帶本裁決的 entry 一律擋（見
 # promotion_blockers）——「d016 被錯誤轉正」必須紅。
 RESEGMENTATION_RULING_TITLE_SENTENCE = "title_sentence_no_resegmentation"
+# `acquire_without_place`（取而無放）裁決的合法值＝**四類歸宿**
+# （`ACQUIRE_LINT_RULING_TOKENS`，定義與 IE 證據見「取必有放」lint 一節）。
+#
+# 為什麼需要這個面向：該旗標自 D3-014 裁決 2 起就是「未解決的覆核提問」——
+# 覆核表逐筆問「這個『取』的歸宿在哪？」，README 的轉正資格也明列它是
+# blocker，但 D3-028 之前**沒有記錄答案的地方**：IE 答完 caveat 依舊掛著，
+# promotion_blockers 的 else 分支 fail-closed 一律擋。D3-028 Q5 把兩筆單動詞
+# 取料句（28f9ed7e「拿取螺絲 x1」、8ef772ab「左手從螺絲料盒拿取螺絲」）判為
+# acquire 後旗標必然出現，這個缺口才擋在路上。
+#
+# 不綁前提（與 zero_tmu/incomplete 的 stale 檢查刻意不同）：本裁決是**句子的
+# 性質**（這個取的歸宿是哪一類），不寫任何期望值進草稿，只在旗標出現時
+# 被消費——旗標不在時它是惰性記錄，不可能讓某個值變錯。因此 harvest 合併不
+# 為它設 stale 條件（設了反而讓「先答、後改 plan」這個唯一的合法順序走不通：
+# 草稿在 --recompile 之前還沒被判成 acquire，旗標尚未存在）。
 _RULING_RE = re.compile(r"^(single_cycle|multi_cycle_[2-9]\d*)$")
 _DATE_RE = re.compile(r"^\d{4}-\d{2}-\d{2}$")
 _SHA8_RE = re.compile(r"^[0-9a-f]{8}$")
@@ -2246,6 +2451,12 @@ _INCOMPLETE_ENTRY_KEYS = (
     "incomplete_ruled_by",
     "incomplete_ruled_date",
 )
+# D3-028：取而無放裁決（`acquire_without_place` 旗標的答案載體）
+_ACQUIRE_LINT_ENTRY_KEYS = (
+    "acquire_lint_ruling",
+    "acquire_lint_ruled_by",
+    "acquire_lint_ruled_date",
+)
 # D3-022 重切裁決（d016 型「標題句不硬切」）：notes 選填、其餘同進同出
 _RESEG_ENTRY_KEYS = (
     "resegmentation_ruling",
@@ -2254,6 +2465,10 @@ _RESEG_ENTRY_KEYS = (
     "resegmentation_ruling_notes",
 )
 _PROMOTED_ENTRY_KEYS = ("promoted_to", "promoted_date")
+# D3-030 B2：上面所有 `*_date`／`promoted_date`／`superseded_date`／`--approved-date`
+# 共用同一條日期判準 `date_shape_error()`——YYYY-MM-DD ＋ 合法日期 ＋**不得晚於
+# 今天**。命名慣例（`*_ruling` 是裁決欄、`*_ruled_by`／`*_ruled_date` 是輔助欄）
+# 由 `_ruling_value_keys()` 單一出處表達，改判判定只看裁決欄（M1）。
 # entry → 草稿 ie_review 區塊要帶的欄位（review_block_from_entry 的唯一出處；
 # *_at_review 是 stale 判定基準、promoted_* 是轉正軌跡——都不投影進草稿）
 _REVIEW_BLOCK_KEYS = (
@@ -2274,6 +2489,10 @@ _REVIEW_BLOCK_KEYS = (
     "incomplete_ruling",
     "incomplete_ruled_by",
     "incomplete_ruled_date",
+    # D3-028：取而無放裁決投影進草稿（轉正資格讀 ie_review）
+    "acquire_lint_ruling",
+    "acquire_lint_ruled_by",
+    "acquire_lint_ruled_date",
     # D3-022：重切裁決投影進草稿（notes 帶覆蓋對應事實）——寫在草稿上的版本
     # 會被 --force 洗掉，entry 才是唯一出處，投影讓它在重產後存活
     "resegmentation_ruling",
@@ -2300,11 +2519,47 @@ def _fail_state(path: Path | str, msg: str) -> None:
     raise SystemExit(f"review-state 無效（{path}）：{msg}——IE 覆核狀態不可靜默丟棄，修檔後再跑")
 
 
+def _ruling_value_keys(keys: Iterable[str]) -> list[str]:
+    """裁決欄＝以 `_ruling` 結尾的欄（`*_ruled_by`／`*_ruled_date` 是輔助欄）。
+
+    命名慣例的**單一出處**：zero_tmu_ruling／incomplete_ruling／
+    acquire_lint_ruling／resegmentation_ruling 都循此式，判「值有沒有真的被
+    改判」時只看這些欄（D3-030 M1）。
+    """
+    return sorted(k for k in keys if k.endswith("_ruling"))
+
+
+def date_shape_error(value: Any, *, today: date | None = None) -> str | None:
+    """裁決日期的形狀檢查（**單一出處**）：YYYY-MM-DD 且**不得晚於今天**。
+
+    回傳 None＝合法，否則回傳錯誤描述。
+
+    「不得晚於今天」是 D3-030 B2 的直接教訓：D3-028/029 有 8 筆裁決日被寫成
+    比系統時鐘還晚一天（2026-08-18；當批評測報告時戳是 20260817T131338Z），
+    形狀檢查通過、沒有任何守門看得出來。日期由 IE 回答時寫入、由人手打字，
+    未來日期一律是筆誤或算錯——不是有效的覆核紀錄。
+
+    比對基準是**執行當下**的日期（不寫死常數）：寫死會在跨過那天之後靜默失效，
+    而且會讓「今天」這件事變成需要維護的釘值。
+    """
+    if not (isinstance(value, str) and _DATE_RE.match(value)):
+        return "必須是 YYYY-MM-DD"
+    try:
+        ruled = date.fromisoformat(value)
+    except ValueError:
+        return "必須是 YYYY-MM-DD（不是合法日期）"
+    ref = today or date.today()
+    if ruled > ref:
+        return f"={value} 晚於今天（{ref.isoformat()}）——裁決日不可能在未來"
+    return None
+
+
 def _require_by_date(path: Path | str, ctx: str, entry: dict, by_key: str, date_key: str) -> None:
     if not (isinstance(entry.get(by_key), str) and entry[by_key].strip()):
         _fail_state(path, f"{ctx}：{by_key} 必填（IE 工號）")
-    if not (isinstance(entry.get(date_key), str) and _DATE_RE.match(entry[date_key])):
-        _fail_state(path, f"{ctx}：{date_key} 必須是 YYYY-MM-DD")
+    err = date_shape_error(entry.get(date_key))
+    if err:
+        _fail_state(path, f"{ctx}：{date_key} {err}")
 
 
 def _validate_typing_aspect(path: Path | str, ctx: str, entry: dict) -> None:
@@ -2374,6 +2629,36 @@ def _validate_zero_tmu_aspect(path: Path | str, ctx: str, entry: dict) -> None:
     _require_by_date(path, ctx, entry, "zero_tmu_ruled_by", "zero_tmu_ruled_date")
 
 
+def _validate_acquire_lint_aspect(
+    path: Path | str, ctx: str, entry: dict, *, allow_retracted: bool = False
+) -> None:
+    """取而無放裁決面向（D3-029）：值必須是**四類歸宿**之一（fail-closed——
+    未知 token 一律拒，新歸宿型態必須先定義才可登記）。
+
+    `allow_retracted` 只給 `ruling_history` 的更正軌跡用：D3-028 的
+    `place_in_next_row` 已由 IE 否決（`ACQUIRE_LINT_RETRACTED_RULINGS`），
+    軌跡要保留原值全文才驗得出來不是 garbage，但 entry 本體不得再帶它。"""
+    ruling = entry.get("acquire_lint_ruling")
+    legal = list(ACQUIRE_LINT_RULING_TOKENS)
+    if allow_retracted:
+        legal += list(ACQUIRE_LINT_RETRACTED_RULINGS)
+    if ruling not in legal:
+        _fail_state(
+            path,
+            f"{ctx}：acquire_lint_ruling={ruling!r} 不合法——必須是四類歸宿之一 "
+            f"{ACQUIRE_LINT_RULING_TOKENS}"
+            + (
+                ""
+                if allow_retracted
+                else f"（已撤回值 {ACQUIRE_LINT_RETRACTED_RULINGS} 只在 "
+                "ruling_history 的更正軌跡裡合法）"
+            ),
+        )
+    _require_by_date(
+        path, ctx, entry, "acquire_lint_ruled_by", "acquire_lint_ruled_date"
+    )
+
+
 def _validate_reseg_aspect(path: Path | str, ctx: str, entry: dict) -> None:
     """重切裁決面向（D3-022，d016 型）：只有一個合法值（fail-closed——新裁決
     型態必須先定義），且必須附著在既有的 multi_cycle 切分記錄上（single_cycle
@@ -2413,11 +2698,9 @@ def _validate_promoted_marker(path: Path | str, ctx: str, entry: dict) -> None:
         _fail_state(
             path, f"{ctx}：promoted_to 必須是正式 gold id（gNN_slug 形式）"
         )
-    if not (
-        isinstance(entry.get("promoted_date"), str)
-        and _DATE_RE.match(entry["promoted_date"])
-    ):
-        _fail_state(path, f"{ctx}：promoted_date 必須是 YYYY-MM-DD")
+    err = date_shape_error(entry.get("promoted_date"))
+    if err:
+        _fail_state(path, f"{ctx}：promoted_date {err}")
 
 
 def load_review_state(path: Path) -> dict[str, dict[str, Any]]:
@@ -2463,14 +2746,18 @@ def load_review_state(path: Path) -> dict[str, dict[str, Any]]:
         has_pdir = any(k in entry for k in _P_DIR_ENTRY_KEYS)
         has_zero = any(k in entry for k in _ZERO_TMU_ENTRY_KEYS)
         has_incomplete = any(k in entry for k in _INCOMPLETE_ENTRY_KEYS)
+        has_acq_lint = any(k in entry for k in _ACQUIRE_LINT_ENTRY_KEYS)
         has_reseg = any(k in entry for k in _RESEG_ENTRY_KEYS)
         has_promoted = any(k in entry for k in _PROMOTED_ENTRY_KEYS)
-        if not (has_seg or has_typing or has_pdir or has_zero or has_incomplete):
+        if not (
+            has_seg or has_typing or has_pdir or has_zero or has_incomplete
+            or has_acq_lint
+        ):
             _fail_state(
                 path,
                 f"{ctx}：entry 至少要有一個覆核面向"
-                "（切分／判型／P 方向數／TMU=0 裁決／incomplete 裁決）"
-                "——空 entry 不是覆核記錄",
+                "（切分／判型／P 方向數／TMU=0 裁決／incomplete 裁決／"
+                "取而無放裁決）——空 entry 不是覆核記錄",
             )
         if has_zero and has_incomplete:
             # 前提互斥：zero_tmu＝「complete 帶 TMU=0.0」、incomplete＝「有
@@ -2489,6 +2776,8 @@ def load_review_state(path: Path) -> dict[str, dict[str, Any]]:
             _validate_zero_tmu_aspect(path, ctx, entry)
         if has_incomplete:
             _validate_incomplete_aspect(path, ctx, entry)
+        if has_acq_lint:
+            _validate_acquire_lint_aspect(path, ctx, entry)
         if has_reseg:
             if not has_seg:
                 _fail_state(
@@ -2506,11 +2795,9 @@ def load_review_state(path: Path) -> dict[str, dict[str, Any]]:
             and entry["segmentation_confirmed_by"].strip()
         ):
             _fail_state(path, f"{ctx}：segmentation_confirmed_by 必填（IE 工號）")
-        if not (
-            isinstance(entry.get("segmentation_confirmed_date"), str)
-            and _DATE_RE.match(entry["segmentation_confirmed_date"])
-        ):
-            _fail_state(path, f"{ctx}：segmentation_confirmed_date 必須是 YYYY-MM-DD")
+        err = date_shape_error(entry.get("segmentation_confirmed_date"))
+        if err:
+            _fail_state(path, f"{ctx}：segmentation_confirmed_date {err}")
         src = entry.get("segmentation_source")
         if src not in REVIEW_SEGMENTATION_SOURCES:
             _fail_state(
@@ -2579,7 +2866,7 @@ def load_review_state(path: Path) -> dict[str, dict[str, Any]]:
                     _fail_state(path, f"{ctx}：ie_rejected_evidence 條目需 {{table, id}}")
         # 更正軌跡（標準答案集的更正不能是無痕覆寫）：entry 被更正時，先前的
         # 裁決與更正理由記在 ruling_history——若存在，形狀必須完整，否則
-        # 「保留軌跡」只是空殼宣稱。條目兩型（fail-closed：非此二型即擋）：
+        # 「保留軌跡」只是空殼宣稱。條目三型（fail-closed：非此三型即擋）：
         # - 切分裁決更正（D3-015/D3-022 既有）：帶有效 `ie_ruling`（先前答案）。
         # - 面向退場（D3-024，d0350279 型）：帶 `superseded_aspects`——判型/
         #   P 方向/TMU=0 面向的依據在新一輪消失（如判型棄權讓 typing_change
@@ -2587,6 +2874,11 @@ def load_review_state(path: Path) -> dict[str, dict[str, Any]]:
         #   搬進 superseded_aspects（不無痕刪除），entry 本體只留仍有依據的
         #   面向。切分面向不得走此型（切分更正走 ie_ruling 型；標題句另有
         #   resegmentation_ruling 欄）。
+        # - **裁決改判**（D3-029，g55/g57 型）：帶 `superseded_rulings`——面向
+        #   still 在、只有**值**被改判（工程推定 `place_in_next_row` 被 IE 以
+        #   領域知識否決、改判 `consumed_by_later_action`）。與退場型的不變量
+        #   剛好相反：退場要求本體**沒有**那些鍵（搬移非複製），改判要求本體
+        #   **有**那些鍵且**值不同**（否則不是改判，是重複記一次同樣的答案）。
         history = entry.get("ruling_history")
         if history is not None:
             if not (isinstance(history, list) and history):
@@ -2599,18 +2891,84 @@ def load_review_state(path: Path) -> dict[str, dict[str, Any]]:
                 | set(_ZERO_TMU_ENTRY_KEYS)
                 | set(_INCOMPLETE_ENTRY_KEYS)
             )
+            # D3-029：可改判（面向留著、值被更正）的欄位群——目前只有取而無放
+            # 面向；其他面向要改判時擴這個集合並在下方掛它的 validator。
+            correct_allowed = set(_ACQUIRE_LINT_ENTRY_KEYS)
             for h in history:
                 if not isinstance(h, dict):
                     _fail_state(path, f"{ctx}：ruling_history 條目必須是 object")
                 prev_ruling = h.get("ie_ruling")
                 aspects = h.get("superseded_aspects")
-                if aspects is not None:
-                    if prev_ruling is not None:
+                corrected = h.get("superseded_rulings")
+                kinds = [
+                    name
+                    for name, val in (
+                        ("ie_ruling", prev_ruling),
+                        ("superseded_aspects", aspects),
+                        ("superseded_rulings", corrected),
+                    )
+                    if val is not None
+                ]
+                if len(kinds) > 1:
+                    _fail_state(
+                        path,
+                        f"{ctx}：ruling_history 條目同時是 {kinds} 多型——切分更正"
+                        "（ie_ruling）／面向退場（superseded_aspects）／裁決改判"
+                        "（superseded_rulings）三型分開記",
+                    )
+                if corrected is not None:
+                    if not (isinstance(corrected, dict) and corrected):
                         _fail_state(
                             path,
-                            f"{ctx}：ruling_history 條目不得同時是切分更正（ie_ruling）"
-                            "與面向退場（superseded_aspects）——兩型分開記",
+                            f"{ctx}：superseded_rulings 必須是非空 object"
+                            "（被改判面向的原值全文）",
                         )
+                    bad = sorted(set(corrected) - correct_allowed)
+                    if bad:
+                        _fail_state(
+                            path,
+                            f"{ctx}：superseded_rulings 含不可改判欄位 {bad}"
+                            "（目前只有取而無放面向走改判型；切分走 ie_ruling 型、"
+                            "依據消失走 superseded_aspects 型）",
+                        )
+                    hctx = f"{ctx}.ruling_history[].superseded_rulings"
+                    if any(k in corrected for k in _ACQUIRE_LINT_ENTRY_KEYS):
+                        # 原值全文＝當初真的答過的那個 token，允許已撤回值
+                        # （撤回的答案要看得見，才叫留痕）
+                        _validate_acquire_lint_aspect(
+                            path, hctx, corrected, allow_retracted=True
+                        )
+                    # 假改判：改判＝面向還在、值不同——本體缺該面向（＝其實是
+                    # 退場，走錯型）或值一模一樣（＝沒改判，只是多記一次）都擋
+                    missing = sorted(k for k in corrected if k not in entry)
+                    if missing:
+                        _fail_state(
+                            path,
+                            f"{ctx}：superseded_rulings 的鍵 {missing} 不在 entry "
+                            "本體——面向已不存在＝退場（走 superseded_aspects），"
+                            "不是改判",
+                        )
+                    # 判準是**裁決欄**（`*_ruling`）真的變了，不是「不是每一欄
+                    # 都相同」——後者只要日期或登記人不同就放行，於是「同一個
+                    # token 換個日期再記一次」會被當成改判收下（D3-030 M1 複審
+                    # 實測）。輔助欄（`_ruled_by`／`_ruled_date`）本來就會不同，
+                    # 它們的差異不構成改判；改判的定義是那個決定行為的值變了。
+                    ruling_keys = _ruling_value_keys(corrected)
+                    if not ruling_keys:
+                        _fail_state(
+                            path,
+                            f"{ctx}：superseded_rulings 未含任何裁決欄（`*_ruling`）"
+                            "——改判必須記錄被改判的裁決值本身，只留輔助欄不算軌跡",
+                        )
+                    unchanged = [k for k in ruling_keys if entry.get(k) == corrected[k]]
+                    if unchanged:
+                        _fail_state(
+                            path,
+                            f"{ctx}：superseded_rulings 的裁決欄 {unchanged} 與 entry "
+                            "本體相同（只改日期/登記人不是改判——沒有任何裁決值被"
+                            "更正，軌跡是空殼）",
+                        )
+                if aspects is not None:
                     if not (isinstance(aspects, dict) and aspects):
                         _fail_state(
                             path,
@@ -2645,7 +3003,9 @@ def load_review_state(path: Path) -> dict[str, dict[str, Any]]:
                             f"{ctx}：superseded_aspects 的退場鍵 {dup} 仍存在於 "
                             "entry 本體——退場是搬移不是複製，本體必須移除退場面向",
                         )
-                elif not (isinstance(prev_ruling, str) and _RULING_RE.match(prev_ruling)):
+                elif corrected is None and not (
+                    isinstance(prev_ruling, str) and _RULING_RE.match(prev_ruling)
+                ):
                     _fail_state(
                         path, f"{ctx}：ruling_history 條目缺有效 ie_ruling（先前答案必須保留）"
                     )
@@ -2657,12 +3017,10 @@ def load_review_state(path: Path) -> dict[str, dict[str, Any]]:
                         path,
                         f"{ctx}：ruling_history 條目缺 supersede_reason（為何更正必須寫明）",
                     )
-                if not (
-                    isinstance(h.get("superseded_date"), str)
-                    and _DATE_RE.match(h["superseded_date"])
-                ):
+                err = date_shape_error(h.get("superseded_date"))
+                if err:
                     _fail_state(
-                        path, f"{ctx}：ruling_history 條目的 superseded_date 必須是 YYYY-MM-DD"
+                        path, f"{ctx}：ruling_history 條目的 superseded_date {err}"
                     )
     return entries
 
@@ -2939,10 +3297,10 @@ async def cmd_recompile(
             # acquire_without_place 是 plan 的函數（裁決 2）：IE 改完 plan 重算時
             # 同步——補了「放」旗標就摘掉、改出「取而無放」就掛上；不動其他旗標
             has_lint = acquire_without_place(data["plan"]["actions"])
-            if has_lint and "acquire_without_place" not in caveats:
-                caveats.append("acquire_without_place")
-            elif not has_lint and "acquire_without_place" in caveats:
-                caveats.remove("acquire_without_place")
+            if has_lint and ACQUIRE_LINT_CAVEAT not in caveats:
+                caveats.append(ACQUIRE_LINT_CAVEAT)
+            elif not has_lint and ACQUIRE_LINT_CAVEAT in caveats:
+                caveats.remove(ACQUIRE_LINT_CAVEAT)
         if relock_approved and is_formal_gold_path(path):
             prev = data.get("notes") or ""
             data["notes"] = (prev + "\n" if prev else "") + f"relock_approved: {reason}"
@@ -2959,7 +3317,8 @@ async def cmd_recompile(
 # 2. 確認/裁決的結構與 plan 一致——multi_cycle_n 確認但 plan 未重切（rule
 #    planner 恆 1 action）不得原樣轉正。
 # 3. 判型/P 方向數/TMU=0 等旗標全部有對應確認或裁決（未確認旗標＝未解決的
-#    覆核提問）；acquire_without_place／engine_rejected_cycle 未解決＝擋。
+#    覆核提問）；acquire_without_place 需 D3-028 的 acquire_lint_ruling、
+#    engine_rejected_cycle 仍無確認機制＝一律擋。
 # 4. 實質內容：至少一個 complete 帶 total_tmu > 0 的 cycle，或顯式
 #    expected_incomplete_reason（D3-018 M1 空殼守門的兩條合法路徑）。
 # 5. S 檢：plan.normalized_text 與至少一筆 source_provenance.raw_text 正規化後
@@ -3003,6 +3362,54 @@ def substance_blockers(data: dict[str, Any]) -> list[str]:
     return []
 
 
+def acquire_lint_blockers(data: dict[str, Any]) -> list[str]:
+    """`acquire_without_place`（取而無放）的轉正資格（D3-029 四類歸宿）。
+
+    - **無裁決**：若 plan 已用 `tool_held_for` 表達（`acquire_lint_auto_ruling`
+      推得 `tool_held`）＝歸宿已由 plan 自己說明白，放行、不必 IE 逐筆答；
+      推不得就 fail-closed 擋（照 D3-028 語意）。
+    - **`genuinely_missing`**：**不解除阻擋**。它是「這筆建模錯了」的宣告
+      （取了之後物件消失），不是通過條件——原樣轉正等於把 IE 已判定為錯的
+      建模寫進標準答案。解法是補收尾 action 走 `--recompile`。
+    - **未知 token**：fail-closed（state 檔驗證已擋一層，這裡是第二層——
+      正式 gold 檔的 ie_review 不經 load_review_state）。
+    - **`tool_held` 的反向驗證**：裁決宣稱工具留在手上，plan 層卻在**可表達
+      的情況下**沒標 `tool_held_for` ⇒ 擋（理由見 `acquire_lint_auto_ruling`
+      docstring：`is_tool_held` 不生效，後續 action 的 G 會被當成重新抓取）。
+    """
+    ir = data.get("ie_review") or {}
+    plan = data.get("plan") or {}
+    ruling = ir.get("acquire_lint_ruling")
+    if not ruling:
+        if acquire_lint_auto_ruling(plan):
+            return []  # plan 已用 tool_held_for 表達 → 裁決自動推得 tool_held
+        return [
+            f"{ACQUIRE_LINT_CAVEAT}：取而無放未經 IE 裁決（需 acquire_lint_ruling"
+            f" ∈ {ACQUIRE_LINT_RULING_TOKENS}，或補收尾 action 後重算）"
+        ]
+    if ruling == ACQUIRE_LINT_RULING_GENUINELY_MISSING:
+        return [
+            f"{ACQUIRE_LINT_CAVEAT}：IE 裁 {ruling!r}（建模錯誤——取了之後物件"
+            "消失，這正是本檢查要抓的那一類）——**錯誤的宣告不是通過條件**；"
+            "補收尾 action 後 `--recompile`，旗標會自然消失"
+        ]
+    if ruling not in ACQUIRE_LINT_CLEARING_RULINGS:
+        return [
+            f"{ACQUIRE_LINT_CAVEAT}：未知裁決 {ruling!r}（fail-closed；合法值 "
+            f"{ACQUIRE_LINT_RULING_TOKENS}）"
+        ]
+    if ruling == ACQUIRE_LINT_RULING_TOOL_HELD:
+        gaps = acquire_lint_tool_held_unexpressed(plan)
+        if gaps:
+            return [
+                f"{ACQUIRE_LINT_CAVEAT}：裁決 {ruling!r} 但 plan 未以 "
+                f"`tool_held_for` dependency 表達（action {gaps}——同 plan 內有"
+                "後續 action，可表達卻沒表達）；compile 端 `is_tool_held` 不會"
+                "生效，後續 action 的 G 會被當成重新抓取"
+            ]
+    return []
+
+
 def caveat_resolution_blockers(data: dict[str, Any]) -> list[str]:
     """逐旗標檢查「未解決的 caveat 提問」：每個 preannotation_caveat 都要有
     對應的 IE 確認/裁決（檔內 ie_review／expected_incomplete_reason），否則擋。
@@ -3030,6 +3437,8 @@ def caveat_resolution_blockers(data: dict[str, Any]) -> list[str]:
                     f"{c}：TMU=0.0 未經 IE 裁決（需 zero_tmu_ruling＋"
                     "expected_incomplete_reason）"
                 )
+        elif c == ACQUIRE_LINT_CAVEAT:
+            blockers += acquire_lint_blockers(data)
         elif c == X_CLEAN_CONTEXT_CAVEAT:
             # D3-021：IE 只裁了吹風情境的「清潔」——非吹風情境尚無裁決，
             # 無確認機制可解此旗標（fail-closed；下輪 IE 裁了再開機制）
@@ -3160,6 +3569,7 @@ def promoted_case_payload(
             ("p_direction_confirmed_by", "P 方向數確認"),
             ("zero_tmu_ruling", "TMU=0 裁決"),
             ("incomplete_ruling", "incomplete 裁決"),
+            ("acquire_lint_ruling", "取而無放裁決"),
         )
         if ir.get(key)
     ]
@@ -3188,8 +3598,11 @@ async def cmd_promote(
     """草稿轉正（整批先驗再動手；一筆不合格＝一筆都不寫）。"""
     if split not in PROMOTION_SPLITS:
         raise SystemExit(f"--split 必須是 {PROMOTION_SPLITS}")
-    if not _DATE_RE.match(approved_date or ""):
-        raise SystemExit("--approved-date 必須是 YYYY-MM-DD")
+    # 同一條日期判準（含「不得晚於今天」）：轉正日會被寫進正式 gold 的
+    # approved_date 與 entry 的 promoted_date，錯一天就固化進標準答案集。
+    err = date_shape_error(approved_date)
+    if err:
+        raise SystemExit(f"--approved-date {err}")
     if not (approved_by or "").strip() or approved_by == "seed":
         raise SystemExit("--approved-by 必須是 IE 工號（seed 是 fixture 慣例，不是核准人）")
     if len(slugs) != len(paths):

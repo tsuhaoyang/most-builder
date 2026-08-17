@@ -1,6 +1,6 @@
 {
   "schema_version": "wi-review-state-v1",
-  "note": "IE 覆核狀態檔（D3-015）：本檔是 IE 的裁決記錄，scripts/gold_harvest.py 只讀不寫、--force 不刪；重產草稿時以 normalized_text sha256 前 8 碼配對，合併回草稿的 ie_review 區塊。segmentation_source=v3_structure_confirmed＝確認照 v3 結構預設（切分維度確認，非整筆 gold 核准；確認≠修改，ie_modified 維持 false）；ie_ruling＝IE 對 ambiguous 案例的切分裁決。文字或 v3 結構證據變了的 entry 會被 harvest 標 stale 列入摘要，不靜默套用。首輪內容＝2026-08-16 IE（IEC141289）親答：39 筆確認題全照 v3 結構預設；d045 定 1 列；d026 定 3 列（3 列 wi-template 為正確結構）。第二輪更正（2026-08-16 釐清）：d026 這句本身＝1 列——首輪「3 列」是對整個 wi-template 三步驟製程的回答（提問誤述範本結構為句子切分，已向 User 釐清並獲確認）；更正軌跡（先前答案全文＋為何更正）保留在該 entry 的 ruling_history，標準答案集的更正不無痕覆寫。第三輪答案（2026-08-17 IE 親答，D3-019）：①「拿取」登記 g_pick_sel（拿取(選取)，priority 0）——另兩變體（small/collect）IE 僅答預設、未授權都掛，維持候選待 IE 決定是否列備選 ②24 筆判型修正全照預設確認（typing_confirmed_by/date；typing_change_at_review＝確認當時的舊/新值，為 stale 判定基準）③6 筆放置方向數照預設確認（p_direction_confirmed_by/date；caveat_at_review 同理）④9 筆 TMU=0.0 照預設＝判定句子資訊不足（zero_tmu_ruling=distance_unstated——協調者解讀，已向 User 揭示待確認；合併時草稿記 expected_incomplete_reason，不發明距離）。三筆不在首輪 41 筆內的草稿（d033/d042/d049）新增 entry 僅帶判型/TMU 面向——切分維度 IE 未答，不冒填。entry 標 promoted_to/promoted_date＝該句已轉正 tests/gold/wi_plans/（harvest 合併跳過；軌跡保留不刪）。確認≠修改：ie_modified 全數維持 false。第六輪＝IE 重切裁決落地（2026-08-17 IE 親答，D3-022；重切建議稿 docs/llm/gold-review/resegmentation-proposals.md）：d008（72dc0511）照切 2 action、d001（6fa45cdb）/d005（5cb719bb）部分重切（span 不可得的 v3 列不塞進 plan，該列已是獨立 gold）——此三筆 ie_modified=true（IE 改過 plan 內容＝真 ground truth，計入 planner 段 Plan 層指標；plan 編輯記 review_status=ie_edited，本機制不保 plan 內容，轉正前不得對本目錄 --force）；d012（fe5391c6）/d030（fe1f3a90）＝hint 解讀更正（multi_cycle_2 的結構證據指 module 而非本句），照 d026 前例走 ruling_history 留痕更正為 single_cycle、plan 不動 ie_modified 維持 false；d016（d0350279）＝標題句不硬切（resegmentation_ruling=title_sentence_no_resegmentation，內容由 5 列獨立 gold 覆蓋、fail-closed 不轉正）。ruling_history 條目的 superseded_source=v3_structure_confirmed 標記「由首輪確認更正而來」（切分確認守恆的對帳依據）。未裁事項不動：X/I 判型票、TMU=0.0 解讀（9+1 筆）、6 筆新判型旗（含 fe1f3a90 的 null→GM）。第七輪答案（2026-08-17 IE 親答，D3-023）：①X/I 參與判型核可開票（X/I 面命中＝CM 訊號，與 M 同級；衝突矩陣見 src/ddm_v2/nlp/rule_based.py classify_seq）②判型新旗標全部照預設確認（含 d030/fe1f3a90 的 null→GM 與 d052/7f085e02、d058/2e7b2e5a 的 null→CM——後兩筆不在首輪 41 筆內，entry 僅帶判型面向，切分維度 IE 未答不冒填）③TMU=0.0 不做一刀切：本輪產距離裁決表（docs/llm/gold-review/distance-rulings.md）供 IE 逐筆判「補典型距離或維持資訊不足」——7f085e02 的 TMU=0 未裁、不轉正。X/I 判型上線後新長出的判型旗（鎖附/確認/清潔類 null→CM）未經 IE 確認照擋，名單見 harvest-summary。第八輪答案（2026-08-17 IE 親答，D3-024）：①9 筆 X/I 新判型旗照預設確認（null→CM：b49a90ee/ee5c168e/51077fd1/bc473698/3791550c/7ff8b879/2f0cb396/130bb1ad/323b04c1，typing 面向落 entry）②d0350279 標題句 stale 重看＝先前裁決維持（不硬切、不轉正；重確認 2026-08-17）——判型/P 方向兩面向的依據隨判型棄權消失，依規則退場入 ruling_history（superseded_aspects 型條目：退場面向原值全文保留、不無痕刪除；entry 本體只留仍有依據的面向）③「鎖附」一律當電動（X/CM）**無條件**——D3-021 的「手動鎖附再議」條件解除（IE 確認產線無手動鎖附），不建情境旗標（取捨與風險記 worklog D3-024）；linker 自 D3-024 起把 X/I 面命中掛進對應格（src/ddm_v2/nlp/linking.py）。未裁不動：7f085e02 的 TMU=0 距離裁決（distance-rulings.md）；新待裁題＝「X 承載做工時 M 可為零」（9 筆 X/I 句掛值後仍 incomplete missing_core_m——完整性定義不放寬，見 README 快答清單）。第九輪答案（2026-08-17/18 兩輪討論定案，D3-026）：9 筆 X/I 句分五型處置（IE 裁「9 筆不是同一種狀況」）——①E 型純檢查（2f0cb396「並確認DIMM點位」）＝完整性窄豁免：純 I 句（面命中集合恰 {I}、無 X/M/G/工具動詞，IE 原話「目視確認無手部移動」）M=0 算完整、帶真 I 工時（compile 端豁免，src/ddm_v2/most_compiler/compile.py）；「X 承載做工時 M 可為零」的全面放寬維持否決。②其餘 8 筆＝incomplete 裁決（本檔新面向 incomplete_ruling/ruled_by/ruled_date；token=distance_unstated/count_unstated/x_seconds_required 依序「+」串接；與 zero_tmu 前提互斥；合併時寫草稿 expected_incomplete_reason）誠實轉正等佈局：A 型重複鎖附 N 明述（ee5c168e x4／bc473698 x6）與 C 型單次鎖附（323b04c1）＝distance_unstated；G 型清潔（51077fd1）＝distance_unstated+x_seconds_required（秒數也未述）；D 型「並…」接續（3791550c／7ff8b879）＝distance_unstated，接續配對（起子在手，v3 provenance 前一列＝g08）記進案例 notes；B 型多顆 N 未述（130bb1ad）＝distance_unstated+count_unstated（留著等佈局的螺絲群屬性）；F 型面切斷（b49a90ee）＝distance_unstated 誠實轉正，「推×16至」被數量記號插斷的 lexicon 穩健性另開票（worklog D3-026）。第五批轉正 9 筆 g41–g49（P0 44/50）。",
+  "note": "IE 覆核狀態檔（D3-015）：本檔是 IE 的裁決記錄，scripts/gold_harvest.py 只讀不寫、--force 不刪；重產草稿時以 normalized_text sha256 前 8 碼配對，合併回草稿的 ie_review 區塊。segmentation_source=v3_structure_confirmed＝確認照 v3 結構預設（切分維度確認，非整筆 gold 核准；確認≠修改，ie_modified 維持 false）；ie_ruling＝IE 對 ambiguous 案例的切分裁決。文字或 v3 結構證據變了的 entry 會被 harvest 標 stale 列入摘要，不靜默套用。首輪內容＝2026-08-16 IE（IEC141289）親答：39 筆確認題全照 v3 結構預設；d045 定 1 列；d026 定 3 列（3 列 wi-template 為正確結構）。第二輪更正（2026-08-16 釐清）：d026 這句本身＝1 列——首輪「3 列」是對整個 wi-template 三步驟製程的回答（提問誤述範本結構為句子切分，已向 User 釐清並獲確認）；更正軌跡（先前答案全文＋為何更正）保留在該 entry 的 ruling_history，標準答案集的更正不無痕覆寫。第三輪答案（2026-08-17 IE 親答，D3-019）：①「拿取」登記 g_pick_sel（拿取(選取)，priority 0）——另兩變體（small/collect）IE 僅答預設、未授權都掛，維持候選待 IE 決定是否列備選 ②24 筆判型修正全照預設確認（typing_confirmed_by/date；typing_change_at_review＝確認當時的舊/新值，為 stale 判定基準）③6 筆放置方向數照預設確認（p_direction_confirmed_by/date；caveat_at_review 同理）④9 筆 TMU=0.0 照預設＝判定句子資訊不足（zero_tmu_ruling=distance_unstated——協調者解讀，已向 User 揭示待確認；合併時草稿記 expected_incomplete_reason，不發明距離）。三筆不在首輪 41 筆內的草稿（d033/d042/d049）新增 entry 僅帶判型/TMU 面向——切分維度 IE 未答，不冒填。entry 標 promoted_to/promoted_date＝該句已轉正 tests/gold/wi_plans/（harvest 合併跳過；軌跡保留不刪）。確認≠修改：ie_modified 全數維持 false。第六輪＝IE 重切裁決落地（2026-08-17 IE 親答，D3-022；重切建議稿 docs/llm/gold-review/resegmentation-proposals.md）：d008（72dc0511）照切 2 action、d001（6fa45cdb）/d005（5cb719bb）部分重切（span 不可得的 v3 列不塞進 plan，該列已是獨立 gold）——此三筆 ie_modified=true（IE 改過 plan 內容＝真 ground truth，計入 planner 段 Plan 層指標；plan 編輯記 review_status=ie_edited，本機制不保 plan 內容，轉正前不得對本目錄 --force）；d012（fe5391c6）/d030（fe1f3a90）＝hint 解讀更正（multi_cycle_2 的結構證據指 module 而非本句），照 d026 前例走 ruling_history 留痕更正為 single_cycle、plan 不動 ie_modified 維持 false；d016（d0350279）＝標題句不硬切（resegmentation_ruling=title_sentence_no_resegmentation，內容由 5 列獨立 gold 覆蓋、fail-closed 不轉正）。ruling_history 條目的 superseded_source=v3_structure_confirmed 標記「由首輪確認更正而來」（切分確認守恆的對帳依據）。未裁事項不動：X/I 判型票、TMU=0.0 解讀（9+1 筆）、6 筆新判型旗（含 fe1f3a90 的 null→GM）。第七輪答案（2026-08-17 IE 親答，D3-023）：①X/I 參與判型核可開票（X/I 面命中＝CM 訊號，與 M 同級；衝突矩陣見 src/ddm_v2/nlp/rule_based.py classify_seq）②判型新旗標全部照預設確認（含 d030/fe1f3a90 的 null→GM 與 d052/7f085e02、d058/2e7b2e5a 的 null→CM——後兩筆不在首輪 41 筆內，entry 僅帶判型面向，切分維度 IE 未答不冒填）③TMU=0.0 不做一刀切：本輪產距離裁決表（docs/llm/gold-review/distance-rulings.md）供 IE 逐筆判「補典型距離或維持資訊不足」——7f085e02 的 TMU=0 未裁、不轉正。X/I 判型上線後新長出的判型旗（鎖附/確認/清潔類 null→CM）未經 IE 確認照擋，名單見 harvest-summary。第八輪答案（2026-08-17 IE 親答，D3-024）：①9 筆 X/I 新判型旗照預設確認（null→CM：b49a90ee/ee5c168e/51077fd1/bc473698/3791550c/7ff8b879/2f0cb396/130bb1ad/323b04c1，typing 面向落 entry）②d0350279 標題句 stale 重看＝先前裁決維持（不硬切、不轉正；重確認 2026-08-17）——判型/P 方向兩面向的依據隨判型棄權消失，依規則退場入 ruling_history（superseded_aspects 型條目：退場面向原值全文保留、不無痕刪除；entry 本體只留仍有依據的面向）③「鎖附」一律當電動（X/CM）**無條件**——D3-021 的「手動鎖附再議」條件解除（IE 確認產線無手動鎖附），不建情境旗標（取捨與風險記 worklog D3-024）；linker 自 D3-024 起把 X/I 面命中掛進對應格（src/ddm_v2/nlp/linking.py）。未裁不動：7f085e02 的 TMU=0 距離裁決（distance-rulings.md）；新待裁題＝「X 承載做工時 M 可為零」（9 筆 X/I 句掛值後仍 incomplete missing_core_m——完整性定義不放寬，見 README 快答清單）。第九輪答案（2026-08-17/18 兩輪討論定案，D3-026）：9 筆 X/I 句分五型處置（IE 裁「9 筆不是同一種狀況」）——①E 型純檢查（2f0cb396「並確認DIMM點位」）＝完整性窄豁免：純 I 句（面命中集合恰 {I}、無 X/M/G/工具動詞，IE 原話「目視確認無手部移動」）M=0 算完整、帶真 I 工時（compile 端豁免，src/ddm_v2/most_compiler/compile.py）；「X 承載做工時 M 可為零」的全面放寬維持否決。②其餘 8 筆＝incomplete 裁決（本檔新面向 incomplete_ruling/ruled_by/ruled_date；token=distance_unstated/count_unstated/x_seconds_required 依序「+」串接；與 zero_tmu 前提互斥；合併時寫草稿 expected_incomplete_reason）誠實轉正等佈局：A 型重複鎖附 N 明述（ee5c168e x4／bc473698 x6）與 C 型單次鎖附（323b04c1）＝distance_unstated；G 型清潔（51077fd1）＝distance_unstated+x_seconds_required（秒數也未述）；D 型「並…」接續（3791550c／7ff8b879）＝distance_unstated，接續配對（起子在手，v3 provenance 前一列＝g08）記進案例 notes；B 型多顆 N 未述（130bb1ad）＝distance_unstated+count_unstated（留著等佈局的螺絲群屬性）；F 型面切斷（b49a90ee）＝distance_unstated 誠實轉正，「推×16至」被數量記號插斷的 lexicon 穩健性另開票（worklog D3-026）。第五批轉正 9 筆 g41–g49（P0 44/50）。 第十輪答案（2026-08-17 IE 親答，D3-028）：①Q1 三筆按壓句（1dd7c1d5／6be614c5／2e7b2e5a）＋Q2 貼附 Label（51518399）＋Q3 撕除保護膜（7f085e02）批次切分確認（no_contention_batch_confirmed；批次 16→22 筆）②Q3 距離裁決落地——IE 原話「維持不考慮要撕多遠」＝維持資訊不足，7f085e02 記 zero_tmu_ruling=distance_unstated（distance-rulings.md C11 自 D3-023 懸置至此結案，非「補距離」）③Q5 三筆判型答案落地並改 plan（review_status=ie_edited → --recompile → ie_modified=true）：28f9ed7e「拿取螺絲 x1」→acquire、8ef772ab「左手從螺絲料盒拿取螺絲」→acquire（本輪新建 entry，切分走批次確認）、37fbd2a6「放置散熱片於 CPU 上」→move_place（CPU 座＝機構件→p_place_single；本筆無 p_direction 旗標可確認——旗標在 harvest 判型未定時不會生成，方向數依據記進案例 notes）④**Q4 兩筆不登記同義詞**（0e83128f「下壓」／00104439「按下」留草稿）：卡點＝動詞不在字典選項標籤內、無 IE 裁決——同義詞登記合法來源只有「標籤衍生」或「IE 裁決」兩條，工程端不得以相似性自行判定（ADR-023 §3.3 規則 1 補節二）。⑤新面向 acquire_lint_ruling/_ruled_by/_ruled_date（唯一合法值 place_in_next_row）——「取而無放」旗標自 D3-014 起是未解決提問卻無答案載體，Q5 兩筆判 acquire 後旗標必然出現，本輪補上機制（不綁前提：裁決是句子的性質、不寫任何期望值，旗標不在時惰性）。第六批轉正 8 筆 g50–g57（P0 52/50）。 第十一輪答案（2026-08-17 IE 親答，D3-029）：**否決 D3-028 的單一 token**（acquire_lint_ruling 原定唯一合法值 place_in_next_row＝工程推定）——IE 原話「不一定都會是下一步才有放，要看是什麼物件也要看是什麼動作」，改裁**四類歸宿**：placed（放置到位）／consumed_by_later_action（無獨立放，物件被後續動作消耗/固定：螺絲→被鎖附、膠帶→被貼附）／tool_held（工具跨列持有本來就不放：起子→保持住，plan 層以 tool_held_for 表達同一事實）／genuinely_missing（建模錯誤——取了之後物件消失，**這才是這條檢查真正要抓的**，且**不解除轉正阻擋**：解法是補收尾 action 走 --recompile）。不變式「取最後一定有放」依然成立（「放」有三種合法形態）。實據＝v3 module『拿取電動起子，依圖示鎖附兩顆螺絲』（wi-template 50ed054b／version 9569aeaf）三列：rows[0] 左手從螺絲料盒拿取螺絲(CM)／rows[1] 右手抓握電動起子保持住至機箱(GM，p_hold)／rows[2] 右手鎖附固定並確認螺絲到位(CM)。兩筆螺絲句（28f9ed7e／8ef772ab）改判 consumed_by_later_action（IEC141289，2026-08-17），不撤回轉正（P0 維持 52/50）；被撤回的 place_in_next_row 原值全文記在各該 entry 的 ruling_history（新型條目 superseded_rulings＝裁決改判：面向還在、只有值被更正，本體必須有該面向且值不同——與 superseded_aspects（面向退場，本體必須移除）不變量相反），該 token 只在軌跡裡合法。另：plan 已用 tool_held_for 表達工具持有者，裁決自動推得 tool_held、不需 IE 逐筆答；反之裁 tool_held 但同 plan 內可表達卻沒標 dependency 則擋（compile 端 is_tool_held 不生效，後續 action 的 G 會被當成重新抓取而多算 TMU）。",
   "entries": {
     "0423b4e8": {
       "source_text": "左手從料架拿取假DIMM保持住至流水線",
@@ -820,17 +820,27 @@
       "source_text": "按壓功能測試治具",
       "norm_sha256": "1dd7c1d50f6291bc8f2c3c4fc619b4cfa7d02125c85c596d228b331692b11c68",
       "ie_modified": false,
+      "v3_structure_hint_at_review": null,
+      "segmentation_confirmed_by": "IEC141289",
+      "segmentation_confirmed_date": "2026-08-17",
+      "segmentation_source": "no_contention_batch_confirmed",
       "typing_confirmed_by": "IEC141289",
       "typing_confirmed_date": "2026-08-17",
       "typing_change_at_review": {
         "noun_only_seq": "GM",
         "lexicon_seq": "CM"
-      }
+      },
+      "promoted_to": "g50_press_function_test_fixture",
+      "promoted_date": "2026-08-17"
     },
     "51518399": {
       "source_text": "貼附Label到主板規定位置處",
       "norm_sha256": "51518399582742b826306eb48e2a3cd44fa99743f1e76237fb98bce06f072b7d",
       "ie_modified": false,
+      "v3_structure_hint_at_review": null,
+      "segmentation_confirmed_by": "IEC141289",
+      "segmentation_confirmed_date": "2026-08-17",
+      "segmentation_source": "no_contention_batch_confirmed",
       "typing_confirmed_by": "IEC141289",
       "typing_confirmed_date": "2026-08-17",
       "typing_change_at_review": {
@@ -839,18 +849,26 @@
       },
       "zero_tmu_ruling": "distance_unstated",
       "zero_tmu_ruled_by": "IEC141289",
-      "zero_tmu_ruled_date": "2026-08-17"
+      "zero_tmu_ruled_date": "2026-08-17",
+      "promoted_to": "g53_attach_label_to_board_position",
+      "promoted_date": "2026-08-17"
     },
     "6be614c5": {
       "source_text": "按壓 DIMM 卡扣到定位",
       "norm_sha256": "6be614c58be2d07b841fb85dce3f074dafc2f31f055a00492c54d6124b0e4f24",
       "ie_modified": false,
+      "v3_structure_hint_at_review": null,
+      "segmentation_confirmed_by": "IEC141289",
+      "segmentation_confirmed_date": "2026-08-17",
+      "segmentation_source": "no_contention_batch_confirmed",
       "typing_confirmed_by": "IEC141289",
       "typing_confirmed_date": "2026-08-17",
       "typing_change_at_review": {
         "noun_only_seq": null,
         "lexicon_seq": "CM"
-      }
+      },
+      "promoted_to": "g51_press_dimm_latch_to_position",
+      "promoted_date": "2026-08-17"
     },
     "0461f75d": {
       "source_text": "拿取 M.2 SSD",
@@ -896,8 +914,24 @@
       "v3_structure_hint_at_review": null,
       "segmentation_confirmed_by": "IEC141289",
       "segmentation_confirmed_date": "2026-08-17",
-      "ie_modified": false,
-      "segmentation_source": "no_contention_batch_confirmed"
+      "ie_modified": true,
+      "segmentation_source": "no_contention_batch_confirmed",
+      "acquire_lint_ruling": "consumed_by_later_action",
+      "acquire_lint_ruled_by": "IEC141289",
+      "acquire_lint_ruled_date": "2026-08-17",
+      "promoted_to": "g55_pick_screw_x1",
+      "promoted_date": "2026-08-17",
+      "ruling_history": [
+        {
+          "superseded_rulings": {
+            "acquire_lint_ruling": "place_in_next_row",
+            "acquire_lint_ruled_by": "IEC141289",
+            "acquire_lint_ruled_date": "2026-08-17"
+          },
+          "supersede_reason": "D3-028 的 `place_in_next_row` 是工程推定（取自 Q5 預設答案字面「單純取料、放在後續列」），未被單獨問過；IE 2026-08-17 以領域知識否決——「不一定都會是下一步才有放，要看是什麼物件也要看是什麼動作」——並改判為四類歸宿的 `consumed_by_later_action`（螺絲的「放」被鎖附消耗；v3 module 50ed054b／version 9569aeaf 三列：左手取螺絲／右手持起子保持住／鎖附固定並確認）。該 token 自 D3-029 起撤回（ACQUIRE_LINT_RETRACTED_RULINGS），只在本軌跡合法。",
+          "superseded_date": "2026-08-17"
+        }
+      ]
     },
     "2f0cb396": {
       "source_text": "並確認DIMM點位",
@@ -942,8 +976,10 @@
       "v3_structure_hint_at_review": null,
       "segmentation_confirmed_by": "IEC141289",
       "segmentation_confirmed_date": "2026-08-17",
-      "ie_modified": false,
-      "segmentation_source": "no_contention_batch_confirmed"
+      "ie_modified": true,
+      "segmentation_source": "no_contention_batch_confirmed",
+      "promoted_to": "g56_place_heatsink_on_cpu",
+      "promoted_date": "2026-08-17"
     },
     "4eb2b2e6": {
       "source_text": "功能測試(治具)",
@@ -1052,23 +1088,63 @@
       "source_text": "撕除螢幕保護膜",
       "norm_sha256": "7f085e02d3968fa6fa748fbcbdcc18552412a4c20631423d76ba6702954c2e05",
       "ie_modified": false,
+      "v3_structure_hint_at_review": null,
+      "segmentation_confirmed_by": "IEC141289",
+      "segmentation_confirmed_date": "2026-08-17",
+      "segmentation_source": "no_contention_batch_confirmed",
       "typing_confirmed_by": "IEC141289",
       "typing_confirmed_date": "2026-08-17",
       "typing_change_at_review": {
         "noun_only_seq": null,
         "lexicon_seq": "CM"
-      }
+      },
+      "zero_tmu_ruling": "distance_unstated",
+      "zero_tmu_ruled_by": "IEC141289",
+      "zero_tmu_ruled_date": "2026-08-17",
+      "promoted_to": "g54_tear_screen_film",
+      "promoted_date": "2026-08-17"
     },
     "2e7b2e5a": {
       "source_text": "按壓/按鈕",
       "norm_sha256": "2e7b2e5ac80a26006c1e5e87c05dafa4ad760c780b94b539fc9209f371ea4323",
       "ie_modified": false,
+      "v3_structure_hint_at_review": null,
+      "segmentation_confirmed_by": "IEC141289",
+      "segmentation_confirmed_date": "2026-08-17",
+      "segmentation_source": "no_contention_batch_confirmed",
       "typing_confirmed_by": "IEC141289",
       "typing_confirmed_date": "2026-08-17",
       "typing_change_at_review": {
         "noun_only_seq": null,
         "lexicon_seq": "CM"
-      }
+      },
+      "promoted_to": "g52_press_button_template",
+      "promoted_date": "2026-08-17"
+    },
+    "8ef772ab": {
+      "source_text": "左手從螺絲料盒拿取螺絲",
+      "norm_sha256": "8ef772abe50599df16cf58fea23e73c7ab553fca09380352f27dfd272bd52906",
+      "ie_modified": true,
+      "v3_structure_hint_at_review": null,
+      "segmentation_confirmed_by": "IEC141289",
+      "segmentation_confirmed_date": "2026-08-17",
+      "segmentation_source": "no_contention_batch_confirmed",
+      "acquire_lint_ruling": "consumed_by_later_action",
+      "acquire_lint_ruled_by": "IEC141289",
+      "acquire_lint_ruled_date": "2026-08-17",
+      "promoted_to": "g57_lh_pick_screw_from_box",
+      "promoted_date": "2026-08-17",
+      "ruling_history": [
+        {
+          "superseded_rulings": {
+            "acquire_lint_ruling": "place_in_next_row",
+            "acquire_lint_ruled_by": "IEC141289",
+            "acquire_lint_ruled_date": "2026-08-17"
+          },
+          "supersede_reason": "D3-028 的 `place_in_next_row` 是工程推定（取自 Q5 預設答案字面「單純取料、放在後續列」），未被單獨問過；IE 2026-08-17 以領域知識否決——「不一定都會是下一步才有放，要看是什麼物件也要看是什麼動作」——並改判為四類歸宿的 `consumed_by_later_action`（螺絲的「放」被鎖附消耗；v3 module 50ed054b／version 9569aeaf 三列：左手取螺絲／右手持起子保持住／鎖附固定並確認）。該 token 自 D3-029 起撤回（ACQUIRE_LINT_RETRACTED_RULINGS），只在本軌跡合法。",
+          "superseded_date": "2026-08-17"
+        }
+      ]
     }
   }
 }

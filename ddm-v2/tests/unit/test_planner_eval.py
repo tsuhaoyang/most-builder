@@ -45,20 +45,33 @@ from _seed_gold_baseline import (  # noqa: E402
     SEED_GOLD_N,
 )
 
-# D3-022 後的 Plan 層基線（seed 3 筆＋ie_modified=true 轉正 3 筆＝分母 6）：
-# accuracy＝2/6（g01/g05 對；g02 與重切 3 筆 rule planner 恆單 action 必錯）；
-# boundary micro＝tp2 fp4 fn9 → F1 4/17。分數自 seed 基線 2/3、4/7 下降是
-# **預期且誠實**（真 ground truth 進了分母），不是迴歸。
+# D3-028 後的 Plan 層基線（seed 3 筆＋ie_modified=true 轉正 6 筆＝分母 9）：
+# accuracy＝5/9（g01/g05＋D3-028 判型答案 g55/g56/g57 對；g02 與 D3-022 重切
+# 3 筆 rule planner 恆單 action 必錯）；boundary micro＝tp5 fp4 fn9 → F1 10/23。
+#
+# 兩次變動都是真 ground truth 進分母的合法結果，方向相反且都不是迴歸：
+#   seed 基線 2/3、4/7 → D3-022 後 2/6、4/17（重切多 action gold 進來，**降**）
+#                      → D3-028 後 5/9、10/23（單 action 判型答案進來，**升**）
+# 誠實邊界：g55–g57 的 IE 修改是 action_type，evidence span 與 action 數維持
+# planner 輸出——那 3 分 boundary 是「planner 自己的 span 經 IE 覆核未改」，
+# 證據力弱於 IE 重新劃界的案例（引用時要連這句一起講）。
 PLAN_METRICS_N = SEED_GOLD_N + IE_MODIFIED_GOLD_N
-PLAN_ACCURACY = 2 / 6
-BOUNDARY_MICRO = (2, 4, 9)  # (tp, fp, fn)
-BOUNDARY_F1 = 4 / 17
-# ie_modified=true 的轉正 gold（計入 Plan 層指標；錯誤排除即紅）
-IE_MODIFIED_GOLD_IDS = {
+PLAN_ACCURACY = 5 / 9
+BOUNDARY_MICRO = (5, 4, 9)  # (tp, fp, fn)
+BOUNDARY_F1 = 10 / 23
+# ie_modified=true 的轉正 gold（計入 Plan 層指標；錯誤排除即紅），依 IE 改了
+# 什麼分兩族——兩族的預期分數相反，合併成一句斷言會說謊（見基線測試）
+IE_MODIFIED_RESEG_GOLD_IDS = {   # D3-022：IE 重切（多 action）
     "g30_pick_dummy_dimm_debag",
     "g31_confirm_points_press_handle",
     "g32_pick_board_debag_place_bench",
 }
+IE_MODIFIED_TYPING_GOLD_IDS = {  # D3-028：IE 判型答案（單 action、span 未動）
+    "g55_pick_screw_x1",
+    "g56_place_heatsink_on_cpu",
+    "g57_lh_pick_screw_from_box",
+}
+IE_MODIFIED_GOLD_IDS = IE_MODIFIED_RESEG_GOLD_IDS | IE_MODIFIED_TYPING_GOLD_IDS
 
 # wi_ai_eval 的核准判定與 dataset_note（R4/R6 守門直接打函式，不繞 CLI）
 sys.path.insert(0, str(ROOT / "scripts"))
@@ -435,12 +448,13 @@ async def test_seed_gold_baseline_pinned():
     也同時殺掉兩類 mutation：accuracy 恆 1.0（數值不符）與 planner 段恆空
     （n≠GOLD_TOTAL_N）。
 
-    D3-019/D3-021 轉正的 25 筆全部 `ie_modified: false`（原樣核准）→ 排除出
-    Plan 層指標；**D3-022 重切轉正的 3 筆 `ie_modified: true`（IE 改過 plan＝
-    真實 ground truth）→ 計入**。分母 3→6、分數自 seed 基線 2/3、4/7 降為
-    2/6、4/17 是**預期且誠實**（rule planner 恆單 action，對多 action gold
-    必然拿 0）——ie_modified=true 案例被錯誤排除（plan_metrics_n 回落、分數
-    回跳基線）即紅。
+    `ie_modified: false` 的轉正（原樣核准）→ 排除出 Plan 層指標；
+    **`ie_modified: true`（IE 改過 plan＝真實 ground truth）→ 計入**。分母
+    3（seed）→6（D3-022 重切 3 筆）→9（D3-028 判型答案 3 筆）；分數
+    2/3、4/7 →2/6、4/17 →5/9、10/23 **兩個方向都是預期且誠實的**：
+    重切族是多 action（rule planner 恆單 action → 必然拿 0，分數下降）、
+    判型族是單 action 且 span 未動（必然拿 1，分數上移）。ie_modified=true
+    案例被錯誤排除（plan_metrics_n 回落、分數回跳前一輪）即紅。
     """
     results, summary = await evaluate_planner_all(GOLD_DIR)
     assert summary["planner"] == RULE_PLANNER_NAME
@@ -477,12 +491,22 @@ async def test_seed_gold_baseline_pinned():
     assert by_id["g02_screwdriver_screw_x2"].boundary_span_f1 == 0.0
     assert by_id["g05_composite_unknown"].boundary_span_f1 == 1.0
     assert by_id["g02_screwdriver_screw_x2"].action_count_match is False
-    # D3-022 重切 gold 逐筆：計入分母、rule planner 必然拿 0（誠實的預期分數）
-    for gid in sorted(IE_MODIFIED_GOLD_IDS):
+    # ie_modified=true 的 gold 分兩族，逐族釘**相反**的預期分數——合成一句
+    # 「全部拿 0」會在 D3-028 這種單 action 判型答案進來時整片說謊：
+    # - D3-022 重切族（多 action）：rule planner 恆單 action → 必然 0；
+    # - D3-028 判型族（單 action、span 未動）：必然 1（IE 改的是 action_type）。
+    for gid in sorted(IE_MODIFIED_RESEG_GOLD_IDS):
         r = by_id[gid]
         assert r.ie_modified is True, f"{gid}：ie_modified 宣告遺失（會被錯誤排除）"
         assert r.action_count_match is False, f"{gid}：rule planner 恆單 action"
         assert r.boundary_span_f1 == 0.0, f"{gid}：整句 span 對重切 gold 必為 0"
+    for gid in sorted(IE_MODIFIED_TYPING_GOLD_IDS):
+        r = by_id[gid]
+        assert r.ie_modified is True, f"{gid}：ie_modified 宣告遺失（會被錯誤排除）"
+        # IE 改的是 action_type，action 數與 evidence span 維持 planner 輸出——
+        # 這兩分是「planner 自己的切分經 IE 覆核未改」，證據力弱於重切族
+        assert r.action_count_match is True, f"{gid}：單 action 判型答案，數應相符"
+        assert r.boundary_span_f1 == 1.0, f"{gid}：span 未經 IE 改動，應完全相符"
 
     # 未達 §19 P2 門檻——量測管道在，分數如實呈現
     # （spec＝docs/architecture/wi-ai-parser-system-spec.md；key 是 boundary_span_f1，
@@ -564,10 +588,16 @@ def test_cli_report_contains_both_segments(tmp_path: Path):
     assert "退化" in planner["summary"]["degenerate_planner_note"]
 
     # dataset_note 動態生成（不寫死「未達 50 筆」字串）；轉正後頭條句必須
-    # 自帶「原樣核准不計 planner 段證據力」的但書（R4）
+    # 自帶「原樣核准不計 planner 段證據力」的但書（R4）。
+    # D3-028 起 PROMOTED_GOLD_N ≥ 50 → 走「已達前置」分支（P0 的 50 筆門檻
+    # 已跨過）；分支選擇由釘值決定，斷言跟著釘值走、不寫死其中一句。
     assert f"n={GOLD_TOTAL_N}" in report["dataset_note"]
     assert "seed" in report["dataset_note"]
-    assert f"IE 核准 {PROMOTED_GOLD_N}/50" in report["dataset_note"]
+    if PROMOTED_GOLD_N < 50:
+        assert f"IE 核准 {PROMOTED_GOLD_N}/50，未達" in report["dataset_note"]
+    else:
+        assert f"IE 核准 {PROMOTED_GOLD_N} 筆，已達" in report["dataset_note"]
+        assert "50 筆前置" in report["dataset_note"]
     assert "不計 planner 段證據力" in report["dataset_note"]
 
     assert "[planner]" in proc.stdout

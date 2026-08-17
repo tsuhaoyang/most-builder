@@ -38,6 +38,24 @@ mutation 證據（CI_GATES 規則 7）：
   `incomplete_ruling_canonical_error`，不抄第二份）。
 - D3-027（D3-026 複審 L1）：轉正 notes 尾句硬寫「TMU=0 裁決見…」→
   `test_promoted_case_payload_notes_reflect_actual_aspects` 紅。
+- D3-028：`acquire_without_place` 的裁決分支改成無條件放行 →
+  `test_unresolved_lint_flag_blocks` 紅；分支刪掉（回到 else fail-closed，
+  等於答了也沒用）→ `test_acquire_lint_clearing_rulings_resolve_flag` 紅；
+  自創/已撤回裁決 token 被接受 →
+  `test_acquire_lint_unknown_and_retracted_tokens_rejected` 紅。判型答案的
+  gold（g55–g57）被錯當成重切族（或名單漂移）→
+  `test_repo_ie_modified_promotions_pinned` 紅。
+- D3-029（四類歸宿）：把 `genuinely_missing` 加進 `ACQUIRE_LINT_CLEARING_RULINGS`
+  （或讓它落到放行路徑）→ `test_acquire_lint_genuinely_missing_still_blocks` 紅
+  ——**建模錯誤的宣告不是通過條件**；四類名單漂移（改名/增減）→
+  `test_acquire_lint_ruling_tokens_are_the_four_ie_categories` 紅；
+  `tool_held` 自動推導（`acquire_lint_auto_ruling`）拆掉 →
+  `test_acquire_lint_tool_held_auto_derived_from_dependency` 紅；反向驗證
+  （`acquire_lint_tool_held_unexpressed`）拆掉、或把 `same_object`/`uses_tool`
+  也當成工具持有證據 →
+  `test_acquire_lint_tool_held_requires_dependency_when_expressible` 紅；
+  反向驗證誤用在跨列持有（acquire 是 plan 最後一個 action）→
+  `test_acquire_lint_tool_held_across_rows_not_blocked` 紅。
 """
 from __future__ import annotations
 
@@ -60,6 +78,12 @@ DRAFT_DIR = ROOT / "tests" / "gold" / "wi_plans_draft"
 sys.path.insert(0, str(ROOT / "scripts"))
 from _seed_gold_baseline import IE_MODIFIED_GOLD_N, PROMOTED_GOLD_N  # noqa: E402
 from gold_harvest import (  # noqa: E402
+    ACQUIRE_LINT_CAVEAT,
+    ACQUIRE_LINT_CLEARING_RULINGS,
+    ACQUIRE_LINT_RETRACTED_RULINGS,
+    ACQUIRE_LINT_RULING_GENUINELY_MISSING,
+    ACQUIRE_LINT_RULING_TOKENS,
+    ACQUIRE_LINT_RULING_TOOL_HELD,
     DRAFT_NOTES_BOILERPLATE,
     PROMOTION_SPLITS,
     RESEGMENTATION_RULING_TITLE_SENTENCE,
@@ -68,6 +92,9 @@ from gold_harvest import (  # noqa: E402
     TYPING_CHANGED_CAVEAT,
     ZERO_TMU_CAVEAT,
     ZERO_TMU_RULING_DISTANCE_UNSTATED,
+    acquire_lint_auto_ruling,
+    acquire_lint_tool_held_unexpressed,
+    acquire_without_place,
     caveat_resolution_blockers,
     draft_sha8,
     incomplete_ruling_canonical_error,
@@ -345,12 +372,173 @@ def test_batch_confirmed_multi_action_plan_blocks():
     assert any("plan 未重切" in b for b in promotion_blockers(draft, entry))
 
 
-def test_unresolved_lint_flag_blocks():
-    """acquire_without_place（取而無放）是未解決的覆核提問——fail-closed。"""
+def _lint_pair(
+    *, dependencies: list[dict[str, Any]] | None = None, lone: bool = False
+) -> tuple[dict[str, Any], dict[str, Any]]:
+    """帶 `acquire_without_place` 旗標的合格草稿＋entry（plan 真的有未閉合的
+    acquire——旗標與 plan 必須同進同出，不是把字串塞進 caveat 就算）。
+
+    `lone=True`＝plan 只有那個 acquire（跨列持有情境：dependency 表達不了）；
+    否則 a1 acquire ＋ a2 process（同 plan 內可用 tool_held_for 表達）。"""
     draft, entry = _eligible_pair()
-    draft["preannotation_caveat"].append("acquire_without_place")
+    actions = [{"action_id": "a1", "action_type": "acquire", "sequence_order": 1}]
+    if not lone:
+        actions.append(
+            {"action_id": "a2", "action_type": "process", "sequence_order": 2}
+        )
+    draft["plan"]["actions"] = actions
+    draft["plan"]["dependencies"] = list(dependencies or [])
+    draft["expected"]["action_count"] = len(actions)
+    draft["v3_structure_hint"] = f"multi_cycle_{len(actions)}" if not lone else "single_cycle"
+    entry["v3_structure_hint_at_review"] = draft["v3_structure_hint"]
+    draft["preannotation_caveat"].append(ACQUIRE_LINT_CAVEAT)
+    assert acquire_without_place(draft["plan"]["actions"]), "前提：旗標必須真的命中"
+    return draft, entry
+
+
+def _ruled_via_state(
+    draft: dict[str, Any], entry: dict[str, Any], ruling: str, tmp_path: Path
+) -> dict[str, Any]:
+    """把裁決寫進 state 檔往返一趟（形狀驗證＋投影規則都走真程式碼，不是測試
+    自己捏形狀），回傳載入後的 entry；草稿的 ie_review 同步更新。"""
+    ruled = {
+        **entry,
+        "acquire_lint_ruling": ruling,
+        "acquire_lint_ruled_by": IE,
+        "acquire_lint_ruled_date": "2026-08-17",
+    }
+    state = {
+        "schema_version": "wi-review-state-v1",
+        "entries": {entry["norm_sha256"][:8]: ruled},
+    }
+    path = tmp_path / REVIEW_STATE_FILENAME
+    path.write_text(json.dumps(state, ensure_ascii=False), encoding="utf-8")
+    loaded = load_review_state(path)[entry["norm_sha256"][:8]]
+    draft["ie_review"] = review_block_from_entry(loaded)
+    return loaded
+
+
+def test_unresolved_lint_flag_blocks():
+    """acquire_without_place（取而無放）沒有 IE 裁決＝未解決的覆核提問，
+    fail-closed（D3-028 加了裁決機制、D3-029 擴成四類，**沒答案時照舊擋**）。"""
+    draft, entry = _lint_pair(lone=True)
     blockers = promotion_blockers(draft, entry)
-    assert any("acquire_without_place" in b for b in blockers)
+    assert any(ACQUIRE_LINT_CAVEAT in b for b in blockers)
+    assert any("未經 IE 裁決" in b for b in blockers)
+
+
+@pytest.mark.parametrize("ruling", sorted(ACQUIRE_LINT_CLEARING_RULINGS))
+def test_acquire_lint_clearing_rulings_resolve_flag(ruling: str, tmp_path: Path):
+    """對照組（D3-029）：三類**合法歸宿**各自解除旗標、可轉正。
+
+    D3-028 只有一個合法 token，所以「填錯類別會怎樣」測不出來；四類之後每類
+    各一條——三類放行、`genuinely_missing` 照擋（下一條），少任一條都證明不了
+    守門沒被拆成恆過/恆擋。`tool_held` 用跨列持有情境（plan 內表達不了
+    dependency，反向驗證不適用；可表達卻沒表達的情形另測）。"""
+    draft, entry = _lint_pair(lone=True)
+    loaded = _ruled_via_state(draft, entry, ruling, tmp_path)
+    assert promotion_blockers(draft, loaded) == []
+
+
+def test_acquire_lint_genuinely_missing_still_blocks(tmp_path: Path):
+    """**D3-029 的核心**：`genuinely_missing`（建模錯誤——取了之後物件消失）
+    是合法的**裁決值**（state 檔收）但**不解除轉正阻擋**——它是「這筆錯了」的
+    宣告，不是通過條件。
+
+    mutation：把 `genuinely_missing` 加進 `ACQUIRE_LINT_CLEARING_RULINGS`
+    （或在 acquire_lint_blockers 裡讓它落到放行路徑）→ 本測試紅。"""
+    draft, entry = _lint_pair(lone=True)
+    loaded = _ruled_via_state(
+        draft, entry, ACQUIRE_LINT_RULING_GENUINELY_MISSING, tmp_path
+    )
+    assert loaded["acquire_lint_ruling"] == ACQUIRE_LINT_RULING_GENUINELY_MISSING, (
+        "前提：state 檔必須收得下這個值（它是四類之一，不是壞值）"
+    )
+    blockers = promotion_blockers(draft, loaded)
+    assert any(ACQUIRE_LINT_RULING_GENUINELY_MISSING in b for b in blockers)
+    assert any("不是通過條件" in b for b in blockers)
+    assert ACQUIRE_LINT_RULING_GENUINELY_MISSING not in ACQUIRE_LINT_CLEARING_RULINGS
+
+
+def test_acquire_lint_unknown_and_retracted_tokens_rejected(tmp_path: Path):
+    """fail-closed 兩層：state 檔擋自創/已撤回 token（IE 沒定義過的歸宿不得
+    登記）；正式 gold 的 ie_review 不經 load_review_state，轉正端再擋一次。"""
+    draft, entry = _lint_pair(lone=True)
+    for bad_token in ("whatever_the_ie_probably_meant", ACQUIRE_LINT_RETRACTED_RULINGS[0]):
+        with pytest.raises(SystemExit, match="acquire_lint_ruling"):
+            _ruled_via_state(draft, entry, bad_token, tmp_path)
+    # 第二層：繞過 state 檔直接寫進 gold 的 ie_review 也要擋
+    draft["ie_review"] = {
+        **draft["ie_review"],
+        "acquire_lint_ruling": "whatever_the_ie_probably_meant",
+    }
+    assert any("fail-closed" in b for b in caveat_resolution_blockers(draft))
+
+
+def test_acquire_lint_tool_held_auto_derived_from_dependency():
+    """D3-029 要求 4：plan 已標 `tool_held_for` ⇒ 裁決自動推得 `tool_held`，
+    **不必 IE 逐筆答**（g02「拿取電動起子…鎖附兩顆螺絲」即此型）。
+
+    對照：拆掉 dependency 就回到「未經 IE 裁決」擋下——自動推導綁的是 plan
+    真的表達了工具持有，不是無條件放行。"""
+    dep = [{"from_action": "a1", "to_action": "a2", "type": "tool_held_for"}]
+    draft, entry = _lint_pair(dependencies=dep)
+    assert acquire_lint_auto_ruling(draft["plan"]) == ACQUIRE_LINT_RULING_TOOL_HELD
+    assert promotion_blockers(draft, entry) == [], "plan 已表達工具持有 → 免答"
+
+    draft["plan"]["dependencies"] = []
+    assert acquire_lint_auto_ruling(draft["plan"]) is None
+    assert any("未經 IE 裁決" in b for b in promotion_blockers(draft, entry))
+
+
+@pytest.mark.parametrize(
+    ("dep_type", "expect_blocked"),
+    [
+        ("tool_held_for", False),
+        # same_object／uses_tool 不主張物件停在手上（放好後再作業／只是用到
+        # 工具）——自動推導與反向驗證都只認 tool_held_for
+        ("same_object", True),
+        ("uses_tool", True),
+    ],
+)
+def test_acquire_lint_tool_held_requires_dependency_when_expressible(
+    dep_type: str, expect_blocked: bool, tmp_path: Path
+):
+    """`tool_held` 的反向驗證（D3-029 要求 4）：同 plan 內**可表達卻沒表達**
+    `tool_held_for` ⇒ 擋。裁決宣稱工具留在手上，compile 端 `is_tool_held`
+    卻不會生效，後續 action 的 G 會被當成重新抓取——裁決與 TMU 不一致。"""
+    dep = [{"from_action": "a1", "to_action": "a2", "type": dep_type}]
+    draft, entry = _lint_pair(dependencies=dep)
+    loaded = _ruled_via_state(draft, entry, ACQUIRE_LINT_RULING_TOOL_HELD, tmp_path)
+    blockers = promotion_blockers(draft, loaded)
+    if expect_blocked:
+        assert any("tool_held_for" in b for b in blockers)
+        assert acquire_lint_tool_held_unexpressed(draft["plan"]) == ["a1"]
+    else:
+        assert blockers == []
+        assert acquire_lint_tool_held_unexpressed(draft["plan"]) == []
+
+
+def test_acquire_lint_tool_held_across_rows_not_blocked(tmp_path: Path):
+    """邊界：acquire 是 plan 最後一個 action＝跨列持有（g08「右手抓握電動起子
+    保持住至機箱」下一列才鎖附）——dependency 是 plan 內的，跨列表達不了，
+    此時 `tool_held` 合法且不擋（擋了合法的跨列持有就無路可走）。"""
+    draft, entry = _lint_pair(lone=True)
+    loaded = _ruled_via_state(draft, entry, ACQUIRE_LINT_RULING_TOOL_HELD, tmp_path)
+    assert acquire_lint_tool_held_unexpressed(draft["plan"]) == []
+    assert promotion_blockers(draft, loaded) == []
+
+
+def test_acquire_lint_ruling_tokens_are_the_four_ie_categories():
+    """四類歸宿的名單釘值（IE 2026-08-17 裁決）：多一類/少一類/改名都要有人
+    看見——token 是寫進 review-state 與正式 gold 的標準答案值。"""
+    assert ACQUIRE_LINT_RULING_TOKENS == (
+        "placed",
+        "consumed_by_later_action",
+        "tool_held",
+        "genuinely_missing",
+    )
+    assert ACQUIRE_LINT_CLEARING_RULINGS == set(ACQUIRE_LINT_RULING_TOKENS[:3])
 
 
 def test_unknown_caveat_blocks_fail_closed():
@@ -770,9 +958,26 @@ def test_promoted_sentences_no_longer_in_drafts():
     assert not dupes, f"已轉正句子仍在草稿目錄：{sorted(dupes)}"
 
 
+# ie_modified=true 的正式 gold：IE 改了什麼 → 該筆 plan 應有幾個 action，
+# 以及 notes 必須留下哪個關鍵字（建模差異寫在案例上，不只寫在 worklog）。
+# 兩族的預期**相反**（重切改 action 數／判型只改 action_type，數維持 1），
+# 分開釘值才擋得住「判型答案被當成重切」這類錯置。
+IE_MODIFIED_RESEG_EXPECTED = {          # D3-022
+    "g30_pick_dummy_dimm_debag": 2,     # v3_structure_confirmed multi_cycle_2 照切
+    "g31_confirm_points_press_handle": 2,   # ie_ruling multi_cycle_2（部分重切）
+    "g32_pick_board_debag_place_bench": 3,  # ie_ruling multi_cycle_3（部分重切）
+}
+IE_MODIFIED_TYPING_EXPECTED = {         # D3-028（單 action 判型答案）
+    "g55_pick_screw_x1": 1,
+    "g56_place_heatsink_on_cpu": 1,
+    "g57_lh_pick_screw_from_box": 1,
+}
+
+
 def test_repo_ie_modified_promotions_pinned():
-    """D3-022 釘值：ie_modified=true 的正式 gold 恰為重切 3 筆（g30–g32），
-    宣告與 state entry 一致、結構裁決與 plan action 數一致。
+    """釘值：ie_modified=true 的正式 gold 恰為 D3-022 重切 3 筆（g30–g32）＋
+    D3-028 判型答案 3 筆（g55–g57），宣告與 state entry 一致、plan action 數
+    與該族語意一致、建模依據留在案例 notes。
 
     mutation 證據：把任一筆的 ie_modified 改回 false（或 entry 宣告拆掉）→
     本測試與 test_planner_eval 的分母釘值（plan_metrics_n）同時紅——
@@ -783,30 +988,27 @@ def test_repo_ie_modified_promotions_pinned():
             (str(d["id"]), d) for d in _gold_cases().values()
         ) if d.get("ie_modified") is True
     }
-    assert set(modified_gold) == {
-        "g30_pick_dummy_dimm_debag",
-        "g31_confirm_points_press_handle",
-        "g32_pick_board_debag_place_bench",
-    }, "ie_modified=true 的 gold 名單漂移（D3-022 重切 3 筆）"
+    expected_actions = {**IE_MODIFIED_RESEG_EXPECTED, **IE_MODIFIED_TYPING_EXPECTED}
+    assert set(modified_gold) == set(expected_actions), (
+        "ie_modified=true 的 gold 名單漂移（D3-022 重切 3 筆＋D3-028 判型 3 筆）"
+    )
     assert len(modified_gold) == IE_MODIFIED_GOLD_N
     by_promoted = {
         e["promoted_to"]: e for e in entries.values() if e.get("promoted_to")
     }
-    expected_actions = {
-        "g30_pick_dummy_dimm_debag": 2,   # v3_structure_confirmed multi_cycle_2 照切
-        "g31_confirm_points_press_handle": 2,   # ie_ruling multi_cycle_2（部分重切）
-        "g32_pick_board_debag_place_bench": 3,  # ie_ruling multi_cycle_3（部分重切）
-    }
+    # 案例 notes 必須寫出「IE 改了什麼」——族別關鍵字（重切／判型答案）
+    note_keyword = dict.fromkeys(IE_MODIFIED_RESEG_EXPECTED, "重切")
+    note_keyword.update(dict.fromkeys(IE_MODIFIED_TYPING_EXPECTED, "判型答案"))
     for gid, d in modified_gold.items():
         entry = by_promoted.get(gid)
         assert entry is not None and entry.get("ie_modified") is True, (
             f"{gid}：state entry 未宣告 ie_modified=true（宣告的唯一出處）"
         )
         assert len(d["plan"]["actions"]) == expected_actions[gid], (
-            f"{gid}：重切後 action 數與裁決結構不符"
+            f"{gid}：plan action 數與 IE 修改的語意不符"
         )
-        assert d.get("notes") and "重切" in d["notes"], (
-            f"{gid}：涵蓋對應／建模差異必須留在案例 notes（D3-022 指示）"
+        assert d.get("notes") and note_keyword[gid] in d["notes"], (
+            f"{gid}：建模依據／涵蓋對應必須留在案例 notes（含「{note_keyword[gid]}」）"
         )
 
 

@@ -4,11 +4,11 @@
 
 草稿位置：`tests/gold/wi_plans_draft/`。**這些不是 gold**（`approved_by: null`、`review_status: pending_ie`），評測不會撿到。核准／轉正流程見 `docs/llm/gold-review/README.md`。
 
-**先讀這個——預標註的系統性偏差**：現行 rule planner 對任何輸入都只會產生**1 個 action、evidence=整句**。所以「預測 action 數=1」不是模型判斷，是結構限制；帶 `likely_multi_action_undercounted` 的每一筆都請假設切分是錯的，逐動詞重切（**例外**：該筆若有 `v3_structure_hint: single_cycle`，警語降級——v3 結構顯示 IE 當初建為單一 cycle，預設依此）。帶 `take_place_pair_may_be_single_gm` 的是「取＋放」配對——GM 本來就是 G＋P 同 cycle，**不預設低估**，請用該筆的「取放建模」題裁決單一 GM 或兩個 action。帶 `take_move_pair_may_be_single_cm` 的是「取/觸＋推/拉」配對——CM 的 G 與 M 同一 cycle，同樣**不預設低估**，請用該筆的「取移建模」題裁決單一 CM 或兩個 action。配對題與切分題已用 **v3 結構回填**（D3-014 裁決 3：v3 遷移資料是 IE 驗證過並提供的，結構＝IE 的切分裁決）：有結構答案的是**確認題**（預設依 v3 結構，不同意再改），缺失/矛盾的維持開放題——hint 是證據不是判決，IE 可推翻。帶 `acquire_without_place` 的是「取而無放」（裁決 2：取最後一定有放）——請回答該筆的「放」在哪（WARN 不 BLOCK；單句 acquire 可能合法）。另外：`challenge_tags` 裡 9 個可判維度的 `false` 也是啟發式輸出（`heuristic_tags_unverified` 點名的維度已有實證漏標），true/false 請一併確認。
+**先讀這個——預標註的系統性偏差**：現行 rule planner 對任何輸入都只會產生**1 個 action、evidence=整句**。所以「預測 action 數=1」不是模型判斷，是結構限制；帶 `likely_multi_action_undercounted` 的每一筆都請假設切分是錯的，逐動詞重切（**例外**：該筆若有 `v3_structure_hint: single_cycle`，警語降級——v3 結構顯示 IE 當初建為單一 cycle，預設依此）。帶 `take_place_pair_may_be_single_gm` 的是「取＋放」配對——GM 本來就是 G＋P 同 cycle，**不預設低估**，請用該筆的「取放建模」題裁決單一 GM 或兩個 action。帶 `take_move_pair_may_be_single_cm` 的是「取/觸＋推/拉」配對——CM 的 G 與 M 同一 cycle，同樣**不預設低估**，請用該筆的「取移建模」題裁決單一 CM 或兩個 action。配對題與切分題已用 **v3 結構回填**（D3-014 裁決 3：v3 遷移資料是 IE 驗證過並提供的，結構＝IE 的切分裁決）：有結構答案的是**確認題**（預設依 v3 結構，不同意再改），缺失/矛盾的維持開放題——hint 是證據不是判決，IE 可推翻。帶 `acquire_without_place` 的是「取而無放」（裁決 2：取最後一定有放）——請回答該筆的「取」歸宿是**四類**（D3-029）的哪一類（WARN 不 BLOCK；單句 acquire 可能合法）：`placed`＝放置到位——同列的 P 格或後續列的放置動作（拿取 DIMM → 放至治具）；`consumed_by_later_action`＝無獨立的「放」——物件被後續動作消耗/固定（螺絲→被鎖附、膠帶→被貼附）；`tool_held`＝工具跨列持有、本來就不放（起子→保持住；plan 層以 `tool_held_for` dependency 表達同一事實）；`genuinely_missing`＝**建模錯誤**——取了之後物件消失，這才是本檢查真正要抓的那一類；答這類請補收尾 action 走 `--recompile`（**不解除**轉正阻擋）。前三類記 state entry 的 `acquire_lint_ruling`，第四類是**補 action** 不是登記裁決（旗標會因 plan 改變自然消失）。plan 已標 `tool_held_for` 者，裁決自動推得 `tool_held`，不必逐筆答。另外：`challenge_tags` 裡 9 個可判維度的 `false` 也是啟發式輸出（`heuristic_tags_unverified` 點名的維度已有實證漏標），true/false 請一併確認。
 
-共 47 筆，其中 7 筆帶 ⚠️ 旗標。
+共 39 筆，其中 2 筆帶 ⚠️ 旗標。
 
-其中 **18 筆**已由 `review-state.json` 合併 IE 覆核狀態（各節「IE 覆核狀態」行）。注意：那是**切分維度**的確認/裁決，**不是整筆 gold 核准**——cycle 仍 incomplete 的照樣要覆核 option code，轉正另有流程（`docs/llm/gold-review/README.md`）。
+其中 **11 筆**已由 `review-state.json` 合併 IE 覆核狀態（各節「IE 覆核狀態」行）。注意：那是**切分維度**的確認/裁決，**不是整筆 gold 核准**——cycle 仍 incomplete 的照樣要覆核 option code，轉正另有流程（`docs/llm/gold-review/README.md`）。
 
 ---
 
@@ -89,57 +89,7 @@
 
 ---
 
-## d004_51518399
-
-**原文**：貼附Label到主板規定位置處
-**正規化**：貼附label到主機板規定位置處
-**來源**：`motion_modules/9f61331e…`（name_zh (category=wi-template)）
-**挑戰維度（規則式判定）**：繁簡（簡體字/大陸用語）、中英混合
-**✅ IE 覆核狀態（判型）**：動詞字典的判型修正已確認照預設（IEC141289，2026-08-17）。確認≠修改，`ie_modified` 維持 false。
-**✅ IE 裁決（TMU=0.0）**：`distance_unstated`——句子未述距離、判定資訊不足（IEC141289，2026-08-17）；草稿已記 `expected_incomplete_reason`（轉正走誠實記錄路徑，不發明距離）。
-**⚠️ typing_changed_by_verb_lexicon**：**判型已由動詞字典修正，請確認**：動詞字典參與 GM/CM 判型（D3-017 收 M/G+P、D3-023 收 X/I；衝突矩陣見 nlp/rule_based.py classify_seq）——舊判型（僅名詞觸發）＝未定（composite_unknown），新判型（動詞字典參與）＝CM（控制移動）。不同意新判型請在本筆「判型」題回答
-**⚠️ zero_tmu_distance_unstated**：此句未述距離，**TMU=0.0 非真值**（引擎口徑：距離未述＝0cm、M 階梯 0→0；G/B 伴隨 slot 未由 linker 掛值——X/I 自 D3-024 起面命中掛值）——complete 是結構完成度不是 TMU 可信度。**請補距離（改 plan/cycle 後 `--recompile` 重算）或判定句子資訊不足**（轉正時顯式寫 expected_incomplete_reason；空殼守門要求 total_tmu > 0，原樣轉正會被擋）
-
-**預測 action 數**：1
-**預測切分（evidence 以【】標在正規化原文上）**：
-- `a1` controlled_move：【貼附label到主機板規定位置處】
-
-**預測 TMU / tech line**：
-- `a1`：TMU=0.0，tech line=`A0 B0 G0 M0 X0 I0 A0`
-**預測 routing**：`review`
-
-**IE 請回答**：
-1. 切分：預測 action 數 = 1。本句實際應拆成幾個 action？若不同，請在 plan.actions 增列並各給 evidence（原文子字串與 offset）。
-2. 判型（a1）：預測為 controlled_move，對嗎？若對，core 參數 M（控制移動） 的 option code 是什麼？（預標註無候選時請直接填）【判型已由動詞字典修正：未定（composite_unknown） → CM（控制移動），請確認】
-3. TMU=0.0：此句未述距離，**TMU=0.0 非真值**（引擎口徑：距離未述＝0cm、M 階梯 0→0；G/B 伴隨 slot 未由 linker 掛值——X/I 自 D3-024 起面命中掛值）——complete 是結構完成度不是 TMU 可信度。**請補距離（改 plan/cycle 後 `--recompile` 重算）或判定句子資訊不足**（轉正時顯式寫 expected_incomplete_reason；空殼守門要求 total_tmu > 0，原樣轉正會被擋）。
-4. routing：預測 routing_status = review（理由：無）。核准後應維持這個值嗎？
-
----
-
-## d005_28f9ed7e
-
-**原文**：拿取螺絲 x1
-**來源**：`wi_rows/34ea3fe5…`（sub_activity）
-**挑戰維度（規則式判定）**：中英混合、數量
-**✅ IE 覆核狀態（切分維度・批次確認）**：無切分爭點案例，IE 整批確認現行切分（單 action＝single_cycle；IEC141289，2026-08-17）。與逐筆確認可區分（`segmentation_source: no_contention_batch_confirmed`——未逐筆核 v3 結構證據）；僅確認切分，不是整筆 gold 核准。
-
-**預測 action 數**：1
-**預測切分（evidence 以【】標在正規化原文上）**：
-- `a1` composite_unknown：【拿取螺絲 x1】
-
-**預測 TMU / tech line**：
-- `a1`：未編譯（composite_unknown）
-**預測 routing**：`abstain`
-
-**IE 請回答**：
-1. 切分：預測 action 數 = 1。本句實際應拆成幾個 action？若不同，請在 plan.actions 增列並各給 evidence（原文子字串與 offset）。
-2. 判型（a1）：預測為 composite_unknown（動詞字典已參與判型（含 X/I）——仍未定＝動詞未登記/單一動詞不足/訊號衝突棄權，逐類統計見 harvest-summary）。實際動作類型是哪個：acquire / move_place / controlled_move / process / inspect？
-3. 數量：句中的數量應掛在哪個 action？frequency=N 還是 repeat？（現行 QuantityPolicyV1 保守處理並標 quantity_policy_review）
-4. routing：預測 routing_status = abstain（理由：composite_unknown）。核准後應維持這個值嗎？
-
----
-
-## d006_8dfafd2e
+## d004_8dfafd2e
 
 **原文**：折合上蓋扣合
 **正規化**：摺合上蓋扣合
@@ -162,7 +112,7 @@
 
 ---
 
-## d007_35372a96
+## d005_35372a96
 
 **原文**：拿取排線並對準接頭
 **來源**：`wi_rows/26d9037d…`（sub_activity）
@@ -187,31 +137,7 @@
 
 ---
 
-## d008_1dd7c1d5
-
-**原文**：按壓功能測試治具
-**來源**：`wi_rows/bd1da7bc…`（sub_activity）
-**挑戰維度（規則式判定）**：工具持有
-**✅ IE 覆核狀態（判型）**：動詞字典的判型修正已確認照預設（IEC141289，2026-08-17）。確認≠修改，`ie_modified` 維持 false。
-**⚠️ typing_changed_by_verb_lexicon**：**判型已由動詞字典修正，請確認**：動詞字典參與 GM/CM 判型（D3-017 收 M/G+P、D3-023 收 X/I；衝突矩陣見 nlp/rule_based.py classify_seq）——舊判型（僅名詞觸發）＝GM（一般移動），新判型（動詞字典參與）＝CM（控制移動）。不同意新判型請在本筆「判型」題回答
-
-**預測 action 數**：1
-**預測切分（evidence 以【】標在正規化原文上）**：
-- `a1` controlled_move：【按壓功能測試治具】
-
-**預測 TMU / tech line**：
-- `a1`：TMU=3.0，tech line=`A0 B0 G0 M3 X0 I0 A0`
-**預測 routing**：`review`
-
-**IE 請回答**：
-1. 切分：預測 action 數 = 1。本句實際應拆成幾個 action？若不同，請在 plan.actions 增列並各給 evidence（原文子字串與 offset）。
-2. 判型（a1）：預測為 controlled_move，對嗎？若對，core 參數 M（控制移動） 的 option code 是什麼？（預標註無候選時請直接填）【判型已由動詞字典修正：GM（一般移動） → CM（控制移動），請確認】
-3. 工具持有：工具是否跨動作持有？若是，後續動作 G 應留空並在 dependencies 標 tool_held_for。
-4. routing：預測 routing_status = review（理由：無）。核准後應維持這個值嗎？
-
----
-
-## d009_4eb2b2e6
+## d006_4eb2b2e6
 
 **原文**：功能測試(治具)
 **來源**：`motion_templates/5f477fd6…`（name_zh）
@@ -234,54 +160,7 @@
 
 ---
 
-## d010_37fbd2a6
-
-**原文**：放置散熱片於 CPU 上
-**正規化**：放置散熱片於 cpu 上
-**來源**：`wi_rows/30da4026…`（sub_activity）
-**挑戰維度（規則式判定）**：中英混合
-**✅ IE 覆核狀態（切分維度・批次確認）**：無切分爭點案例，IE 整批確認現行切分（單 action＝single_cycle；IEC141289，2026-08-17）。與逐筆確認可區分（`segmentation_source: no_contention_batch_confirmed`——未逐筆核 v3 結構證據）；僅確認切分，不是整筆 gold 核准。
-
-**預測 action 數**：1
-**預測切分（evidence 以【】標在正規化原文上）**：
-- `a1` composite_unknown：【放置散熱片於 cpu 上】
-
-**預測 TMU / tech line**：
-- `a1`：未編譯（composite_unknown）
-**預測 routing**：`abstain`
-
-**IE 請回答**：
-1. 切分：預測 action 數 = 1。本句實際應拆成幾個 action？若不同，請在 plan.actions 增列並各給 evidence（原文子字串與 offset）。
-2. 判型（a1）：預測為 composite_unknown（動詞字典已參與判型（含 X/I）——仍未定＝動詞未登記/單一動詞不足/訊號衝突棄權，逐類統計見 harvest-summary）。實際動作類型是哪個：acquire / move_place / controlled_move / process / inspect？
-3. routing：預測 routing_status = abstain（理由：composite_unknown）。核准後應維持這個值嗎？
-
----
-
-## d011_6be614c5
-
-**原文**：按壓 DIMM 卡扣到定位
-**正規化**：按壓 dimm 卡扣到定位
-**來源**：`wi_rows/0c5b0f92…`（sub_activity）
-**挑戰維度（規則式判定）**：中英混合
-**✅ IE 覆核狀態（判型）**：動詞字典的判型修正已確認照預設（IEC141289，2026-08-17）。確認≠修改，`ie_modified` 維持 false。
-**⚠️ typing_changed_by_verb_lexicon**：**判型已由動詞字典修正，請確認**：動詞字典參與 GM/CM 判型（D3-017 收 M/G+P、D3-023 收 X/I；衝突矩陣見 nlp/rule_based.py classify_seq）——舊判型（僅名詞觸發）＝未定（composite_unknown），新判型（動詞字典參與）＝CM（控制移動）。不同意新判型請在本筆「判型」題回答
-
-**預測 action 數**：1
-**預測切分（evidence 以【】標在正規化原文上）**：
-- `a1` controlled_move：【按壓 dimm 卡扣到定位】
-
-**預測 TMU / tech line**：
-- `a1`：TMU=3.0，tech line=`A0 B0 G0 M3 X0 I0 A0`
-**預測 routing**：`review`
-
-**IE 請回答**：
-1. 切分：預測 action 數 = 1。本句實際應拆成幾個 action？若不同，請在 plan.actions 增列並各給 evidence（原文子字串與 offset）。
-2. 判型（a1）：預測為 controlled_move，對嗎？若對，core 參數 M（控制移動） 的 option code 是什麼？（預標註無候選時請直接填）【判型已由動詞字典修正：未定（composite_unknown） → CM（控制移動），請確認】
-3. routing：預測 routing_status = review（理由：無）。核准後應維持這個值嗎？
-
----
-
-## d012_0461f75d
+## d007_0461f75d
 
 **原文**：拿取 M.2 SSD
 **正規化**：拿取 m.2 ssd
@@ -304,7 +183,7 @@
 
 ---
 
-## d013_ac155900
+## d008_ac155900
 
 **原文**：拿取 DIMM 記憶體模組
 **正規化**：拿取 dimm 記憶體模組
@@ -327,7 +206,7 @@
 
 ---
 
-## d014_b2618d31
+## d009_b2618d31
 
 **原文**：小範圍拿取(≤50cm)
 **來源**：`motion_templates/e6261ef9…`（name_zh）
@@ -349,7 +228,7 @@
 
 ---
 
-## d015_0e83128f
+## d010_0e83128f
 
 **原文**：下壓 CPU 拉桿鎖定
 **正規化**：下壓 cpu 拉桿鎖定
@@ -372,7 +251,7 @@
 
 ---
 
-## d016_995f5d45
+## d011_995f5d45
 
 **原文**：貼標籤
 **來源**：`motion_templates/03fcc018…`（name_zh）
@@ -394,7 +273,7 @@
 
 ---
 
-## d017_cc6c7d56
+## d012_cc6c7d56
 
 **原文**：貼上序號標籤
 **來源**：`wi_rows/6adbba57…`（sub_activity）
@@ -415,7 +294,7 @@
 
 ---
 
-## d018_86a61399
+## d013_86a61399
 
 **原文**：自料盒拿取主機板
 **來源**：`wi_rows/56c0ad5d…`（sub_activity）
@@ -436,7 +315,7 @@
 
 ---
 
-## d019_c82940ca
+## d014_c82940ca
 
 **原文**：精密對準裝配
 **來源**：`motion_templates/25da0fff…`（name_zh）
@@ -457,7 +336,7 @@
 
 ---
 
-## d020_850cc7ef
+## d015_850cc7ef
 
 **原文**：移動/走步
 **來源**：`motion_templates/9be91373…`（name_zh）
@@ -478,7 +357,7 @@
 
 ---
 
-## d021_1e0d9e15
+## d016_1e0d9e15
 
 **原文**：熱壓導熱膠固化
 **來源**：`wi_rows/2d428ddc…`（sub_activity）
@@ -499,7 +378,7 @@
 
 ---
 
-## d022_e552df5e
+## d017_e552df5e
 
 **原文**：旋緊天線接頭
 **來源**：`wi_rows/22a278d0…`（sub_activity）
@@ -520,7 +399,7 @@
 
 ---
 
-## d023_fe5df381
+## d018_fe5df381
 
 **原文**：整理機殼內線材
 **來源**：`wi_rows/27f942d5…`（sub_activity）
@@ -541,7 +420,7 @@
 
 ---
 
-## d024_e55c3e1c
+## d019_e55c3e1c
 
 **原文**：放置擋板至機殼後方
 **來源**：`wi_rows/3c953e62…`（sub_activity）
@@ -562,7 +441,7 @@
 
 ---
 
-## d025_9b7bc11d
+## d020_9b7bc11d
 
 **原文**：放置成品入緩衝棧板
 **來源**：`wi_rows/a320207b…`（sub_activity）
@@ -583,7 +462,7 @@
 
 ---
 
-## d026_e0c7f95c
+## d021_e0c7f95c
 
 **原文**：放置主機板入機殼
 **來源**：`wi_rows/443ccae7…`（sub_activity）
@@ -604,7 +483,7 @@
 
 ---
 
-## d027_901d1623
+## d022_901d1623
 
 **原文**：放置
 **來源**：`motion_templates/12f6f6b9…`（name_zh）
@@ -625,7 +504,7 @@
 
 ---
 
-## d028_8b6e6aab
+## d023_8b6e6aab
 
 **原文**：擦拭外殼指紋
 **來源**：`wi_rows/7dbf5621…`（sub_activity）
@@ -646,32 +525,7 @@
 
 ---
 
-## d029_7f085e02
-
-**原文**：撕除螢幕保護膜
-**來源**：`wi_rows/e58b4ad3…`（sub_activity）
-**挑戰維度（規則式判定）**：（無命中）
-**✅ IE 覆核狀態（判型）**：動詞字典的判型修正已確認照預設（IEC141289，2026-08-17）。確認≠修改，`ie_modified` 維持 false。
-**⚠️ typing_changed_by_verb_lexicon**：**判型已由動詞字典修正，請確認**：動詞字典參與 GM/CM 判型（D3-017 收 M/G+P、D3-023 收 X/I；衝突矩陣見 nlp/rule_based.py classify_seq）——舊判型（僅名詞觸發）＝未定（composite_unknown），新判型（動詞字典參與）＝CM（控制移動）。不同意新判型請在本筆「判型」題回答
-**⚠️ zero_tmu_distance_unstated**：此句未述距離，**TMU=0.0 非真值**（引擎口徑：距離未述＝0cm、M 階梯 0→0；G/B 伴隨 slot 未由 linker 掛值——X/I 自 D3-024 起面命中掛值）——complete 是結構完成度不是 TMU 可信度。**請補距離（改 plan/cycle 後 `--recompile` 重算）或判定句子資訊不足**（轉正時顯式寫 expected_incomplete_reason；空殼守門要求 total_tmu > 0，原樣轉正會被擋）
-
-**預測 action 數**：1
-**預測切分（evidence 以【】標在正規化原文上）**：
-- `a1` controlled_move：【撕除螢幕保護膜】
-
-**預測 TMU / tech line**：
-- `a1`：TMU=0.0，tech line=`A0 B0 G0 M0 X0 I0 A0`
-**預測 routing**：`review`
-
-**IE 請回答**：
-1. 切分：預測 action 數 = 1。本句實際應拆成幾個 action？若不同，請在 plan.actions 增列並各給 evidence（原文子字串與 offset）。
-2. 判型（a1）：預測為 controlled_move，對嗎？若對，core 參數 M（控制移動） 的 option code 是什麼？（預標註無候選時請直接填）【判型已由動詞字典修正：未定（composite_unknown） → CM（控制移動），請確認】
-3. TMU=0.0：此句未述距離，**TMU=0.0 非真值**（引擎口徑：距離未述＝0cm、M 階梯 0→0；G/B 伴隨 slot 未由 linker 掛值——X/I 自 D3-024 起面命中掛值）——complete 是結構完成度不是 TMU 可信度。**請補距離（改 plan/cycle 後 `--recompile` 重算）或判定句子資訊不足**（轉正時顯式寫 expected_incomplete_reason；空殼守門要求 total_tmu > 0，原樣轉正會被擋）。
-4. routing：預測 routing_status = review（理由：無）。核准後應維持這個值嗎？
-
----
-
-## d030_553bb598
+## d024_553bb598
 
 **原文**：撕開/移除
 **來源**：`motion_templates/8bd71661…`（name_zh）
@@ -692,7 +546,7 @@
 
 ---
 
-## d031_21ccfce2
+## d025_21ccfce2
 
 **原文**：插接線材
 **來源**：`motion_templates/25b51820…`（name_zh）
@@ -713,7 +567,7 @@
 
 ---
 
-## d032_60223e3d
+## d026_60223e3d
 
 **原文**：插入/組裝
 **來源**：`motion_templates/ada85770…`（name_zh）
@@ -734,7 +588,7 @@
 
 ---
 
-## d033_debe277a
+## d027_debe277a
 
 **原文**：掃描條碼建檔
 **來源**：`wi_rows/7fc33f3a…`（sub_activity）
@@ -755,7 +609,7 @@
 
 ---
 
-## d034_ff7166e0
+## d028_ff7166e0
 
 **原文**：掃描/檢查
 **來源**：`motion_templates/3e9ea047…`（name_zh）
@@ -776,30 +630,7 @@
 
 ---
 
-## d035_2e7b2e5a
-
-**原文**：按壓/按鈕
-**來源**：`motion_templates/f378444b…`（name_zh）
-**挑戰維度（規則式判定）**：（無命中）
-**✅ IE 覆核狀態（判型）**：動詞字典的判型修正已確認照預設（IEC141289，2026-08-17）。確認≠修改，`ie_modified` 維持 false。
-**⚠️ typing_changed_by_verb_lexicon**：**判型已由動詞字典修正，請確認**：動詞字典參與 GM/CM 判型（D3-017 收 M/G+P、D3-023 收 X/I；衝突矩陣見 nlp/rule_based.py classify_seq）——舊判型（僅名詞觸發）＝未定（composite_unknown），新判型（動詞字典參與）＝CM（控制移動）。不同意新判型請在本筆「判型」題回答
-
-**預測 action 數**：1
-**預測切分（evidence 以【】標在正規化原文上）**：
-- `a1` controlled_move：【按壓/按鈕】
-
-**預測 TMU / tech line**：
-- `a1`：TMU=3.0，tech line=`A0 B0 G0 M3 X0 I0 A0`
-**預測 routing**：`review`
-
-**IE 請回答**：
-1. 切分：預測 action 數 = 1。本句實際應拆成幾個 action？若不同，請在 plan.actions 增列並各給 evidence（原文子字串與 offset）。
-2. 判型（a1）：預測為 controlled_move，對嗎？若對，core 參數 M（控制移動） 的 option code 是什麼？（預標註無候選時請直接填）【判型已由動詞字典修正：未定（composite_unknown） → CM（控制移動），請確認】
-3. routing：預測 routing_status = review（理由：無）。核准後應維持這個值嗎？
-
----
-
-## d036_00104439
+## d029_00104439
 
 **原文**：按下電源測試按鈕
 **來源**：`wi_rows/8712630a…`（sub_activity）
@@ -820,7 +651,7 @@
 
 ---
 
-## d037_df2af257
+## d030_df2af257
 
 **原文**：拿取風扇模組
 **來源**：`wi_rows/dd6bc54d…`（sub_activity）
@@ -841,7 +672,7 @@
 
 ---
 
-## d038_3d3c5d8f
+## d031_3d3c5d8f
 
 **原文**：拿取顯示卡
 **來源**：`wi_rows/7462de05…`（sub_activity）
@@ -862,7 +693,7 @@
 
 ---
 
-## d039_b3fe9873
+## d032_b3fe9873
 
 **原文**：拿取電源供應器
 **來源**：`wi_rows/93e94a85…`（sub_activity）
@@ -883,7 +714,7 @@
 
 ---
 
-## d040_0bc1c188
+## d033_0bc1c188
 
 **原文**：拿取防靜電袋
 **來源**：`wi_rows/4b1554f1…`（sub_activity）
@@ -904,7 +735,7 @@
 
 ---
 
-## d041_bbd33b62
+## d034_bbd33b62
 
 **原文**：拿取出貨外箱
 **來源**：`wi_rows/a9bbf1a8…`（sub_activity）
@@ -925,7 +756,7 @@
 
 ---
 
-## d042_76590adb
+## d035_76590adb
 
 **原文**：拿取側板
 **來源**：`wi_rows/6f60c512…`（sub_activity）
@@ -946,7 +777,7 @@
 
 ---
 
-## d043_e9064034
+## d036_e9064034
 
 **原文**：拿取保護泡棉
 **來源**：`wi_rows/504d0658…`（sub_activity）
@@ -967,7 +798,7 @@
 
 ---
 
-## d044_e2d59bc4
+## d037_e2d59bc4
 
 **原文**：拿取
 **來源**：`motion_templates/18e27ecf…`（name_zh）
@@ -988,7 +819,7 @@
 
 ---
 
-## d045_bac1cab6
+## d038_bac1cab6
 
 **原文**：拆箱取件
 **來源**：`motion_templates/768aab0c…`（name_zh）
@@ -1009,28 +840,7 @@
 
 ---
 
-## d046_8ef772ab
-
-**原文**：左手從螺絲料盒拿取螺絲
-**來源**：`motion_module_versions/587d379b…`（rows[0].sub_activity）; `motion_module_versions/9569aeaf…`（rows[0].sub_activity）; `motion_modules/1c0e39ae…`（name_zh (category=action)）
-**挑戰維度（規則式判定）**：（無命中）
-
-**預測 action 數**：1
-**預測切分（evidence 以【】標在正規化原文上）**：
-- `a1` composite_unknown：【左手從螺絲料盒拿取螺絲】
-
-**預測 TMU / tech line**：
-- `a1`：未編譯（composite_unknown）
-**預測 routing**：`abstain`
-
-**IE 請回答**：
-1. 切分：預測 action 數 = 1。本句實際應拆成幾個 action？若不同，請在 plan.actions 增列並各給 evidence（原文子字串與 offset）。
-2. 判型（a1）：預測為 composite_unknown（動詞字典已參與判型（含 X/I）——仍未定＝動詞未登記/單一動詞不足/訊號衝突棄權，逐類統計見 harvest-summary）。實際動作類型是哪個：acquire / move_place / controlled_move / process / inspect？
-3. routing：預測 routing_status = abstain（理由：composite_unknown）。核准後應維持這個值嗎？
-
----
-
-## d047_1a9be08f
+## d039_1a9be08f
 
 **原文**：壓合卡扣
 **來源**：`motion_templates/1650c81c…`（name_zh）

@@ -1,0 +1,123 @@
+{
+  "id": "g56_place_heatsink_on_cpu",
+  "source_text": "放置散熱片於 CPU 上",
+  "notes": "IE 判型答案（D3-028 Q5，2026-08-17，IEC141289）：單 P 動詞「放置」不足以定型（G 端無動詞面）——IE 裁 **move_place**。只改 action_type 與 unresolved，evidence span 與 action 數維持 planner 輸出不動；TMU 由 --recompile 交 most_engine 重算。**P 方向數**（IE 答②）：散熱片放上 CPU 座＝機構件對準 → `p_place_single`（方向數一種），與 D3-017 情境規則一致；本筆 synthetic_synonyms 已以 priority 0/1 表達（p_place_single 優先於 p_place_none），linker 依偏好序選中。**誠實邊界**：本筆**沒有** p_direction 旗標可走 state entry 的 P 方向面向——旗標只在 harvest 當下判型已定（move_place）時才生成，本筆 harvest 時判型是 composite_unknown；方向數確認因此記在本 notes，不是 ie_review。\n自草稿 d010_37fbd2a6 轉正（IE 覆核核准；docs/llm/gold-review/README.md 工作流）。取樣為 challenge-oversampled（coverage-optimized），本案分數不可外推為母體表現。切分確認見 ie_review 與 tests/gold/wi_plans_draft/review-state.json。",
+  "review_status": "approved",
+  "approved_by": "IEC141289",
+  "plan_origin": "rule_based_v1_preannotation",
+  "ie_modified": true,
+  "split": "test",
+  "split_groups": [
+    "worksheet:55555555-5555-5555-5555-555555555555"
+  ],
+  "split_component": "worksheet:55555555-5555-5555-5555-555555555555",
+  "source_provenance": [
+    {
+      "table": "wi_rows",
+      "id": "30da4026-bc9d-4503-adb9-437bd23513f2",
+      "detail": "sub_activity",
+      "group_key": "worksheet:55555555-5555-5555-5555-555555555555",
+      "db_timestamp": "2026-08-11T14:26:06.268970+00:00",
+      "raw_text": "放置散熱片於 CPU 上"
+    }
+  ],
+  "challenge_tags": {
+    "zh_simplified_variant": false,
+    "fullwidth_chars": false,
+    "typo": "unknown",
+    "homophone": "unknown",
+    "mixed_zh_en": true,
+    "english_only": false,
+    "inverted_word_order": "unknown",
+    "colloquial": "unknown",
+    "multi_action": false,
+    "quantity": false,
+    "tool_handling": false,
+    "simo_both_hands": false,
+    "missing_info": "unknown",
+    "ambiguity": "unknown",
+    "diagram_reference_no_image": false,
+    "site_jargon_dirty_import": "unknown"
+  },
+  "heuristic_tags_unverified": [
+    "quantity",
+    "tool_handling",
+    "simo_both_hands"
+  ],
+  "preannotation_caveat": [],
+  "preannotation": {
+    "pipeline": "rule_based_v1 -> plan_from_rule_result -> SlotLinker(no-db) -> compile_plan -> engine_gate(most_engine) -> compute_routing(auto=off)",
+    "planner": "rule_based_v1",
+    "rule_set_code": "MINIMOST_FACTORY_V2",
+    "lexicon_source": "rule_option_synonyms",
+    "lexicon_size": 22,
+    "routing_reasons": []
+  },
+  "plan": {
+    "schema_version": "wi-plan-v1",
+    "source_text": "放置散熱片於 CPU 上",
+    "normalized_text": "放置散熱片於 cpu 上",
+    "language": "zh",
+    "source_ref": {
+      "kind": "interactive",
+      "worksheet_id": null,
+      "import_id": null,
+      "import_row_index": null
+    },
+    "actions": [
+      {
+        "action_id": "a1",
+        "action_type": "move_place",
+        "sequence_order": 1,
+        "roles": {},
+        "evidence": [
+          {
+            "start": 0,
+            "end": 12,
+            "text": "放置散熱片於 cpu 上"
+          }
+        ],
+        "notes": "ie_typing_d3_028"
+      }
+    ],
+    "dependencies": [],
+    "unresolved": []
+  },
+  "synthetic_synonyms": [
+    {
+      "parameter": "P",
+      "option_code": "p_place_none",
+      "synonym_norm": "放置",
+      "priority": 1
+    },
+    {
+      "parameter": "P",
+      "option_code": "p_place_single",
+      "synonym_norm": "放置",
+      "priority": 0
+    }
+  ],
+  "expected_cycles": [
+    {
+      "action_id": "a1",
+      "complete": true,
+      "seq": "GM",
+      "g_code": null,
+      "p_base_code": "p_place_single",
+      "frequency": 1.0,
+      "total_tmu": 16.0,
+      "tech_line": "A0 B0 G0 A0 B0 P16 A0"
+    }
+  ],
+  "gold_schema_version": "wi-gold-v1",
+  "expected": {
+    "action_count": 1,
+    "routing_status": "review"
+  },
+  "ie_review": {
+    "segmentation_confirmed_by": "IEC141289",
+    "segmentation_confirmed_date": "2026-08-17",
+    "segmentation_source": "no_contention_batch_confirmed"
+  },
+  "approved_date": "2026-08-17"
+}
