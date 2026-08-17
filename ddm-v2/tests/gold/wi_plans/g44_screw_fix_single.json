@@ -1,0 +1,130 @@
+{
+  "id": "g44_screw_fix_single",
+  "source_text": "鎖附螺絲",
+  "notes": "自草稿 d024_323b04c1 轉正（IE 覆核核准；docs/llm/gold-review/README.md 工作流）。取樣為 challenge-oversampled（coverage-optimized），本案分數不可外推為母體表現。切分確認、判型確認、incomplete 裁決見 ie_review 與 tests/gold/wi_plans_draft/review-state.json。",
+  "review_status": "approved",
+  "approved_by": "IEC141289",
+  "plan_origin": "rule_based_v1_preannotation",
+  "ie_modified": false,
+  "split": "test",
+  "split_groups": [
+    "template:5d6bb4c7-f0d7-415c-b004-c7dbffa8d16d"
+  ],
+  "split_component": "template:5d6bb4c7-f0d7-415c-b004-c7dbffa8d16d",
+  "source_provenance": [
+    {
+      "table": "motion_templates",
+      "id": "5d6bb4c7-f0d7-415c-b004-c7dbffa8d16d",
+      "detail": "name_zh",
+      "group_key": "template:5d6bb4c7-f0d7-415c-b004-c7dbffa8d16d",
+      "db_timestamp": "2026-08-04T06:51:03.957179+00:00",
+      "raw_text": "鎖附螺絲"
+    }
+  ],
+  "challenge_tags": {
+    "zh_simplified_variant": false,
+    "fullwidth_chars": false,
+    "typo": "unknown",
+    "homophone": "unknown",
+    "mixed_zh_en": false,
+    "english_only": false,
+    "inverted_word_order": "unknown",
+    "colloquial": "unknown",
+    "multi_action": false,
+    "quantity": false,
+    "tool_handling": false,
+    "simo_both_hands": false,
+    "missing_info": "unknown",
+    "ambiguity": "unknown",
+    "diagram_reference_no_image": false,
+    "site_jargon_dirty_import": "unknown"
+  },
+  "heuristic_tags_unverified": [
+    "quantity",
+    "tool_handling",
+    "simo_both_hands"
+  ],
+  "preannotation_caveat": [
+    "typing_changed_by_verb_lexicon"
+  ],
+  "typing_change": {
+    "noun_only_seq": null,
+    "lexicon_seq": "CM"
+  },
+  "preannotation": {
+    "pipeline": "rule_based_v1 -> plan_from_rule_result -> SlotLinker(no-db) -> compile_plan -> engine_gate(most_engine) -> compute_routing(auto=off)",
+    "planner": "rule_based_v1",
+    "rule_set_code": "MINIMOST_FACTORY_V2",
+    "lexicon_source": "rule_option_synonyms",
+    "lexicon_size": 22,
+    "routing_reasons": [
+      "no_candidate_m",
+      "missing_core_m"
+    ]
+  },
+  "plan": {
+    "schema_version": "wi-plan-v1",
+    "source_text": "鎖附螺絲",
+    "normalized_text": "鎖附螺絲",
+    "language": "zh",
+    "source_ref": {
+      "kind": "interactive",
+      "worksheet_id": null,
+      "import_id": null,
+      "import_row_index": null
+    },
+    "actions": [
+      {
+        "action_id": "a1",
+        "action_type": "controlled_move",
+        "sequence_order": 1,
+        "roles": {},
+        "evidence": [
+          {
+            "start": 0,
+            "end": 4,
+            "text": "鎖附螺絲"
+          }
+        ],
+        "notes": "rule_based_v1"
+      }
+    ],
+    "dependencies": [],
+    "unresolved": []
+  },
+  "synthetic_synonyms": [
+    {
+      "parameter": "X",
+      "option_code": "x_screw_fix",
+      "synonym_norm": "鎖附",
+      "priority": 0
+    }
+  ],
+  "expected_cycles": [
+    {
+      "action_id": "a1",
+      "complete": false,
+      "seq": "CM",
+      "issues_contain": [
+        "missing_core_m"
+      ]
+    }
+  ],
+  "gold_schema_version": "wi-gold-v1",
+  "expected": {
+    "action_count": 1,
+    "routing_status": "review"
+  },
+  "ie_review": {
+    "segmentation_confirmed_by": "IEC141289",
+    "segmentation_confirmed_date": "2026-08-17",
+    "segmentation_source": "no_contention_batch_confirmed",
+    "typing_confirmed_by": "IEC141289",
+    "typing_confirmed_date": "2026-08-17",
+    "incomplete_ruling": "distance_unstated",
+    "incomplete_ruled_by": "IEC141289",
+    "incomplete_ruled_date": "2026-08-17"
+  },
+  "expected_incomplete_reason": "distance_unstated",
+  "approved_date": "2026-08-17"
+}

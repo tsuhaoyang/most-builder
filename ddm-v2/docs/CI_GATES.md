@@ -56,8 +56,10 @@
    chosen → 引擎 `X_SECONDS_REQUIRED` 硬拒 → 合法草稿整筆 invalid」這條路徑在
    56 筆草稿＋38 筆 gold 上**零覆蓋**，unit／golden／eval 全綠照樣翻車
    （「按壓把手並清潔卡槽」實測 invalid）。現行合成句閘門＝
-   `tests/unit/test_linking.py` 的 `test_engine_gate_*` 三條（fixed X 真 TMU／
-   seconds X 不 invalid＋X0＋旗標／I 掛值旗標擋 auto）。
+   `tests/unit/test_linking.py` 的 `test_engine_gate_*` 四條（fixed X 真 TMU／
+   seconds X 不 invalid＋X0＋旗標／I 掛值旗標擋 auto／D3-026 E 型純 I 句
+   「核心格空＋I 面命中」豁免帶真 TMU＋G 面反例不豁免）。同規則適用完整性
+   判定的豁免改動（`most_compiler/compile.py` face_hit_params 分支）。
 
 ## Feature → 驗證測試點 → script
 

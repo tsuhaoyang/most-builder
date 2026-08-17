@@ -364,6 +364,9 @@ async def _engine_gate_run(action_type: str, text: str, roles: dict | None = Non
         candidates,
         rule_set_code="MINIMOST_FACTORY_V2",
         allow_lists=allow_lists_from_rule_set(rs),
+        # 與生產管線同形（run_pipeline／gold_eval／wi_ai_service）：面命中
+        # 證據一併傳入——E 型窄豁免（D3-026）的判準輸入
+        face_hit_params=linker.face_hit_params(plan),
     )
     drafts = apply_engine_gate(drafts, rs)
     status, reasons = compute_routing(plan, candidates, drafts, auto_enabled=True)
@@ -427,9 +430,11 @@ async def test_engine_gate_i_mounted_flags_and_blocks_auto():
 
 @pytest.mark.asyncio
 async def test_xi_mounted_cycle_still_incomplete_without_core_m():
-    """紅線（D3-024）：X/I 掛值不放寬完整性——controlled_move 缺 M 面仍
-    missing_core_m（「X 承載做工時 M 可為零」是 IE 域判準，未裁不硬通；
-    待裁題列 docs/llm/gold-review/README.md 快答清單）。"""
+    """紅線（D3-024 立、D3-026 IE 裁決確立）：X 面命中的 CM 句缺 M 仍
+    missing_core_m——「X 承載做工時 M 可為零」的全面放寬 (a) 被 IE 否決
+    （鎖附/清潔型的移動真實存在，走 expected_incomplete_reason 誠實
+    incomplete）；唯一豁免＝E 型純 I 句（面集合恰 {I}，見下）。
+    mutation：E 型豁免條件放寬到 X 也豁免 → 本測紅（面證據已傳入）。"""
     from ddm_v2.most_compiler.compile import compile_plan
 
     plan = _plan("controlled_move", "鎖附主機板固定螺絲")
@@ -441,6 +446,7 @@ async def test_xi_mounted_cycle_still_incomplete_without_core_m():
         rule_set_code="MINIMOST_FACTORY_V2",
         allow_lists={"G": set(), "P": set(), "P_ADDON": set(), "M": {"m_press"},
                      "X": {"x_screw_fix", "x_blow_clean"}, "I": {"i_confirm"}, "B": set()},
+        face_hit_params=linker.face_hit_params(plan),
     )
     assert len(drafts) == 1
     d = drafts[0]
@@ -449,3 +455,79 @@ async def test_xi_mounted_cycle_still_incomplete_without_core_m():
     assert (d.cycle or {}).get("x4", {}).get("x_code") == "x_screw_fix", (
         "X 值要掛進 cycle（判型解鎖後 x_screw_fix 不再閒置）"
     )
+
+
+@pytest.mark.asyncio
+async def test_engine_gate_pure_i_exemption_true_tmu():
+    """E 型窄豁免（D3-026）合成句＝CI_GATES 規則 8 的「核心格空＋I 面命中」
+    型：「並確認DIMM點位」（d021 實句）→ 面集合恰 {I} → M=0 完整、引擎收、
+    真 I TMU（A0 B0 G0 M0 X0 I6 A0＝6.0）、routing=review（M 候選空＋
+    i_range_assumed 都在，不 auto）。mutation：豁免拆除 → 本測紅
+    （complete=False、無 TMU）；假設旗標拆掉（回到靜默清空）→ 本測紅
+    （D3-027——豁免必須留痕且活過 engine gate 進 routing_reasons）。"""
+    cands, drafts, status, reasons = await _engine_gate_run(
+        "controlled_move", "並確認DIMM點位"
+    )
+    d = drafts[0]
+    assert d.complete is True
+    assert d.engine_result is not None, "純 I 句豁免後引擎必須收（M 格空＝M0）"
+    assert d.engine_result["total_tmu"] == 6.0
+    assert d.engine_result["tech_line"] == "A0 B0 G0 M0 X0 I6 A0"
+    assert d.cycle["i5"]["i_code"] == "i_confirm"
+    assert "missing_core_m" not in d.issues
+    assert "m_zero_pure_inspection_assumed" in d.issues, (
+        "豁免＝假設不是觀測——旗標必須在 issues（活過 gate 的 soft 保留段）"
+    )
+    assert status == "review", "真 I 工時可談，但 M 候選空＋NORMAL 假設仍需 IE 看"
+    assert "no_candidate_m" in reasons
+    assert "m_zero_pure_inspection_assumed" in reasons
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("text", ["旋轉旋鈕並確認", "翻轉主板並確認"])
+async def test_out_of_lexicon_motion_verb_flagged_not_silent(text: str):
+    """D3-027（D3-026 複審 H1 實測型）：「旋轉／翻轉…並確認」有**真實移動**，
+    但動詞不在字典 → 面集合塌成 {I} → 落入 E 豁免類別（已知限制：豁免類別
+    實為「含 I 面且無其他**字典內** slot 面」，掛 F 票——F 修好類別縮小）。
+    豁免照給（complete＋真 I 工時），但「移動被當成不存在」不得零痕跡：
+    假設旗標在、routing=review。mutation：旗標拆掉（靜默清空）→ 本測紅。"""
+    linker = SlotLinker(_XI_SYNONYMS)
+    plan = _plan("controlled_move", text)
+    assert linker.face_hit_params(plan)["a1"] == frozenset({"I"}), (
+        "前提：字典外移動動詞不產生面命中——面集合塌成 {I}（vocab 遮蔽）"
+    )
+    _cands, drafts, status, reasons = await _engine_gate_run("controlled_move", text)
+    d = drafts[0]
+    assert d.complete is True
+    assert d.engine_result is not None and d.engine_result["total_tmu"] == 6.0
+    assert "m_zero_pure_inspection_assumed" in d.issues
+    assert "missing_core_m" not in d.issues
+    assert status == "review"
+    assert "m_zero_pure_inspection_assumed" in reasons
+
+
+@pytest.mark.asyncio
+async def test_engine_gate_g_plus_i_face_not_exempt():
+    """窄化（G 面不豁免；F 型 d001 形狀）：「接觸卡扣並確認到位」＝G＋I 面
+    → 手部已介入，missing_core_m 照擋（誠實 incomplete，distance_unstated
+    走 review-state incomplete 裁決轉正）。mutation：豁免判準漏掉 G → 本測紅。"""
+    linker = SlotLinker(
+        _XI_SYNONYMS
+        + [{"parameter": "G", "option_code": "g_touch", "synonym_norm": "接觸", "priority": 0}]
+    )
+    plan = _plan("controlled_move", "接觸卡扣並確認到位")
+    candidates = await linker.link(plan)
+    from ddm_v2.most_compiler.compile import allow_lists_from_rule_set, compile_plan
+    from ddm_v2.most_engine.providers import build_from_seed_v2
+
+    rs = build_from_seed_v2()
+    drafts = compile_plan(
+        plan,
+        candidates,
+        rule_set_code="MINIMOST_FACTORY_V2",
+        allow_lists=allow_lists_from_rule_set(rs),
+        face_hit_params=linker.face_hit_params(plan),
+    )
+    assert drafts[0].complete is False
+    assert "missing_core_m" in drafts[0].issues
+    assert linker.face_hit_params(plan)["a1"] == frozenset({"G", "I"})

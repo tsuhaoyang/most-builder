@@ -411,20 +411,35 @@ async def test_draft_case(
                 "harvest 未跑合併或草稿被手動剝除"
             )
 
-    # 5h. D3-019：expected_incomplete_reason 的唯一出處＝TMU=0 裁決的合併——
-    # 草稿帶 reason ⟺ ie_review 帶 zero_tmu_ruling（值原樣），且該筆必有
-    # zero_tmu 旗標（裁決前提）。草稿不得單方面長出/遺失 reason。
+    # 5h. D3-019/D3-026：expected_incomplete_reason 的唯一出處＝IE 裁決的合併
+    # ——草稿帶 reason ⟺ ie_review 帶 zero_tmu_ruling **或** incomplete_ruling
+    # （值原樣；兩面向前提互斥，load_review_state 已硬驗不並存），且各自的
+    # 裁決前提必須在草稿上成立。草稿不得單方面長出/遺失 reason。
     reason_val = data.get("expected_incomplete_reason")
-    ruling_val = (ir or {}).get("zero_tmu_ruling")
+    zero_ruling = (ir or {}).get("zero_tmu_ruling")
+    incomplete_ruling = (ir or {}).get("incomplete_ruling")
+    assert not (zero_ruling and incomplete_ruling), (
+        f"{fname}：zero_tmu 與 incomplete 裁決同時投影進 ie_review——前提互斥"
+    )
+    ruling_val = zero_ruling or incomplete_ruling
     assert (reason_val is not None) == (ruling_val is not None), (
         f"{fname}：expected_incomplete_reason（{reason_val!r}）與 ie_review 的 "
-        f"zero_tmu_ruling（{ruling_val!r}）必須同進同出"
+        f"zero_tmu_ruling/incomplete_ruling（{ruling_val!r}）必須同進同出"
     )
     if reason_val is not None:
         assert reason_val == ruling_val, f"{fname}：reason 與裁決值不一致"
-        assert ZERO_TMU_CAVEAT in caveats, (
-            f"{fname}：帶 TMU=0 裁決但無 {ZERO_TMU_CAVEAT} 旗標——裁決前提不成立"
-        )
+        if zero_ruling:
+            assert ZERO_TMU_CAVEAT in caveats, (
+                f"{fname}：帶 TMU=0 裁決但無 {ZERO_TMU_CAVEAT} 旗標——裁決前提不成立"
+            )
+        else:
+            assert any(
+                ec.get("complete") is False
+                for ec in data.get("expected_cycles") or []
+            ), (
+                f"{fname}：帶 incomplete 裁決但無 incomplete cycle——裁決前提"
+                "不成立（合併端 stale 偵測應已擋，這裡防投影漂移）"
+            )
 
     # 2+6. planner 段重放：offset 守衛（gold_* 具名錯誤＝標註缺損）永遠檢查；
     # 「與 rule planner 重放整份 plan 相等」只對 pending_ie（原樣草稿）要求——
@@ -546,10 +561,15 @@ SYN_COVERAGE_SHA8_BASELINE: dict[str, frozenset[str]] = {
 # - D3-022 轉正 4 筆（72dc0511/6fa45cdb/5cb719bb/fe5391c6）與 D3-023 第三批
 #   7 筆（7c6eb8af/af172fd9/b6ee694d/1c27dc35/fe1f3a90/e945e29e/9c1a987f）
 #   移出草稿集（present 過濾，基線保留無害）。現存草稿 complete＝5 筆。
+#
+# 第八輪更新（D3-026，2026-08-17）：
+# - **有意識新增 `2f0cb396`**（「並確認DIMM點位」）：E 型完整性窄豁免落地
+#   （IE 裁決——純 I 句面集合恰 {I}，M=0 完整、帶真 I TMU 6.0）。第五批轉正
+#   g41 後移出草稿集（present 過濾，基線保留無害）。
 COMPLETE_TMU_SHA8_BASELINE: frozenset[str] = frozenset({
-    "1c27dc35", "1dd7c1d5", "2e7b2e5a", "51518399", "6be614c5", "6fa45cdb",
-    "72dc0511", "7c6eb8af", "7f085e02", "9c1a987f", "af172fd9", "b6ee694d",
-    "e945e29e", "fe1f3a90", "fe5391c6",
+    "1c27dc35", "1dd7c1d5", "2e7b2e5a", "2f0cb396", "51518399", "6be614c5",
+    "6fa45cdb", "72dc0511", "7c6eb8af", "7f085e02", "9c1a987f", "af172fd9",
+    "b6ee694d", "e945e29e", "fe1f3a90", "fe5391c6",
 })
 
 

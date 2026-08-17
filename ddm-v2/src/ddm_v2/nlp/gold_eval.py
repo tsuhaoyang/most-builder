@@ -167,6 +167,7 @@ async def evaluate_gold_case(data: dict) -> GoldCaseResult:
         candidates,
         rule_set_code=case_rule_set_code(data),
         allow_lists=allow_lists_from_rule_set(rs),
+        face_hit_params=linker.face_hit_params(plan),
     )
     drafts = apply_engine_gate(drafts, rs)
     status, reasons = compute_routing(plan, candidates, drafts, auto_enabled=False)

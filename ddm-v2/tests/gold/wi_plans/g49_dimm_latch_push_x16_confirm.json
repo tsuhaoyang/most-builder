@@ -1,0 +1,151 @@
+{
+  "id": "g49_dimm_latch_push_x16_confirm",
+  "source_text": "雙手接觸DIMM卡槽的左右卡扣推×16至規定位置並確認到位",
+  "notes": "⚠️ F 票化石（D3-026 F 型）：本句「推×16至」被數量記號插斷，lexicon 面比對漏配 M 面「推至」→ 面集合塌成 G+I、cycle incomplete missing_core_m——期望值釘的是**解析缺陷下的誠實輸出**。F 票（quantities/lexicon 中綴容忍）修好那天本案會轉紅：M 面命中後 cycle 轉 complete，但 distance_cm 會是**被發明的 0.0**（句面距離仍未述）——比誠實 incomplete 更糟。屆時不得只把期望改成 complete 了事，必須重審**含距離裁決**（維持 distance_unstated 誠實 incomplete，或 IE 補真距離走 --relock-approved 留痕）；×16 的頻率展開也要一併重看。\n自草稿 d001_b49a90ee 轉正（IE 覆核核准；docs/llm/gold-review/README.md 工作流）。取樣為 challenge-oversampled（coverage-optimized），本案分數不可外推為母體表現。切分確認、判型確認、incomplete 裁決見 ie_review 與 tests/gold/wi_plans_draft/review-state.json。",
+  "review_status": "approved",
+  "approved_by": "IEC141289",
+  "plan_origin": "rule_based_v1_preannotation",
+  "ie_modified": false,
+  "split": "test",
+  "split_groups": [
+    "module:945b0420-3367-42e9-90d0-00993cf80ff5"
+  ],
+  "split_component": "module:945b0420-3367-42e9-90d0-00993cf80ff5",
+  "source_provenance": [
+    {
+      "table": "motion_module_versions",
+      "id": "2b40d576-42c5-4922-95d1-340260f04b4a",
+      "detail": "rows[0].sub_activity",
+      "group_key": "module:945b0420-3367-42e9-90d0-00993cf80ff5",
+      "db_timestamp": "2026-08-04T06:59:46.478008+00:00",
+      "raw_text": "雙手接觸DIMM卡槽的左右卡扣推×16至規定位置並確認到位"
+    }
+  ],
+  "challenge_tags": {
+    "zh_simplified_variant": false,
+    "fullwidth_chars": false,
+    "typo": "unknown",
+    "homophone": "unknown",
+    "mixed_zh_en": true,
+    "english_only": false,
+    "inverted_word_order": "unknown",
+    "colloquial": "unknown",
+    "multi_action": true,
+    "quantity": true,
+    "tool_handling": false,
+    "simo_both_hands": true,
+    "missing_info": "unknown",
+    "ambiguity": "unknown",
+    "diagram_reference_no_image": false,
+    "site_jargon_dirty_import": "unknown"
+  },
+  "heuristic_tags_unverified": [
+    "quantity",
+    "tool_handling",
+    "simo_both_hands"
+  ],
+  "preannotation_caveat": [
+    "typing_changed_by_verb_lexicon",
+    "likely_multi_action_undercounted"
+  ],
+  "typing_change": {
+    "noun_only_seq": null,
+    "lexicon_seq": "CM"
+  },
+  "v3_structure_hint": "single_cycle",
+  "v3_structure_evidence": {
+    "note": "hint 是證據不是判決：來源＝IE 驗證過的 v3 生產資料的結構（module/cycle 邊界）；覆核表預設依 v3 結構、IE 可推翻；本欄位絕不寫進 expected.*",
+    "sources": [
+      {
+        "table": "motion_module_versions",
+        "id": "2b40d576-42c5-4922-95d1-340260f04b4a",
+        "detail": "rows[0].sub_activity",
+        "cycles": 1,
+        "v3_migrated": true,
+        "basis": "版本 rows[] 一列＝一個 cycle（rows[*].cycle 為單一 CycleIn）"
+      }
+    ]
+  },
+  "preannotation": {
+    "pipeline": "rule_based_v1 -> plan_from_rule_result -> SlotLinker(no-db) -> compile_plan -> engine_gate(most_engine) -> compute_routing(auto=off)",
+    "planner": "rule_based_v1",
+    "rule_set_code": "MINIMOST_FACTORY_V2",
+    "lexicon_source": "rule_option_synonyms",
+    "lexicon_size": 22,
+    "routing_reasons": [
+      "no_candidate_m",
+      "missing_core_m"
+    ]
+  },
+  "plan": {
+    "schema_version": "wi-plan-v1",
+    "source_text": "雙手接觸DIMM卡槽的左右卡扣推×16至規定位置並確認到位",
+    "normalized_text": "雙手接觸dimm卡槽的左右卡扣推×16至規定位置並確認到位",
+    "language": "zh",
+    "source_ref": {
+      "kind": "interactive",
+      "worksheet_id": null,
+      "import_id": null,
+      "import_row_index": null
+    },
+    "actions": [
+      {
+        "action_id": "a1",
+        "action_type": "controlled_move",
+        "sequence_order": 1,
+        "roles": {},
+        "evidence": [
+          {
+            "start": 0,
+            "end": 29,
+            "text": "雙手接觸dimm卡槽的左右卡扣推×16至規定位置並確認到位"
+          }
+        ],
+        "notes": "rule_based_v1"
+      }
+    ],
+    "dependencies": [],
+    "unresolved": []
+  },
+  "synthetic_synonyms": [
+    {
+      "parameter": "G",
+      "option_code": "g_touch",
+      "synonym_norm": "接觸",
+      "priority": 0
+    },
+    {
+      "parameter": "I",
+      "option_code": "i_confirm",
+      "synonym_norm": "確認",
+      "priority": 0
+    }
+  ],
+  "expected_cycles": [
+    {
+      "action_id": "a1",
+      "complete": false,
+      "seq": "CM",
+      "issues_contain": [
+        "missing_core_m"
+      ]
+    }
+  ],
+  "gold_schema_version": "wi-gold-v1",
+  "expected": {
+    "action_count": 1,
+    "routing_status": "review"
+  },
+  "ie_review": {
+    "segmentation_confirmed_by": "IEC141289",
+    "segmentation_confirmed_date": "2026-08-16",
+    "segmentation_source": "v3_structure_confirmed",
+    "typing_confirmed_by": "IEC141289",
+    "typing_confirmed_date": "2026-08-17",
+    "incomplete_ruling": "distance_unstated",
+    "incomplete_ruled_by": "IEC141289",
+    "incomplete_ruled_date": "2026-08-17"
+  },
+  "expected_incomplete_reason": "distance_unstated",
+  "approved_date": "2026-08-17"
+}

@@ -29,6 +29,15 @@ mutation 證據（CI_GATES 規則 7）：
   d016（標題句不硬切）被轉正 →
   `test_repo_d016_title_sentence_stays_draft_not_promoted`／
   `test_resegmentation_ruling_blocks_promotion_fail_closed` 紅。
+- D3-027（D3-026 複審 M2）：gold 端 reason 值要承重——
+  `expected_incomplete_reason` 改壞值（複合 token 改序／自創 token／與裁決
+  漂移）或 incomplete 案例的 issues_contain 清空 →
+  `test_repo_expected_incomplete_reasons_bound_to_rulings` 紅
+  （`test_reason_ruling_binding_mutations_detected` 以 in-memory mutation
+  證明三種壞值逐一被抓；token 驗證與 state 檔共用
+  `incomplete_ruling_canonical_error`，不抄第二份）。
+- D3-027（D3-026 複審 L1）：轉正 notes 尾句硬寫「TMU=0 裁決見…」→
+  `test_promoted_case_payload_notes_reflect_actual_aspects` 紅。
 """
 from __future__ import annotations
 
@@ -61,6 +70,7 @@ from gold_harvest import (  # noqa: E402
     ZERO_TMU_RULING_DISTANCE_UNSTATED,
     caveat_resolution_blockers,
     draft_sha8,
+    incomplete_ruling_canonical_error,
     load_review_state,
     merge_review_state,
     promoted_case_payload,
@@ -222,6 +232,38 @@ def test_substance_guard_rejects_zero_tmu_as_substance():
     del case["expected_incomplete_reason"]
     case["expected_cycles"][0]["total_tmu"] = 3.0
     assert substance_blockers(case) == []
+
+
+def test_incomplete_ruling_case_eligible_via_honest_reason():
+    """D3-026（第五批）：incomplete 草稿（missing_core_m、無 TMU）本身撞
+    substance 守門；IE 的 incomplete 裁決合併後（expected_incomplete_reason
+    ＝逐型釘值）＝誠實轉正路徑放行。mutation：apply 的 reason 寫入拆掉 →
+    本測紅（substance blocker 仍在）。"""
+    draft, entry = _eligible_pair()
+    # 改成 X/I 型 CM 句形狀：incomplete、無 TMU
+    draft["plan"]["actions"] = [
+        {"action_id": "a1", "action_type": "controlled_move", "sequence_order": 1}
+    ]
+    draft["expected_cycles"] = [
+        {"action_id": "a1", "complete": False, "seq": "CM",
+         "issues_contain": ["missing_core_m"]}
+    ]
+    blockers = promotion_blockers(draft, entry)
+    assert any("expected_incomplete_reason" in b for b in blockers), (
+        "incomplete 無 reason 必須先被空殼守門擋住（前提）"
+    )
+
+    entry2 = {
+        **entry,
+        "incomplete_ruling": "distance_unstated+x_seconds_required",
+        "incomplete_ruled_by": IE,
+        "incomplete_ruled_date": "2026-08-17",
+    }
+    draft.pop("ie_review")
+    applied, stale = merge_review_state([draft], {entry2["norm_sha256"][:8]: entry2})
+    assert applied and not stale
+    assert draft["expected_incomplete_reason"] == "distance_unstated+x_seconds_required"
+    assert promotion_blockers(draft, entry2) == []
 
 
 def test_multi_cycle_confirmed_but_plan_not_resegmented_blocks():
@@ -456,6 +498,31 @@ def test_promoted_case_payload_transform():
     assert draft == before, "promoted_case_payload 必須是純轉換（不就地改草稿）"
 
 
+def test_promoted_case_payload_notes_reflect_actual_aspects():
+    """D3-027（D3-026 複審 L1）：轉正 notes 尾句依**實際存在的覆核面向**生成
+    ——沒有 TMU=0 裁決的案例不得宣稱「TMU=0 裁決見…」（樣板謊言）。
+    mutation：樣板改回硬寫固定尾句 → 本測紅。"""
+    # 無任何裁決（只有切分/判型/P 方向確認）→ 兩種裁決都不得被宣稱
+    draft, _entry = _eligible_pair()
+    payload = promoted_case_payload(
+        draft, new_id="g96_notes_aspects", approved_by=IE,
+        approved_date="2026-08-17", split="test",
+    )
+    assert "TMU=0 裁決" not in payload["notes"], "沒有的裁決不得寫進 notes"
+    assert "incomplete 裁決" not in payload["notes"]
+    for claimed in ("切分確認", "判型確認", "P 方向數確認"):
+        assert claimed in payload["notes"], f"實際存在的面向 {claimed} 要被指出"
+    # incomplete 裁決案例（D3-026 第五批形狀）→ 宣稱 incomplete、不宣稱 TMU=0
+    draft2, _e2 = _eligible_pair()
+    draft2["ie_review"]["incomplete_ruling"] = "distance_unstated"
+    payload2 = promoted_case_payload(
+        draft2, new_id="g95_notes_inc", approved_by=IE,
+        approved_date="2026-08-17", split="test",
+    )
+    assert "incomplete 裁決" in payload2["notes"]
+    assert "TMU=0 裁決" not in payload2["notes"]
+
+
 # ── 3. repo 現況自洽（讀已 commit 檔案） ─────────────────────────────────────
 
 
@@ -569,6 +636,112 @@ def test_repo_promoted_gold_passes_promotion_invariants():
         mutated = copy.deepcopy(sample)
         mutated["ie_review"].pop("typing_confirmed_by", None)
         assert caveat_resolution_blockers(mutated), "剝掉判型確認竟然還過——檢查死了"
+
+
+def _reason_ruling_errors(d: dict[str, Any]) -> list[str]:
+    """單筆 gold 的 reason↔IE 裁決承重檢查（D3-027；D3-026 複審 M2）。
+
+    先前 `expected_incomplete_reason` 與 ie_review 的裁決值在 gold 檔上零驗證
+    （substance 守門只看非空字串）——複合 token 改序、自創 token、issues_contain
+    清空都能全綠。規則：
+    - reason ⟺ 裁決（zero_tmu_ruling / incomplete_ruling）同進同出且**相等**；
+    - token 跑與 state 檔同一套 canonical 驗證（單一出處，不抄第二份）；
+    - incomplete 裁決必須對得到至少一筆 complete=false 且 issues_contain 非空
+      的 expected cycle（裁決要承在被驗證的缺漏上）。"""
+    errors: list[str] = []
+    ir = d.get("ie_review") or {}
+    zero = ir.get("zero_tmu_ruling")
+    inc = ir.get("incomplete_ruling")
+    reason = d.get("expected_incomplete_reason")
+    if zero and inc:
+        errors.append("zero_tmu_ruling 與 incomplete_ruling 並存（前提互斥）")
+    ruling = zero or inc
+    if reason is None and ruling is None:
+        return errors
+    if reason is None or ruling is None:
+        errors.append(
+            f"expected_incomplete_reason={reason!r} 與 ie_review 裁決 {ruling!r} "
+            "必須同進同出（reason 的唯一來源＝IE 裁決）"
+        )
+        return errors
+    if reason != ruling:
+        errors.append(
+            f"expected_incomplete_reason={reason!r} != 裁決值 {ruling!r}（reason 不承重）"
+        )
+    if zero is not None and zero != ZERO_TMU_RULING_DISTANCE_UNSTATED:
+        errors.append(
+            f"zero_tmu_ruling={zero!r} 非法"
+            f"（唯一合法值 {ZERO_TMU_RULING_DISTANCE_UNSTATED!r}）"
+        )
+    if inc is not None:
+        canonical_err = incomplete_ruling_canonical_error(inc)
+        if canonical_err:
+            errors.append(canonical_err)
+        cycles = d.get("expected_cycles") or []
+        if not any(
+            c.get("complete") is False and (c.get("issues_contain") or [])
+            for c in cycles
+        ):
+            errors.append(
+                "incomplete_ruling 存在但無任何 complete=false 且 issues_contain "
+                "非空的 expected cycle（g49 型：issues_contain 清空＝裁決懸空）"
+            )
+    return errors
+
+
+def test_repo_expected_incomplete_reasons_bound_to_rulings():
+    """repo 不變量（D3-027；D3-026 複審 M2）：正式 gold 的 reason 值承重。
+    複審實測 g45 複合 token 改掉／g48 改 totally_made_up／g49 issues_contain
+    清空——836 全綠（零測試觸及）；本測讓三種壞值都紅。"""
+    non_seed = [d for d in _gold_cases().values() if not is_seed_gold_case(d)]
+    if not non_seed:
+        pytest.skip("尚無轉正案例")
+    problems = {
+        str(d["id"]): errs
+        for d in non_seed
+        if (errs := _reason_ruling_errors(d))
+    }
+    assert not problems, f"gold reason↔裁決不變量失敗：{problems}"
+    # 前提自檢：檢查不是恆空轉（repo 現況本來就有兩型裁決案例）
+    assert any((d.get("ie_review") or {}).get("incomplete_ruling") for d in non_seed), (
+        "repo 應有 incomplete 裁決案例（D3-026 第五批）——全消失代表另有問題"
+    )
+    assert any((d.get("ie_review") or {}).get("zero_tmu_ruling") for d in non_seed), (
+        "repo 應有 TMU=0 裁決案例（D3-019 首批）——全消失代表另有問題"
+    )
+
+
+def test_reason_ruling_binding_mutations_detected():
+    """mutation 證據（in-memory；D3-026 複審 M2 的三種壞值）：逐一必紅。"""
+    base = next(
+        (
+            d
+            for d in sorted(_gold_cases().values(), key=lambda x: str(x.get("id")))
+            if "+" in str((d.get("ie_review") or {}).get("incomplete_ruling") or "")
+        ),
+        None,
+    )
+    assert base is not None, "repo 應有複合 incomplete_ruling 案例（g45/g48 型）"
+    assert _reason_ruling_errors(base) == [], "前提：原件必須通過（守門不是恆紅）"
+    # (1) 複合 token 改序——canonical 順序是唯一寫法（g45 型 mutation）
+    m1 = copy.deepcopy(base)
+    swapped = "+".join(reversed(m1["ie_review"]["incomplete_ruling"].split("+")))
+    m1["ie_review"]["incomplete_ruling"] = swapped
+    m1["expected_incomplete_reason"] = swapped
+    assert _reason_ruling_errors(m1), "複合 token 改序竟然還過——canonical 驗證死了"
+    # (2) 自創 token（g48 型 mutation）；(2b) 只改 reason＝與裁決漂移
+    m2 = copy.deepcopy(base)
+    m2["ie_review"]["incomplete_ruling"] = "totally_made_up"
+    m2["expected_incomplete_reason"] = "totally_made_up"
+    assert _reason_ruling_errors(m2), "自創 token 竟然還過——token 驗證死了"
+    m2b = copy.deepcopy(base)
+    m2b["expected_incomplete_reason"] = "totally_made_up"
+    assert _reason_ruling_errors(m2b), "reason 與裁決漂移竟然還過——相等檢查死了"
+    # (3) issues_contain 清空（g49 型 mutation）
+    m3 = copy.deepcopy(base)
+    for c in m3["expected_cycles"]:
+        c.pop("issues_contain", None)
+    assert _reason_ruling_errors(m3), "issues_contain 清空竟然還過——裁決懸空沒被抓"
 
 
 def test_repo_same_component_same_split():

@@ -13,6 +13,11 @@ D3-024 複審（H1/H2）：X 掛值先查 option 的 input_mode——seconds 模
 旗標、候選仍留 top_k（`_apply_x_input_mode_rule`）；I 格的「視線範圍未明→
 取 NORMAL」假設守門解綁 action_type——任何 I 格 chosen 且該 action 無
 inspect_kind role 都掛 `i_range_assumed`（`_apply_i_range_rule`）。
+
+D3-026（E 型窄豁免的判準輸入）：`SlotLinker.face_hit_params` 回報每個 action
+的 lexicon 面命中參數集合——compile 端的「純 I 句」完整性窄豁免（面集合恰為
+{I}）需要它，因為 slot 候選看不到未被查詢的參數面（controlled_move 不掛 G
+spec，G 面命中在候選層不可見）。
 """
 from __future__ import annotations
 
@@ -58,10 +63,11 @@ _LINK_SPEC: dict[str, list[tuple[str, str, tuple[str, ...]]]] = {
 # no_candidate 噪音）。GM 系 action（acquire/move_place/release_return）不掛
 # ——GM 序列沒有 X/I 格。
 #
-# 完整性語意不變：completeness 判準仍是 CORE_PARAM_BY_ACTION 的 core 格
-# （controlled_move 缺 M 仍 missing_core_m）——「X 承載做工時 M 可為零」
-# 是否成立是 IE 域判準，未裁前不放寬（D3-024 紅線；待裁題列
-# docs/llm/gold-review/README.md 快答清單）。
+# 完整性語意：completeness 判準仍是 CORE_PARAM_BY_ACTION 的 core 格
+# （controlled_move 缺 M 仍 missing_core_m）。「X 承載做工時 M 可為零」
+# D3-026 IE 已裁＝**不成立**（全面放寬被否決——鎖附/清潔型的移動真實存在，
+# 走 expected_incomplete_reason 誠實 incomplete）；唯一例外＝E 型窄豁免
+# （純 I 句，面集合恰 {I}），在 compile 端（most_compiler/compile.py）。
 _CM_SEQ_ACTION_TYPES = frozenset({"controlled_move", "process", "inspect"})
 _CM_EXTRA_SPECS: tuple[tuple[str, str, tuple[str, ...]], ...] = (
     ("X", "x4.x_code", ("process_kind", "object", "tool")),
@@ -550,9 +556,37 @@ def _template_hints(plan: WorkInstructionPlan, templates: list[dict]) -> list[Sl
     return out
 
 
+# face_hit_params 只認 slot 參數面（G/P/M/X/I 為現行同義詞面；A/B 先備）——
+# 未來若 lexicon 出現非 slot 條目（vocab 名詞面），不得進面命中集合：
+# E 型豁免的判準是「無其他 *slot* 面命中」（名詞面不是移動/做工證據）。
+_SLOT_FACE_PARAMS = frozenset({"A", "B", "G", "P", "M", "X", "I"})
+
+
 class SlotLinker:
     def __init__(self, synonyms: list[dict]) -> None:
         self._lexicon = build_lexicon(synonyms)
+
+    def face_hit_params(self, plan: WorkInstructionPlan) -> dict[str, frozenset[str]]:
+        """每個 action 的 lexicon 面命中參數集合（D3-026 E 型豁免的判準輸入）。
+
+        掃描文本＝該 action 的 evidence（無則 fallback 整句 normalized_text——
+        與各參數 spec 的 `_query_text` 同一 fallback 形狀，不另創文本來源）；
+        詞典＝完整混合詞典（同 `used_lexicon_entries` 的 planner 視角：跨參數
+        位置遮蔽一致，「面命中集合」語意與判型證據同源）。composite_unknown
+        不掃（無 slot 可豁免）。回傳值只供完整性判定參考——候選/掛值仍以
+        `link()` 的逐參數池為準。
+        """
+        out: dict[str, frozenset[str]] = {}
+        for action in plan.actions:
+            if action.action_type == "composite_unknown":
+                continue
+            q = _query_text(action, (), plan)
+            out[action.action_id] = frozenset(
+                e.parameter
+                for _s, _e, e in match_all(q, self._lexicon)
+                if e.parameter in _SLOT_FACE_PARAMS
+            )
+        return out
 
     async def link(
         self,

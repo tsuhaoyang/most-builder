@@ -348,6 +348,105 @@ def test_zero_tmu_ruling_applies_reason_and_stale_when_flag_absent():
     assert "expected_incomplete_reason" not in d2
 
 
+def test_incomplete_ruling_applies_reason_and_stale_when_premise_absent():
+    """incomplete 裁決（D3-026）：套用時草稿記 expected_incomplete_reason
+    （值原樣，含複合值）；草稿全數 cycle 轉 complete（前提消失）→ stale。
+    mutation：premise 檢查拆掉 → 後半必紅；apply 的寫入拆掉 → 前半必紅。"""
+    norm = "電動鎖附(多顆)"
+    entry = _aspect_entry(norm)
+    entry.update(
+        incomplete_ruling="distance_unstated+count_unstated",
+        incomplete_ruled_by="IEC141289",
+        incomplete_ruled_date="2026-08-17",
+    )
+    d = _typed_draft(norm)
+    d["expected_cycles"] = [
+        {"action_id": "a1", "complete": False, "seq": "CM",
+         "issues_contain": ["missing_core_m"]}
+    ]
+    applied, stale = merge_review_state([d], {_sha(norm)[:8]: entry})
+    assert applied == [d["id"]] and stale == []
+    assert d["expected_incomplete_reason"] == "distance_unstated+count_unstated"
+    assert d["ie_review"]["incomplete_ruling"] == "distance_unstated+count_unstated"
+
+    # 前提消失：新一輪全部 cycle 轉 complete（如詞典補齊讓 M 可填）→ stale
+    d2 = _typed_draft(norm)
+    d2["expected_cycles"] = [
+        {"action_id": "a1", "complete": True, "seq": "CM", "total_tmu": 9.0}
+    ]
+    before = copy.deepcopy(d2)
+    applied, stale = merge_review_state([d2], {_sha(norm)[:8]: entry})
+    assert applied == []
+    assert [s["reason"] for s in stale] == ["incomplete_premise_absent"]
+    assert d2 == before, "stale 不得動草稿"
+
+
+@pytest.mark.parametrize(
+    "over,match",
+    [
+        ({"incomplete_ruling": "distance_unknown"}, "incomplete_ruling"),
+        ({"incomplete_ruling": ""}, "incomplete_ruling"),
+        # 順序非 canonical（count 在 distance 前）——複合值只有一種寫法
+        ({"incomplete_ruling": "count_unstated+distance_unstated"}, "incomplete_ruling"),
+        # 重複 token
+        ({"incomplete_ruling": "distance_unstated+distance_unstated"}, "incomplete_ruling"),
+        ({"incomplete_ruled_by": ""}, "incomplete_ruled_by"),
+        ({"incomplete_ruled_date": "2026/08/17"}, "incomplete_ruled_date"),
+    ],
+)
+def test_load_review_state_rejects_bad_incomplete_aspect(
+    tmp_path: Path, over: dict, match: str
+):
+    """incomplete 面向驗證 fail-closed：非法 token／非 canonical 順序／重複／
+    空 by／壞日期都硬紅。"""
+    norm = "電動鎖附(多顆)"
+    entry = _aspect_entry(
+        norm,
+        incomplete_ruling="distance_unstated",
+        incomplete_ruled_by="IEC141289",
+        incomplete_ruled_date="2026-08-17",
+    )
+    entry.update(over)
+    p = _write_state(tmp_path / REVIEW_STATE_FILENAME, {_sha(norm)[:8]: entry})
+    with pytest.raises(SystemExit, match=match):
+        load_review_state(p)
+
+
+def test_load_review_state_rejects_zero_tmu_with_incomplete(tmp_path: Path):
+    """前提互斥：zero_tmu（complete＋0.0）與 incomplete（有 incomplete cycle）
+    不得同 entry 並存——兩者都寫 expected_incomplete_reason，並存＝值互踩。"""
+    norm = "電動鎖附(多顆)"
+    entry = _aspect_entry(
+        norm,
+        incomplete_ruling="distance_unstated",
+        incomplete_ruled_by="IEC141289",
+        incomplete_ruled_date="2026-08-17",
+        zero_tmu_ruling="distance_unstated",
+        zero_tmu_ruled_by="IEC141289",
+        zero_tmu_ruled_date="2026-08-17",
+    )
+    p = _write_state(tmp_path / REVIEW_STATE_FILENAME, {_sha(norm)[:8]: entry})
+    with pytest.raises(SystemExit, match="前提互斥"):
+        load_review_state(p)
+
+
+def test_incomplete_only_entry_counts_as_aspect(tmp_path: Path):
+    """incomplete 裁決單獨成面向（「至少一個覆核面向」計入）——只帶它的
+    entry 合法。"""
+    norm = "電動鎖附(多顆)"
+    entry: dict[str, Any] = {
+        "source_text": norm,
+        "norm_sha256": _sha(norm),
+        "ie_modified": False,
+        "incomplete_ruling": "distance_unstated",
+        "incomplete_ruled_by": "IEC141289",
+        "incomplete_ruled_date": "2026-08-17",
+    }
+    p = _write_state(tmp_path / REVIEW_STATE_FILENAME, {_sha(norm)[:8]: entry})
+    loaded = load_review_state(p)
+    assert loaded[_sha(norm)[:8]]["incomplete_ruling"] == "distance_unstated"
+
+
 def test_promoted_entry_skipped_not_stale():
     """轉正 entry：合併跳過（不套用、不算 stale）——即使 sha 配不到草稿也不進
     stale 名單（句子已在正式 gold，本來就不該有草稿）。"""
@@ -436,9 +535,23 @@ def test_load_review_state_rejects_batch_with_ruling(tmp_path: Path):
         load_review_state(p)
 
 
+# D3-026 第五批：批次確認案例中已轉正的恰 5 筆（實質內容守門的兩條合法路徑
+# 已解——g41 帶真 I TMU（E 型豁免）、其餘 4 筆 incomplete 裁決的
+# expected_incomplete_reason）。名單恰等：多＝未預期轉正必須查；少＝被撤回，
+# 名單要同步更新。
+REPO_BATCH_PROMOTED: dict[str, str] = {
+    "2f0cb396": "g41_confirm_dimm_points",
+    "ee5c168e": "g42_screw_cpu_heatsink_x4",
+    "bc473698": "g43_screw_board_fix_x6",
+    "323b04c1": "g44_screw_fix_single",
+    "130bb1ad": "g48_screw_fix_multi",
+}
+
+
 def test_repo_batch_confirmed_answer_b_pinned():
-    """repo 釘值（D3-021 答案 B）：批次確認恰 16 筆、全數未轉正、逐筆配對到
-    無爭點草稿且 ie_review 帶批次來源。"""
+    """repo 釘值（D3-021 答案 B）：批次確認恰 16 筆；D3-026 起其中恰 5 筆
+    轉正（REPO_BATCH_PROMOTED 名單恰等），其餘 11 筆逐筆配對到無爭點草稿
+    且 ie_review 帶批次來源。"""
     state_path = DRAFT_DIR / REVIEW_STATE_FILENAME
     if not state_path.exists():
         pytest.skip("repo 無 review-state.json")
@@ -449,16 +562,19 @@ def test_repo_batch_confirmed_answer_b_pinned():
         if e.get("segmentation_source") == REVIEW_SEGMENTATION_SOURCE_BATCH
     }
     assert len(batch) == 16, "D3-021 答案 B＝16 筆批次切分確認（增減都要有意識更新）"
+    promoted = {k: e["promoted_to"] for k, e in batch.items() if e.get("promoted_to")}
+    assert promoted == REPO_BATCH_PROMOTED, (
+        "批次確認的轉正名單漂移（多＝未預期轉正；少＝被撤回，名單同步更新）"
+    )
     drafts = {draft_sha8(d): d for d in _repo_drafts()}
     for sha8, e in batch.items():
-        assert not e.get("promoted_to"), (
-            f"{sha8}：批次確認案例本輪不應轉正（全數卡實質內容守門）"
-        )
+        assert e.get("segmentation_confirmed_by") == "IEC141289"
+        assert e.get("segmentation_confirmed_date") == "2026-08-17"
+        if sha8 in REPO_BATCH_PROMOTED:
+            continue  # 已轉正——promoted ↔ gold 同進同出守門在 test_gold_promotion
         d = drafts.get(sha8)
         assert d is not None, f"{sha8}：批次 entry 配不到草稿"
         assert d["ie_review"]["segmentation_source"] == REVIEW_SEGMENTATION_SOURCE_BATCH
-        assert e.get("segmentation_confirmed_by") == "IEC141289"
-        assert e.get("segmentation_confirmed_date") == "2026-08-17"
 
 
 # ── 2c. stale 筆的覆核表 banner（D3-023 複審必修 1）──────────────────────────
@@ -1257,8 +1373,11 @@ def test_repo_ie_rulings_present_after_round2_correction():
     # b6ee694d/e945e29e/9c1a987f；另 2 筆 1c27dc35/fe1f3a90 是 ie_ruling）：
     # 草稿 10→4、已轉正 25→30。D3-024：d0350279 stale 重看後恢復套用
     # （stale 項 1→0、草稿 4→5——守恆總數不變）。
-    assert len(confirmed) == 5
-    assert promoted_confirmed == 30
+    # D3-026 第五批轉正 4 筆 v3_structure_confirmed（b49a90ee/51077fd1/
+    # 3791550c/7ff8b879→g49/g45/g46/g47）：草稿 5→1（僅剩 d0350279）、
+    # 已轉正 30→34——守恆總數不變。
+    assert len(confirmed) == 1
+    assert promoted_confirmed == 34
     assert len(superseded_confirmed) == 4, (
         "D3-022 更正（v3_structure_confirmed → ie_ruling）恰 4 筆"
         "（6fa45cdb/5cb719bb/fe5391c6/fe1f3a90）——增減都要有意識更新"

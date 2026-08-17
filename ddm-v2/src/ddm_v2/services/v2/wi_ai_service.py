@@ -361,6 +361,7 @@ async def parse_interactive(
         candidates,
         rule_set_code=rule_set_code,
         allow_lists=allow,
+        face_hit_params=linker.face_hit_params(plan),
     )
     t_compile = time.perf_counter()
 

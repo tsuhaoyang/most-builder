@@ -66,6 +66,10 @@ async def test_e2e_fixture_pipeline(fname: str):
         candidates,
         rule_set_code="MINIMOST_FACTORY_V2",
         allow_lists=allow_lists_from_rule_set(rs),
+        # 與生產管線同形（run_pipeline／gold_eval／wi_ai_service 都傳）：
+        # 不傳＝走 fail-closed 分支，「純 I controlled_move」fixture 一旦加入
+        # 會被靜默釘在不豁免的答案上（D3-026 複審 L4）
+        face_hit_params=linker.face_hit_params(plan),
     )
     drafts = apply_engine_gate(drafts, rs)
     status, reasons = compute_routing(plan, candidates, drafts, auto_enabled=False)

@@ -15,6 +15,7 @@ ROUTING_REASONS = frozenset(
         "composite_unknown",
         "next_operation",
         "i_range_assumed",
+        "m_zero_pure_inspection_assumed",
     }
 )
 
@@ -105,6 +106,10 @@ def _eligible_auto(
         "quantity_policy_review",
         "template_hint",
         "i_range_assumed",
+        # D3-027（D3-026 複審 H1）：E 型豁免的假設旗標顯式擋 auto——先前擋
+        # auto 靠「M 候選 chosen=None」的結構巧合（linker 對 controlled_move
+        # 恆掛 M 候選集），豁免語意的保證不得倚賴另一模組的實作細節
+        "m_zero_pure_inspection_assumed",
         "next_operation",
     }
     if any(r in blocked for r in reasons):

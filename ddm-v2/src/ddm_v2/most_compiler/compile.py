@@ -1,7 +1,7 @@
 """compile_plan：WorkInstructionPlan + candidates → CycleDraft（無 TMU）。"""
 from __future__ import annotations
 
-from typing import Any, Iterable
+from typing import Any, Iterable, Mapping
 
 from ddm_v2.most_compiler.intermediate import (
     StrictASlot,
@@ -123,8 +123,15 @@ def compile_plan(
     *,
     rule_set_code: str,
     allow_lists: dict[str, set[str]],
+    face_hit_params: Mapping[str, frozenset[str]] | None = None,
 ) -> list[CycleDraft]:
-    """確定性編譯。allow_lists keys: G,P,P_ADDON,M,X,I,B。"""
+    """確定性編譯。allow_lists keys: G,P,P_ADDON,M,X,I,B。
+
+    `face_hit_params`（D3-026）：action_id → 該 action 的 lexicon 面命中參數
+    集合（`SlotLinker.face_hit_params` 產出）——E 型窄豁免的判準輸入。候選層
+    看不到未被查詢的參數面（controlled_move 不掛 G spec），故需獨立證據；
+    未提供（None）＝無面命中證據＝不豁免（fail-closed，行為同 D3-024）。
+    """
     drafts: list[CycleDraft] = []
     for action in sorted(plan.actions, key=lambda a: a.sequence_order):
         if action.action_type == "composite_unknown":
@@ -216,6 +223,35 @@ def compile_plan(
             pk = action.roles.get("process_kind")
             if pk and pk.unit in {"s", "sec", "秒"} and pk.value is not None:
                 x_seconds = float(pk.value)
+            # ── E 型完整性窄豁免（D3-026；IE 裁決 2026-08-17/18，見 worklog）──
+            # 純 I 句：該 action 的面命中集合**恰為 {I}**（無 X、無 M、無 G、
+            # 無任何其他 slot 面）、I 已掛值、且無任何 M 分量（句面也無距離）
+            # → M=0 視為完整，cycle 帶真 I 工時（如「並確認DIMM點位」＝
+            # A0 B0 G0 M0 X0 I6 A0）。IE 原話：「目視確認無手部移動」。
+            # **窄**：X 面命中（鎖附/清潔型）不豁免——那正是 IE 否決的 (a)
+            # 全面放寬（C/G 型的移動真實存在，走 expected_incomplete_reason
+            # 誠實 incomplete）；G 面命中（接觸/拿取伴確認）同樣不豁免（手部
+            # 已介入＝非純目視）。face_hit_params 未提供＝不豁免（fail-closed）。
+            #
+            # **已知限制（D3-027；掛 F 票）**：面集合是 lexicon 視角——本豁免
+            # 的實際類別＝「含 I 面且無其他**字典內** slot 面」。字典外的真實
+            # 移動動詞（「旋轉旋鈕並確認」「翻轉主板並確認」）同樣塌成 {I}
+            # 而落入豁免。所以豁免**不清空 issues**：missing_core_m 換成假設
+            # 旗標 `m_zero_pure_inspection_assumed`（與 i_range_assumed 同風格）
+            # ——「M=0 是假設不是觀測」對 routing/覆核永遠可見，並顯式擋 auto
+            # （routing._eligible_auto 釘死本旗標，不倚賴 M 候選空的結構巧合）。
+            # F 票（lexicon 面比對修復）修好後類別會縮小，旗標語意不變。
+            if (
+                not complete
+                and miss_reason == "missing_core_m"
+                and action.action_type == "controlled_move"
+                and face_hit_params is not None
+                and face_hit_params.get(action.action_id) == frozenset({"I"})
+                and i_code is not None
+                and not m_comps
+            ):
+                complete = True
+                issues[issues.index("missing_core_m")] = "m_zero_pure_inspection_assumed"
             cm = StrictCmDraft(
                 b1=StrictBSlot(b_code=b_code),
                 g2=StrictGSlot(g_code=g_code),

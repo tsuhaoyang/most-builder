@@ -1,6 +1,6 @@
 {
   "schema_version": "wi-review-state-v1",
-  "note": "IE 覆核狀態檔（D3-015）：本檔是 IE 的裁決記錄，scripts/gold_harvest.py 只讀不寫、--force 不刪；重產草稿時以 normalized_text sha256 前 8 碼配對，合併回草稿的 ie_review 區塊。segmentation_source=v3_structure_confirmed＝確認照 v3 結構預設（切分維度確認，非整筆 gold 核准；確認≠修改，ie_modified 維持 false）；ie_ruling＝IE 對 ambiguous 案例的切分裁決。文字或 v3 結構證據變了的 entry 會被 harvest 標 stale 列入摘要，不靜默套用。首輪內容＝2026-08-16 IE（IEC141289）親答：39 筆確認題全照 v3 結構預設；d045 定 1 列；d026 定 3 列（3 列 wi-template 為正確結構）。第二輪更正（2026-08-16 釐清）：d026 這句本身＝1 列——首輪「3 列」是對整個 wi-template 三步驟製程的回答（提問誤述範本結構為句子切分，已向 User 釐清並獲確認）；更正軌跡（先前答案全文＋為何更正）保留在該 entry 的 ruling_history，標準答案集的更正不無痕覆寫。第三輪答案（2026-08-17 IE 親答，D3-019）：①「拿取」登記 g_pick_sel（拿取(選取)，priority 0）——另兩變體（small/collect）IE 僅答預設、未授權都掛，維持候選待 IE 決定是否列備選 ②24 筆判型修正全照預設確認（typing_confirmed_by/date；typing_change_at_review＝確認當時的舊/新值，為 stale 判定基準）③6 筆放置方向數照預設確認（p_direction_confirmed_by/date；caveat_at_review 同理）④9 筆 TMU=0.0 照預設＝判定句子資訊不足（zero_tmu_ruling=distance_unstated——協調者解讀，已向 User 揭示待確認；合併時草稿記 expected_incomplete_reason，不發明距離）。三筆不在首輪 41 筆內的草稿（d033/d042/d049）新增 entry 僅帶判型/TMU 面向——切分維度 IE 未答，不冒填。entry 標 promoted_to/promoted_date＝該句已轉正 tests/gold/wi_plans/（harvest 合併跳過；軌跡保留不刪）。確認≠修改：ie_modified 全數維持 false。第六輪＝IE 重切裁決落地（2026-08-17 IE 親答，D3-022；重切建議稿 docs/llm/gold-review/resegmentation-proposals.md）：d008（72dc0511）照切 2 action、d001（6fa45cdb）/d005（5cb719bb）部分重切（span 不可得的 v3 列不塞進 plan，該列已是獨立 gold）——此三筆 ie_modified=true（IE 改過 plan 內容＝真 ground truth，計入 planner 段 Plan 層指標；plan 編輯記 review_status=ie_edited，本機制不保 plan 內容，轉正前不得對本目錄 --force）；d012（fe5391c6）/d030（fe1f3a90）＝hint 解讀更正（multi_cycle_2 的結構證據指 module 而非本句），照 d026 前例走 ruling_history 留痕更正為 single_cycle、plan 不動 ie_modified 維持 false；d016（d0350279）＝標題句不硬切（resegmentation_ruling=title_sentence_no_resegmentation，內容由 5 列獨立 gold 覆蓋、fail-closed 不轉正）。ruling_history 條目的 superseded_source=v3_structure_confirmed 標記「由首輪確認更正而來」（切分確認守恆的對帳依據）。未裁事項不動：X/I 判型票、TMU=0.0 解讀（9+1 筆）、6 筆新判型旗（含 fe1f3a90 的 null→GM）。第七輪答案（2026-08-17 IE 親答，D3-023）：①X/I 參與判型核可開票（X/I 面命中＝CM 訊號，與 M 同級；衝突矩陣見 src/ddm_v2/nlp/rule_based.py classify_seq）②判型新旗標全部照預設確認（含 d030/fe1f3a90 的 null→GM 與 d052/7f085e02、d058/2e7b2e5a 的 null→CM——後兩筆不在首輪 41 筆內，entry 僅帶判型面向，切分維度 IE 未答不冒填）③TMU=0.0 不做一刀切：本輪產距離裁決表（docs/llm/gold-review/distance-rulings.md）供 IE 逐筆判「補典型距離或維持資訊不足」——7f085e02 的 TMU=0 未裁、不轉正。X/I 判型上線後新長出的判型旗（鎖附/確認/清潔類 null→CM）未經 IE 確認照擋，名單見 harvest-summary。第八輪答案（2026-08-17 IE 親答，D3-024）：①9 筆 X/I 新判型旗照預設確認（null→CM：b49a90ee/ee5c168e/51077fd1/bc473698/3791550c/7ff8b879/2f0cb396/130bb1ad/323b04c1，typing 面向落 entry）②d0350279 標題句 stale 重看＝先前裁決維持（不硬切、不轉正；重確認 2026-08-17）——判型/P 方向兩面向的依據隨判型棄權消失，依規則退場入 ruling_history（superseded_aspects 型條目：退場面向原值全文保留、不無痕刪除；entry 本體只留仍有依據的面向）③「鎖附」一律當電動（X/CM）**無條件**——D3-021 的「手動鎖附再議」條件解除（IE 確認產線無手動鎖附），不建情境旗標（取捨與風險記 worklog D3-024）；linker 自 D3-024 起把 X/I 面命中掛進對應格（src/ddm_v2/nlp/linking.py）。未裁不動：7f085e02 的 TMU=0 距離裁決（distance-rulings.md）；新待裁題＝「X 承載做工時 M 可為零」（9 筆 X/I 句掛值後仍 incomplete missing_core_m——完整性定義不放寬，見 README 快答清單）。",
+  "note": "IE 覆核狀態檔（D3-015）：本檔是 IE 的裁決記錄，scripts/gold_harvest.py 只讀不寫、--force 不刪；重產草稿時以 normalized_text sha256 前 8 碼配對，合併回草稿的 ie_review 區塊。segmentation_source=v3_structure_confirmed＝確認照 v3 結構預設（切分維度確認，非整筆 gold 核准；確認≠修改，ie_modified 維持 false）；ie_ruling＝IE 對 ambiguous 案例的切分裁決。文字或 v3 結構證據變了的 entry 會被 harvest 標 stale 列入摘要，不靜默套用。首輪內容＝2026-08-16 IE（IEC141289）親答：39 筆確認題全照 v3 結構預設；d045 定 1 列；d026 定 3 列（3 列 wi-template 為正確結構）。第二輪更正（2026-08-16 釐清）：d026 這句本身＝1 列——首輪「3 列」是對整個 wi-template 三步驟製程的回答（提問誤述範本結構為句子切分，已向 User 釐清並獲確認）；更正軌跡（先前答案全文＋為何更正）保留在該 entry 的 ruling_history，標準答案集的更正不無痕覆寫。第三輪答案（2026-08-17 IE 親答，D3-019）：①「拿取」登記 g_pick_sel（拿取(選取)，priority 0）——另兩變體（small/collect）IE 僅答預設、未授權都掛，維持候選待 IE 決定是否列備選 ②24 筆判型修正全照預設確認（typing_confirmed_by/date；typing_change_at_review＝確認當時的舊/新值，為 stale 判定基準）③6 筆放置方向數照預設確認（p_direction_confirmed_by/date；caveat_at_review 同理）④9 筆 TMU=0.0 照預設＝判定句子資訊不足（zero_tmu_ruling=distance_unstated——協調者解讀，已向 User 揭示待確認；合併時草稿記 expected_incomplete_reason，不發明距離）。三筆不在首輪 41 筆內的草稿（d033/d042/d049）新增 entry 僅帶判型/TMU 面向——切分維度 IE 未答，不冒填。entry 標 promoted_to/promoted_date＝該句已轉正 tests/gold/wi_plans/（harvest 合併跳過；軌跡保留不刪）。確認≠修改：ie_modified 全數維持 false。第六輪＝IE 重切裁決落地（2026-08-17 IE 親答，D3-022；重切建議稿 docs/llm/gold-review/resegmentation-proposals.md）：d008（72dc0511）照切 2 action、d001（6fa45cdb）/d005（5cb719bb）部分重切（span 不可得的 v3 列不塞進 plan，該列已是獨立 gold）——此三筆 ie_modified=true（IE 改過 plan 內容＝真 ground truth，計入 planner 段 Plan 層指標；plan 編輯記 review_status=ie_edited，本機制不保 plan 內容，轉正前不得對本目錄 --force）；d012（fe5391c6）/d030（fe1f3a90）＝hint 解讀更正（multi_cycle_2 的結構證據指 module 而非本句），照 d026 前例走 ruling_history 留痕更正為 single_cycle、plan 不動 ie_modified 維持 false；d016（d0350279）＝標題句不硬切（resegmentation_ruling=title_sentence_no_resegmentation，內容由 5 列獨立 gold 覆蓋、fail-closed 不轉正）。ruling_history 條目的 superseded_source=v3_structure_confirmed 標記「由首輪確認更正而來」（切分確認守恆的對帳依據）。未裁事項不動：X/I 判型票、TMU=0.0 解讀（9+1 筆）、6 筆新判型旗（含 fe1f3a90 的 null→GM）。第七輪答案（2026-08-17 IE 親答，D3-023）：①X/I 參與判型核可開票（X/I 面命中＝CM 訊號，與 M 同級；衝突矩陣見 src/ddm_v2/nlp/rule_based.py classify_seq）②判型新旗標全部照預設確認（含 d030/fe1f3a90 的 null→GM 與 d052/7f085e02、d058/2e7b2e5a 的 null→CM——後兩筆不在首輪 41 筆內，entry 僅帶判型面向，切分維度 IE 未答不冒填）③TMU=0.0 不做一刀切：本輪產距離裁決表（docs/llm/gold-review/distance-rulings.md）供 IE 逐筆判「補典型距離或維持資訊不足」——7f085e02 的 TMU=0 未裁、不轉正。X/I 判型上線後新長出的判型旗（鎖附/確認/清潔類 null→CM）未經 IE 確認照擋，名單見 harvest-summary。第八輪答案（2026-08-17 IE 親答，D3-024）：①9 筆 X/I 新判型旗照預設確認（null→CM：b49a90ee/ee5c168e/51077fd1/bc473698/3791550c/7ff8b879/2f0cb396/130bb1ad/323b04c1，typing 面向落 entry）②d0350279 標題句 stale 重看＝先前裁決維持（不硬切、不轉正；重確認 2026-08-17）——判型/P 方向兩面向的依據隨判型棄權消失，依規則退場入 ruling_history（superseded_aspects 型條目：退場面向原值全文保留、不無痕刪除；entry 本體只留仍有依據的面向）③「鎖附」一律當電動（X/CM）**無條件**——D3-021 的「手動鎖附再議」條件解除（IE 確認產線無手動鎖附），不建情境旗標（取捨與風險記 worklog D3-024）；linker 自 D3-024 起把 X/I 面命中掛進對應格（src/ddm_v2/nlp/linking.py）。未裁不動：7f085e02 的 TMU=0 距離裁決（distance-rulings.md）；新待裁題＝「X 承載做工時 M 可為零」（9 筆 X/I 句掛值後仍 incomplete missing_core_m——完整性定義不放寬，見 README 快答清單）。第九輪答案（2026-08-17/18 兩輪討論定案，D3-026）：9 筆 X/I 句分五型處置（IE 裁「9 筆不是同一種狀況」）——①E 型純檢查（2f0cb396「並確認DIMM點位」）＝完整性窄豁免：純 I 句（面命中集合恰 {I}、無 X/M/G/工具動詞，IE 原話「目視確認無手部移動」）M=0 算完整、帶真 I 工時（compile 端豁免，src/ddm_v2/most_compiler/compile.py）；「X 承載做工時 M 可為零」的全面放寬維持否決。②其餘 8 筆＝incomplete 裁決（本檔新面向 incomplete_ruling/ruled_by/ruled_date；token=distance_unstated/count_unstated/x_seconds_required 依序「+」串接；與 zero_tmu 前提互斥；合併時寫草稿 expected_incomplete_reason）誠實轉正等佈局：A 型重複鎖附 N 明述（ee5c168e x4／bc473698 x6）與 C 型單次鎖附（323b04c1）＝distance_unstated；G 型清潔（51077fd1）＝distance_unstated+x_seconds_required（秒數也未述）；D 型「並…」接續（3791550c／7ff8b879）＝distance_unstated，接續配對（起子在手，v3 provenance 前一列＝g08）記進案例 notes；B 型多顆 N 未述（130bb1ad）＝distance_unstated+count_unstated（留著等佈局的螺絲群屬性）；F 型面切斷（b49a90ee）＝distance_unstated 誠實轉正，「推×16至」被數量記號插斷的 lexicon 穩健性另開票（worklog D3-026）。第五批轉正 9 筆 g41–g49（P0 44/50）。",
   "entries": {
     "0423b4e8": {
       "source_text": "左手從料架拿取假DIMM保持住至流水線",
@@ -132,7 +132,12 @@
       "typing_change_at_review": {
         "noun_only_seq": null,
         "lexicon_seq": "CM"
-      }
+      },
+      "incomplete_ruling": "distance_unstated",
+      "incomplete_ruled_by": "IEC141289",
+      "incomplete_ruled_date": "2026-08-17",
+      "promoted_to": "g46_rh_screw_fix_confirm",
+      "promoted_date": "2026-08-17"
     },
     "3ba13f82": {
       "source_text": "右手抓握电动起子保持住至機箱",
@@ -201,7 +206,12 @@
       "typing_change_at_review": {
         "noun_only_seq": null,
         "lexicon_seq": "CM"
-      }
+      },
+      "incomplete_ruling": "distance_unstated+x_seconds_required",
+      "incomplete_ruled_by": "IEC141289",
+      "incomplete_ruled_date": "2026-08-17",
+      "promoted_to": "g45_pick_airgun_clean_slot",
+      "promoted_date": "2026-08-17"
     },
     "5cb719bb": {
       "source_text": "拿取主板，去除包裝袋，將主板放置工作台",
@@ -423,7 +433,12 @@
       "typing_change_at_review": {
         "noun_only_seq": null,
         "lexicon_seq": "CM"
-      }
+      },
+      "incomplete_ruling": "distance_unstated",
+      "incomplete_ruled_by": "IEC141289",
+      "incomplete_ruled_date": "2026-08-17",
+      "promoted_to": "g47_screw_fix_confirm",
+      "promoted_date": "2026-08-17"
     },
     "813bca06": {
       "source_text": "雙手重新抓握主板放至潔淨棚的工作台",
@@ -566,7 +581,12 @@
       "typing_change_at_review": {
         "noun_only_seq": null,
         "lexicon_seq": "CM"
-      }
+      },
+      "incomplete_ruling": "distance_unstated",
+      "incomplete_ruled_by": "IEC141289",
+      "incomplete_ruled_date": "2026-08-17",
+      "promoted_to": "g49_dimm_latch_push_x16_confirm",
+      "promoted_date": "2026-08-17"
     },
     "b6ee694d": {
       "source_text": "雙手拿取DIMM組於DIMM卡槽 (依據配置要求-16個DIMM)",
@@ -863,7 +883,12 @@
       "typing_change_at_review": {
         "noun_only_seq": null,
         "lexicon_seq": "CM"
-      }
+      },
+      "incomplete_ruling": "distance_unstated+count_unstated",
+      "incomplete_ruled_by": "IEC141289",
+      "incomplete_ruled_date": "2026-08-17",
+      "promoted_to": "g48_screw_fix_multi",
+      "promoted_date": "2026-08-17"
     },
     "28f9ed7e": {
       "source_text": "拿取螺絲 x1",
@@ -887,7 +912,9 @@
       "typing_change_at_review": {
         "noun_only_seq": null,
         "lexicon_seq": "CM"
-      }
+      },
+      "promoted_to": "g41_confirm_dimm_points",
+      "promoted_date": "2026-08-17"
     },
     "323b04c1": {
       "source_text": "鎖附螺絲",
@@ -902,7 +929,12 @@
       "typing_change_at_review": {
         "noun_only_seq": null,
         "lexicon_seq": "CM"
-      }
+      },
+      "incomplete_ruling": "distance_unstated",
+      "incomplete_ruled_by": "IEC141289",
+      "incomplete_ruled_date": "2026-08-17",
+      "promoted_to": "g44_screw_fix_single",
+      "promoted_date": "2026-08-17"
     },
     "37fbd2a6": {
       "source_text": "放置散熱片於 CPU 上",
@@ -989,7 +1021,12 @@
       "typing_change_at_review": {
         "noun_only_seq": null,
         "lexicon_seq": "CM"
-      }
+      },
+      "incomplete_ruling": "distance_unstated",
+      "incomplete_ruled_by": "IEC141289",
+      "incomplete_ruled_date": "2026-08-17",
+      "promoted_to": "g43_screw_board_fix_x6",
+      "promoted_date": "2026-08-17"
     },
     "ee5c168e": {
       "source_text": "電動起子鎖附 CPU 散熱片螺絲 x4",
@@ -1004,7 +1041,12 @@
       "typing_change_at_review": {
         "noun_only_seq": null,
         "lexicon_seq": "CM"
-      }
+      },
+      "incomplete_ruling": "distance_unstated",
+      "incomplete_ruled_by": "IEC141289",
+      "incomplete_ruled_date": "2026-08-17",
+      "promoted_to": "g42_screw_cpu_heatsink_x4",
+      "promoted_date": "2026-08-17"
     },
     "7f085e02": {
       "source_text": "撕除螢幕保護膜",

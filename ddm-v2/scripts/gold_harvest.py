@@ -998,6 +998,7 @@ async def run_pipeline(
         candidates,
         rule_set_code=_RULE_SET_CODE_HOLDER["code"],
         allow_lists=allow_lists_from_rule_set(rs),
+        face_hit_params=linker.face_hit_params(plan),
     )
     drafts = apply_engine_gate(drafts, rs)
     status, reasons = compute_routing(plan, candidates, drafts, auto_enabled=False)
@@ -1468,6 +1469,14 @@ def _ie_review_lines(draft: dict[str, Any]) -> list[str]:
             f"判定資訊不足（{ir['zero_tmu_ruled_by']}，{ir['zero_tmu_ruled_date']}）；"
             "草稿已記 `expected_incomplete_reason`（轉正走誠實記錄路徑，不發明距離）。"
         )
+    if ir.get("incomplete_ruling"):
+        out.append(
+            f"**✅ IE 裁決（incomplete）**：`{ir['incomplete_ruling']}`——缺漏語意"
+            "已逐型釘值（距離/顆數/秒數句面未述，等佈局資料）"
+            f"（{ir['incomplete_ruled_by']}，{ir['incomplete_ruled_date']}）；"
+            "草稿已記 `expected_incomplete_reason`（誠實 incomplete 轉正路徑，"
+            "不發明值）。"
+        )
     if ir.get("resegmentation_ruling"):
         out.append(
             f"**✅ IE 裁決（重切）**：`{ir['resegmentation_ruling']}`——本句是製程"
@@ -1513,6 +1522,8 @@ def _stale_prior_rulings_zh(entry: dict[str, Any]) -> list[str]:
         out.append(f"P 方向數已確認（`{entry.get('p_direction_caveat_at_review')}`）")
     if entry.get("zero_tmu_ruling"):
         out.append(f"TMU=0 已裁 `{entry['zero_tmu_ruling']}`（句子資訊不足）")
+    if entry.get("incomplete_ruling"):
+        out.append(f"incomplete 已裁 `{entry['incomplete_ruling']}`（缺漏語意逐型釘值）")
     return out
 
 
@@ -2152,6 +2163,13 @@ def _dump(data: dict[str, Any]) -> str:
 #   句子未述距離＝資訊不足——合併時草稿記 `expected_incomplete_reason`
 #   （轉正走既有空殼守門的 reason 路徑，不發明距離）。stale 基準＝草稿已無
 #   `zero_tmu_distance_unstated` 旗標（`zero_tmu_flag_absent`）。
+# D3-026 追加——incomplete 裁決（incomplete_ruling＋ruled_by/date）：IE 逐型
+#   裁定 incomplete 草稿（如 X/I 型 CM 句缺核心 M）的缺漏語意——距離/顆數/
+#   秒數句面未述（token 見 INCOMPLETE_RULING_TOKENS），合併時原樣寫進草稿
+#   `expected_incomplete_reason`（同一誠實記錄路徑，等佈局資料，不發明值）。
+#   與 zero_tmu 面向**前提互斥**（zero＝complete 帶 0.0；incomplete＝有
+#   incomplete cycle），同 entry 不得並存。stale 基準＝草稿已無 incomplete
+#   cycle（`incomplete_premise_absent`——句子在新一輪轉 complete，前提消失）。
 # stale 判定是 entry 級 all-or-nothing：任何一個面向的依據變了就整筆 stale
 # （確認所依據的證據已不同——IE 重看，不部分沿用）。
 #
@@ -2181,6 +2199,12 @@ REVIEW_SEGMENTATION_SOURCES = (
 # TMU=0 裁決的唯一合法值（D3-019：IE 判定「句子資訊不足——距離未述」；
 # 合併時原樣寫進草稿 expected_incomplete_reason）
 ZERO_TMU_RULING_DISTANCE_UNSTATED = "distance_unstated"
+# D3-026（第五批）：incomplete 裁決的合法 token——IE 逐型裁決：A/C/D/F 型
+# `distance_unstated`（鎖附/推壓距離句面未述）；B 型另帶 `count_unstated`
+# （「電動鎖附(多顆)」N 未述——IE 裁：留著等佈局的螺絲群屬性）；G 型另帶
+# `x_seconds_required`（清潔秒數也未述）。複合值＝依本 tuple 順序以「+」
+# 串接（可讀、決定性——如 "distance_unstated+x_seconds_required"）。
+INCOMPLETE_RULING_TOKENS = ("distance_unstated", "count_unstated", "x_seconds_required")
 # D3-022（d016 型）：重切裁決的唯一合法值——「本句是製程標題句、不硬切」。
 # 語意：IE 確認的 multi_cycle_n 是 module（範本）結構；各列是各自獨立的完整
 # 子句、非本句子字串，切不出誠實 evidence span（d026 教訓：不編造），且內容
@@ -2216,6 +2240,12 @@ _P_DIR_ENTRY_KEYS = (
     "p_direction_caveat_at_review",
 )
 _ZERO_TMU_ENTRY_KEYS = ("zero_tmu_ruling", "zero_tmu_ruled_by", "zero_tmu_ruled_date")
+# D3-026：incomplete 裁決（缺漏語意逐型釘值）——與 zero_tmu 前提互斥
+_INCOMPLETE_ENTRY_KEYS = (
+    "incomplete_ruling",
+    "incomplete_ruled_by",
+    "incomplete_ruled_date",
+)
 # D3-022 重切裁決（d016 型「標題句不硬切」）：notes 選填、其餘同進同出
 _RESEG_ENTRY_KEYS = (
     "resegmentation_ruling",
@@ -2240,6 +2270,10 @@ _REVIEW_BLOCK_KEYS = (
     "zero_tmu_ruling",
     "zero_tmu_ruled_by",
     "zero_tmu_ruled_date",
+    # D3-026：incomplete 裁決投影進草稿（轉正資格與 5h 守門讀 ie_review）
+    "incomplete_ruling",
+    "incomplete_ruled_by",
+    "incomplete_ruled_date",
     # D3-022：重切裁決投影進草稿（notes 帶覆蓋對應事實）——寫在草稿上的版本
     # 會被 --force 洗掉，entry 才是唯一出處，投影讓它在重產後存活
     "resegmentation_ruling",
@@ -2301,6 +2335,31 @@ def _validate_p_direction_aspect(path: Path | str, ctx: str, entry: dict) -> Non
             f"{ctx}：p_direction_caveat_at_review 必須是 {sorted(P_DIRECTION_CAVEAT_NAMES)}"
             "（確認所依據的方向數旗標必須記錄）",
         )
+
+
+def incomplete_ruling_canonical_error(ruling: Any) -> str | None:
+    """incomplete 裁決 token 的 canonical 形狀檢查（**單一出處**；D3-027）：
+    INCOMPLETE_RULING_TOKENS 的非空子集、無重複、依 tuple 順序以「+」串接。
+    回傳 None＝合法，否則回傳錯誤描述。state 檔驗證（_validate_incomplete_aspect）
+    與正式 gold 的 repo 不變量（test_gold_promotion）共用——gold 檔上的 ruling
+    值先前不跑此驗證，壞值（順序亂/自創 token）落檔零測試會紅。"""
+    tokens = ruling.split("+") if isinstance(ruling, str) and ruling else []
+    canonical = [t for t in INCOMPLETE_RULING_TOKENS if t in set(tokens)]
+    if not tokens or tokens != canonical:
+        return (
+            f"incomplete_ruling={ruling!r} 不合法——必須是 "
+            f"{INCOMPLETE_RULING_TOKENS} 的非空子集、無重複、依該順序以「+」串接"
+        )
+    return None
+
+
+def _validate_incomplete_aspect(path: Path | str, ctx: str, entry: dict) -> None:
+    """incomplete 裁決（D3-026）：ruling＝INCOMPLETE_RULING_TOKENS 的非空子集
+    依 tuple 順序以「+」串接（決定性形狀——同義複合值只有一種寫法）。"""
+    err = incomplete_ruling_canonical_error(entry.get("incomplete_ruling"))
+    if err:
+        _fail_state(path, f"{ctx}：{err}")
+    _require_by_date(path, ctx, entry, "incomplete_ruled_by", "incomplete_ruled_date")
 
 
 def _validate_zero_tmu_aspect(path: Path | str, ctx: str, entry: dict) -> None:
@@ -2403,13 +2462,24 @@ def load_review_state(path: Path) -> dict[str, dict[str, Any]]:
         has_typing = any(k in entry for k in _TYPING_ENTRY_KEYS)
         has_pdir = any(k in entry for k in _P_DIR_ENTRY_KEYS)
         has_zero = any(k in entry for k in _ZERO_TMU_ENTRY_KEYS)
+        has_incomplete = any(k in entry for k in _INCOMPLETE_ENTRY_KEYS)
         has_reseg = any(k in entry for k in _RESEG_ENTRY_KEYS)
         has_promoted = any(k in entry for k in _PROMOTED_ENTRY_KEYS)
-        if not (has_seg or has_typing or has_pdir or has_zero):
+        if not (has_seg or has_typing or has_pdir or has_zero or has_incomplete):
             _fail_state(
                 path,
                 f"{ctx}：entry 至少要有一個覆核面向"
-                "（切分／判型／P 方向數／TMU=0 裁決）——空 entry 不是覆核記錄",
+                "（切分／判型／P 方向數／TMU=0 裁決／incomplete 裁決）"
+                "——空 entry 不是覆核記錄",
+            )
+        if has_zero and has_incomplete:
+            # 前提互斥：zero_tmu＝「complete 帶 TMU=0.0」、incomplete＝「有
+            # incomplete cycle」——同一句不可能同時成立；兩面向都寫進同一個
+            # expected_incomplete_reason，並存＝值互踩
+            _fail_state(
+                path,
+                f"{ctx}：zero_tmu 與 incomplete 裁決前提互斥（complete+0.0 vs "
+                "incomplete cycle），同 entry 不得並存",
             )
         if has_typing:
             _validate_typing_aspect(path, ctx, entry)
@@ -2417,6 +2487,8 @@ def load_review_state(path: Path) -> dict[str, dict[str, Any]]:
             _validate_p_direction_aspect(path, ctx, entry)
         if has_zero:
             _validate_zero_tmu_aspect(path, ctx, entry)
+        if has_incomplete:
+            _validate_incomplete_aspect(path, ctx, entry)
         if has_reseg:
             if not has_seg:
                 _fail_state(
@@ -2522,7 +2594,10 @@ def load_review_state(path: Path) -> dict[str, dict[str, Any]]:
                     path, f"{ctx}：ruling_history 若存在必須是非空 list（更正軌跡不可是空殼）"
                 )
             retire_allowed = (
-                set(_TYPING_ENTRY_KEYS) | set(_P_DIR_ENTRY_KEYS) | set(_ZERO_TMU_ENTRY_KEYS)
+                set(_TYPING_ENTRY_KEYS)
+                | set(_P_DIR_ENTRY_KEYS)
+                | set(_ZERO_TMU_ENTRY_KEYS)
+                | set(_INCOMPLETE_ENTRY_KEYS)
             )
             for h in history:
                 if not isinstance(h, dict):
@@ -2546,7 +2621,8 @@ def load_review_state(path: Path) -> dict[str, dict[str, Any]]:
                         _fail_state(
                             path,
                             f"{ctx}：superseded_aspects 含不可退場欄位 {bad}"
-                            "（只有判型/P 方向/TMU=0 面向可退場；切分走 ie_ruling 型）",
+                            "（只有判型/P 方向/TMU=0/incomplete 面向可退場；"
+                            "切分走 ie_ruling 型）",
                         )
                     # D3-024 複審 M1：退場記錄的**值**依面向分組跑同一批
                     # _validate_*_aspect（單一出處，不另抄）——「原值全文保留」
@@ -2558,6 +2634,8 @@ def load_review_state(path: Path) -> dict[str, dict[str, Any]]:
                         _validate_p_direction_aspect(path, hctx, aspects)
                     if any(k in aspects for k in _ZERO_TMU_ENTRY_KEYS):
                         _validate_zero_tmu_aspect(path, hctx, aspects)
+                    if any(k in aspects for k in _INCOMPLETE_ENTRY_KEYS):
+                        _validate_incomplete_aspect(path, hctx, aspects)
                     # 假退場：退場鍵不得同時存在於 entry 本體——退場＝搬移
                     # 非複製（entry 同時持有完整面向＝面向根本沒退場）
                     dup = sorted(k for k in aspects if k in entry)
@@ -2637,6 +2715,13 @@ def apply_review_state_entry(draft: dict[str, Any], entry: dict[str, Any]) -> st
         # incomplete）＝前提已不成立
         if ZERO_TMU_CAVEAT not in caveats:
             return "zero_tmu_flag_absent"
+    if "incomplete_ruling" in entry:
+        # D3-026：裁決前提＝該筆有 incomplete cycle（佈局資訊句面未述）；
+        # 新一輪全部 cycle 轉 complete（不論 TMU）＝前提消失，裁決不得沿用
+        if not any(
+            c.get("complete") is False for c in draft.get("expected_cycles") or []
+        ):
+            return "incomplete_premise_absent"
     draft["ie_review"] = review_block_from_entry(entry)
     draft["ie_modified"] = False  # 確認≠修改（entry 的 ie_modified=true 已在上面拒絕）
     for r in rejected:
@@ -2648,6 +2733,10 @@ def apply_review_state_entry(draft: dict[str, Any], entry: dict[str, Any]) -> st
         # D3-019：TMU=0 裁決落地＝走既有 expected_incomplete_reason 機制
         # （空殼守門的誠實記錄路徑；不發明距離）
         draft["expected_incomplete_reason"] = entry["zero_tmu_ruling"]
+    if entry.get("incomplete_ruling"):
+        # D3-026：incomplete 裁決落地＝同一 expected_incomplete_reason 機制
+        # （與 zero_tmu 前提互斥已在 load_review_state 硬驗，不會互踩）
+        draft["expected_incomplete_reason"] = entry["incomplete_ruling"]
     return None
 
 
@@ -2837,6 +2926,7 @@ async def cmd_recompile(
             candidates,
             rule_set_code=case_rule_set_code(data),
             allow_lists=allow_lists_from_rule_set(rs),
+            face_hit_params=linker.face_hit_params(plan),
         )
         drafts = apply_engine_gate(drafts, rs)
         status, reasons = compute_routing(plan, candidates, drafts, auto_enabled=False)
@@ -3058,10 +3148,25 @@ def promoted_case_payload(
     data["review_status"] = "approved"
     data["ie_modified"] = bool(ie_modified)
     data["split"] = split
+    # 尾句依**實際存在的覆核面向**生成（D3-027；D3-026 複審 L1）：舊樣板把
+    # 「TMU=0 裁決」硬寫進每筆 notes，沒有該裁決的案例＝notes 說謊（讀者去
+    # ie_review 找不到的東西不該被宣稱存在）。
+    ir = data.get("ie_review") or {}
+    aspects = [
+        label
+        for key, label in (
+            ("segmentation_confirmed_by", "切分確認"),
+            ("typing_confirmed_by", "判型確認"),
+            ("p_direction_confirmed_by", "P 方向數確認"),
+            ("zero_tmu_ruling", "TMU=0 裁決"),
+            ("incomplete_ruling", "incomplete 裁決"),
+        )
+        if ir.get(key)
+    ]
     promo_note = (
         f"自草稿 {old_id} 轉正（IE 覆核核准；docs/llm/gold-review/README.md 工作流）。"
         "取樣為 challenge-oversampled（coverage-optimized），本案分數不可外推為"
-        "母體表現。切分/判型/方向數確認與 TMU=0 裁決見 ie_review 與 "
+        f"母體表現。{'、'.join(aspects) or '覆核軌跡'}見 ie_review 與 "
         "tests/gold/wi_plans_draft/review-state.json。"
     )
     prev_notes = (data.get("notes") or "").strip()

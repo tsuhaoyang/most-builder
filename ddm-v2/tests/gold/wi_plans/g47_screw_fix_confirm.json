@@ -1,0 +1,167 @@
+{
+  "id": "g47_screw_fix_confirm",
+  "source_text": "並鎖附固定並確認螺絲到位",
+  "notes": "「並…」接續配對（D 型；D3-026 IE 裁決，v3 provenance 查證）：本句自身出處＝獨立 action module（motion_modules c7c55293）單列版本 a4b7f7b7 rows[0]，**無前列可直接配對**；接續證據為間接——同文的右手變體『右手並鎖附固定並確認螺絲到位』位於 wi-template 50ed054b（『拿取電動起子，依圖示鎖附兩顆螺絲』）version 9569aeaf rows[2]，其前一列 rows[1]＝『右手抓握电动起子保持住至機箱』（g08）＝電動起子在手（tool_held_for 語意）。同 d013（3791550c）配對；距離句面未述（expected_incomplete_reason=distance_unstated，等佈局資料）。\n自草稿 d015_7ff8b879 轉正（IE 覆核核准；docs/llm/gold-review/README.md 工作流）。取樣為 challenge-oversampled（coverage-optimized），本案分數不可外推為母體表現。切分確認、判型確認、incomplete 裁決見 ie_review 與 tests/gold/wi_plans_draft/review-state.json。",
+  "review_status": "approved",
+  "approved_by": "IEC141289",
+  "plan_origin": "rule_based_v1_preannotation",
+  "ie_modified": false,
+  "split": "test",
+  "split_groups": [
+    "module:c7c55293-1d31-4fab-84cc-7c7f26c8864f"
+  ],
+  "split_component": "module:c7c55293-1d31-4fab-84cc-7c7f26c8864f",
+  "source_provenance": [
+    {
+      "table": "motion_module_versions",
+      "id": "a4b7f7b7-0ce5-4595-9d46-528bffb2dcc1",
+      "detail": "rows[0].sub_activity",
+      "group_key": "module:c7c55293-1d31-4fab-84cc-7c7f26c8864f",
+      "db_timestamp": "2026-08-04T06:59:47.109304+00:00",
+      "raw_text": "並鎖附固定並確認螺絲到位"
+    },
+    {
+      "table": "motion_modules",
+      "id": "c7c55293-1d31-4fab-84cc-7c7f26c8864f",
+      "detail": "name_zh (category=action)",
+      "group_key": "module:c7c55293-1d31-4fab-84cc-7c7f26c8864f",
+      "db_timestamp": "2026-08-04T06:59:47.097891+00:00",
+      "raw_text": "並鎖附固定並確認螺絲到位"
+    }
+  ],
+  "challenge_tags": {
+    "zh_simplified_variant": false,
+    "fullwidth_chars": false,
+    "typo": "unknown",
+    "homophone": "unknown",
+    "mixed_zh_en": false,
+    "english_only": false,
+    "inverted_word_order": "unknown",
+    "colloquial": "unknown",
+    "multi_action": true,
+    "quantity": false,
+    "tool_handling": false,
+    "simo_both_hands": false,
+    "missing_info": "unknown",
+    "ambiguity": "unknown",
+    "diagram_reference_no_image": false,
+    "site_jargon_dirty_import": "unknown"
+  },
+  "heuristic_tags_unverified": [
+    "quantity",
+    "tool_handling",
+    "simo_both_hands"
+  ],
+  "preannotation_caveat": [
+    "typing_changed_by_verb_lexicon",
+    "likely_multi_action_undercounted"
+  ],
+  "typing_change": {
+    "noun_only_seq": null,
+    "lexicon_seq": "CM"
+  },
+  "v3_structure_hint": "single_cycle",
+  "v3_structure_evidence": {
+    "note": "hint 是證據不是判決：來源＝IE 驗證過的 v3 生產資料的結構（module/cycle 邊界）；覆核表預設依 v3 結構、IE 可推翻；本欄位絕不寫進 expected.*",
+    "sources": [
+      {
+        "table": "motion_module_versions",
+        "id": "a4b7f7b7-0ce5-4595-9d46-528bffb2dcc1",
+        "detail": "rows[0].sub_activity",
+        "cycles": 1,
+        "v3_migrated": true,
+        "basis": "版本 rows[] 一列＝一個 cycle（rows[*].cycle 為單一 CycleIn）"
+      },
+      {
+        "table": "motion_modules",
+        "id": "c7c55293-1d31-4fab-84cc-7c7f26c8864f",
+        "detail": "name_zh (category=action)",
+        "cycles": 1,
+        "v3_migrated": true,
+        "basis": "module 名稱句對應發布版 v1 共 1 列＝IE 把這段話切成 1 個 cycle"
+      }
+    ]
+  },
+  "preannotation": {
+    "pipeline": "rule_based_v1 -> plan_from_rule_result -> SlotLinker(no-db) -> compile_plan -> engine_gate(most_engine) -> compute_routing(auto=off)",
+    "planner": "rule_based_v1",
+    "rule_set_code": "MINIMOST_FACTORY_V2",
+    "lexicon_source": "rule_option_synonyms",
+    "lexicon_size": 22,
+    "routing_reasons": [
+      "no_candidate_m",
+      "missing_core_m"
+    ]
+  },
+  "plan": {
+    "schema_version": "wi-plan-v1",
+    "source_text": "並鎖附固定並確認螺絲到位",
+    "normalized_text": "並鎖附固定並確認螺絲到位",
+    "language": "zh",
+    "source_ref": {
+      "kind": "interactive",
+      "worksheet_id": null,
+      "import_id": null,
+      "import_row_index": null
+    },
+    "actions": [
+      {
+        "action_id": "a1",
+        "action_type": "controlled_move",
+        "sequence_order": 1,
+        "roles": {},
+        "evidence": [
+          {
+            "start": 0,
+            "end": 12,
+            "text": "並鎖附固定並確認螺絲到位"
+          }
+        ],
+        "notes": "rule_based_v1"
+      }
+    ],
+    "dependencies": [],
+    "unresolved": []
+  },
+  "synthetic_synonyms": [
+    {
+      "parameter": "I",
+      "option_code": "i_confirm",
+      "synonym_norm": "確認",
+      "priority": 0
+    },
+    {
+      "parameter": "X",
+      "option_code": "x_screw_fix",
+      "synonym_norm": "鎖附",
+      "priority": 0
+    }
+  ],
+  "expected_cycles": [
+    {
+      "action_id": "a1",
+      "complete": false,
+      "seq": "CM",
+      "issues_contain": [
+        "missing_core_m"
+      ]
+    }
+  ],
+  "gold_schema_version": "wi-gold-v1",
+  "expected": {
+    "action_count": 1,
+    "routing_status": "review"
+  },
+  "ie_review": {
+    "segmentation_confirmed_by": "IEC141289",
+    "segmentation_confirmed_date": "2026-08-16",
+    "segmentation_source": "v3_structure_confirmed",
+    "typing_confirmed_by": "IEC141289",
+    "typing_confirmed_date": "2026-08-17",
+    "incomplete_ruling": "distance_unstated",
+    "incomplete_ruled_by": "IEC141289",
+    "incomplete_ruled_date": "2026-08-17"
+  },
+  "expected_incomplete_reason": "distance_unstated",
+  "approved_date": "2026-08-17"
+}

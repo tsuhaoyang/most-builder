@@ -116,6 +116,39 @@ def test_auto_blocked_by_quantity_policy_review():
     assert status == "review"
 
 
+def test_auto_blocked_by_m_zero_pure_inspection_assumed():
+    """D3-027（D3-026 複審 H1）：E 型豁免的假設旗標**顯式**擋 auto。
+
+    合成「結構巧合被移除」的形狀——candidates 全 synonym_exact 且無 M 候選集
+    （生產上 controlled_move 恆掛 chosen=None 的 M 候選集才擋住 auto，那是
+    linker 的實作細節，不是豁免語意的保證）。mutation：旗標拆出
+    `_eligible_auto` 的 blocked 集合 → status 變 auto → 本測紅。"""
+    cand = SlotCandidateSet(
+        action_id="a1",
+        parameter="I",
+        field="i5.i_code",
+        chosen=OptionCandidate(
+            parameter="I", option_code="i_confirm", score=0.95, source="synonym_exact", rank=1
+        ),
+        top_k=[],
+        needs_review=False,
+    )
+    drafts = [
+        CycleDraft(
+            action_id="a1",
+            cycle={"seq": "CM"},
+            complete=True,
+            engine_result={"total_tmu": 6},
+            issues=["m_zero_pure_inspection_assumed"],
+        )
+    ]
+    status, reasons = compute_routing(
+        _plan("controlled_move"), [cand], drafts, auto_enabled=True
+    )
+    assert status == "review", "M=0 假設（豁免）不得自動採用——顯式保證，不靠結構巧合"
+    assert "m_zero_pure_inspection_assumed" in reasons
+
+
 def test_auto_when_flag_on_and_exact():
     cand = SlotCandidateSet(
         action_id="a1",

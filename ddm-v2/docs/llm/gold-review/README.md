@@ -318,18 +318,45 @@ D3-023 快答清單第 1–3 題的答案落地（第 4 題未裁，見下節）
    掛值解的是「登記映射閒置」，解不了 substance 守門——9 筆全卡
    incomplete 無 TMU；被擋 56 筆逐類見 worklog D3-024）。
 
-## 下輪快答清單（IE 待答；D3-024 收尾）
+## IE 第八輪答案：E 型窄豁免＋9 筆分五型處置＋第五批轉正（D3-026，2026-08-17/18 兩輪討論定案）
+
+D3-024 快答清單第 2 題（「X 承載做工時 M 可為零」）的答案落地——IE 裁
+**「9 筆不是同一種狀況」**，分五型處置（詳表見 worklog D3-026）：
+
+1. **E 型純檢查（2f0cb396「並確認DIMM點位」）＝完整性窄豁免**：純 I 句
+   （該 action 面命中集合**恰為 {I}**——無 X、無 M、無 G/工具動詞；IE 原話
+   「目視確認無手部移動」）→ M=0 算完整、cycle 帶**真 I 工時**
+   （i_confirm=6.0）。豁免在 compile 端（`most_compiler/compile.py`，判準
+   輸入＝`SlotLinker.face_hit_params`）；**全面放寬 (a)（X 也豁免）維持否決**
+   ——紅線改釘「X 面命中不豁免」（`test_pure_i_exemption_not_for_x_face`＋
+   `test_xi_mounted_cycle_still_incomplete_without_core_m`）。生產 nl-draft
+   行為變更：純確認句從 incomplete（missing_core_m）變 complete＋真 TMU
+   （routing 仍 review——no_candidate_m＋i_range_assumed 在）。
+2. **其餘 8 筆＝incomplete 裁決誠實轉正（等佈局資料）**：review-state 新面向
+   `incomplete_ruling/_ruled_by/_ruled_date`（token＝`distance_unstated`／
+   `count_unstated`／`x_seconds_required` 依序「+」串接；與 zero_tmu 前提
+   互斥），合併時寫草稿 `expected_incomplete_reason`（空殼守門的誠實記錄
+   路徑，不發明距離/顆數/秒數）。逐型：A 重複鎖附 N 明述（ee5c168e x4／
+   bc473698 x6）與 C 單次鎖附（323b04c1）＝`distance_unstated`；G 清潔
+   （51077fd1）＝`distance_unstated+x_seconds_required`；D「並…」接續
+   （3791550c／7ff8b879）＝`distance_unstated`——接續配對（**起子在手**，
+   v3 provenance 前一列＝g08_hold_driver_to_chassis）已查證記進案例 notes；
+   B 多顆 N 未述（130bb1ad）＝`distance_unstated+count_unstated`；F 面切斷
+   （b49a90ee）＝`distance_unstated` 誠實轉正、「推×16至」lexicon 穩健性
+   另開票（worklog D3-026 記票）。
+3. **第五批轉正 9 筆 g41–g49**（1 筆真 TMU＋8 筆誠實 incomplete；split=test、
+   approved 2026-08-17、ie_modified 全 false）。累計 IE 核准 **44/50**。
+
+## 下輪快答清單（IE 待答；D3-026 收尾）
 
 答案落地後逐條清掉並更新對應 state entry／文件：
 
 1. **7f085e02 的 TMU=0.0 距離裁決**（`distance-rulings.md` 唯一未裁筆；
-   自 D3-023 懸至今）。
-2. **「X 承載做工時 M 可為零」是否成立？**（D3-024 新題）9 筆 X/I 判型
-   確認的 CM 句（鎖附/確認/清潔型）在 X/I 掛值後仍 incomplete
-   `missing_core_m`——句面無移動動詞、M 格空。若 IE 裁定「X/I 承載做工
-   的 CM cycle 可以 M=0（或 M 空）視為 complete」，這 9 筆才有 TMU 可談；
-   未裁前完整性判準不放寬（`missing_core_m` 照擋，紅線釘在
-   `test_linking.py::test_xi_mounted_cycle_still_incomplete_without_core_m`）。
+   自 D3-023 懸至今；第五批轉正後草稿重編號＝`d029_7f085e02`）。
+2. **佈局 Phase B 拆列頻率參數**（D3-026 設計註記待裁）：重複鎖附拆列＋
+   頻率模式（列1 長移×1＋列2 短移×(N−1)，`tool_held_for` 表達起子在手）
+   ——**列 2 頻率取 N−1 還是 N**（首顆是否已含於列1 的長移放置）記為
+   Phase B 待裁參數，佈局資料進來前不落值。
 
 ## 覆核狀態怎麼在重產後存活（D3-015）
 
