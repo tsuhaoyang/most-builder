@@ -65,13 +65,20 @@ ADR-014 約束的是**「認證版本的值」**，不是「禁止一切線上�
 | 資料 | draft | published(非 active) | published+active | retired |
 |---|---|---|---|---|
 | 子表選項值（TMU/帶界/code） | ✅ | ❌409 | ❌409 | ❌409 |
-| 標籤/句子文字 | ✅ | ❌409 | ❌409 | ❌409 |
+| 標籤/句子文字（`_zh`） | ✅ | ❌409 | ❌409 | ❌409 |
+| **`_en` 標籤／句子文字**（`label_en`／`sentence_text_en`） | ✅ | **✅** | **✅** | ❌ |
 | **同義詞** | ✅ | **✅** | **✅** | ❌ |
 | 版本 metadata（name/notes） | ✅ | ✅ | ✅ | ✅ |
 | `is_active` | ❌（須先 publish） | ✅ activate | ✅（他人 activate 時隱含 deactivate） | ❌ |
 | `status` | →published | →retired（須先 deactivate） | ❌ | 終態 |
 
 同義詞那格是 ADR-014 白紙黑字授權：「published rule-set 唯一可後補資料＝同義詞（僅影響建議層不影響工時）」。
+
+**`_en` 那格是 [ADR-032](ADR-032-bilingual-ui-and-data-label-layer.md) D4 修訂本規則新增的一列**（2026-08-18）：
+`label_en`／`sentence_text_en` 在 draft、published(非 active)、published+active 皆可後補寫入，僅
+`retired` 終態不可寫——**論證見 ADR-032 D4，不在此重複**（摘要：`_en` 的性質比同義詞更弱，
+在 ADR-032 I3 的約束下純顯示、連建議層都不影響，既然更弱的同義詞被允許後補，更強的沒有理由被凍結）。
+`_zh` 標籤／句子文字仍維持原本的 draft-only（❌409），未被本次修訂觸及。
 
 **規則 1 補節 — 同義詞的鍵與偏好序（v2_0038 / D3-017；2026-08-16 補記）**
 

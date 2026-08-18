@@ -29,9 +29,13 @@
 7. **測試必須自足，且反向斷言必須附 mutation 證據。** 兩條都是 2026-08-12 這一輪
    各抓到實例後成文的（一輪內共三條假測試），不是預防性條文：
    - **不得依賴環境既存資料。** 不要撈「第一列」「任一筆」——自己建。CI 後端 job 的 seed
-     只有 `dev_seed_v2` + `dev_seed_templates` + `dev_seed_synonyms`（**不含** `dev_seed_30rows`），
-     e2e job 的 DB 也**沒有**跑過 `migrate_v3_user_data.py`，所以 `most_cycles`、`wi_rows`、
-     `wi_set_projects`、`category='wi-template'` 的 motion modules 在 CI 上**都是 0 列**。
+     只有 `dev_seed_v2` + `dev_seed_templates` + `dev_seed_synonyms` + `dev_seed_i18n_labels`
+     （**不含** `dev_seed_30rows`），e2e job 的 DB 也**沒有**跑過 `migrate_v3_user_data.py`，
+     所以 `most_cycles`、`wi_rows`、`wi_set_projects`、`category='wi-template'` 的 motion
+     modules 在 CI 上**都是 0 列**；`work_vocab_items` 在 CI 後端 job 上也只有
+     `dev_seed_v2.py` 建的 3 筆（完整 59 筆需要 `dev_seed_30rows.py`，backend job 不跑），
+     依賴 `work_vocab_items` 精確列數的斷言必須動態查 DB 現況，不得硬編 59
+     （ADR-032 Phase B 灌值/待審清單測試已踩過這個坑並改成動態查詢）。
      實例：`test_delete_referenced_draft_returns_409_*`（撈 `most_cycles` → CI `NoResultFound`）、
      `wi-add-live.spec.ts`（需 v3 遷移資料 → CI 永遠 0）。
      本機綠不代表通過——複現 CI 請建乾淨 DB 只跑 CI 那幾支 seed（指令見文末）。
@@ -356,6 +360,7 @@ DATABASE_URL=... PYTHONPATH=src alembic upgrade head
 DATABASE_URL=... PYTHONPATH=src python scripts/dev_seed_v2.py
 DATABASE_URL=... PYTHONPATH=src python scripts/dev_seed_templates.py
 DATABASE_URL=... PYTHONPATH=src python scripts/dev_seed_synonyms.py
+DATABASE_URL=... PYTHONPATH=src python scripts/dev_seed_i18n_labels.py
 DATABASE_URL=... PYTHONPATH=src python scripts/core_logic/run_all.py
 PYTHONPATH=src pytest tests/unit -q                       # 免 DB
 DATABASE_URL=... PYTHONPATH=src pytest tests/integration -q
@@ -369,10 +374,13 @@ DATABASE_URL=... PYTHONPATH=src pytest tests/integration -q
 ./scripts/docker_smoke.sh
 ```
 
-⚠️ **本機 DB ≠ CI DB**：backend job 只跑 `dev_seed_v2.py` ＋ `dev_seed_templates.py` ＋ `dev_seed_synonyms.py`，
+⚠️ **本機 DB ≠ CI DB**：backend job 只跑 `dev_seed_v2.py` ＋ `dev_seed_templates.py` ＋
+`dev_seed_synonyms.py` ＋ `dev_seed_i18n_labels.py`，
 **不跑 `dev_seed_30rows.py`**（那支只在 e2e job）——所以 CI 的 `most_cycles` / `wi_rows` 是 **0 列**，
-而開發機通常早就被 30rows 種過。任何「撈一列既有資料來用」的整合測試都會**本機綠、CI 紅**
-（2026-08 `test_delete_referenced_draft_returns_409_with_reference_count` 即此）。
+`work_vocab_items` 也只有 `dev_seed_v2.py` 建的 3 筆（非 30rows 種出的完整 59 筆），
+而開發機通常早就被 30rows 種過。任何「撈一列既有資料來用」或「硬編列數」的整合測試都會
+**本機綠、CI 紅**（2026-08 `test_delete_referenced_draft_returns_409_with_reference_count` 即此；
+ADR-032 Phase B 的待審清單測試也曾誤把 59 寫死，改成動態查 `work_vocab_items` 現況才通用）。
 **整合測試必須自建所需資料**（自己建 Site→SKU→worksheet→row），不得依賴既有列，
 也不得以 UPDATE 劫持 demo 資料（那只是靠 fixture rollback 沒落盤而已）。
 要在合併前驗證，請在**乾淨 DB** 上重現：
@@ -383,5 +391,9 @@ export DATABASE_URL=postgresql+asyncpg://.../ddm_ci_repro
 PYTHONPATH=src alembic upgrade head
 PYTHONPATH=src python scripts/dev_seed_v2.py && PYTHONPATH=src python scripts/dev_seed_templates.py
 PYTHONPATH=src python scripts/dev_seed_synonyms.py   # 同義詞詞典（守門判定對象；漏跑＝守門 3 紅）
+# i18n 覆核狀態灌值（ADR-032 Phase B）：部署腳本的煙霧測試，不是測試依賴——每個
+# 需要 i18n 資料的測試都自建（見 test_i18n_review_state.py／test_i18n_routes.py），
+# 漏跑不影響 pytest 結果（L-2，2026-08-18 第三輪複審實測澄清）
+PYTHONPATH=src python scripts/dev_seed_i18n_labels.py
 PYTHONPATH=src pytest tests/integration -q     # 這裡綠才算真的綠
 ```

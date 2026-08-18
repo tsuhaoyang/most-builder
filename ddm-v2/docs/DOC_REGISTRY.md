@@ -74,7 +74,7 @@
 | 文件 | 用途 | 狀態 |
 |------|------|------|
 | [WI AI 與批次建模交付計畫](roadmap/wi-ai-and-batch-modeling-delivery-plan.md) | Core、Domain Readiness、AI Quality、Batch/Deployment 分期 | ⏳ |
-| [全面中英雙語](roadmap/phase5-i18n-full-bilingual-spec.md) | UI、敘事、資料標籤、匯出與錯誤 i18n | 🔄 |
+| [全面中英雙語](roadmap/phase5-i18n-full-bilingual-spec.md) | UI、敘事、資料標籤、匯出與錯誤 i18n | ⛔ 已被 ADR-032 取代（見上方〈架構決策〉:62），僅存檔供追溯 |
 
 Roadmap 只定義時程與退出條件，不定義資料真相。
 

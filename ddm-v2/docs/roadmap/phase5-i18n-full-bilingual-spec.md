@@ -1,6 +1,13 @@
 # Phase 5：全面多語系（中文 / 英文）
 
-**狀態：** 🔄 roadmap 草案（尚未實作）
+**狀態：** ⛔ **已被取代（superseded）**——2026-08-18 起請改看
+[ADR-032：雙語 UI 與資料標籤層](../decisions/ADR-032-bilingual-ui-and-data-label-layer.md)。
+本文件保留供追溯，**不得再被當作實作依據**：ADR-032 §1.1 逐表實測證明本文件
+〈現況（已有的一半基礎）〉一節與事實不符（欄位存在但值全空，不是「已有基礎」），
+且 ADR-032 對語言來源、翻譯權威、儲存位置、覆核治理等本文件列為「待決」的問題
+都已有明確裁決（見該 ADR 全文，尤其 D1–D9）。
+
+**狀態（原）：** 🔄 roadmap 草案（尚未實作）
 **日期：** 2026-06-21
 **關聯：** [../architecture/frontend-data-flow-spec.md](../architecture/frontend-data-flow-spec.md)、[../architecture/data-model-and-storage-spec.md](../architecture/data-model-and-storage-spec.md)
 
