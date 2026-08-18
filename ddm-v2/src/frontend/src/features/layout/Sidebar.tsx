@@ -1,19 +1,22 @@
 import { useState } from 'react'
+import { useTranslation } from 'react-i18next'
 import type { Me } from '../../shared/auth/useMe'
 import { canEdit, isAdmin } from '../../shared/auth/useMe'
 import type { NavItem } from './sidebar.types'
 
 // ─── Nav item definitions (ADR-021 target IA §側欄, fixed order: 7 + 2 admin) ─
+// label/shortLabel 是 i18n key（`nav.*`／`navShort.*`），不是字面值——
+// NavButton 用 t() 解析（ADR-032 Phase A：側欄導航是本輪明列的高頻外殼字串）。
 
 const PRIMARY_NAV: NavItem[] = [
-  { id: 'dashboard',    label: '儀表板',            shortLabel: '表' },
-  { id: 'workbench-v3', label: 'MOST 工作台',        shortLabel: 'M' },
-  { id: 'wi-project',   label: 'WI 專案建立',        shortLabel: 'W' },
-  { id: 'level',        label: 'Level System',       shortLabel: 'L' },
-  { id: 'case',         label: '分析案件',            shortLabel: '案' },
-  { id: 'dictionaries', label: '主數據管理',          shortLabel: '主', minRole: 'analyst' },
-  { id: 'users',        label: '使用者管理',          shortLabel: '人', minRole: 'admin' },
-  { id: 'ruleset',      label: 'MOST 字典',           shortLabel: '字', minRole: 'admin' },
+  { id: 'dashboard',    labelKey: 'nav.dashboard',    shortLabelKey: 'navShort.dashboard' },
+  { id: 'workbench-v3', labelKey: 'nav.workbenchV3',  shortLabelKey: 'navShort.workbenchV3' },
+  { id: 'wi-project',   labelKey: 'nav.wiProject',    shortLabelKey: 'navShort.wiProject' },
+  { id: 'level',        labelKey: 'nav.level',        shortLabelKey: 'navShort.level' },
+  { id: 'case',         labelKey: 'nav.case',         shortLabelKey: 'navShort.case' },
+  { id: 'dictionaries', labelKey: 'nav.dictionaries', shortLabelKey: 'navShort.dictionaries', minRole: 'analyst' },
+  { id: 'users',        labelKey: 'nav.users',        shortLabelKey: 'navShort.users', minRole: 'admin' },
+  { id: 'ruleset',      labelKey: 'nav.ruleset',      shortLabelKey: 'navShort.ruleset', minRole: 'admin' },
 ]
 
 const SIDEBAR_BG = '#304156'
@@ -28,6 +31,7 @@ interface NavButtonProps {
 }
 
 function NavButton({ item, active, collapsed, onClick }: NavButtonProps) {
+  const { t } = useTranslation()
   return (
     <button
       onClick={onClick}
@@ -45,13 +49,13 @@ function NavButton({ item, active, collapsed, onClick }: NavButtonProps) {
         className="flex-shrink-0 font-medium"
         style={{ width: collapsed ? '100%' : '1.5rem', textAlign: 'center' }}
       >
-        {item.shortLabel}
+        {t(item.shortLabelKey)}
       </span>
 
       {/* Full label — only shown when expanded (spec §1.2) */}
       {!collapsed && (
         <span className="ml-2 whitespace-nowrap overflow-hidden text-ellipsis flex-1 text-left">
-          {item.label}
+          {t(item.labelKey)}
         </span>
       )}
     </button>
@@ -97,6 +101,7 @@ export interface SidebarProps {
 
 export function Sidebar({ activeTab, onTabChange, me, mobileOpen, onMobileClose }: SidebarProps) {
   const [collapsed, setCollapsed] = useState(false)
+  const { t } = useTranslation()
 
   const canSeeItem = (item: NavItem): boolean => {
     if (!item.minRole) return true
@@ -148,7 +153,7 @@ export function Sidebar({ activeTab, onTabChange, me, mobileOpen, onMobileClose 
         {/* Toggle button — top of sidebar (spec: chevron icon) */}
         <button
           onClick={() => setCollapsed(c => !c)}
-          aria-label={collapsed ? '展開側欄' : '折疊側欄'}
+          aria-label={collapsed ? t('sidebar.expandAria') : t('sidebar.collapseAria')}
           style={{ borderBottom: '1px solid rgba(255,255,255,0.1)', color: 'rgba(255,255,255,0.5)' }}
           className="flex-shrink-0 flex items-center justify-center h-9 hover:bg-white/5 transition-colors text-sm font-mono"
         >

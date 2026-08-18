@@ -15,6 +15,28 @@ async def test_me_returns_identity(client):
     body = r.json()
     assert body["employee_no"] == "IEC141289"
     assert body["level"] >= 1
+    # ADR-032 D3.1：未設定 locale 的既有測試使用者 → 回傳解析後的系統預設，不是 null。
+    assert body["locale"] == "zh-TW"
+
+
+async def test_patch_my_locale_self_service(client):
+    """ADR-032 D3.1：PATCH /me/locale 本人自助、無需 admin，且立即反映在 /me。"""
+    r = await client.patch("/api/v2/me/locale", json={"locale": "en"})
+    assert r.status_code == 200
+    assert r.json()["locale"] == "en"
+
+    r = await client.get("/api/v2/me")
+    assert r.json()["locale"] == "en"
+
+    # 改回 zh-TW（避免污染同 fixture 下的其他測試）
+    r = await client.patch("/api/v2/me/locale", json={"locale": "zh-TW"})
+    assert r.status_code == 200 and r.json()["locale"] == "zh-TW"
+
+
+async def test_patch_my_locale_rejects_unknown_value(client):
+    """ADR-032 I6：語系碼值域固定為 zh-TW／en，第三種寫法一律拒絕（422）。"""
+    r = await client.patch("/api/v2/me/locale", json={"locale": "zh-CN"})
+    assert r.status_code == 422
 
 
 async def test_level_validate_endpoint(client):

@@ -51,6 +51,7 @@
 | [WI AI Parser 交付追蹤](llm/wi-ai-parser-worklog.md) | Phase 狀態、卡點、D3 決策、checkpoint 與驗收紀錄 | 🔄 交付期間持續更新 |
 | [WI AI Eval Reports](llm/eval-reports/README.md) | gold plan 評測輸出（`wi_ai_eval.py`） | 🔄 L3+ |
 | [WI Gold Set 擴充覆核工作流](llm/gold-review/README.md) | 預標註草稿的 IE 覆核／轉正流程、自我指涉排除、split 原則（`gold_harvest.py`） | 🔄 P0 覆核中 |
+| [i18n（雙語 UI）交付追蹤](llm/i18n-worklog.md) | ADR-032 D10-A 分批進度、複審修復紀錄、外殼字串外部化待辦 | 🔄 D10-A 進行中（第一批） |
 
 ## 架構決策
 

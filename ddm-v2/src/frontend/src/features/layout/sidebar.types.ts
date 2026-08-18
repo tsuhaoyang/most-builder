@@ -20,10 +20,10 @@ export type TabId =
 export interface NavItem {
   /** Unique route identifier — matches the tab state in App.tsx */
   id: TabId
-  /** Full label shown when sidebar is expanded */
-  label: string
-  /** Short label (1–2 CJK chars or 1 Latin char) shown when sidebar is collapsed */
-  shortLabel: string
+  /** i18next key for the full label shown when sidebar is expanded (ADR-032 Phase A) */
+  labelKey: string
+  /** i18next key for the short label (1–2 chars) shown when sidebar is collapsed */
+  shortLabelKey: string
   /** Minimum role required to see this item. 'analyst' = level ≥ 1; 'admin' = level ≥ 3 */
   minRole?: 'analyst' | 'admin'
 }

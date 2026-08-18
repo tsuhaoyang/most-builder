@@ -1,5 +1,7 @@
 import { useState, useEffect } from 'react'
+import { useTranslation } from 'react-i18next'
 import { useMe, canEdit } from './shared/auth/useMe'
+import { useLocaleSync } from './shared/i18n/useLocaleSync'
 import { ImportModal } from './features/import/ImportModal'
 import { WiWorkbench } from './features/wi-workbench/WiWorkbench'
 import { LevelSystem } from './features/level-system/LevelSystem'
@@ -17,10 +19,12 @@ import { WorksheetRequiredNotice } from './shared/ui/WorksheetRequiredNotice'
 import { useWorkspace } from './shared/workspace'
 
 export default function App() {
+  const { t } = useTranslation()
   const [tab, setTab] = useState<string>('dashboard')
   const [importOpen, setImportOpen] = useState(false)
   const { data: me } = useMe()
   const activeWs = useWorkspace(s => s.activeWs)
+  useLocaleSync(me) // ADR-032 D3.2：/me 到達後伺服器 locale 成為權威值
 
   // Allow CasesPage (and future features) to request a tab switch via custom event
   useEffect(() => {
@@ -56,7 +60,7 @@ export default function App() {
       default:
         return (
           <div className="bg-white rounded-xl border p-6 text-slate-500 text-sm">
-            {tab}：功能開發中（待移植自 v3）
+            {t('app.tabInProgress', { tab })}
           </div>
         )
     }

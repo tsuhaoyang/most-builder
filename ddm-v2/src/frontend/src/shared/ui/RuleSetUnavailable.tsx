@@ -1,3 +1,5 @@
+import { useTranslation } from 'react-i18next'
+
 /**
  * 啟用中 rule-set 或其選項載入失敗時的可行動錯誤態。
  *
@@ -6,13 +8,14 @@
  * 設定錯誤會表現成永遠轉圈，使用者無從得知該做什麼。
  */
 export function RuleSetUnavailable({ error }: { error: unknown }) {
+  const { t } = useTranslation()
   const msg = error instanceof Error ? error.message : String(error ?? '')
   return (
     <div className="rounded-lg border border-red-200 bg-red-50 p-4 text-sm text-red-800 space-y-1">
-      <p className="font-medium">無法載入 MOST 字典（rule-set），因此無法建模。</p>
-      <p className="text-xs">{msg || '未知錯誤'}</p>
+      <p className="font-medium">{t('ruleSetUnavailable.title')}</p>
+      <p className="text-xs">{msg || t('ruleSetUnavailable.unknownError')}</p>
       <p className="text-xs text-red-700">
-        可能原因：系統目前沒有「啟用中」的字典版本。請至「MOST 字典」頁確認有一個已發布版本被設為啟用中。
+        {t('ruleSetUnavailable.hint')}
       </p>
     </div>
   )

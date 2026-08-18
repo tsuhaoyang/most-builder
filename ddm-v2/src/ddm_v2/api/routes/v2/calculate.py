@@ -10,15 +10,18 @@ options 下拉清單暫讀 seed labels（FE-1 正式版改讀 DB labels）。
 from __future__ import annotations
 
 from fastapi import APIRouter, Depends, HTTPException
+from sqlalchemy import select
 from sqlalchemy.exc import NoResultFound
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from ddm_v2.auth.deps import CurrentUser, current_user
 from ddm_v2.database import get_db_session
+from ddm_v2.models.v2.auth import AppUser
 from ddm_v2.most_engine import RuleSetData, SequenceError, compute_cycle, load_rule_set_from_db
 from ddm_v2.most_engine import level as level_engine
 from ddm_v2.most_engine.providers import load_options_from_db
 from ddm_v2.most_engine.rule_set_data import RuleSetIncomplete
+from ddm_v2.schemas.v2.auth import LocalePatchIn, MeOut
 from ddm_v2.schemas.v2.most import (
     CalculateResponse,
     CycleIn,
@@ -32,10 +35,33 @@ from ddm_v2.services.v2.rule_set_service import get_active_rule_set_code
 
 router = APIRouter(prefix="/api/v2", tags=["v2-most"])
 
-@router.get("/me")
-async def me(user: CurrentUser = Depends(current_user)) -> dict:
-    """目前登入者（前端 role-gating 用）。"""
-    return {"employee_no": user.employee_no, "roles": user.roles, "plant_code": user.plant_code, "level": user.level}
+def _me_out(user: CurrentUser) -> MeOut:
+    return MeOut(employee_no=user.employee_no, roles=user.roles, plant_code=user.plant_code,
+                 level=user.level, locale=user.locale)
+
+
+@router.get("/me", response_model=MeOut)
+async def me(user: CurrentUser = Depends(current_user)) -> MeOut:
+    """目前登入者（前端 role-gating 用）。`locale` 已解析（ADR-032 D3.1）。"""
+    return _me_out(user)
+
+
+@router.patch("/me/locale", response_model=MeOut)
+async def patch_my_locale(
+    payload: LocalePatchIn,
+    user: CurrentUser = Depends(current_user),
+    session: AsyncSession = Depends(get_db_session, scope="function"),
+) -> MeOut:
+    """本人自助改語言偏好（ADR-032 D3.1）：個人偏好不是授權，無需 admin。
+
+    API 回應語言中立（D3.3）——這支端點只改「使用者是誰」的屬性，不影響任何
+    業務資料回應的語意，故不與 I3/D3.3 衝突。
+    """
+    u = (await session.execute(select(AppUser).where(AppUser.employee_no == user.employee_no))).scalar_one()
+    u.locale = payload.locale
+    await session.flush()
+    return _me_out(CurrentUser(employee_no=user.employee_no, roles=user.roles, site_ids=user.site_ids,
+                                plant_code=user.plant_code, locale=payload.locale))
 
 
 async def _load_rule_set(session: AsyncSession, code: str) -> RuleSetData:

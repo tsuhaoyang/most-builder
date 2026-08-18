@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
+import { useTranslation } from 'react-i18next'
 
 export interface ComboOption { v: string; l: string }
 
@@ -10,6 +11,7 @@ export function ComboBox({ options, value, onPick, placeholder, onCreate }: {
   placeholder?: string
   onCreate?: (label: string) => void
 }) {
+  const { t } = useTranslation()
   const [open, setOpen] = useState(false)
   const [q, setQ] = useState('')
   const cur = options.find(o => o.v === value)
@@ -27,7 +29,7 @@ export function ComboBox({ options, value, onPick, placeholder, onCreate }: {
     <span className="relative inline-block w-full min-w-0 align-middle">
       <input
         className="w-full min-w-0 border rounded px-1 py-0.5 text-sm"
-        value={text} placeholder={placeholder ?? '搜尋…'} autoComplete="off"
+        value={text} placeholder={placeholder ?? t('comboBox.searchPlaceholder')} autoComplete="off"
         onFocus={() => { setQ(''); setOpen(true) }}
         onChange={e => { setText(e.target.value); setQ(e.target.value); setOpen(true) }}
         onBlur={() => { blurTimer.current = setTimeout(() => setOpen(false), 150) }}
@@ -44,10 +46,10 @@ export function ComboBox({ options, value, onPick, placeholder, onCreate }: {
           {canCreate && (
             <div className="px-2 py-1 text-blue-600 hover:bg-blue-50 cursor-pointer"
               onMouseDown={e => { e.preventDefault(); setOpen(false); onCreate!(q.trim()) }}>
-              ＋ 新增「{q.trim()}」
+              {t('comboBox.addNew', { label: q.trim() })}
             </div>
           )}
-          {filtered.length === 0 && !canCreate && <div className="px-2 py-1 text-slate-400">無相符</div>}
+          {filtered.length === 0 && !canCreate && <div className="px-2 py-1 text-slate-400">{t('comboBox.noMatch')}</div>}
         </div>
       )}
     </span>

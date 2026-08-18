@@ -11,6 +11,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from ddm_v2.auth.identity import resolve_identity
 from ddm_v2.database import get_db_session
+from ddm_v2.locale import DEFAULT_LOCALE, Locale, resolve_locale
 from ddm_v2.models.v2.auth import AppUser
 
 ROLE_ORDER = {"viewer": 0, "analyst": 1, "approver": 2, "admin": 3}
@@ -22,6 +23,8 @@ class CurrentUser:
     roles: list[str]
     site_ids: list
     plant_code: str | None = None
+    # ADR-032 D3.1：已解析（NULL→DEFAULT_LOCALE）；不是資料庫原始值。
+    locale: Locale = DEFAULT_LOCALE
 
     @property
     def level(self) -> int:
@@ -50,7 +53,8 @@ async def current_user(request: Request, session: AsyncSession = Depends(get_db_
         await session.flush()
     if not u.is_active:
         raise HTTPException(status_code=403, detail="帳號已停用")
-    return CurrentUser(employee_no=u.employee_no, roles=list(u.roles or []), site_ids=list(u.site_ids or []), plant_code=ident.plant_code)
+    return CurrentUser(employee_no=u.employee_no, roles=list(u.roles or []), site_ids=list(u.site_ids or []),
+                        plant_code=ident.plant_code, locale=resolve_locale(u.locale))
 
 
 def require_role(min_role: str):

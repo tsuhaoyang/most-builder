@@ -7,12 +7,14 @@ from __future__ import annotations
 
 from uuid import UUID
 
-from sqlalchemy import Boolean, Text, text
+from sqlalchemy import Boolean, CheckConstraint, Text, text
 from sqlalchemy.dialects.postgresql import ARRAY
 from sqlalchemy.dialects.postgresql import UUID as PG_UUID
 from sqlalchemy.orm import Mapped, mapped_column
 
 from ddm_v2.models.v2.base import Base, TimestampMixin, uuid_pk
+
+_LOCALE_CK = "locale IN ('zh-TW','en')"
 
 
 class AppUser(Base, TimestampMixin):
@@ -25,3 +27,9 @@ class AppUser(Base, TimestampMixin):
     roles: Mapped[list[str]] = mapped_column(ARRAY(Text), nullable=False, server_default=text("'{}'::text[]"))  # 空＝viewer
     site_ids: Mapped[list[UUID]] = mapped_column(ARRAY(PG_UUID(as_uuid=True)), nullable=False, server_default=text("'{}'::uuid[]"))
     is_active: Mapped[bool] = mapped_column(Boolean, nullable=False, server_default=text("TRUE"))
+    # ADR-032 D3.1：個人語言偏好。NULL＝未設定→讀取端回退系統預設（目前 zh-TW）。
+    locale: Mapped[str | None] = mapped_column(Text)
+
+    __table_args__ = (
+        CheckConstraint(_LOCALE_CK, name="ck_app_users_locale"),
+    )

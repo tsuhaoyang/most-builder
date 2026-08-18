@@ -1,6 +1,8 @@
 import { useState } from 'react'
 import type { ReactNode } from 'react'
+import { useTranslation } from 'react-i18next'
 import { Sidebar } from './Sidebar'
+import { LocaleSwitcher } from './LocaleSwitcher'
 import type { Me } from '../../shared/auth/useMe'
 
 interface AppLayoutProps {
@@ -35,6 +37,7 @@ export function AppLayout({
   children,
 }: AppLayoutProps) {
   const [mobileOpen, setMobileOpen] = useState(false)
+  const { t } = useTranslation()
 
   return (
     <div
@@ -52,23 +55,24 @@ export function AppLayout({
           <button
             className="md:hidden text-white/70 hover:text-white p-1 leading-none text-lg"
             onClick={() => setMobileOpen(o => !o)}
-            aria-label="開啟/關閉側欄"
+            aria-label={t('header.toggleSidebarAria')}
           >
             ☰
           </button>
-          <h1 className="font-semibold text-sm tracking-wide m-0 leading-none">MOST Workbench</h1>
+          <h1 className="font-semibold text-sm tracking-wide m-0 leading-none">{t('header.appTitle')}</h1>
         </div>
 
-        {/* Right: import button (if permitted) + user info */}
+        {/* Right: import button (if permitted) + language switcher + user info */}
         <div className="flex items-center gap-3">
           {canEdit && onImportClick && (
             <button
               onClick={onImportClick}
               className="px-2 py-1 text-xs rounded border border-white/30 text-white/80 hover:bg-white/10 transition-colors"
             >
-              匯入 Excel
+              {t('header.importExcel')}
             </button>
           )}
+          <LocaleSwitcher />
           <span className="text-xs text-white/70">
             {me?.employee_no ?? '…'}
             {me ? ` · ${me.roles.join(',') || 'viewer'}` : ''}

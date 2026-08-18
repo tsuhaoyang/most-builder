@@ -1,10 +1,13 @@
 import { Component, type ErrorInfo, type ReactNode } from 'react'
+import { withTranslation, type WithTranslation } from 'react-i18next'
 
-interface ErrorBoundaryProps {
+interface ErrorBoundaryOwnProps {
   children: ReactNode
-  /** Called when the user clicks「回儀表板」; parent should navigate to a safe tab. */
+  /** Called when the user clicks the reset button; parent should navigate to a safe tab. */
   onReset?: () => void
 }
+
+type ErrorBoundaryProps = ErrorBoundaryOwnProps & WithTranslation
 
 interface ErrorBoundaryState {
   error: Error | null
@@ -19,8 +22,12 @@ interface ErrorBoundaryState {
  *
  * Mount it with `key={tab}` so switching tabs automatically remounts the
  * boundary and clears any previous error state.
+ *
+ * ADR-032 Phase A: this is a class component, so it can't use `useTranslation()`
+ * directly — `withTranslation()` HOC injects `t` as a prop instead (also keeps
+ * the fallback text reactive if the user switches language while an error is shown).
  */
-export class ErrorBoundary extends Component<ErrorBoundaryProps, ErrorBoundaryState> {
+class ErrorBoundaryInner extends Component<ErrorBoundaryProps, ErrorBoundaryState> {
   state: ErrorBoundaryState = { error: null }
 
   static getDerivedStateFromError(error: Error): ErrorBoundaryState {
@@ -39,10 +46,11 @@ export class ErrorBoundary extends Component<ErrorBoundaryProps, ErrorBoundarySt
 
   render() {
     const { error } = this.state
+    const { t } = this.props
     if (error) {
       return (
         <div className="bg-white rounded-xl border p-6">
-          <h2 className="text-base font-semibold text-slate-800 mb-2">此分頁發生錯誤</h2>
+          <h2 className="text-base font-semibold text-slate-800 mb-2">{t('errorBoundary.title')}</h2>
           <p className="text-sm text-red-600 mb-4 break-all font-mono">
             {error.message || String(error)}
           </p>
@@ -50,7 +58,7 @@ export class ErrorBoundary extends Component<ErrorBoundaryProps, ErrorBoundarySt
             onClick={this.handleReset}
             className="px-3 py-1.5 text-sm rounded-lg border border-slate-300 bg-slate-50 hover:bg-slate-100 text-slate-700"
           >
-            回儀表板
+            {t('errorBoundary.backToDashboard')}
           </button>
         </div>
       )
@@ -58,3 +66,5 @@ export class ErrorBoundary extends Component<ErrorBoundaryProps, ErrorBoundarySt
     return this.props.children
   }
 }
+
+export const ErrorBoundary = withTranslation()(ErrorBoundaryInner)
