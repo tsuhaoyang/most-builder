@@ -33,6 +33,7 @@
 | [ADR-029-python-dependency-locking-and-audit-gate.md](ADR-029-python-dependency-locking-and-audit-gate.md) | Python 依賴鎖版（hash-pinned 雙鎖檔、pip 格式）＋阻斷式 pip-audit＋nightly 上游漂移偵測 | 🟡 proposed |
 | [ADR-030-in-process-parse-worker-topology.md](ADR-030-in-process-parse-worker-topology.md) | ai_parse_jobs 背景 worker 部署拓撲：in-process 預設開啟＝過渡；per-process 迴圈語意與 dedicated worker 觸發條件 | 🟡 proposed |
 | [ADR-031-spatial-layout-and-distance-acquisition.md](ADR-031-spatial-layout-and-distance-acquisition.md) | 空間佈局與距離取得（2026-08-17 修訂：空間單位＝**工位（站）**，原「佈局跟產線走」作廢）：`stations` 主數據＋站內局部座標擺放表（與詞彙身分分離）＋列級工位綁定 `wi_rows.station_id` → 產生帶出處的 `reach_cm`／`foot_cm`／`distance_cm` 建議；引擎仍是唯一換算權威 | 🟡 proposed |
+| [ADR-032-bilingual-ui-and-data-label-layer.md](ADR-032-bilingual-ui-and-data-label-layer.md) | 雙語（中／英）UI 外殼與資料標籤層：機器翻譯先全灌＋人工後修、使用者個人 `locale`、API 回應語言中立、`i18n_review_state` 側表與待審清單；**修訂 ADR-023 規則 1 矩陣**（`_en` 於 published/active 可後補）；英文敘事為平行樣板系統；AI parser 英文化（第三層）明確不做 | ✅ accepted（2026-08-18） |
 
 ## 狀態說明
 
