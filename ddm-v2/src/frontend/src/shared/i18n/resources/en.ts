@@ -80,6 +80,54 @@ const en: Widen<typeof zhTW> = {
   app: {
     tabInProgress: '{{tab}}: under development (to be ported from v3)',
   },
+  i18nReview: {
+    tabLabel: 'English Review',
+    note: 'This page only shows translation review progress and the pending list; marking items "reviewed" is not available yet (no write endpoint exists on the backend).',
+    loading: 'Loading English review list…',
+    loadError: 'Failed to load: {{message}}',
+    summary: {
+      overall: 'Overall English review',
+      progress: '{{reviewed}}/{{total}}',
+    },
+    filters: {
+      searchPlaceholder: 'Search Chinese source / English translation…',
+      entityTypeLabel: 'Entity type',
+      allEntityTypes: 'All types',
+      statusLabel: 'Status',
+      allStatuses: 'All statuses',
+    },
+    entityType: {
+      rule_option: 'MOST dictionary option',
+      vocab_item: 'Work vocabulary',
+      motion_template: 'Motion template',
+    },
+    status: {
+      never_translated: 'Never translated',
+      unreviewed: 'Unreviewed',
+      stale: 'Stale',
+    },
+    reviewSource: {
+      machine: 'Machine translation',
+      human: 'Human reviewed',
+      legacy_seed: 'Legacy data (source unknown)',
+    },
+    table: {
+      entityType: 'Type',
+      sourceZh: 'Chinese source',
+      targetEn: 'English translation',
+      status: 'Status',
+      source: 'Source',
+      empty: 'No items match the current filters',
+      untranslated: '(not translated)',
+      sourceChangedBadge: 'Source changed',
+      sourceChangedHint: 'The Chinese source this translation was based on has changed; the translation has not yet been re-confirmed against the new source — more urgent than plain "unreviewed"',
+      copyRow: 'Copy',
+      copyRowDone: 'Copied',
+      copyAll: 'Copy all (TSV)',
+      copyAllDone: 'Copied {{n}} rows',
+      copyFailed: 'Copy failed — please select and copy the text manually',
+    },
+  },
 }
 
 export default en

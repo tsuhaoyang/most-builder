@@ -8,8 +8,12 @@
  *
  * Tab 1「詞彙庫」: WorkVocabItem CRUD (viewer 唯讀；analyst+ 可新增/停用/啟用)
  * Tab 2「動作模組範本」: MotionTemplate list + promote (approver+ 才顯示升格按鈕)
+ * Tab 3「英文覆核」: ADR-032 D6 待審清單（唯讀；本頁本身已由側欄 minRole:'analyst'
+ *   gating，見 features/layout/Sidebar.tsx——與 D6「誰看得到：analyst 以上」一致，
+ *   不另加一層頁內 gating）
  */
 import { useState, useRef } from 'react'
+import { useTranslation } from 'react-i18next'
 import { useMe, canEdit, canPublish } from '../../shared/auth/useMe'
 import {
   useVocabItems,
@@ -20,6 +24,7 @@ import {
   type VocabFilters,
   type TemplateFilters,
 } from './api'
+import { I18nReviewTab } from './I18nReviewTab'
 
 // ── constants ─────────────────────────────────────────────────────────────────
 
@@ -313,9 +318,10 @@ function TemplatesTab() {
 
 // ── DictionariesPage ──────────────────────────────────────────────────────────
 
-type DictTab = 'vocab' | 'templates'
+type DictTab = 'vocab' | 'templates' | 'i18n-review'
 
 export function DictionariesPage() {
+  const { t } = useTranslation()
   const { data: me } = useMe()
   const [activeTab, setActiveTab] = useState<DictTab>('vocab')
 
@@ -324,14 +330,22 @@ export function DictionariesPage() {
       <div className="bg-white rounded-xl border p-4">
         <h2 className="font-semibold">主數據管理</h2>
         <p className="text-xs text-slate-500 mt-0.5">
-          管理工作詞彙（WorkVocabItem）與動作模組範本（MotionTemplate）。
+          管理工作詞彙（WorkVocabItem）、動作模組範本（MotionTemplate）與英文覆核進度（ADR-032 D6）。
           身分：{me?.employee_no}（{me?.roles?.join(' · ') || 'viewer'}）
         </p>
       </div>
 
       {/* Tab bar */}
+      {/* S8（一併修，便宜）：'vocab'／'templates' 的標籤目前硬編中文，未走 i18n key——
+          Phase A 的字串外部化只做了「側欄／標頭／共用元件」第一批（ADR-032 §5），
+          這兩個分頁標籤還沒排到。已知缺口，非本輪漏改；下一個做 Phase A 外部化的人
+          補上 `nav.vocab`／`nav.templates`（或等價 key）即可，不要誤以為這裡是新債。 */}
       <div className="flex border-b bg-white rounded-t-xl overflow-hidden">
-        {([['vocab', '詞彙庫'], ['templates', '動作模組範本']] as [DictTab, string][]).map(([id, label]) => (
+        {([
+          ['vocab', '詞彙庫'],
+          ['templates', '動作模組範本'],
+          ['i18n-review', t('i18nReview.tabLabel')],
+        ] as [DictTab, string][]).map(([id, label]) => (
           <button
             key={id}
             onClick={() => setActiveTab(id)}
@@ -349,6 +363,7 @@ export function DictionariesPage() {
       <div>
         {activeTab === 'vocab' && <VocabTab />}
         {activeTab === 'templates' && <TemplatesTab />}
+        {activeTab === 'i18n-review' && <I18nReviewTab />}
       </div>
     </div>
   )

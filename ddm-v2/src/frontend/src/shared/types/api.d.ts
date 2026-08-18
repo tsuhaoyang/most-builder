@@ -1609,6 +1609,40 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v2/i18n/review/summary": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Review Summary */
+        get: operations["get_review_summary_api_v2_i18n_review_summary_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v2/i18n/review/pending": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List Review Pending */
+        get: operations["list_review_pending_api_v2_i18n_review_pending_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/": {
         parameters: {
             query?: never;
@@ -1616,8 +1650,8 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /** Index */
-        get: operations["index__get"];
+        /** Root */
+        get: operations["root__get"];
         put?: never;
         post?: never;
         delete?: never;
@@ -1950,6 +1984,57 @@ export interface components {
         HTTPValidationError: {
             /** Detail */
             detail?: components["schemas"]["ValidationError"][];
+        };
+        /** I18nPendingItemOut */
+        I18nPendingItemOut: {
+            /**
+             * Entity Type
+             * @enum {string}
+             */
+            entity_type: "rule_option" | "vocab_item" | "motion_template";
+            /** Scope Key */
+            scope_key: string;
+            /** Field */
+            field: string;
+            /**
+             * Status
+             * @enum {string}
+             */
+            status: "never_translated" | "unreviewed" | "stale";
+            /** Rule Set Code */
+            rule_set_code: string | null;
+            /** Source Zh */
+            source_zh: string;
+            /** Target En */
+            target_en: string | null;
+            /**
+             * Source Changed
+             * @description S6：現行中文來源是否已與這筆翻譯依據的來源不同（`review_sha256` 比對）。`status='unreviewed'` 本身無法區分「剛翻好、中文沒變過」與「翻過，但中文後來又改了、它還沒被人看過」——這個欄位把後者標出來，不影響 `status` 本身的分類（見 ADR-032 D6 補記）。
+             */
+            source_changed: boolean;
+            /** Review Source */
+            review_source: ("machine" | "human" | "legacy_seed") | null;
+            /** Translated By */
+            translated_by: string | null;
+            /** Translated At */
+            translated_at: string | null;
+            /** Reviewed By */
+            reviewed_by: string | null;
+            /** Reviewed At */
+            reviewed_at: string | null;
+        };
+        /**
+         * I18nReviewSummaryOut
+         * @description `{total, reviewed, pending}`——`entity_type` 未指定時為全體（rule_option ＋
+         *     vocab_item ＋ motion_template）合計；指定時為該類別單獨的統計。
+         */
+        I18nReviewSummaryOut: {
+            /** Total */
+            total: number;
+            /** Reviewed */
+            reviewed: number;
+            /** Pending */
+            pending: number;
         };
         /** ISlot */
         ISlot: {
@@ -6891,7 +6976,70 @@ export interface operations {
             };
         };
     };
-    index__get: {
+    get_review_summary_api_v2_i18n_review_summary_get: {
+        parameters: {
+            query?: {
+                entity_type?: string | null;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["I18nReviewSummaryOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_review_pending_api_v2_i18n_review_pending_get: {
+        parameters: {
+            query?: {
+                entity_type?: string | null;
+                status?: string | null;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["I18nPendingItemOut"][];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    root__get: {
         parameters: {
             query?: never;
             header?: never;

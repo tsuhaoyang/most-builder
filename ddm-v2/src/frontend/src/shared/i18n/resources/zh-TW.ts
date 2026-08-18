@@ -60,6 +60,54 @@ const zhTW = {
   app: {
     tabInProgress: '{{tab}}：功能開發中（待移植自 v3）',
   },
+  i18nReview: {
+    tabLabel: '英文覆核',
+    note: '本頁僅供檢視翻譯覆核進度與待審清單；標記「已覆核」的功能尚未開放（後端尚無對應的寫入端點）。',
+    loading: '載入英文覆核清單…',
+    loadError: '載入失敗：{{message}}',
+    summary: {
+      overall: '整體英文覆核',
+      progress: '{{reviewed}}/{{total}}',
+    },
+    filters: {
+      searchPlaceholder: '搜尋中文來源／英文譯文…',
+      entityTypeLabel: '物件類型',
+      allEntityTypes: '全部類型',
+      statusLabel: '狀態',
+      allStatuses: '全部狀態',
+    },
+    entityType: {
+      rule_option: 'MOST 字典選項',
+      vocab_item: '工作詞彙',
+      motion_template: '動作模組範本',
+    },
+    status: {
+      never_translated: '尚未翻譯',
+      unreviewed: '未覆核',
+      stale: '已過期',
+    },
+    reviewSource: {
+      machine: '機器翻譯',
+      human: '人工覆核',
+      legacy_seed: '舊資料（來源不明）',
+    },
+    table: {
+      entityType: '類型',
+      sourceZh: '中文來源',
+      targetEn: '英文譯文',
+      status: '狀態',
+      source: '來源',
+      empty: '無符合條件的項目',
+      untranslated: '（尚未翻譯）',
+      sourceChangedBadge: '來源已變更',
+      sourceChangedHint: '這筆翻譯所依據的中文來源已經變了，譯文尚未依新來源重新確認——比單純「未覆核」更急',
+      copyRow: '複製',
+      copyRowDone: '已複製',
+      copyAll: '複製全部（TSV）',
+      copyAllDone: '已複製 {{n}} 筆',
+      copyFailed: '複製失敗，請手動選取文字複製',
+    },
+  },
 } as const
 
 export default zhTW
