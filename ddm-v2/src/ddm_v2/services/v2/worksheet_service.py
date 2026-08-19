@@ -19,7 +19,7 @@ from ddm_v2.models.v2.policy import LevelPolicyVersion, ModelingPolicyVersion
 from ddm_v2.models.v2.rule_set import RuleSet
 from ddm_v2.models.v2.vocab import WorkVocabItem
 from ddm_v2.models.v2.worksheet import LevelEntry, MostCycle, MostWorksheet, ProcessVersion, WiRow
-from ddm_v2.most_engine import compute_cycle, load_rule_set_from_db
+from ddm_v2.most_engine import SequenceError, compute_cycle, load_rule_set_from_db
 from ddm_v2.most_engine.narrative import HAND_NAMES, build_narrative
 from ddm_v2.most_engine.narrative_en import build_narrative_en
 from ddm_v2.most_engine.providers import build_label_map, load_options_from_db
@@ -52,6 +52,25 @@ class NotEditable(Exception):
 
 class SimoPairInvalid(Exception):
     pass
+
+
+class RowSequenceError(SequenceError):
+    """`SequenceError` ＋ 出錯的列位置。
+
+    30 列的表存檔失敗時，「[M_HAND_RANGE] 手度 181° 超出值表」指不出要改哪一列——
+    同一個 service 的 `SimoPairInvalid` 早就有列出 row id，兩種錯誤不該有兩種待遇。
+    **`code` 一字不改**（前端與測試以它為契約），只在 message 前面補列位置，
+    另外把 `seq_no`／`row_id` 掛成屬性供 API 層放進 detail。
+    """
+
+    def __init__(self, exc: SequenceError, *, seq_no: Any, row_id: Any) -> None:
+        raw = str(exc)
+        prefix = f"[{exc.code}] "
+        if raw.startswith(prefix):
+            raw = raw[len(prefix):]      # 不要疊出 `[CODE] … [CODE] …`
+        super().__init__(exc.code, f"第 {seq_no} 列：{raw}")
+        self.seq_no = seq_no
+        self.row_id = row_id
 
 
 async def save_worksheet(
@@ -156,7 +175,10 @@ async def save_worksheet(
         # slot_inputs 是回放的權威原始輸入 → 必須自帶解析後的規則版本，不可留 None（ADR-023 §3.4）
         resolve_cycle_rule_set(r.cycle, code)
         engine_cycle = cycle_in_to_engine(r.cycle)
-        result = compute_cycle(engine_cycle, rsdata)
+        try:
+            result = compute_cycle(engine_cycle, rsdata)
+        except SequenceError as exc:      # 整份取代的迴圈：不補列位置，使用者只知道「某一列錯了」
+            raise RowSequenceError(exc, seq_no=r.seq_no, row_id=r.id) from exc
         voc = {"object": vname.get(r.object_vocab_id, ""),
                "from": vname.get(r.from_vocab_id, "") if r.from_vocab_id else "",
                "to": vname.get(r.to_vocab_id, "") if r.to_vocab_id else "",

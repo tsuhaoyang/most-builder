@@ -26,10 +26,16 @@
 `labels` 形狀同 `narrative.py`，另需 `label_en`／`sentence_en` 兩鍵（由
 `providers.load_options_from_db` 提供）。英文素材缺漏時回退中文（ADR-032 D10：
 沒有 `sentence_text_en` 的素材，英文敘事只能回退中文），不留空動詞。
+
+**排除規則與中文同源**：M 格的手度／腳步（`pricing_kind` ∈ `M_COMPANION_KINDS`）是字典裡
+與 verb 平行的伴隨維度，兩語都不入句。這條不能靠「`sentence_en` 是空字串」達成——`_sent()`
+的回退鏈會一路退到 `label_en`（"Hand turn"）再退到中文標籤（「手度」）。
 """
 from __future__ import annotations
 
 from typing import Any
+
+from ddm_v2.most_engine.rule_set_data import M_COMPANION_KINDS
 
 
 def _fmt(n: float | None) -> str:
@@ -63,9 +69,10 @@ def _noun(name: str) -> str:
     工廠詞彙充斥縮寫（DIMM／PSU／I/O 擋板／CPU 拉桿），無條件降格會產出 "dIMM"。
 
     先 strip 再判空：`"   ".split(maxsplit=1)` 是空 list，`if not name` 只擋得掉 ""，
-    純空白會在 `[0]` 炸 IndexError。Phase C 之後敘事是**讀取時**產生的，一筆空白詞彙名
-    會讓任何人讀模組/版本/工作表都 500，毒源在 `work_vocab_items` 而不在被讀的那筆資料
-    （根因側的輸入驗證見 `schemas/v2/vocab.py`）。
+    純空白會在 `[0]` 炸 IndexError。一筆空白詞彙名會讓**任何組句路徑**爆 500：讀模組/版本
+    是讀取時即時組句（`motion_module_versions` 無 `narrative_en` 欄位），工作表則是**存檔時**
+    組句落盤（讀取只回欄位、不重算），所以工作表側炸的是存檔而不是讀取。毒源在
+    `work_vocab_items` 而不在被讀的那筆資料（根因側的輸入驗證見 `schemas/v2/vocab.py`）。
     """
     name = (name or "").strip()
     if not name:
@@ -74,6 +81,21 @@ def _noun(name: str) -> str:
     if first[1:].islower():
         name = name[0].lower() + name[1:]
     return "the " + name
+
+
+def _m_verb_entry(m3: dict[str, Any], labels: dict[str, dict[str, Any]]) -> dict[str, Any] | None:
+    """M 段的敘事動詞＝第一顆**非伴隨維度**的分量；整格沒有動詞 → None（M 子句整段不出現）。
+
+    與 `narrative._m_verb_entry` 是刻意的平行實作（ADR-032 R3／D8），共用的只有
+    `M_COMPANION_KINDS` 這個定義。未知碼（不在 labels 裡）視為動詞，維持既有的「回退成
+    泛稱動詞」行為——那是素材缺漏，不是語意上不該入句。
+    """
+    for comp in m3.get("m_components") or []:
+        entry = labels.get("m_verb", {}).get(comp.get("verb_code"))
+        if (entry or {}).get("pricing_kind") in M_COMPANION_KINDS:
+            continue
+        return entry or {}
+    return None
 
 
 def _p_visible(p5: dict[str, Any], labels: dict[str, dict[str, Any]]) -> str:
@@ -139,14 +161,15 @@ def build_narrative_en(cycle: dict[str, Any], labels: dict[str, dict[str, Any]],
         m3 = cycle.get("m3") or {}
         x4 = cycle.get("x4") or {}
         i5 = cycle.get("i5") or {}
-        mcs = m3.get("m_components") or []
-        if mcs:
-            mv = _sent(labels.get("m_verb", {}).get(mcs[0].get("verb_code"))) or "control it"
+        mv_entry = _m_verb_entry(m3, labels)
+        if mv_entry is not None:
+            mv = _sent(mv_entry) or "control it"
             head = mv + _rep_suffix(m3)
             if to:
                 head += f" at {to}"
             parts.append(head)
         elif to:
+            # 只有伴隨維度（或整格為空）時，M 子句消失但地點還在：與中文的「在『to』一側」對稱
             parts.append(f"work at {to}")
         x_sent = _sent(labels.get("x", {}).get(x4.get("x_code"))) if x4.get("x_code") not in (None, "x_none") else ""
         if x_sent:

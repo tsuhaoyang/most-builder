@@ -58,6 +58,36 @@ def test_scan_template_uses_v2_scan_code():
     assert x_code == "x_scan_bar", "通用「掃描」取條碼版（PPID／工單二維碼語意較窄）"
 
 
+def test_scan_template_leaves_m_slot_empty():
+    """釘住產生源：掃描範本的 M 格留空（既有資料由 migration v2_0042 修補）。
+
+    `m_hand` 的 pricing_kind='hand' 是**計價維度**（按手轉角度查表）不是動作動詞，
+    這個動作的工作全在 X（刷條碼）。M0 是引擎的合法輸入，佔位只會生出
+    「以手度實施移動」的假敘事；拿掉後 tech_line 不變。
+    """
+    cyc = next(t[5] for t in SEED.TEMPLATES if t[0] == "掃描/檢查")
+    payload = SEED.dump_cycle_template(cyc)
+    assert payload["m3"]["m_components"] == []
+    result = compute_cycle(cycle_in_to_engine(CycleIn.model_validate(payload)), RS_V2)
+    assert result.tech_line == "A10 B0 G3 M0 X6 I6 A0"
+    assert result.total_tmu == 25
+
+
+@pytest.mark.parametrize("name_zh", [t[0] for t in SEED.TEMPLATES])
+def test_no_lone_pricing_dimension_in_m_slot(name_zh):
+    """全庫規則：M 格不得**只有**計價維度（`m_hand`／`m_foot`），不論幾顆。
+
+    引擎要求計價維度分量必須有真動詞作伴（認證字典的 `verb.required=true`），
+    孤兒計價維度＝422，不能再從 seed 長出來。
+
+    條件要與引擎 `M_COMPANION_WITHOUT_VERB` **逐字相同**：只看 `len(comps) == 1`
+    會放行 `[m_hand, m_foot]` 這種兩顆的組合（引擎照樣 422），其餘 param 則空跑。
+    """
+    cyc = next(t[5] for t in SEED.TEMPLATES if t[0] == name_zh)
+    comps = (SEED.dump_cycle_template(cyc).get("m3") or {}).get("m_components") or []
+    assert not (comps and all(c["verb_code"] in ("m_hand", "m_foot") for c in comps)), name_zh
+
+
 def test_guard_has_teeth_v1_only_code_is_rejected():
     """具鑑別力：把 X 碼換回 V1 的 x_scan 就必須爆——否則上面的測試只是同義反覆。"""
     cyc = next(t[5] for t in SEED.TEMPLATES if t[0] == "掃描/檢查")

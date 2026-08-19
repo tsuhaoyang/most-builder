@@ -44,8 +44,18 @@ LABELS = {
         "a_press": {"label": "施加壓力", "sentence": "",
                     "label_en": "Apply pressure", "sentence_en": "", "display_rule": "hidden"},
     },
+    # `m_hand`／`m_foot` 照**真實 DB 形狀**給：`sentence_text_zh` 是 NULL、`sentence_text_en`
+    # 是空字串、兩語標籤都有值。少了這兩條就驗不到「不入句」——`_sent()` 的回退鏈
+    # （句面→標籤，英文再退中文）一被走到就會把「手度」／"Hand turn" 漏進句子。
     "m_verb": {"m_push": {"label": "推", "sentence": "推",
-                          "label_en": "Push", "sentence_en": "push it"}},
+                          "label_en": "Push", "sentence_en": "push it",
+                          "pricing_kind": "ladder"},
+               "m_hand": {"label": "手度", "sentence": None,
+                          "label_en": "Hand turn", "sentence_en": "",
+                          "pricing_kind": "hand"},
+               "m_foot": {"label": "腳步", "sentence": None,
+                          "label_en": "Foot step", "sentence_en": "",
+                          "pricing_kind": "foot"}},
     # `x_none`／`i_none` 照**真實 DB 形狀**給（V2 實測）：句面兩語皆空、標籤兩語皆有值。
     # 少了這兩條，「哨兵不入句」的斷言就是空頭——守衛拿掉後 `_sent(None)` 仍回 ""，
     # 突變測試四個變體全部存活（2026-08-19 實測）。有了這兩條，回退鏈
@@ -71,6 +81,8 @@ TERMS = {
     "a_hard": {"zh": "較難處理", "en": "Difficult to handle"},
     "a_press": {"zh": "施加壓力", "en": "Apply pressure"},
     "a_align": {"zh": "對準", "en": "aligned to within 4 mm"},
+    "m_hand": {"zh": "手度", "en": "Hand turn"},
+    "m_foot": {"zh": "腳步", "en": "Foot step"},
 }
 LOCALES = ("zh", "en")
 
@@ -305,6 +317,89 @@ def test_both_cm_x_and_i_present_and_none_skipped(locale):
     lbl = "label" if locale == "zh" else "label_en"
     assert occurrences(none_out, LABELS["x"]["x_none"][lbl]) == 0, none_out
     assert occurrences(none_out, LABELS["i"]["i_none"][lbl]) == 0, none_out
+
+
+# M 的伴隨維度（`pricing_kind` ∈ {hand, foot}）不入句。
+#
+# 為什麼還要測「只有伴隨維度」這種輸入——引擎已經用 `M_COMPANION_WITHOUT_VERB` 擋掉它了：
+# 歷史 `most_cycles.slot_inputs` 裡就有這種列（回放鐵則下不改資料，實測 2 筆），而敘事
+# 仍有多條**重新產生**的路徑會吃到它：motion module 版本讀取時即時組句（該表沒有
+# `narrative_en` 欄位）、日後的敘事重算腳本。這些路徑產出的 M 子句必須整段消失，
+# 而不是長出一句「以手度實施移動」——那句話宣稱有移動，但那一格是 0 TMU。
+# （worksheet 的 `narrative_zh`／`narrative_en` 是**存檔時**落盤的快照、讀取不重算，
+#  所以那 2 筆既有列的舊敘事不會自動消失；清理要靠獨立的重算腳本，見 ADR-032 D7.6。）
+
+# 標點：子句之間才有分隔符，句首不得有（既有缺陷，D7.6 之後這條路更常被走到）。
+
+
+@pytest.mark.parametrize("locale", LOCALES)
+def test_both_cm_clause_has_no_leading_separator(locale):
+    """CM 第二句沒有地點、也沒有 M 動詞時，第一個子句前面不得留分隔符。
+
+    中文舊寫法逐句 `s += "，" + 子句`，於是吐出「…伸手約25公分。，並壓合機台，並檢查。」；
+    英文一開始就是 `parts` list ＋ join，沒有這個問題——本條把兩語釘在同一個形狀（R3）。
+    """
+    cyc = _cm_cycle(m3={"m_components": [{"verb_code": "m_hand", "angle_deg": 0}]})
+    out = render_with(locale, cyc, to="")
+    assert "。，" not in out and ". ," not in out, out
+    # 子句本身照常出現（不是靠整段消失來過關）
+    assert occurrences(out, LABELS["x"]["x_press"]["sentence" if locale == "zh" else "sentence_en"]) == 1
+
+
+@pytest.mark.parametrize("locale", LOCALES)
+def test_both_cm_clause_absent_leaves_no_empty_sentence(locale):
+    """整個 CM 子句都沒有內容（無地點／無動詞／X、I 皆哨兵）→ 不得留下空句子。"""
+    cyc = _cm_cycle(m3={"m_components": []}, x4={"x_code": "x_none"}, i5={"i_code": "i_none"})
+    out = render_with(locale, cyc, to="")
+    assert "。。" not in out and ".." not in out, out
+    assert "。，" not in out and ". ," not in out, out
+
+
+M_COMPANION_ONLY = [
+    pytest.param([{"verb_code": "m_hand", "angle_deg": 0}], "m_hand", id="hand"),
+    pytest.param([{"verb_code": "m_foot", "distance_cm": 0}], "m_foot", id="foot"),
+]
+
+
+@pytest.mark.parametrize("locale", LOCALES)
+@pytest.mark.parametrize("comps,code", M_COMPANION_ONLY)
+def test_both_m_companion_only_produces_no_move_clause(locale, comps, code):
+    """只有伴隨維度時，M 子句整段不出現（兩語皆然），其餘子句原封不動。"""
+    out = render(locale, _cm_cycle(m3={"m_components": comps}))
+    assert occurrences(out, TERMS[code][locale]) == 0, f"{locale} 的 {code} 不該入句：{out}"
+    # 對照：同一條 cycle 換成真動詞就會有 M 子句 → 上面的 0 不是因為整句話本來就沒東西
+    with_verb = render(locale, _cm_cycle(m3={"m_components": [{"verb_code": "m_push"}]}))
+    assert len(with_verb) > len(out)
+    # X／I 兩段不受影響
+    key = "sentence" if locale == "zh" else "sentence_en"
+    assert occurrences(out, LABELS["x"]["x_press"][key]) == 1
+    assert occurrences(out, LABELS["i"]["i_check"][key]) == 1
+
+
+@pytest.mark.parametrize("locale", LOCALES)
+@pytest.mark.parametrize("comps,code", M_COMPANION_ONLY)
+def test_both_m_companion_never_appears_beside_a_real_verb(locale, comps, code):
+    """正當併用（真動詞＋伴隨維度）：動詞入句、伴隨維度仍然不入句。
+
+    這是黃金測試裡那些多分量案例的敘事面——TMU 取 max 要看兩顆，句子只講動詞。
+    動詞排在第一顆，所以這條**擋的是「伴隨維度被額外接一段」**；「認不出伴隨維度」
+    這個迴歸由下一條（伴隨維度排前面）擋，順序遮蔽的問題在那裡說明。
+    """
+    key = "sentence" if locale == "zh" else "sentence_en"
+    out = render(locale, _cm_cycle(m3={"m_components": [{"verb_code": "m_push"}] + comps}))
+    assert occurrences(out, LABELS["m_verb"]["m_push"][key]) == 1, out
+    assert occurrences(out, TERMS[code][locale]) == 0, out
+
+
+@pytest.mark.parametrize("locale", LOCALES)
+def test_both_m_companion_first_still_picks_the_verb(locale):
+    """順序無關：伴隨維度排在動詞**前面**時，句子取的仍是動詞而不是第一顆分量。"""
+    key = "sentence" if locale == "zh" else "sentence_en"
+    out = render(locale, _cm_cycle(
+        m3={"m_components": [{"verb_code": "m_hand", "angle_deg": 180},
+                             {"verb_code": "m_push", "distance_cm": 45}]}))
+    assert occurrences(out, LABELS["m_verb"]["m_push"][key]) == 1, out
+    assert occurrences(out, TERMS["m_hand"][locale]) == 0, out
 
 
 # ── 3. 英文字面：ADR-032 D7.4 的四個語序案例 ──────────────────────

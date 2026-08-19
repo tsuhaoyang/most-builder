@@ -241,5 +241,6 @@ python3 scripts/core_logic/level_system_validator.py
 | A3 返回、repeat、override、I/X 新檔位、範圍錯誤 | **新增** | E1/E4/E7/C5/E9 全套黃金＋反例 |
 | X 動態秒數 ≤0/未填 | **新增** | CL-01 §2 X（v3 認證「必須輸入正數」）：mode=seconds 且秒數未填/0 → 422 `X_SECONDS_REQUIRED`；負秒維持 `X_NEGATIVE` 先攔（區分「符號錯誤」與「未填」）。舊案例「X 0 秒→0」改列反例 |
 | R116 CM 解構 | **值變更（E2）** | 300→299.778 |
+| M 手度／腳步單獨成格 | **新增反例（2026-08-19）** | 字典 `M.controls.verb.required=true`：伴隨維度不得單獨成格 → 422 `M_COMPANION_WITHOUT_VERB`（ADR-028 §2 A8）。正向對照：與動詞併用仍照常取 max，且**不入敘事句**（ADR-032 D7.6，中英同步）。排序鎖：單獨一顆 181° 手度仍報 `M_HAND_RANGE` |
 
-執行點：`tests/unit/test_most_engine.py`（37）＋`test_narrative.py`（6）＋`scripts/core_logic/minimost_sequence_validator.py`（83）＋`engine_golden_test.py`（54，含 V1 回放段 5 例）＋`run_all.py` 彙總。
+執行點：`tests/unit/test_most_engine.py`（49）＋`test_narrative.py`（202，雙語參數化）＋`scripts/core_logic/minimost_sequence_validator.py`（88）＋`engine_golden_test.py`（60，含 V1 回放段 5 例）＋`level_system_validator.py`（26）＋`run_all.py` 彙總（174）。

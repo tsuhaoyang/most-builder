@@ -66,13 +66,16 @@ def cm(reach0: float, g: str, verb: str, dist: float, x: str, x_sec: float, i: s
     """控制移動 CM：A B G M X I A（取 a0/g2/m3/x4/i5）。
 
     M 計價由 verb 種類決定：ladder=距離(distance_cm)、rotate=直徑+圈數、hand=角度、fixed(m_btn/m_screw)=固定。
+    `verb=""` → M 格留空（`m_components=[]`）：工作全在 X 的動作（例如刷條碼）沒有受控移動，
+    M0 是合法輸入，不必塞佔位分量。
     """
+    comps = [MComponent(verb_code=verb, distance_cm=dist, angle_deg=angle,
+                        revolutions=rev, diameter_cm=dia)] if verb else []
     return CycleIn(
         seq="CM",
         a0=ASlot(reach_cm=reach0),
         g2=GSlot(g_code=g),
-        m3=MSlot(m_components=[MComponent(
-            verb_code=verb, distance_cm=dist, angle_deg=angle, revolutions=rev, diameter_cm=dia)]),
+        m3=MSlot(m_components=comps),
         x4=XSlot(x_code=x, x_seconds=x_sec),
         i5=ISlot(i_code=i),
     )
@@ -108,7 +111,10 @@ STEPS: list[tuple[str, str, CycleIn]] = [
     ("撕除螢幕保護膜", "保護膜", cm(20, "g_pick_sel", "m_teartape", 15, "x_none", 0, "i_none")),
     # X 用 `x_scan_bar`（刷條形碼）：舊碼 `x_scan` 不在 V2 認證字典裡，會被引擎擋成
     # X_UNKNOWN 讓整份 seed 掛掉。此碼 mode='fixed'，秒數取自字典，故這裡傳 0。
-    ("掃描條碼建檔", "條碼", cm(25, "g_touch", "m_hand", 0, "x_scan_bar", 0, "i_check")),
+    # M 格留空（verb=""）：刷條碼的工作在 X，手沒有受控移動。原本填的 `m_hand` 是計價維度
+    # （pricing_kind='hand'，按手轉角度查表）不是動作動詞，且 angle_deg=0 → M 恆 0 TMU，
+    # 純佔位卻讓敘事長出「以手度實施移動」的假句子。tech_line 不變：A10 B0 G3 M0 X6 I6 A0。
+    ("掃描條碼建檔", "條碼", cm(25, "g_touch", "", 0, "x_scan_bar", 0, "i_check")),
     ("熱壓導熱膠固化", "導熱膠", cm(15, "g_touch", "m_push", 3, "x_heat", 3.0, "i_none")),
     ("按壓功能測試治具", "測試治具", cm(30, "g_grasp", "m_push", 5, "x_press", 2.0, "i_check")),
     ("旋緊天線接頭", "天線", cm(15, "g_grasp", "m_rotate", 0, "x_none", 0, "i_align1", rev=3, dia=1)),

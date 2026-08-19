@@ -3,8 +3,8 @@
 引擎層黃金/反例在 tests/unit/test_most_engine.py（36 條，勿動）；本檔補 **API 層**缺口：
 - POST /api/v2/minimost/calculate 走 MINIMOST_FACTORY_V2（DB 載入路徑）的 GM=28 / CM=29（推45cm）。
 - 新錯誤碼經 API 邊界的 422 合約：A_RETURN_COMPONENT / P_ADDON_CONFLICT / OVERRIDE_INVALID /
-  REPEAT_INVALID 以 {detail: {code, message}} 呈現；repeat 範圍驗證權威＝引擎 _repeat/_no_repeat
-  （schema 只驗型別 int|None，單一驗證來源）。
+  REPEAT_INVALID / M_COMPANION_WITHOUT_VERB 以 {detail: {code, message}} 呈現；
+  repeat 範圍驗證權威＝引擎 _repeat/_no_repeat（schema 只驗型別 int|None，單一驗證來源）。
 """
 from __future__ import annotations
 
@@ -138,3 +138,51 @@ async def test_calculate_override_applies_and_marks_star(client):
     body = r.json()
     assert body["total_tmu"] == 38
     assert "G16*" in body["tech_line"]
+
+
+# ── M 伴隨維度：`M_COMPANION_WITHOUT_VERB`（字典 M.controls.verb.required=true）──
+
+async def test_calculate_m_companion_without_verb_422(client):
+    """手度單獨成格 → 422 M_COMPANION_WITHOUT_VERB（訊息要點得出是哪個碼）。
+
+    值域判斷需要 rule-set 才知道 `pricing_kind`，所以這條在引擎不在 schema
+    （ADR-028 §2 決策 C-1／ADR-023 §3.5）——因此必須驗它真的走到 API 的 422 合約，
+    而不是被 Pydantic 攔成一個形狀錯誤。
+    """
+    cyc = dict(CM_GOLD, m3={"m_components": [{"verb_code": "m_hand", "angle_deg": 90}]})
+    r = await _calc(client, cyc)
+    assert r.status_code == 422, r.text
+    body = r.json()["detail"]
+    assert body["code"] == "M_COMPANION_WITHOUT_VERB"
+    assert "m_hand" in body["message"]
+
+
+async def test_calculate_m_companion_with_verb_200_and_takes_max(client):
+    """正向對照：真動詞＋手度合法，M 仍取 max（推45→16 vs 手度180→10 ⇒ 16，總計 29）。
+
+    沒有這條，上一條就證明不了加嚴的是「缺動詞」而不是「用了手度」。
+    """
+    cyc = dict(CM_GOLD, m3={"m_components": [{"verb_code": "m_push", "distance_cm": 45},
+                                             {"verb_code": "m_hand", "angle_deg": 180}]})
+    r = await _calc(client, cyc)
+    assert r.status_code == 200, r.text
+    body = r.json()
+    assert body["breakdown"][3] == {"letter": "M", "tmu": 16}
+    assert body["total_tmu"] == 29
+
+
+async def test_calculate_requires_authentication(client, monkeypatch):
+    """RBAC：calculate 只要求登入（`current_user`，無角色門檻）——匿名 → 401。
+
+    conftest 會設 `AUTH_DEV_USER`（dev fallback 身分），此處必須拿掉，
+    否則匿名請求被解析成 dev 使用者而回 200。
+    """
+    import httpx
+
+    from ddm_v2.main import create_app
+
+    monkeypatch.delenv("AUTH_DEV_USER", raising=False)
+    transport = httpx.ASGITransport(app=create_app())
+    async with httpx.AsyncClient(transport=transport, base_url="http://test") as anon:
+        r = await anon.post("/api/v2/minimost/calculate", json=CM_GOLD)
+    assert r.status_code == 401, r.text

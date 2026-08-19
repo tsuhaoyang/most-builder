@@ -20,7 +20,7 @@ if TYPE_CHECKING:
 
 from ddm_v2.nlp.normalization import MAX_PARSE_TEXT_CHARS
 from ddm_v2.schemas.v2.import_excel import REQUIRED_FIELDS
-from ddm_v2.services.v2.template_matching import score_keywords
+from ddm_v2.services.v2.template_matching import score_template
 
 logger = logging.getLogger(__name__)
 
@@ -205,7 +205,7 @@ async def build_row_matches(session: "AsyncSession", rows: list[dict]) -> list[d
         desc = str(row.get("description") or "")
         scored = []
         for t in templates:
-            s, hits = score_keywords(desc, list(t.keywords or []))
+            s, hits = score_template(desc, t)   # 關鍵字來源收斂在 template_matching（ADR-032 I3）
             if s > 0:
                 scored.append((s, hits, t))
         scored.sort(key=lambda x: x[0], reverse=True)

@@ -369,6 +369,51 @@ mutation 端點與「標記已覆核」UI 留給下一輪。**不要把 Phase B 
 既有列由一次性回填腳本補。**回填腳本不得重算 TMU**——必須以每個 cycle 自己 pin 的
 `rule_set_id` 載標籤（見 I4），否則就是拿現行 active 字典把歷史案件靜默重算一遍。
 
+**D7.6 敘事排除規則：M 的伴隨維度不入句（2026-08-19 補入，User 裁決）**
+
+M 格 `pricing_kind` ∈ {`hand`,`foot`}（`m_hand`／`m_foot`）的分量**兩語都不入句**。
+
+- **依據**：IE 認證字典的 `parameters.M.controls` 是三個平行控制群，`hand_degree`／`foot_step`
+  的選項**全部沒有句面**（字典自己的範例 `{verb:"理(<=4(10))", hand_degree:"<=180"}` →
+  `mi_text: "理"`，句子只寫動詞）。它們是計價維度，不是動作動詞。
+- **落點在敘事層、判準是 `pricing_kind`**，不是靠資料留空句面。三個理由：
+  1. 直接編碼字典語意，對未來新增的同類計價方式自動生效；
+  2. 不需要動任何 rule-set 資料（`certified_import` 凍結，改值要走 JSON→converter→新版本）；
+  3. **留空句面達不到這個效果**——`_sent()` 的回退鏈（中文：句面→標籤；英文：句面→標籤→
+     中文句面→中文標籤）一被走到就會把「手度」／"Hand turn" 漏進句子。
+- 實作：`providers.build_label_map()` 把 `pricing_kind` 帶進 labels，中英兩套樣板各自的
+  `_m_verb_entry()` 取第一顆非伴隨維度的分量；整格沒有動詞 → M 子句整段不出現
+  （英文退回 "work at {to}"，與中文保留「在『to』一側」對稱）。共用的只有
+  `rule_set_data.M_COMPANION_KINDS` 這個定義（R3 要求兩邊同步，D8 的雙語不變式守著）。
+- **I1 不受影響**：排除的是字串。伴隨維度照常參與 `max()`——`m_push`45cm(16) ＋ 手度180(10)
+  仍是 M16。
+- **與引擎加嚴的關係**：ADR-028 A8（`M_COMPANION_WITHOUT_VERB`）同批落地，禁止「只有伴隨維度」
+  的新輸入。但本規則**仍必須涵蓋那種形狀**：歷史 `most_cycles.slot_inputs` 裡就有這種列
+  （依 ADR-023 §3.4 不改資料，實測 2 筆），任何**重新產生**敘事的路徑（存檔重算、
+  motion module 版本讀取、日後的回填腳本）碰到它時，M 子句必須整段消失。
+- **生效範圍（重要，別誤讀成「歷史列會自動修好」）**：worksheet 的
+  `most_cycles.narrative_zh`／`narrative_en` 是**寫入時產生並落盤的快照**
+  （`services/v2/worksheet_service.py` 存檔路徑產生、讀取路徑直接回欄位，不重算），
+  所以本規則**只對之後寫入的 cycle 生效**。上述 2 筆既有列的錯誤敘事**不會自動消失**——
+  它們現在也重存不了（A8 會擋 422），`scripts/backfill_narrative_en.py` 又只補
+  `narrative_en IS NULL`。要清掉必須另寫一支**以各 cycle 自己 pin 的 `rule_set_id`
+  重算敘事、不動 TMU**的腳本（follow-up，不在本輪）。
+  **例外**：`motion_module_versions` 沒有 `narrative_en` 欄位（見 D7.2），其英文敘事是
+  **讀取時即時產生**的，所以版本快照那條路徑一上線就自動套用本規則。
+
+> **`sentence_text_*` 為 NULL vs 空字串：兩份文件語意衝突，此處留紀錄（不在本輪統一）。**
+> `models/v2/rule_set_tables.py:63` 的欄位註解寫「`sentence_text_zh`：NULL 回退 `label_zh`」；
+> `scripts/dev_seed_i18n_labels.py` 的句面表註解寫「空字串＝**刻意不入句**」並列出 7 條
+> （`b_none`／`a_hard`／`a_press`／`m_hand`／`m_foot`／`x_none`／`i_none`）。實際資料裡
+> `m_hand`／`m_foot` 是 `sentence_text_zh` **NULL** ＋ `sentence_text_en` **空字串**——兩種寫法各佔一半。
+> 現況：**「不入句」從來不是由句面留空達成的**，7 條各有顯式機制（`a_hard`／`a_press` ＝
+> `display_rule='hidden'`；`x_none`／`i_none` ＝樣板哨兵判斷；`b_none` 不入句；`m_hand`／`m_foot`
+> ＝本節的 `pricing_kind`），而句面留空只是「這條沒有句面素材」的事實陳述，回退鏈照走。
+> 兩份註解因此都只對了一半。要統一的話有兩條路（**本 ADR 不選**）：把「不入句」升為顯式欄位
+> （例如 `sentence_text_*` 之外加 `narrative_visibility`），或明訂「空字串＝不入句、NULL＝回退」
+> 並讓 `_sent()` 分辨兩者。在裁決前，**不要把任何新的「不入句」需求寄託在句面留空上**——
+> 它不會生效，而且不會有測試變紅。
+
 ### D8 防止中英樣板漂移：語意不變式的雙語參數化測試（架構師獨立提案）
 
 **問題**：兩套樣板 ＝ 兩份維護面積。未來 IE 改一條敘事規則（例如 E6 又加一個 `display_rule` 值），
@@ -442,6 +487,25 @@ mutation 端點與「標記已覆核」UI 留給下一輪。**不要把 Phase B 
 > 判準：改動後 `tests/unit/test_narrative.py` 的 `test_zh_*` 逐字斷言必須**全數不變且全綠**；
 > 有任何一條需要改測試去迎合程式，就是真的踩到 I2，必須退回重議。
 
+> **例外：修正錯誤敘事（2026-08-19 User 裁決）**。I2 守的是「**中文不得因英文化而改變**」——
+> 它禁的是英文化造成的副作用，不是禁止修正一句本來就寫錯的中文。D7.6 的敘事排除規則
+> （M 的 `pricing_kind` ∈ {hand,foot} 不入句）**同時改變中文與英文輸出**，且改的是**實際資料
+> 的形狀**（實測 2 筆 `most_cycles.slot_inputs` 是這種形狀，舊敘事產出「以手度實施移動」
+> 而該格是 0 TMU、英文對應 "Then Hand turn at the bench"）。這屬於**刻意的錯誤修正**，
+> 不是英文化的副作用：
+> 它由字典語意驅動，就算沒有英文化也該修，只是英文側同一個缺陷讓它被發現。
+> 判準（與上一段的空白防呆不同，因為這裡**確實**要改中文輸出）：
+> 1. 變更必須**兩語同時**（R3），且只影響 M 的伴隨維度子句，其餘子句位元級不變；
+> 2. `test_zh_*` 六條逐字斷言仍須**全數不變且全綠**（它們驗的是 P/X/I 與 twist，不碰此路徑）；
+> 3. TMU 不得改變（I1）——伴隨維度照常參與 `max()`。
+> 三條有任何一條不成立，就不是「修正錯誤敘事」而是真的踩到 I2，退回重議。實測：
+> `test_zh_*` 6 passed、一條未改；黃金值 167 項全綠。
+>
+> **落地範圍**：worksheet 的 `narrative_zh`／`narrative_en` 是**存檔時**產生的快照
+> （讀取路徑直接回欄位、不重算），所以本例外實際改到的是**之後寫入**的 cycle；
+> 上述 2 筆既有列的舊敘事仍原樣躺在 DB，要清掉得靠獨立的重算腳本（D7.6，follow-up）。
+> 這一點反而讓 I2 的風險更小：既有中文輸出連「刻意修正」的那部分都沒有被就地改寫。
+
 **I3 — `_en` 不得進入任何決定 TMU 的路徑。**
 禁止：`_en` 被登記為同義詞、被寫入 `motion_templates.keywords`、被 `nlp/lexicon.py` 建索引、
 被 `template_matching.score_keywords` 消費。
@@ -451,6 +515,31 @@ mutation 端點與「標記已覆核」UI 留給下一輪。**不要把 Phase B 
 > 更根本的依據是 ADR-023 規則 1 補節二：**同義詞登記的合法來源只有「標籤衍生」與「IE 裁決」兩種，
 > 工程端不得以相似性自行判定**——機器翻譯的英文字串屬於第三種來源，明文禁止。
 > 可機械檢查：CI 守衛擋 `nlp/`、`template_matching.py`、`synonym_service.py` 讀取任何 `_en` 欄位。
+
+> **近失（2026-08-19）：守衛漏放了一次真實違規，因此擴大兩個維度。**
+> 實作 ADR-028 A8 時，有人做 DRY 清理，把 `services/v2/wi_ai_service.py::_option_labels()`
+> ——一份**刻意重複的純中文** label map——換成 `most_engine/providers.py` 的共用 label-map
+> builder。那條路徑是 `wi_ai_service` → `most_compiler/engine_gate.py` → `compute_cycle`，
+> **決定 TMU**；共用 builder 會把 `label_en`／`sentence_text_en` 帶進 labels dict。
+> 改動當下 unit 1159 ＋ integration 533 ＋ 黃金 174 **全綠**，本守衛也全綠，由人工複審擋下。
+> 失效原因有兩個，缺一不可：
+> 1. **覆蓋面**——`_guarded_py_files()` 當時只掃 `nlp/`＋2 個檔，`most_compiler/` 與
+>    `wi_ai_service.py` 都不在內。
+> 2. **穿透性**——就算掃了也抓不到：違規的字面是那支 builder 的**函式名**，
+>    `label_en` 三個字在 `providers.py` 裡，不在被掃的檔案裡。**純欄位名 grep 看不穿函式邊界。**
+>
+> 處置（已落地於 `tests/unit/test_i18n_en_field_isolation.py`）：掃描範圍加入
+> `most_compiler/` 與 `wi_ai_service.py`；新增**載體符號**維度 `FORBIDDEN_EN_CARRIERS`
+> ——「本身會把 `_en` 具體化進回傳值的 helper」，守衛對象呼叫它即違規；並加後設測試回頭
+> 驗證每個載體的定義確實仍含 `_en` 欄位（避免清單腐爛成沒有根據的魔法字串）。
+> 擴大後以還原前的版本實測：`test_i3_no_en_carrier_calls_in_tmu_determining_paths`
+> **1 failed**，錯誤訊息精確指出 `(wi_ai_service.py, build_label_map)`；還原後 6 passed。
+> `_option_labels()` 上也補了錨點註解說明「這份重複是刻意的」——先前它一個字的說明都沒有，
+> 這正是它會被 DRY 掉的機械成因。
+>
+> 一般化的教訓（值得套用到其他 grep 型守衛）：**零容忍的字面 grep 只能守「符號出現在被掃檔案裡」
+> 的違規**。當一個 helper 把受管制的東西封裝起來，違規就會從被掃的檔案裡消失，
+> 而守衛依然全綠——每個 grep 型守衛都該一併問「有沒有一支函式可以代我讀它？」
 
 **I4 — 敘事回填不得重算 TMU。** 回填 `narrative_en` 必須以每個 cycle 自己的 `rule_set_id`
 載入標籤（`most_cycles.rule_set_id` 是回放的唯一依據）。以現行 active 字典重算歷史 cycle，

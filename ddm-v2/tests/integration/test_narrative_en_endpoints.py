@@ -78,6 +78,44 @@ async def test_english_narrative_contains_no_chinese_when_material_is_seeded(cli
     assert not any("一" <= ch <= "鿿" for ch in en), en
 
 
+def _cm_row(seq_no: int = 1, **extra) -> dict:
+    """CM 列：手度（180°→10）＋真動詞（推 45cm→16），M 取 max=16 ⇒ 總計 29 TMU。
+
+    手度**刻意排在第一顆**：樣板原本取的就是 `m_components[0]`，動詞排前面時
+    「認不出伴隨維度」這個迴歸會被順序遮住（實測：`pricing_kind` 拿掉後測試照樣綠）。
+    """
+    return {"id": str(uuid.uuid4()), "seq_no": seq_no, "hand": "RH", "object_vocab_id": OBJ,
+            "frequency": 1, "narrative": "ut narrative_en cm",
+            "cycle": {"seq": "CM", "rule_set_code": V2,
+                      "a0": {"reach_cm": 25}, "g2": {"g_code": "g_touch"},
+                      "m3": {"m_components": [{"verb_code": "m_hand", "angle_deg": 180},
+                                              {"verb_code": "m_push", "distance_cm": 45}]},
+                      "x4": {"x_code": "x_none"}, "i5": {"i_code": "i_none"}},
+            "level": {"ascription": "main", "level": "1"}, **extra}
+
+
+async def test_m_companion_dimension_stays_out_of_both_narratives(client):
+    """M 的手度／腳步不入句——**走真實 DB 標籤路徑**驗兩語（單元測試只驗樣板）。
+
+    這條守的是 `providers.build_label_map()` 真的把 `pricing_kind` 從 DB 帶進 labels：
+    少了那一鍵，兩套樣板都認不出伴隨維度，句子會回退成標籤而長出「以手度實施移動」／
+    "Hand turn"——而 TMU 完全正確，沒有任何數字會變紅。
+
+    同時釘住 I1：排除的是字串，不是分量——M 仍是 max(推45→16, 手度180→10)=16。
+    """
+    new = await _fresh_ws(client)
+    r = await client.put(f"/api/v2/worksheets/{new}", json={"rows": [_cm_row()]})
+    assert r.status_code == 200, r.text
+
+    cyc = (await client.get(f"/api/v2/worksheets/{new}")).json()["rows"][0]["cycle"]
+    assert cyc["total_tmu"] == 29, "伴隨維度只是不入句，仍照常參與 max"
+    assert cyc["tech_line"] == "A10 B0 G3 M16 X0 I0 A0", cyc["tech_line"]
+    for text_ in (cyc["narrative"], cyc["narrative_en"]):
+        assert "手度" not in text_, text_
+        assert "Hand turn" not in text_, text_
+    assert "推" in cyc["narrative"], cyc["narrative"]
+
+
 async def test_clone_worksheet_carries_narrative_en(client):
     """clone 是逐欄複製而非重算——`narrative_en` 必須跟著搬，否則 clone 出來的
     表英文欄整片空白（`narrative_zh` 早有此行為，兩者必須對稱）。"""

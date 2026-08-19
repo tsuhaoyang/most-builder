@@ -103,6 +103,11 @@ def _run() -> int:
     chk("旋轉 dia10/2圈=32", compute_cycle(_cm(_a(), {"g_code": "g_grasp"}, {"m_components": [{"verb_code": "m_rotate", "diameter_cm": 10, "revolutions": 2}]}, {"x_code": "x_none"}, {"i_code": "i_none"}, _a()), RS).slot_tmus[3] == 32)
     err("旋轉 dia60 超界", "M_ROTATION_RANGE", lambda: compute_cycle(_cm(_a(), {"g_code": "g_grasp"}, {"m_components": [{"verb_code": "m_rotate", "diameter_cm": 60, "revolutions": 1}]}, {"x_code": "x_none"}, {"i_code": "i_none"}, _a()), RS))
     err("M 未知動詞", "M_UNKNOWN", lambda: compute_cycle(_cm(_a(), {"g_code": "g_grasp"}, {"m_components": [{"verb_code": "m_zzz"}]}, {"x_code": "x_none"}, {"i_code": "i_none"}, _a()), RS))
+    # 伴隨維度不得單獨成格（ADR-028 §2 A8；字典 M.controls.verb.required=true）。
+    # 上一條「手度 181° 超界」刻意留在本條之前：值域檢查優先，順序顛倒會讓 M_HAND_RANGE 消失。
+    err("手度單獨成格", "M_COMPANION_WITHOUT_VERB", lambda: compute_cycle(_cm(_a(), {"g_code": "g_grasp"}, {"m_components": [{"verb_code": "m_hand", "angle_deg": 90}]}, {"x_code": "x_none"}, {"i_code": "i_none"}, _a()), RS))
+    err("腳步單獨成格", "M_COMPANION_WITHOUT_VERB", lambda: compute_cycle(_cm(_a(), {"g_code": "g_grasp"}, {"m_components": [{"verb_code": "m_foot", "distance_cm": 30}]}, {"x_code": "x_none"}, {"i_code": "i_none"}, _a()), RS))
+    chk("動詞＋腳步併用合法 max(理10cm→6,腳步30→16)=16", compute_cycle(_cm(_a(), {"g_code": "g_grasp"}, {"m_components": [{"verb_code": "m_li", "distance_cm": 10}, {"verb_code": "m_foot", "distance_cm": 30}]}, {"x_code": "x_none"}, {"i_code": "i_none"}, _a()), RS).slot_tmus[3] == 16)
 
     print("\n── G. X：half-up（E2）＋九檔 ──")
     chk("並壓合 10 秒=277.778", abs(compute_cycle(_cm(_a(), {"g_code": "g_grasp"}, {"m_components": []}, {"x_code": "x_press", "x_seconds": 10}, {"i_code": "i_none"}, _a()), RS).slot_tmus[4] - 277.778) < 1e-9)

@@ -8,15 +8,22 @@
 - P 附加 display_rule 三態：show_self（插入/卡合取代 base 動詞）、prefix_visible_term（對準前綴）、hidden（只計 TMU 不入句）。
 - GM 移動格（slot3）含手度（twist）→ 句中插入「翻轉『object』」（v3 dependency 規則）。
 - slot repeat > 1 → 動詞後綴「×N」。
+- M 格的手度／腳步（`pricing_kind` ∈ `M_COMPANION_KINDS`）**不入句**：它們是字典裡與 verb
+  平行的伴隨維度（`hand_degree`／`foot_step`），字典中全部沒有句面，只是 v2 把三個控制群
+  壓扁成同一張 `rule_m_verbs` 才長得像替代動詞。
 
 labels 形狀（由 providers.load_options_from_db 提供）：
   {"g": {code: {"label", "sentence"}}, "p_base": {...}, "p_addon": {code: {"label", "sentence", "display_rule"}},
    "m_verb": {...}, "x": {...}, "i": {...}}
-sentence 為 NULL 時回退 label（V1 資料相容）。
+sentence 為 NULL 時回退 label（V1 資料相容）。**這個回退是「缺句面」的補救，不是「不入句」
+的表達**——真正要排除的選項各有顯式機制（P 附加＝`display_rule='hidden'`、X/I＝`x_none`／
+`i_none` 哨兵、M 伴隨維度＝本檔的 `pricing_kind` 判斷），不靠句面留空來達成。
 """
 from __future__ import annotations
 
 from typing import Any
+
+from ddm_v2.most_engine.rule_set_data import M_COMPANION_KINDS
 
 HAND_NAMES = {"RH": "右手", "LH": "左手", "BH": "雙手"}
 
@@ -36,6 +43,21 @@ def _sent(entry: dict[str, Any] | None) -> str:
 def _rep_suffix(slot: dict[str, Any] | None) -> str:
     rc = (slot or {}).get("repeat_count")
     return f"×{int(rc)}" if rc and int(rc) > 1 else ""
+
+
+def _m_verb_entry(m3: dict[str, Any], labels: dict[str, dict[str, Any]]) -> dict[str, Any] | None:
+    """M 段的敘事動詞＝第一顆**非伴隨維度**的分量；整格沒有動詞 → None（M 子句整段不出現）。
+
+    與 `narrative_en._m_verb_entry` 是刻意的平行實作（ADR-032 R3／D8），共用的只有
+    `M_COMPANION_KINDS` 這個定義。未知碼（不在 labels 裡）視為動詞，維持既有的「回退成
+    泛稱動詞」行為——那是素材缺漏，不是語意上不該入句。
+    """
+    for comp in m3.get("m_components") or []:
+        entry = labels.get("m_verb", {}).get(comp.get("verb_code"))
+        if (entry or {}).get("pricing_kind") in M_COMPANION_KINDS:
+            continue
+        return entry or {}
+    return None
 
 
 def _p_visible(p5: dict[str, Any], labels: dict[str, dict[str, Any]]) -> str:
@@ -94,19 +116,25 @@ def build_narrative(cycle: dict[str, Any], labels: dict[str, dict[str, Any]], vo
         m3 = cycle.get("m3") or {}
         x4 = cycle.get("x4") or {}
         i5 = cycle.get("i5") or {}
+        # 子句先收進 list 再以「，」串接（與 `narrative_en` 的 `parts` 同構，ADR-032 R3）。
+        # 逐句 `s += "，" + ...` 的寫法會在**第一個出現的子句前面**留一個多餘的逗號：
+        # 沒有 `to`、M 又沒有動詞時就是「…伸手約30公分。，刷條形碼，並檢查。」。
+        # 這是既有缺陷（與英文化無關），但 M 伴隨維度不入句之後這條路更常被走到。
+        parts: list[str] = []
         if to:
-            s += "在" + to + "一側"
-        mcs = m3.get("m_components") or []
-        if mcs:
-            mv = _sent(labels.get("m_verb", {}).get(mcs[0].get("verb_code"))) or "控制"
-            s += "，以" + mv + _rep_suffix(m3) + "實施移動"
+            parts.append("在" + to + "一側")
+        mv_entry = _m_verb_entry(m3, labels)
+        if mv_entry is not None:
+            mv = _sent(mv_entry) or "控制"
+            parts.append("以" + mv + _rep_suffix(m3) + "實施移動")
         x_sent = _sent(labels.get("x", {}).get(x4.get("x_code"))) if x4.get("x_code") not in (None, "x_none") else ""
         if x_sent:
-            s += "，" + x_sent + _rep_suffix(x4)
+            parts.append(x_sent + _rep_suffix(x4))
         i_sent = _sent(labels.get("i", {}).get(i5.get("i_code"))) if i5.get("i_code") not in (None, "i_none") else ""
         if i_sent:
-            s += "，" + i_sent + _rep_suffix(i5)
-        s += "。"
+            parts.append(i_sent + _rep_suffix(i5))
+        if parts:                      # 一個子句都沒有就不要多吐一個句號（原本會收成「。。」）
+            s += "，".join(parts) + "。"
 
     s += "最後收束返回。"
     return s

@@ -41,8 +41,13 @@ def gm(reach0, g, reach3, p_base, addons=None, precision=False):
 
 
 def cm(reach0, g, verb, dist=0, x="x_none", x_sec=0.0, i="i_none", rev=1, dia=0, angle=0):
+    """`verb=""`／None → M 格留空（`m_components=[]`）。
+
+    M0 是引擎的合法輸入，不必塞佔位分量；同 `gm()` 用 `g=""` 表示 B/G 留空的寫法。
+    """
+    comps = [MComponent(verb_code=verb, distance_cm=dist, angle_deg=angle, revolutions=rev, diameter_cm=dia)] if verb else []
     return CycleIn(seq="CM", a0=ASlot(reach_cm=reach0), g2=GSlot(g_code=g),
-                   m3=MSlot(m_components=[MComponent(verb_code=verb, distance_cm=dist, angle_deg=angle, revolutions=rev, diameter_cm=dia)]),
+                   m3=MSlot(m_components=comps),
                    x4=XSlot(x_code=x, x_seconds=x_sec), i5=ISlot(i_code=i))
 
 
@@ -61,7 +66,11 @@ TEMPLATES = [
     # mode='fixed' 0.216 秒（TMU 相同），本範本是通用「掃描」故取條碼版；PPID／工單二維碼
     # 是特定標籤，語意較窄。fixed 模式的秒數由字典提供、x_seconds 不參與計算，故傳 0
     # （與 dev_seed_30rows.py 一致；留著非零值只會誤導讀者）。
-    ("掃描/檢查", "scan/check", "檢測", "CM", ["scan", "check", "test", "inspect", "掃", "檢查", "測"], cm(25, "g_touch", "m_hand", x="x_scan_bar", x_sec=0, i="i_check")),
+    # M 格留空（`verb=""`）：這個動作的工作全在 X（刷條碼），手沒有受控移動。原本填 `m_hand`
+    # 是誤用——`m_hand` 的 pricing_kind='hand' 是**計價維度**（按手轉角度查表）而非動作動詞，
+    # 且 angle_deg=0 → M 恆為 0 TMU，只是一顆佔位；敘事還會生出「以手度實施移動」的假句子。
+    # 拿掉後 tech_line 不變：A10 B0 G3 M0 X6 I6 A0（M 本來就是 0）。
+    ("掃描/檢查", "scan/check", "檢測", "CM", ["scan", "check", "test", "inspect", "掃", "檢查", "測"], cm(25, "g_touch", "", x="x_scan_bar", x_sec=0, i="i_check")),
     ("插接線材", "plug cable", "組裝", "CM", ["plug", "connect", "cable", "接線", "插接"], cm(20, "g_grasp", "m_push", dist=6, i="i_align1")),
     # ── 成品化常見 pattern（含距離分級/精度，降低冷啟動）──
     ("小範圍拿取(≤50cm)", "take short reach", "取放", "GM", ["take short", "近距", "小範圍", "拿近件"], gm(30, "g_grasp", 30, "p_place_single")),

@@ -47,7 +47,9 @@ _CM_CYCLE = {
     "a0": {"reach_cm": 25},
     "b1": {},
     "g2": {"g_code": "g_touch"},
-    "m3": {"m_components": [{"verb_code": "m_hand", "angle_deg": 0}]},
+    # M 格留空：孤兒 `m_hand`（計價維度單獨成格）已被引擎判為 M_COMPANION_WITHOUT_VERB，
+    # 範本庫的既有資料由 migration v2_0042 清掉。這裡的重點是 X 碼，M 用合法的空格即可。
+    "m3": {"m_components": []},
     "x4": {"x_code": "x_scan", "x_seconds": 1.5},
     "i5": {"i_code": "i_check"},
     "a6": {},

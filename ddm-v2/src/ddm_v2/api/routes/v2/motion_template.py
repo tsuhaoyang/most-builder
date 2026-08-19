@@ -23,7 +23,7 @@ from ddm_v2.schemas.v2.motion_template import (
     MotionTemplatePatchIn,
 )
 from ddm_v2.services.v2.audit_service import log_audit
-from ddm_v2.services.v2.template_matching import score_keywords as _score
+from ddm_v2.services.v2.template_matching import score_template as _score
 
 router = APIRouter(prefix="/api/v2", tags=["v2-motion-templates"])
 
@@ -142,7 +142,7 @@ async def match_templates(payload: MatchIn, session: AsyncSession = Depends(get_
         MotionTemplate.is_active.is_(True), MotionTemplate.status == "standard"))).scalars().all()  # 匯入只比對標準庫
     scored = []
     for t in rows:
-        s, hits = _score(payload.description, list(t.keywords or []))
+        s, hits = _score(payload.description, t)   # 只傳範本物件；關鍵字由 template_matching 取（ADR-032 I3）
         if s > 0:
             scored.append((s, hits, t))
     scored.sort(key=lambda x: x[0], reverse=True)

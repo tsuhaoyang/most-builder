@@ -10,7 +10,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Any
 
-from ddm_v2.most_engine.rule_set_data import TMU_TO_SEC, RuleSetData
+from ddm_v2.most_engine.rule_set_data import M_COMPANION_KINDS, TMU_TO_SEC, RuleSetData
 
 GM_LETTERS = ("A", "B", "G", "A", "B", "P", "A")
 CM_LETTERS = ("A", "B", "G", "M", "X", "I", "A")
@@ -144,9 +144,15 @@ def _p_tmu(slot: dict[str, Any], rs: RuleSetData) -> int:
 
 def _m_tmu(slot: dict[str, Any], rs: RuleSetData) -> int:
     """E4/E9：repeat 只乘動詞類分量（fixed/ladder/rotate）再進 max，手度/腳步不乘（v3 認證）；
-    超出值表（V2 無 overflow 檔）→ 範圍錯誤，不得靜默套最大檔。"""
+    超出值表（V2 無 overflow 檔）→ 範圍錯誤，不得靜默套最大檔。
+
+    伴隨維度不得單獨成格（`M_COMPANION_WITHOUT_VERB`，依據＝字典 `M.controls.verb.required=true`）：
+    `hand`／`foot` 是 verb 之外的**平行控制群**，v2 壓扁成同一張表後才看起來像替代動詞。
+    """
     rep = _repeat(slot)
     vals: list[float] = []
+    kinds: set[str] = set()
+    companion_codes: list[str] = []
     for comp in slot.get("m_components") or []:
         code = comp.get("verb_code")
         if not code:
@@ -154,6 +160,9 @@ def _m_tmu(slot: dict[str, Any], rs: RuleSetData) -> int:
         if code not in rs.m_verbs:
             raise SequenceError("M_UNKNOWN", f"未知 M 動詞：{code}")
         kind, fixed = rs.m_verbs[code]
+        kinds.add(kind)
+        if kind in M_COMPANION_KINDS:
+            companion_codes.append(code)
         if kind == "fixed":
             vals.append(int(fixed or 0) * rep)
         elif kind == "ladder":
@@ -182,6 +191,26 @@ def _m_tmu(slot: dict[str, Any], rs: RuleSetData) -> int:
             vals.append(t * rep)
         else:
             raise SequenceError("M_KIND", f"未支援的 M 計價：{kind}")
+    # 結構檢查刻意排在逐分量值域檢查**之後**（ADR-028 A8「排序」；**不要調換**）。
+    #
+    # 反序的代價（實測）：`M_HAND_RANGE` 在**單分量輸入**上從此不可能出現——黃金反例
+    # 「手度 181° 超界」正是這個形狀，反序後 engine golden 直接 59 passed / 1 failed。
+    # 順帶還會遮掉 `M_UNKNOWN`：`m_zzz` ＋ `m_hand(90)` 在反序下報成缺動詞。
+    # （多分量輸入不受順序影響：`m_push(10)+m_hand(181)` 兩種順序都報 `M_HAND_RANGE`，
+    #  因為有真動詞就進不了本條。所以能被順序改寫的只有單分量那一類。）
+    #
+    # 為什麼「值域錯誤優先」是對的 tie-break——引擎是 first-error-wins，兩種順序的
+    # 修-重試來回次數一樣，差別只在**第一則訊息指到哪裡**：
+    #   (a) 「這顆分量本身填錯」貼近使用者剛動過的欄位，「整格缺動詞」是整格層級的話；
+    #   (b) 「缺動詞」前端自己看得出來（動詞下拉是空的），「181 超出值表」要有 rule-set 的
+    #       band 資料才判得出來、前端手上沒有——先報前端診斷不出來的那個，資訊量才最大。
+    if companion_codes and not (kinds - M_COMPANION_KINDS):
+        raise SequenceError(
+            "M_COMPANION_WITHOUT_VERB",
+            f"手度／腳步是 M 的伴隨維度，必須與動作動詞（推／理／按壓／旋轉…）併用，"
+            # 去重：訊息長度與分量顆數無關。實測 200k 顆同碼分量 → 未去重時組出 2 MB 訊息
+            f"不可單獨成格；本格只有 {sorted(set(companion_codes))}",
+        )
     return max(vals) if vals else 0
 
 

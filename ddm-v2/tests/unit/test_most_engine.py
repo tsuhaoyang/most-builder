@@ -143,9 +143,16 @@ def test_m_ladder_over_75_raises(rs):
 
 
 def test_m_foot_band_v2(rs):
-    """C2 定案：M 腳步走獨立帶（30cm→16；>75→42 overflow）。"""
+    """C2 定案：M 腳步走獨立帶（30cm→16；>75→42 overflow）。
+
+    走 compute_cycle 的那條**必須併一顆真動詞**：腳步是伴隨維度，單獨成格已由
+    `M_COMPANION_WITHOUT_VERB` 擋下（字典 `M.verb.required=true`）。這裡取 `m_li` 10cm→6，
+    讓腳步的 16 仍是 max 的勝出者——斷言驗到的還是腳步帶，不是被動詞頂上去的值。
+    """
     assert rs.foot_tmu(30) == 16 and rs.foot_tmu(80) == 42
-    cm = _cm(_a(), {"g_code": "g_grasp"}, {"m_components": [{"verb_code": "m_foot", "distance_cm": 30}]},
+    cm = _cm(_a(), {"g_code": "g_grasp"},
+             {"m_components": [{"verb_code": "m_li", "distance_cm": 10},
+                               {"verb_code": "m_foot", "distance_cm": 30}]},
              {"x_code": "x_none"}, {"i_code": "i_none"}, _a())
     assert compute_cycle(cm, rs).slot_tmus[3] == 16
 
@@ -173,6 +180,80 @@ def test_m_max_of_components(rs):
     r = compute_cycle(_cm(_a(), {"g_code": "g_grasp"}, {"m_components": [{"verb_code": "m_li", "distance_cm": 10}, {"verb_code": "m_hand", "angle_deg": 180}]},
                           {"x_code": "x_none"}, {"i_code": "i_none"}, _a()), rs)
     assert r.slot_tmus[3] == 10  # max(理10cm→6, 手度180→10)
+
+
+# ── M：伴隨維度不得單獨成格（`M_COMPANION_WITHOUT_VERB`）──
+#
+# 依據＝IE 認證字典 `parameters.M.controls`：`verb`(required=true)／`hand_degree`／`foot_step`
+# 是三個**平行控制群**，計價取 max。v2 把三群壓扁成單一 `rule_m_verbs` 清單、用 `pricing_kind`
+# 當判別欄，於是 `m_hand`／`m_foot` 在 UI 與 payload 上長得像替代動詞、能被單獨選取——
+# 這條驗證就是把字典的 `required=true` 補回來。
+
+def _m_only(rs_, comps):
+    return compute_cycle(_cm(_a(), {"g_code": "g_grasp"}, {"m_components": comps},
+                             {"x_code": "x_none"}, {"i_code": "i_none"}, _a()), rs_)
+
+
+@pytest.mark.parametrize("comps", [
+    pytest.param([{"verb_code": "m_hand", "angle_deg": 90}], id="hand-alone"),
+    pytest.param([{"verb_code": "m_hand", "angle_deg": 0}], id="hand-alone-zero-angle"),
+    pytest.param([{"verb_code": "m_foot", "distance_cm": 30}], id="foot-alone"),
+    pytest.param([{"verb_code": "m_hand", "angle_deg": 90}, {"verb_code": "m_foot", "distance_cm": 30}],
+                 id="hand-plus-foot-still-no-verb"),
+])
+def test_m_companion_without_verb_raises(rs, comps):
+    """手度／腳步（單獨或彼此併用）都不構成一個 M 格。"""
+    with pytest.raises(SequenceError) as e:
+        _m_only(rs, comps)
+    assert e.value.code == "M_COMPANION_WITHOUT_VERB"
+
+
+@pytest.mark.parametrize("verb,extra,verb_tmu", [
+    pytest.param("m_li", {"distance_cm": 10}, 6, id="ladder-6-hand-wins"),
+    pytest.param("m_btn", {}, 3, id="fixed-3-hand-wins"),
+    pytest.param("m_rotate", {"diameter_cm": 10, "revolutions": 2}, 32, id="rotate-32-verb-wins"),
+])
+def test_m_companion_with_a_real_verb_passes(rs, verb, extra, verb_tmu):
+    """正向對照：三種動詞計價（ladder/fixed/rotate）與手度併用都合法，且仍是取 max。
+
+    缺這段就無法證明加嚴是「補上 verb.required」而不是「一律禁用手度／腳步」——
+    黃金測試裡的多分量案例（`m_li`+手度180、`m_push`×3+手度180）正是這種正當併用。
+    三組刻意讓贏家兩邊都有（手度 180→10 勝出兩組、動詞 32 勝出一組），確保斷言不是
+    「不管誰贏都寫 10」這種恆真式。
+    """
+    r = _m_only(rs, [{"verb_code": verb, **extra}, {"verb_code": "m_hand", "angle_deg": 180}])
+    assert r.slot_tmus[3] == max(verb_tmu, 10)
+
+
+def test_m_companion_message_is_deduped_and_bounded(rs):
+    """訊息長度與分量顆數無關：同一個碼重複 N 顆只印一次。
+
+    未去重時 `sorted(companion_codes)` 會把每一顆都列出來——200k 顆同碼分量就是
+    一則 2 MB 的 422 訊息（同樣輸入在加嚴之前是 200 + 小回應）。去重後 N 不影響長度。
+    """
+    many = [{"verb_code": "m_hand", "angle_deg": 90} for _ in range(500)]
+    with pytest.raises(SequenceError) as e:
+        _m_only(rs, many)
+    msg = str(e.value)
+    assert e.value.code == "M_COMPANION_WITHOUT_VERB"
+    assert msg.count("m_hand") == 1, msg
+    assert len(msg) < 200, len(msg)
+
+
+def test_m_hand_range_still_wins_over_companion_rule(rs):
+    """順序鎖：單獨一顆**超界**手度先報 `M_HAND_RANGE`，不是 `M_COMPANION_WITHOUT_VERB`。
+
+    這是黃金反例 `engine_golden_test.py`「手度 181° 超界」的形狀。結構檢查若排在
+    逐分量值域檢查之前，`M_HAND_RANGE` 就再也不會出現在單分量輸入上。
+    """
+    with pytest.raises(SequenceError) as e:
+        _m_only(rs, [{"verb_code": "m_hand", "angle_deg": 181}])
+    assert e.value.code == "M_HAND_RANGE"
+
+
+def test_m_empty_slot_is_still_legal(rs):
+    """反向邊界：M 格空著（`m_components: []`）是合法的 M0，不受本條影響。"""
+    assert _m_only(rs, []).slot_tmus[3] == 0
 
 
 # ── X：half-up（E2）＋九檔 ──

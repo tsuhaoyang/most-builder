@@ -87,12 +87,47 @@ compute_cycle`，不自己算。
 | A5 | `slots` 出現非 `0..6` 的整數鍵（含字串鍵） | `SLOT_KEY_INVALID`（新增） | 整條算 0 |
 | A6 | `m_components` 內出現無 `verb_code` 的分量（空 list 仍合法） | `M_VERB_REQUIRED`（新增） | 靜默略過 |
 | A7 | X 選項 `mode='fixed'` 但 `fixed_seconds` 為 NULL | `X_FIXED_SECONDS_MISSING`（新增） | 裸 `ValueError` → 500 |
+| A8 | M 格含 `pricing_kind` ∈ {`hand`,`foot`} 的分量，卻無任何動詞分量（`ladder`/`fixed`/`rotate`） | `M_COMPANION_WITHOUT_VERB`（新增） | 照算，通常是 0 TMU 且產出假敘事 |
 
 A1 加在 `calculate.py::_m_tmu`（與 `_a_tmu` 的 `A_NEGATIVE` 對稱），**不加在查表 helper**
 ——`rule_set_data.py` 的 helper 維持「純查表」定位（`0` 仍代表未使用該分量，是合法輸入）。
 A2 的多圈需求以既有 `repeat_count` 表達，不靠夾取。
 A3 是**資料驅動**的：reach 有 overflow 帶（`(None, 24)`）→ 9999cm 仍合法回 24；twist 沒有
 overflow 帶 → 9999° 報錯。加嚴的是「無帶可查時不得偷用最後一檔」，不是「一律報錯」。
+
+**A8（2026-08-19 補入，User 裁決；已實作於 `calculate.py::_m_tmu`）**
+依據＝IE 認證字典 `parameters.M.controls`：`verb`(**required=true**)／`hand_degree`／`foot_step`
+是三個**平行控制群**，`slot_definitions.M.calculation = max(verb_tmu, hand_degree_tmu, foot_step_tmu)`。
+根因是 v2 把這三群**壓扁**成單一 `rule_m_verbs` 清單、用 `pricing_kind` 當判別欄，於是
+`m_hand`／`m_foot` 在 payload 與下拉裡長得像替代動詞、可以被單獨選取——字典的 `required=true`
+在 v2 沒有任何東西承載它。加嚴等於把它補回來，不是新增規則。
+
+- 只擋「有伴隨維度但沒有動詞」。伴隨維度**與動詞併用完全合法**（黃金測試有 4 處正當案例：
+  `m_li`+手度180、`m_push`×3+手度180 等），加嚴後全部照舊通過。
+- `m_components: []`（M0）仍然合法：M 格空著代表沒有受控移動，不是缺動詞。
+- **排序**：本檢查排在逐分量值域檢查（`M_HAND_RANGE`／`M_DISTANCE_RANGE`／`M_ROTATION_RANGE`）
+  **之後**。反過來會讓「單獨一顆 181° 手度」報成 `M_COMPANION_WITHOUT_VERB`，
+  `M_HAND_RANGE` 在單分量輸入上從此無法出現（黃金反例正是這個形狀）。
+  實測反序 mutant：engine golden **59 passed / 1 failed**（死的就是「手度 181° 超界」），
+  且順帶遮掉 `M_UNKNOWN`（`m_zzz` ＋ `m_hand(90)` 報成缺動詞）。多分量輸入不受順序影響
+  （`m_push(10)` ＋ `m_hand(181)` 兩種順序都報 `M_HAND_RANGE`），所以能被順序改寫的
+  只有單分量那一類——`calculate.py::_m_tmu` 的錨點註解與本節同步。
+- 加嚴前掃描（決策 4 的紀律）2026-08-19 實測：`most_cycles` 60 筆命中 **2**、
+  `motion_module_versions` 42 筆命中 **0**、`motion_templates` 16 筆命中 **1**（掃描範圍另含
+  `ai_parse_runs.drafts` 7 筆 0 命中、`excel_imports.staged_rows`／`import_rows`／
+  `wi_row_contexts` 皆 0 筆）。遠低於〈重評訊號〉的 1% 門檻。
+  範本那 1 筆由 migration **v2_0042** 清除（M 格改空，TMU 恆等）；`most_cycles` 那 2 筆
+  依 ADR-023 §3.4 **不動**（讀取走 `total_tmu` 快取不重算；下次整份存檔才會 422）。
+  另有 **`workflow_audit_log.payload`：80 列命中**——列出來只為了「掃過、有命中、
+  但無風險」的完整性：那是**不可變的稽核歷史**，永不重算、不進任何計算路徑，
+  不需要也不應該被修補（改它等於竄改留痕）。
+- **歷史 companion-only cycle 的重算預期就是 422，包含 V1-pinned 的列。** 這條新拒絕寫在
+  **引擎程式碼**裡、判準是 `pricing_kind` 這個結構欄，不是 rule-set 的值資料——所以
+  `rule_set_id` 指向 V1 的 cycle 一樣被拒（實測 V1 rule-set 也拒）。
+  ADR-023 §3.4 的明文禁令是「**載入不得看版本治理狀態**（retired 仍可載入、仍算原值）」，
+  這裡沒有違反它；但常被連帶推論的那句「舊資料＋舊規則＝舊行為」，現在只對**讀取**成立、
+  對**重算**不成立。把這個後果寫死在這裡，不要留給讀者自己推導。
+- 對應的敘事排除規則（同一批落地）見 ADR-032。
 
 **B 類——刻意保留寬鬆（資料承載的語意，回放必需；須以測試釘死並在 code 註明「這是決策不是疏漏」）**
 
@@ -254,6 +289,8 @@ overflow 帶 → 9999° 報錯。加嚴的是「無帶可查時不得偷用最�
 | 10 | `slots={7: {}}` → `SLOT_KEY_INVALID` | 0.0 |
 | 11 | `m_components=[{"distance_cm": 45}]`（無 verb_code）→ `M_VERB_REQUIRED` | 靜默略過 |
 | 12 | X `mode='fixed'` 且 `fixed_seconds=None` → `SequenceError.code == "X_FIXED_SECONDS_MISSING"`，且 `POST /minimost/calculate` 回 **422 不是 500** | 裸 ValueError → 500 |
+| 12a | M 只有 `m_hand`／`m_foot`（單獨或兩者併用）→ `M_COMPANION_WITHOUT_VERB`，且 `POST /minimost/calculate` 回 **422**（✅ 已實作） | 照算 0 TMU |
+| 12b | 只有一顆 **181°** 手度 → 仍報 `M_HAND_RANGE`（排序鎖，✅ 已實作） | `M_HAND_RANGE` |
 
 **不得過度加嚴（正向對照；缺這段就無法證明加嚴是資料驅動而非一律報錯）**
 
@@ -262,6 +299,7 @@ overflow 帶 → 9999° 報錯。加嚴的是「無帶可查時不得偷用最�
 | 13 | A `reach_cm=9999`（reach **有** overflow 帶）→ 24，不報錯 | 24 |
 | 14 | rotate `diameter_cm=10, revolutions=2` → 32 | 32 |
 | 15 | `m_components=[]` → slot3 = 0，不報錯 | 0 |
+| 15a | 動詞＋手度／腳步併用 → 照 max 計算，不報錯（ladder/fixed/rotate 各一，✅ 已實作） | 照 max |
 | 16 | `distance_cm=0` → 0，不報錯 | 0 |
 | 17 | GM slot2 帶 `modifiers` 鍵 → 合法（G 的允許鍵集合必須含 `modifiers`） | 合法 |
 | 18 | GM slot6 帶 `twist_deg=0, foot_cm=0` → 合法（`ASlot.model_dump()` 恆含這兩鍵） | 合法 |

@@ -15,6 +15,7 @@
 > | C5 | I 檔位 | 4 檔（0/6/10/16） | **八檔＋i_none**：檢查/確認×正常 6、對準到點 10、對齊兩點 16、視線外 16/16/24/32（`vision_scope`） |
 > | C5 | X 檔位 | 4 檔 | **九檔＋x_none**（壓合/卡合&壓合/熱熔/點膠/鎖附 0.216→6/鐳雕/刷PPID/刷工單/刷條形碼） |
 > | — | 旋轉/手度 | >12.5 無上限、3 圈檔 | 直徑≤50 封頂、大直徑無 3 圈檔（→422 M_ROTATION_RANGE）；手度 ≤180 封頂（→422 M_HAND_RANGE） |
+> | — | 手度/腳步的地位 | 與動詞同列，可單獨成格 | 字典的 `M.controls` 是三個平行控制群，`verb` **required=true**：手度/腳步是**伴隨維度**，必須與動詞併用（單獨成格 → 422 **M_COMPANION_WITHOUT_VERB**；併用照常取 max），且**不入敘事句**（字典的 hand_degree/foot_step 選項全無句面）。詳見 [ADR-028 §2 A8](../decisions/ADR-028-most-engine-boundary-validation-and-single-authority.md) 與 [ADR-032 D7.6](../decisions/ADR-032-bilingual-ui-and-data-label-layer.md) |
 > | E4 | slot repeat | 無 | G/P/X/I 整格 ×repeat（1..99）；**M 僅乘動詞分量再 max**；A/B 禁用 |
 > | E7 | 人工覆寫 | 無 | slot `manual_override{tmu,reason,by}`：值取代＋留痕＋tech_line 標 `*` |
 > | E5 | SIMO 輸入 | 顯式 simo_group_id | ＋`simo_with_row_id` 配對輸入（僅從屬列標記，主列不標記）；**ADR-020：標記列貢獻 0**（舊「群組取 max」廢止） |
@@ -231,8 +232,8 @@ M = max( partialM(component) for component with verb )   ；無分量 → 0
 | 滑出螺絲 | 固定 | 3 |
 | 理 / 穿 / 推 / 拉 / 貼附（+1205：去除/撕除/折/擦拭/撕开） | 距離階梯 | 見下「距離階梯」 |
 | 旋轉 | 旋轉 | 直徑≤12.5cm：1圈16 / 2圈32 / 3圈42；直徑≤50cm：1圈24 / 2圈42 |
-| 手度 | 角度 | ≤90°→6；>90°（≤180°）→10 |
-| 腳步 | 距離階梯（腳） | ⚠️ V1 文（筆誤）；V2＝獨立腳步帶（頂部修訂表 C2） |
+| 手度 | 角度 | ≤90°→6；>90°（≤180°）→10。⚠️ **伴隨維度，不可單獨成格**（頂部修訂表） |
+| 腳步 | 距離階梯（腳） | ⚠️ V1 文（筆誤）；V2＝獨立腳步帶（頂部修訂表 C2）。同為**伴隨維度** |
 
 **距離階梯：⚠️ 本表為 V1 舊值（把吋數誤存為 cm）——V2 權威值見頂部修訂表 C1（≤2.5/10/25/45/75 cm，無 overflow）。**
 

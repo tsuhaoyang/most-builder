@@ -234,10 +234,24 @@ def _rotate_tmu(diameter_cm: float, revolutions: int) -> int:
     raise SequenceError("M_ROTATION_RANGE", f"旋轉 直徑{diameter_cm}cm 超出值表（最大 50cm）")
 
 
+# 認證字典 `parameters.M.controls`＝三個平行控制群（verb required=true／hand_degree／foot_step）。
+# 手度／腳步是**伴隨維度**，不是替代動詞——見 spec 頂部修訂表與 ADR-028 §2 A8。
+M_COMPANION_KINDS = frozenset({"hand", "foot"})
+
+
 def m_slot_tmu(components: list[dict[str, Any]] | None, repeat: int = 1) -> int:
-    """M 格 = 各分量 partial 取 max；無分量 -> 0。"""
+    """M 格 = 各分量 partial 取 max；無分量 -> 0。
+
+    伴隨維度不得單獨成格（`M_COMPANION_WITHOUT_VERB`）。結構檢查排在 partial 之**後**，
+    值域錯誤（M_HAND_RANGE 等）才報得出來——與 `most_engine._m_tmu` 同一個順序。
+    """
     components = components or []
-    parts = [_partial_m(c, repeat) for c in components if c.get("verb_id")]
+    with_verb = [c for c in components if c.get("verb_id")]
+    parts = [_partial_m(c, repeat) for c in with_verb]
+    kinds = {M_VERBS[c["verb_id"]] for c in with_verb if c["verb_id"] in M_VERBS}
+    if (kinds & M_COMPANION_KINDS) and not (kinds - M_COMPANION_KINDS):
+        raise SequenceError("M_COMPANION_WITHOUT_VERB",
+                            f"手度／腳步必須與動詞分量併用，不可單獨成格：{sorted(kinds)}")
     return max(parts) if parts else 0
 
 
@@ -509,6 +523,15 @@ def _run_tests() -> int:
     check("M 無分量=0", m_slot_tmu([]) == 0)
     check("M 空 verb 跳過=0", m_slot_tmu([{"verb_id": ""}]) == 0)
     expect_error("M 未知動詞擋下", "M_UNKNOWN", lambda: m_slot_tmu([{"verb_id": "m_zzz"}]))
+    expect_error("M 手度單獨成格擋下（字典 verb.required=true）", "M_COMPANION_WITHOUT_VERB",
+                 lambda: m_slot_tmu([{"verb_id": "m_hand", "angle_deg": 90}]))
+    expect_error("M 腳步單獨成格擋下", "M_COMPANION_WITHOUT_VERB",
+                 lambda: m_slot_tmu([{"verb_id": "m_foot", "distance_cm": 30}]))
+    expect_error("M 手度＋腳步仍無動詞，擋下", "M_COMPANION_WITHOUT_VERB",
+                 lambda: m_slot_tmu([{"verb_id": "m_hand", "angle_deg": 90},
+                                     {"verb_id": "m_foot", "distance_cm": 30}]))
+    check("M 動詞＋手度併用合法（取 max，正向對照）",
+          m_slot_tmu([{"verb_id": "m_btn"}, {"verb_id": "m_hand", "angle_deg": 180}]) == 10)
 
     print("\n── G. X 處理時間（half-up 3 位 + 固定 0.216）──")
     check("X 無機台=0", x_slot_tmu("zero") == 0)

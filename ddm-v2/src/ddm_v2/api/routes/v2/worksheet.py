@@ -34,7 +34,14 @@ async def save_worksheet(worksheet_id: uuid.UUID, payload: WorksheetSaveIn, sess
     except RuleSetIncomplete as e:
         raise HTTPException(status_code=409, detail=str(e))
     except SequenceError as e:
-        raise HTTPException(status_code=422, detail={"code": e.code, "message": str(e)})
+        # `svc.RowSequenceError` 會多掛 seq_no／row_id（存檔迴圈裡指得出是哪一列）；
+        # 其他 SequenceError 沒有這兩個屬性 → 維持原本的兩鍵 detail。
+        detail: dict = {"code": e.code, "message": str(e)}
+        row_id = getattr(e, "row_id", None)
+        if row_id is not None:
+            detail["seq_no"] = getattr(e, "seq_no", None)
+            detail["row_id"] = str(row_id)
+        raise HTTPException(status_code=422, detail=detail)
     return WorksheetReadOut(**result)
 
 

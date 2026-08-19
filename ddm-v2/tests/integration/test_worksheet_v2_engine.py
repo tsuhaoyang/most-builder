@@ -116,3 +116,26 @@ async def test_worksheet_save_repeat_out_of_range_422(client):
     row["cycle"]["g2"]["repeat_count"] = 0
     r = await client.put(f"/api/v2/worksheets/{new}", json={"rows": [row]})
     assert r.status_code == 422, r.text
+
+
+async def test_worksheet_save_engine_reject_names_the_offending_row(client):
+    """引擎 422 必須指得出是**哪一列**（30 列的表不能只回「手度超出值表」）。
+
+    `SimoPairInvalid` 早就有列出 row id，引擎錯誤卻沒有——兩種待遇。
+    契約：`detail.code` 一字不改（前端/測試以它為準），另補 `seq_no` 與 `row_id`。
+    """
+    new = await _fresh_ws(client)
+    ok1, ok2 = _gm_row(1), _gm_row(2)
+    bad = _gm_row(3)
+    bad["cycle"] = {"seq": "CM", "rule_set_code": V2, "a0": {"reach_cm": 20},
+                    "g2": {"g_code": "g_grasp"},
+                    "m3": {"m_components": [{"verb_code": "m_hand", "angle_deg": 181}]},
+                    "x4": {"x_code": "x_none"}, "i5": {"i_code": "i_none"}}
+    r = await client.put(f"/api/v2/worksheets/{new}", json={"rows": [ok1, ok2, bad]})
+    assert r.status_code == 422, r.text
+    detail = r.json()["detail"]
+    assert detail["code"] == "M_HAND_RANGE"          # code 不變
+    assert detail["seq_no"] == 3
+    assert detail["row_id"] == bad["id"]
+    assert "第 3 列" in detail["message"] and "181" in detail["message"]
+    assert detail["message"].count("[M_HAND_RANGE]") == 1   # 前綴不疊

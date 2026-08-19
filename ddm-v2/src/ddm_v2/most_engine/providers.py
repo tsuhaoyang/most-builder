@@ -133,6 +133,9 @@ def build_label_map(opts: dict[str, Any]) -> dict[str, dict[str, Any]]:
                 "label": o.get("label"), "sentence": o.get("sentence"),
                 "label_en": o.get("label_en"), "sentence_en": o.get("sentence_en"),
                 "display_rule": o.get("display_rule"),
+                # M 專屬：敘事層靠它認出手度／腳步是伴隨維度而非動詞（ADR-032 敘事排除規則）。
+                # 其餘參數沒有這個鍵 → None，與 `display_rule` 同樣的「只有用得到的表才有值」。
+                "pricing_kind": o.get("pricing_kind"),
             }
             for o in rows_
         }

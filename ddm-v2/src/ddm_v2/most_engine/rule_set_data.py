@@ -15,6 +15,13 @@ TMU_TO_SEC = 0.036
 _TMU_TO_SEC_D = Decimal("0.036")
 _Q3 = Decimal("0.001")
 
+# 認證字典的 `parameters.M.controls` 是三個平行控制群（verb／hand_degree／foot_step），
+# v2 把它們壓扁成單一 `rule_m_verbs` 清單、靠 `pricing_kind` 區辨：`hand`／`foot` 是**伴隨
+# 維度**（按手轉角度／腳步距離查表），其餘是動詞。字典的兩條規則都掛在這個集合上——
+# `verb.required=true`（伴隨維度不得單獨成格）與「伴隨維度無句面」（不入敘事句）——
+# 所以它只能有一份：引擎驗證（`calculate._m_tmu`）與中英兩套敘事樣板共用同一個定義。
+M_COMPANION_KINDS = frozenset({"hand", "foot"})
+
 
 class RuleSetIncomplete(ValueError):
     """rule-set 缺必要表 → 不可用於計算（完整性 gating，E5）。"""

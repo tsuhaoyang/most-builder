@@ -10,6 +10,36 @@ from ddm_v2.nlp.contracts import CycleDraft
 from ddm_v2.schemas.v2.most import CycleIn, cycle_in_to_engine
 
 
+class EnFieldInTmuPath(RuntimeError):
+    """ADR-032 I3：英文欄位被帶進決定 TMU 的路徑。"""
+
+    code = "EN_FIELD_IN_TMU_PATH"
+
+
+def _assert_no_en_fields(lab: dict[str, dict[str, Any]]) -> None:
+    """執行期不變式：labels 的任何 entry 都不得帶英文欄（鍵以 `_en` 結尾）。
+
+    為什麼不能只靠 CI 的字面 grep 守衛（`tests/unit/test_i18n_en_field_isolation.py`）：
+    那支守衛掃的是**呼叫端檔案的字面**，而呼叫端可以間接取得同一個 builder——
+    `getattr(providers, "build_label" + "_map")(opts)` 就完全穿透它（實測：守衛 6 passed、
+    parity 14 passed，英文欄照樣進到這裡）。這裡改守**實際傳進來的資料形狀**，
+    不依賴任何名單，也不管呼叫端怎麼寫。
+
+    用 `raise` 而不是 `assert`：`python -O` 會把 `assert` 整條拿掉，而這是承重防線。
+    正當路徑（`wi_ai_service._option_labels()`）是逐鍵白名單投影、不含英文欄，照常通過。
+    """
+    for param, entries in lab.items():
+        for code, entry in entries.items():
+            if not isinstance(entry, dict):
+                continue
+            bad = sorted(k for k in entry if k.endswith("_en"))
+            if bad:
+                raise EnFieldInTmuPath(
+                    f"ADR-032 I3：TMU 路徑的 labels 不得帶英文欄 {bad}"
+                    f"（{param}/{code}）——請傳純中文的 label map"
+                )
+
+
 def apply_engine_gate(
     drafts: list[CycleDraft],
     rs: RuleSetData,
@@ -20,6 +50,7 @@ def apply_engine_gate(
     out: list[CycleDraft] = []
     empty_vocab = {"object": "", "from": "", "to": "", "hand": ""}
     lab = labels or {}
+    _assert_no_en_fields(lab)
     for draft in drafts:
         if not draft.complete or not draft.cycle:
             out.append(draft)

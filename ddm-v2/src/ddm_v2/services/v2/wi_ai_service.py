@@ -176,12 +176,41 @@ async def _try_llm_plan(
 
 
 def _option_labels(opts: dict[str, Any]) -> dict[str, dict[str, Any]]:
+    """AI 落地路徑專用的**純中文** label map。
+
+    ⚠️ **不得改用 `most_engine/providers.py` 裡那支共用的 label-map builder**
+    （確切名稱見 `tests/unit/test_i18n_en_field_isolation.py` 的 `FORBIDDEN_EN_CARRIERS`；
+    本檔刻意不寫出那些字面，因為該守衛是零容忍的字面 grep，連註解也算命中）。
+    ADR-032 I3「違反即否決」。看起來這是可以 DRY 掉的重複，但這份重複是**刻意的**：
+
+        wi_ai_service（本函式） → most_compiler/engine_gate.py → compute_cycle
+                                                                 ↑ 決定 TMU 的路徑
+
+    那支共用 builder 會把英文欄（`*_en` 系列）帶進 labels dict，等於讓未經覆核的機器翻譯
+    進入決定 TMU 的路徑——正是 I3 禁止的事。今天 `engine_gate` 只拿 labels 餵中文
+    `build_narrative()`（`compute_cycle` 吃的是 `RuleSetData`），實際風險為零；但
+    「現在沒被消費」離「被消費」只有一個提交，I3 守的就是這段距離。
+
+    2026-08-19 已有人（做 DRY 清理時）真的這樣改過一次，**全測試綠**才被人工複審抓到——
+    因此上述守衛已擴大到掃本檔與 `most_compiler/`，並新增「載體符號」維度
+    （純欄位名 grep 看不穿函式邊界）。要改這裡之前，先讀那支測試的檔頭。
+
+    `pricing_kind` 是 rule-set 的結構欄（不是英文欄、不參與 TMU）：敘事層靠它認出
+    M 的手度／腳步是伴隨維度而不入句（ADR-032 D7.6），中英兩套樣板同一個判準。
+
+    **本函式的職責就是「投影掉英文欄」**：傳進來的 `opts`（選項載入器的回傳值）本來就
+    含英文欄，那是給前端下拉用的，正常且必要。安全的理由不在來源乾淨，而在下面 `_lmap()`
+    是**逐鍵白名單**——只挑 `label`／`sentence`／`display_rule`／`pricing_kind` 四個鍵，
+    新增欄位預設不會被帶下去。改成 `**o` 或任何「除了某某以外全帶」的寫法即違反 I3。
+    （下游 `apply_engine_gate` 另有執行期不變式會擋，但那是安全網，不是本函式免責的理由。）
+    """
     def _lmap(rows_: list[dict[str, Any]]) -> dict[str, dict[str, Any]]:
         return {
             o["code"]: {
                 "label": o.get("label"),
                 "sentence": o.get("sentence"),
                 "display_rule": o.get("display_rule"),
+                "pricing_kind": o.get("pricing_kind"),
             }
             for o in rows_
         }

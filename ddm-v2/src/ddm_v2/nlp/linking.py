@@ -34,7 +34,7 @@ from ddm_v2.nlp.contracts import (
     WorkInstructionPlan,
 )
 from ddm_v2.nlp.lexicon import LexEntry, build_lexicon, match_all
-from ddm_v2.services.v2.template_matching import score_keywords
+from ddm_v2.services.v2.template_matching import score_template
 
 logger = logging.getLogger(__name__)
 
@@ -511,7 +511,7 @@ def _template_hints(plan: WorkInstructionPlan, templates: list[dict]) -> list[Sl
     """L0：cycle-level template 候選（needs_review；不拆 slot、不繞過 IE）。"""
     ranked: list[tuple[float, dict, list[str]]] = []
     for tmpl in templates:
-        score, hits = score_keywords(plan.normalized_text, list(tmpl.get("keywords") or []))
+        score, hits = score_template(plan.normalized_text, tmpl)
         if score > 0:
             ranked.append((float(score), tmpl, hits))
     if not ranked:
@@ -519,7 +519,7 @@ def _template_hints(plan: WorkInstructionPlan, templates: list[dict]) -> list[Sl
     ranked.sort(key=lambda x: (-x[0], x[1].get("id") or ""))
     out: list[SlotCandidateSet] = []
     for i, (score, tmpl, _hits) in enumerate(ranked[:TOP_K], start=1):
-        # score_keywords 是字元長度加總；縮放到 0.5–0.95 顯示用，非校準機率
+        # score_template 是字元長度加總；縮放到 0.5–0.95 顯示用，非校準機率
         norm_score = min(0.95, 0.5 + score / 40.0)
         cand = OptionCandidate(
             parameter="TEMPLATE",
