@@ -156,6 +156,7 @@ class MostCycle(Base, TimestampMixin):
     slot_inputs: Mapped[dict] = mapped_column(JSONB, nullable=False)  # 權威原始輸入（Pydantic 驗形狀）
     computed: Mapped[dict | None] = mapped_column(JSONB)  # 可重生快取：每格 tmu/tech_line
     narrative_zh: Mapped[str | None] = mapped_column(Text)  # 可重生快取：METHOD 敘述
+    narrative_en: Mapped[str | None] = mapped_column(Text)  # 同上（ADR-032 D7.2）；NULL＝尚未產生
     total_tmu: Mapped[float | None] = mapped_column(Numeric(12, 3))  # 升欄：可聚合
     total_seconds: Mapped[float | None] = mapped_column(Numeric(12, 4))
     computed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))

@@ -1,4 +1,16 @@
-"""dev seed：MOST 選項／詞彙／範本英文標籤機器翻譯灌值（ADR-032 Phase B）。idempotent。
+"""dev seed：MOST 選項／詞彙／範本英文標籤機器翻譯灌值（ADR-032 Phase B/C）。idempotent。
+
+**Phase C 增補（`sentence_text_en`）**：除了 Phase B 的 `label_en`／`name_en`（側表
+`field='label'`／`'name'`），本檔另灌 7 張選項表的 `sentence_text_en`（側表
+`field='sentence'`，值域早已由 `i18n_service._RULE_OPTION_FIELDS` 允許）。標籤與句面
+是**兩個不同語意的欄**（ADR-032 1.2a）：標籤要能在下拉選單中辨義（"Align (precision
+<4mm)"），句面要能入句（"aligned to within 4 mm"），所以是兩張翻譯表、兩組側表記錄。
+句面的英文資料契約（不含連接詞、G 不帶受詞、P/M 自足含代名詞、X 動名詞、I 過去分詞）
+見 `most_engine/narrative_en.py` 檔頭——**改那份契約必須同時改這裡的翻譯表**。
+
+`i18n_service._candidates_sql()` 的待審清單目前只列 `field='label'` 候選，故句面的
+覆核狀態存在側表但尚未進入待審 UI；那是 Phase B 待審清單的擴充範圍（`summary` 的
+分母定義會跟著變），不在 Phase C 內。
 
 執行：
   DATABASE_URL=... PYTHONPATH=src .venv/bin/python scripts/dev_seed_i18n_labels.py
@@ -192,6 +204,118 @@ RULE_OPTION_TABLES: tuple[tuple[type, str, dict[str, str]], ...] = (
 )
 
 # ══════════════════════════════════════════════════════════════════
+# 7 張選項表的**句面**翻譯表（`sentence_text_en`，ADR-032 Phase C）。
+#
+# 與上面的標籤翻譯表刻意不同構——契約見 `most_engine/narrative_en.py` 檔頭：
+#   G   ＝裸及物動詞（受詞由樣板自 vocab 填真實名詞）
+#   P/M ＝自足動詞片語，含代名詞受詞（第一句已introduce過真實名詞）
+#   X   ＝動名詞（樣板補 "while"）；I ＝過去分詞（樣板不補連接詞）
+# 空字串＝**刻意不入句**（對齊 `sentence_text_zh` 同樣為空的那幾條：b_none／
+# a_hard／a_press／m_hand／m_foot／x_none／i_none）。
+#
+# 句面**不套用 I5 唯一性**（那是標籤的約束）：中文句面本來就有一詞多用
+# （拿取＝g_pick_sel／g_pick_small／g_pick_collect、放＝三個 p_place_*），
+# 英文照樣共用；辨義責任在標籤，不在句面。
+# ══════════════════════════════════════════════════════════════════
+
+B_SENTENCES: dict[str, str] = {
+    "b_bend": "stand up or bend down",
+    "b_eye": "eye action",
+    "b_none": "",
+    "b_stand": "stand",
+}
+
+G_SENTENCES: dict[str, str] = {
+    "g_grab": "grab",
+    "g_grasp": "grasp",
+    "g_handchange": "transfer",
+    "g_pat": "pat",
+    "g_pick_collect": "pick up",
+    "g_pick_sel": "pick up",
+    "g_pick_small": "pick up",
+    "g_pullout": "pull out",
+    "g_regrasp": "regrasp",
+    "g_tap": "tap",
+    "g_touch": "touch",
+}
+
+P_BASE_SENTENCES: dict[str, str] = {
+    "p_asm_multi": "assemble it",
+    "p_asm_single": "assemble it",
+    "p_hold": "hold it in place",
+    "p_place_multi": "place it",
+    "p_place_none": "place it",
+    "p_place_single": "place it",
+    "p_toss": "toss it",
+}
+
+P_ADDON_SENTENCES: dict[str, str] = {
+    "a_align": "aligned to within 4 mm",   # prefix_visible_term：英文是後綴（D7.3.2）
+    "a_hard": "",
+    "a_insert": "insert it",
+    "a_press": "",
+    "a_snap": "snap it into place",
+}
+
+M_SENTENCES: dict[str, str] = {
+    "m_attach": "attach it",
+    "m_btn": "press the button",
+    "m_fold": "fold it",
+    "m_foot": "",
+    "m_hand": "",
+    "m_li": "dress it",
+    "m_press": "press it",
+    "m_pull": "pull it",
+    "m_push": "push it",
+    "m_remove": "remove it",
+    "m_rotate": "rotate it",
+    "m_screw": "slide the screw out",
+    "m_tearopen": "tear it open",
+    "m_teartape": "peel the tape off",
+    "m_through": "thread it through",
+    "m_wipe": "wipe it",
+}
+
+X_SENTENCES: dict[str, str] = {
+    "x_blow_clean": "air-blow cleaning",
+    "x_glue": "dispensing glue",
+    "x_heat": "heat-melting on the machine",
+    "x_laser": "laser-marking",
+    "x_none": "",
+    "x_press": "press-fitting on the machine",
+    "x_scan_bar": "scanning the barcode",
+    "x_scan_ppid": "scanning the PPID",
+    "x_scan_wo": "scanning the work-order QR code",
+    "x_screw_fix": "screw-fastening to secure",
+    "x_snap_press": "snap-fitting and press-fitting on the machine",
+}
+
+I_SENTENCES: dict[str, str] = {
+    "i_align1": "aligned to the point",
+    "i_align1_out": "aligned to the point",
+    "i_align2": "aligned to two points",
+    "i_align2_out": "aligned to two points",
+    "i_check": "checked",
+    "i_check_out": "checked",
+    "i_confirm": "confirmed",
+    "i_confirm_out": "confirmed",
+    "i_none": "",
+}
+
+# 與 RULE_OPTION_TABLES 同序、同表——句面翻譯表逐張對應（`zip` 靠位置配對，
+# 兩個 tuple 一旦不同長或改序就會錯配到別張表的翻譯，故在 import 期斷言）。
+RULE_OPTION_SENTENCES: tuple[dict[str, str], ...] = (
+    B_SENTENCES, G_SENTENCES, P_BASE_SENTENCES, P_ADDON_SENTENCES,
+    M_SENTENCES, X_SENTENCES, I_SENTENCES,
+)
+
+assert len(RULE_OPTION_SENTENCES) == len(RULE_OPTION_TABLES)
+assert all(
+    set(sentences) == set(labels)
+    for (_model, _param, labels), sentences in zip(RULE_OPTION_TABLES, RULE_OPTION_SENTENCES)
+), "句面翻譯表與標籤翻譯表的 code 集合必須逐張相同（否則某些選項只有標籤沒有句面）"
+
+# ══════════════════════════════════════════════════════════════════
 # 詞彙庫（work_vocab_items）：key＝name_zh（實測 59 列、53 個相異中文名——
 # 同名跨 kind 共用同一條翻譯，如「料架」同時是 from／to）。
 # ══════════════════════════════════════════════════════════════════
@@ -314,6 +438,7 @@ async def _seed_one(
     *,
     entity_type: str,
     scope_key: str,
+    field_name: str,
     source_zh: str,
     current_en: str | None,
     translations: dict[str, str],
@@ -340,7 +465,6 @@ async def _seed_one(
     `seed_vocab`／`seed_motion_templates` 三個呼叫點皆然），天生就會通過這個
     檢查，因此不會再拋出寫入例外，不需要 `try/except` 收斂進 `stats.missing`。
     """
-    field_name = "label" if entity_type == "rule_option" else "name"
     existing = await i18n.get_review_state(session, entity_type, scope_key, field_name)
 
     if current_en is not None:
@@ -397,21 +521,35 @@ async def seed_rule_options(session: AsyncSession, stats: SeedStats) -> None:
         )
     ).scalars().all()
     for rs in rule_sets:
-        for model, param, labels in RULE_OPTION_TABLES:
+        for (model, param, labels), sentences in zip(RULE_OPTION_TABLES, RULE_OPTION_SENTENCES):
             rows = (
                 await session.execute(select(model).where(model.rule_set_id == rs.id))
             ).scalars().all()
             for row in rows:
                 scope_key = f"{param}:{row.code}"
+                context = f"{rs.code}/{model.__tablename__}/{row.code}"
                 new_en = await _seed_one(
                     session, stats,
-                    entity_type="rule_option", scope_key=scope_key,
+                    entity_type="rule_option", scope_key=scope_key, field_name="label",
                     source_zh=row.label_zh, current_en=row.label_en,
                     translations=labels, translation_key=row.code,
-                    context=f"{rs.code}/{model.__tablename__}/{row.code}",
+                    context=context,
                 )
                 if new_en is not None:
                     row.label_en = new_en
+                # 句面（Phase C）：來源中文取引擎實際會用的那一個——`_sent()` 的回退
+                # 鏈是 `sentence_text_zh or label_zh`，過期偵測的基準必須跟著它走，
+                # 否則句面空白的那幾條會拿一個引擎根本沒讀的字串去算 sha256。
+                new_sent_en = await _seed_one(
+                    session, stats,
+                    entity_type="rule_option", scope_key=scope_key, field_name="sentence",
+                    source_zh=row.sentence_text_zh or row.label_zh,
+                    current_en=row.sentence_text_en,
+                    translations=sentences, translation_key=row.code,
+                    context=f"{context}(sentence)",
+                )
+                if new_sent_en is not None:
+                    row.sentence_text_en = new_sent_en
 
 
 async def seed_vocab(session: AsyncSession, stats: SeedStats) -> None:
@@ -420,7 +558,7 @@ async def seed_vocab(session: AsyncSession, stats: SeedStats) -> None:
     for row in rows:
         new_en = await _seed_one(
             session, stats,
-            entity_type="vocab_item", scope_key=str(row.id),
+            entity_type="vocab_item", scope_key=str(row.id), field_name="name",
             source_zh=row.name_zh, current_en=row.name_en,
             translations=VOCAB_LABELS, translation_key=row.name_zh,
             context=f"work_vocab_items/{row.kind}/{row.name_zh}",
@@ -435,7 +573,7 @@ async def seed_motion_templates(session: AsyncSession, stats: SeedStats) -> None
     for row in rows:
         new_en = await _seed_one(
             session, stats,
-            entity_type="motion_template", scope_key=str(row.id),
+            entity_type="motion_template", scope_key=str(row.id), field_name="name",
             source_zh=row.name_zh, current_en=row.name_en,
             translations=TEMPLATE_LABELS, translation_key=row.name_zh,
             context=f"motion_templates/{row.name_zh}",

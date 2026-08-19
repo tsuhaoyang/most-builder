@@ -60,6 +60,7 @@ class _OptionIn(_Strict):
     label_zh: str = Field(min_length=1)
     label_en: str | None = None
     sentence_text_zh: str | None = None
+    sentence_text_en: str | None = None
     sort_order: int = Field(default=0, ge=0)
     is_active: bool = True
 

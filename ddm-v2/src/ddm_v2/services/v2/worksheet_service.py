@@ -21,7 +21,8 @@ from ddm_v2.models.v2.vocab import WorkVocabItem
 from ddm_v2.models.v2.worksheet import LevelEntry, MostCycle, MostWorksheet, ProcessVersion, WiRow
 from ddm_v2.most_engine import compute_cycle, load_rule_set_from_db
 from ddm_v2.most_engine.narrative import HAND_NAMES, build_narrative
-from ddm_v2.most_engine.providers import load_options_from_db
+from ddm_v2.most_engine.narrative_en import build_narrative_en
+from ddm_v2.most_engine.providers import build_label_map, load_options_from_db
 from ddm_v2.most_engine.rule_set_data import TMU_TO_SEC
 from ddm_v2.schemas.v2.most import cycle_in_to_engine, resolve_cycle_rule_set
 from ddm_v2.schemas.v2.worksheet import WorksheetSaveIn
@@ -92,12 +93,7 @@ async def save_worksheet(
     # 後端敘事（FE-2/E6）：rule-set 標籤/句字/display_rule + vocab 名 → METHOD 句（單一權威）
     opts = await load_options_from_db(session, code)
 
-    def _lmap(rows_: list[dict[str, Any]]) -> dict[str, dict[str, Any]]:
-        return {o["code"]: {"label": o.get("label"), "sentence": o.get("sentence"),
-                            "display_rule": o.get("display_rule")} for o in rows_}
-
-    labels = {"g": _lmap(opts["g"]), "p_base": _lmap(opts["p_bases"]), "p_addon": _lmap(opts["p_addons"]),
-              "m_verb": _lmap(opts["m_verbs"]), "x": _lmap(opts["x"]), "i": _lmap(opts["i"])}
+    labels = build_label_map(opts)
 
     # E5（ADR-020）：SIMO 正規化 — simo_group_id＝SIMO 標記（該列貢獻 0，時間由主列吸收）。
     # 配對輸入 simo_with_row_id：僅「宣告配對的從屬列」被標記，被指向的主列不標記；
@@ -145,9 +141,11 @@ async def save_worksheet(
                 simo_group_of[m] = gid
     vids = {vid for r in payload.rows for vid in (r.object_vocab_id, r.from_vocab_id, r.to_vocab_id) if vid}
     vname: dict[uuid.UUID, str] = {}
+    vname_en: dict[uuid.UUID, str] = {}
     if vids:
         for v in (await session.execute(select(WorkVocabItem).where(WorkVocabItem.id.in_(vids)))).scalars().all():
             vname[v.id] = v.name_zh
+            vname_en[v.id] = v.name_en or v.name_zh  # 未翻譯的詞彙回退中文，不留空受詞
 
     # 整份取代（cascade 連帶刪 cycle/level）
     await session.execute(delete(WiRow).where(WiRow.worksheet_id == worksheet_id))
@@ -163,7 +161,15 @@ async def save_worksheet(
                "from": vname.get(r.from_vocab_id, "") if r.from_vocab_id else "",
                "to": vname.get(r.to_vocab_id, "") if r.to_vocab_id else "",
                "hand": HAND_NAMES.get(r.hand or "", "")}
-        narrative = build_narrative(r.cycle.model_dump(mode="json"), labels, voc)
+        # 英文 vocab 與中文分開組：hand 給的是**原始代碼**（narrative_en 以 "RH:" 當
+        # 祈使句前綴），不是 HAND_NAMES 轉出來的顯示字串。
+        voc_en = {"object": vname_en.get(r.object_vocab_id, ""),
+                  "from": vname_en.get(r.from_vocab_id, "") if r.from_vocab_id else "",
+                  "to": vname_en.get(r.to_vocab_id, "") if r.to_vocab_id else "",
+                  "hand": r.hand or ""}
+        cycle_json = r.cycle.model_dump(mode="json")
+        narrative = build_narrative(cycle_json, labels, voc)
+        narrative_en = build_narrative_en(cycle_json, labels, voc_en)
         session.add(WiRow(
             id=r.id, worksheet_id=worksheet_id, seq_no=r.seq_no,
             sub_activity=r.sub_activity, key_parts=r.key_parts, hand=r.hand,
@@ -176,7 +182,7 @@ async def save_worksheet(
             slot_inputs=r.cycle.model_dump(mode="json"),  # 權威原始輸入
             computed={"breakdown": [{"letter": L, "tmu": t} for L, t in zip(result.letters, result.slot_tmus)],
                       "tech_line": result.tech_line},
-            narrative_zh=narrative,
+            narrative_zh=narrative, narrative_en=narrative_en,
             total_tmu=result.total_tmu, total_seconds=result.total_seconds, computed_at=now,
         ))
         lv = r.level
@@ -237,6 +243,8 @@ async def read_worksheet(session: AsyncSession, worksheet_id: uuid.UUID) -> dict
             "source_module_version": wr.source_module_version,
             "cycle": {"seq_kind": cyc.seq_kind, "total_tmu": float(cyc.total_tmu), "total_seconds": float(cyc.total_seconds),
                       "tech_line": (cyc.computed or {}).get("tech_line"), "narrative": cyc.narrative_zh,
+                      # 回應語言中立（ADR-032 D3.3）：兩語並列，由前端依 locale 挑欄
+                      "narrative_en": cyc.narrative_en,
                       "rule_set_id": str(cyc.rule_set_id), "slot_inputs": cyc.slot_inputs} if cyc else None,
             "level": {"second": float(lv.second), "coefficient": float(lv.coefficient),
                       "ascription": lv.ascription, "level": lv.level, "countersignature": lv.countersignature,
@@ -350,7 +358,8 @@ async def clone_worksheet(session: AsyncSession, worksheet_id: uuid.UUID, actor:
         if cyc:
             session.add(MostCycle(id=uuid.uuid4(), wi_row_id=new_row_id, seq_kind=cyc.seq_kind,
                                   rule_set_id=cyc.rule_set_id, slot_inputs=cyc.slot_inputs, computed=cyc.computed,
-                                  narrative_zh=cyc.narrative_zh, total_tmu=cyc.total_tmu,
+                                  narrative_zh=cyc.narrative_zh, narrative_en=cyc.narrative_en,
+                                  total_tmu=cyc.total_tmu,
                                   total_seconds=cyc.total_seconds, computed_at=cyc.computed_at))
         lv = (await session.execute(select(LevelEntry).where(LevelEntry.wi_row_id == wr.id))).scalar_one_or_none()
         if lv:

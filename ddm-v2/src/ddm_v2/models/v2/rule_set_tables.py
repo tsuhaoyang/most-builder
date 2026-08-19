@@ -61,6 +61,7 @@ class RuleBOption(Base):
     index_value: Mapped[int] = mapped_column(Integer, nullable=False)
     is_default: Mapped[bool] = mapped_column(Boolean, nullable=False, server_default=text("FALSE"))
     sentence_text_zh: Mapped[str | None] = mapped_column(Text)  # 敘事用字（V2；NULL 回退 label_zh）
+    sentence_text_en: Mapped[str | None] = mapped_column(Text)
     sort_order: Mapped[int] = mapped_column(Integer, nullable=False, server_default=text("0"))
     is_active: Mapped[bool] = mapped_column(Boolean, nullable=False, server_default=text("true"))
 
@@ -81,6 +82,7 @@ class RuleGAction(Base):
     requires_modifier: Mapped[bool] = mapped_column(Boolean, nullable=False, server_default=text("FALSE"))
     base_tmu: Mapped[int] = mapped_column(Integer, nullable=False)
     sentence_text_zh: Mapped[str | None] = mapped_column(Text)
+    sentence_text_en: Mapped[str | None] = mapped_column(Text)
     sort_order: Mapped[int] = mapped_column(Integer, nullable=False, server_default=text("0"))
     is_active: Mapped[bool] = mapped_column(Boolean, nullable=False, server_default=text("true"))
 
@@ -101,6 +103,7 @@ class RulePBase(Base):
     direction_mode: Mapped[str | None] = mapped_column(Text)
     base_tmu: Mapped[int] = mapped_column(Integer, nullable=False)
     sentence_text_zh: Mapped[str | None] = mapped_column(Text)
+    sentence_text_en: Mapped[str | None] = mapped_column(Text)
     sort_order: Mapped[int] = mapped_column(Integer, nullable=False, server_default=text("0"))
     is_active: Mapped[bool] = mapped_column(Boolean, nullable=False, server_default=text("true"))
 
@@ -122,6 +125,7 @@ class RulePAddon(Base):
     max_select: Mapped[int] = mapped_column(Integer, nullable=False, server_default=text("2"))
     display_rule: Mapped[str] = mapped_column(Text, nullable=False, server_default=text("'show_self'"))  # 敘事三態（E6）
     sentence_text_zh: Mapped[str | None] = mapped_column(Text)
+    sentence_text_en: Mapped[str | None] = mapped_column(Text)
     sort_order: Mapped[int] = mapped_column(Integer, nullable=False, server_default=text("0"))
     is_active: Mapped[bool] = mapped_column(Boolean, nullable=False, server_default=text("true"))
 
@@ -172,6 +176,7 @@ class RuleMVerb(Base):
     pricing_kind: Mapped[str] = mapped_column(Text, nullable=False)
     fixed_tmu: Mapped[int | None] = mapped_column(Integer)  # pricing_kind=fixed 時用
     sentence_text_zh: Mapped[str | None] = mapped_column(Text)
+    sentence_text_en: Mapped[str | None] = mapped_column(Text)
     sort_order: Mapped[int] = mapped_column(Integer, nullable=False, server_default=text("0"))
     is_active: Mapped[bool] = mapped_column(Boolean, nullable=False, server_default=text("true"))
 
@@ -221,6 +226,7 @@ class RuleXOption(Base):
     mode: Mapped[str] = mapped_column(Text, nullable=False)
     fixed_seconds: Mapped[float | None] = mapped_column(Numeric(10, 4))
     sentence_text_zh: Mapped[str | None] = mapped_column(Text)
+    sentence_text_en: Mapped[str | None] = mapped_column(Text)
     sort_order: Mapped[int] = mapped_column(Integer, nullable=False, server_default=text("0"))
     is_active: Mapped[bool] = mapped_column(Boolean, nullable=False, server_default=text("true"))
 
@@ -243,6 +249,7 @@ class RuleIOption(Base):
     index_value: Mapped[int] = mapped_column(Integer, nullable=False)
     vision_scope: Mapped[str | None] = mapped_column(Text)  # normal/outside（UI 分組；i_none 為 NULL）
     sentence_text_zh: Mapped[str | None] = mapped_column(Text)
+    sentence_text_en: Mapped[str | None] = mapped_column(Text)
     sort_order: Mapped[int] = mapped_column(Integer, nullable=False, server_default=text("0"))
     is_active: Mapped[bool] = mapped_column(Boolean, nullable=False, server_default=text("true"))
 

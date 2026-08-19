@@ -345,6 +345,10 @@ async def test_seed_succeeds_when_draft_adds_a_code_absent_from_active(db_sessio
 
     code = f"ut_b1_seed_new_code_{uuid.uuid4().hex[:6]}"
     monkeypatch.setitem(SEED.G_LABELS, code, "Probe grab (B1 new code)")
+    # Phase C 起，一個 option code 有**兩個**可譯欄（label_en／sentence_text_en），
+    # 兩張翻譯表都要有它才不會被記進 `missing`——本測試守的是「不得整批炸掉」，
+    # 不是「只有標籤需要翻譯」。
+    monkeypatch.setitem(SEED.G_SENTENCES, code, "probe-grab")
 
     await opsvc.create_option(
         db_session, draft_rs, "G", None,
@@ -382,21 +386,51 @@ async def test_seed_succeeds_when_draft_adds_a_code_absent_from_active(db_sessio
 # ══════════════════════════════════════════════════════════════════
 
 async def test_seed_fills_active_rule_set_labels_and_side_table_atomically(db_session):
+    """D6：`label_en` 與 `sentence_text_en` **兩條**寫入路徑都填值，且與側表同交易寫入。
+
+    **先清空再灌**（arrange）：真實 DB 早就被灌過並 commit 了，不清空的話「灌值有沒有
+    成功」這件事根本沒被執行到——把腳本的句面寫入路徑整段停掉（`if False and ...`），
+    這條測試在清空之前照樣全綠（2026-08-19 突變實測 24 passed）。清空範圍限 V2 的
+    `rule_g_actions` 兩個 `_en` 欄位＋它對應的側表列，全都在 `db_session` 的 savepoint
+    內，測試結束即 rollback（同本檔既有的「灌值腳本會寫 active，但被隔離」紀律）。
+
+    句面（`field='sentence'`）是 Phase C 新增的第二條寫入路徑，必須**無條件**斷言：
+    它一旦靜默 no-op，`sentence_text_en` 全 NULL →
+    `test_narrative_en_endpoints.py` 那條「英文敘事不得殘留中文」的 skip 條件成立 →
+    唯一能發現「素材沒灌成功」的測試把自己關掉，整批綠。
+    """
     if not await _seeded(db_session):
         pytest.skip("rule-set 未種")
-    await SEED.seed_i18n_labels(db_session)
+
+    await db_session.execute(text(
+        "UPDATE rule_g_actions t SET label_en = NULL, sentence_text_en = NULL "
+        "FROM rule_sets rs WHERE rs.id = t.rule_set_id AND rs.code = :code"
+    ), {"code": CERTIFIED})
+    await db_session.execute(text(
+        "DELETE FROM i18n_review_state WHERE entity_type = 'rule_option' "
+        "AND scope_key LIKE 'g:%' AND field IN ('label', 'sentence')"
+    ))
     await db_session.flush()
 
+    stats = await SEED.seed_i18n_labels(db_session)
+    await db_session.flush()
+    assert not [m for m in stats.missing if "rule_g_actions" in m], stats.missing
+
     rows = (await db_session.execute(text(
-        "SELECT t.code, t.label_en FROM rule_g_actions t JOIN rule_sets rs ON rs.id=t.rule_set_id "
-        "WHERE rs.code = :code"
+        "SELECT t.code, t.label_en, t.sentence_text_en FROM rule_g_actions t "
+        "JOIN rule_sets rs ON rs.id=t.rule_set_id WHERE rs.code = :code"
     ), {"code": CERTIFIED})).all()
     assert rows, "V2 的 rule_g_actions 應該有列"
-    for code, label_en in rows:
-        assert label_en is not None, f"{code} 灌值後仍是 NULL"
-        review = await svc.get_review_state(db_session, "rule_option", f"g:{code}", "label")
-        assert review is not None, f"{code} 有 label_en 但查無側表列——違反同交易原子性"
-        assert review.source in ("machine", "human", "legacy_seed")
+    for code, label_en, sentence_en in rows:
+        assert label_en is not None, f"{code} 灌值後 label_en 仍是 NULL"
+        assert sentence_en is not None, (
+            f"{code} 灌值後 sentence_text_en 仍是 NULL——Phase C 的句面寫入路徑沒跑")
+        for field_name in ("label", "sentence"):
+            review = await svc.get_review_state(db_session, "rule_option", f"g:{code}", field_name)
+            assert review is not None, (
+                f"{code} 的 {field_name} 有 _en 值但查無側表列——違反同交易原子性")
+            assert review.source == "machine", (
+                f"{code}/{field_name} 由本次灌值新建，來源應為 machine：{review.source}")
 
 
 async def test_seed_is_idempotent(db_session):
@@ -411,7 +445,11 @@ async def test_seed_is_idempotent(db_session):
 
 
 async def test_seed_does_not_touch_published_non_active_rule_set(db_session):
-    """D6 範圍排除 published(非 active)：V1 的 label_en 灌值前後都應維持 NULL。"""
+    """D6 範圍排除 published(非 active)：V1 的 `label_en` **與** `sentence_text_en` 都維持 NULL。
+
+    兩欄都要查：`sentence_text_en` 是 Phase C 新增的第二條寫入路徑，只查 `label_en`
+    的話「句面灌值誤把 published 非 active 也掃進去」這種越界完全沒人看守。
+    """
     if not await _seeded(db_session, LEGACY):
         pytest.skip("V1 未種")
     rs = (await db_session.execute(select(RuleSet).where(RuleSet.code == LEGACY))).scalar_one()
@@ -422,7 +460,7 @@ async def test_seed_does_not_touch_published_non_active_rule_set(db_session):
 
     count_filled = (await db_session.execute(text(
         "SELECT count(*) FROM rule_g_actions t JOIN rule_sets rs ON rs.id=t.rule_set_id "
-        "WHERE rs.code = :code AND t.label_en IS NOT NULL"
+        "WHERE rs.code = :code AND (t.label_en IS NOT NULL OR t.sentence_text_en IS NOT NULL)"
     ), {"code": LEGACY})).scalar_one()
     assert count_filled == 0, "V1（published 非 active）不應被灌值——超出 D6 範圍"
 

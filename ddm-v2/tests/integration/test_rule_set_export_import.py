@@ -130,6 +130,11 @@ async def test_export_contains_every_section_including_d2_fields(exported):
     for sec in FULL_SECTIONS:
         assert exported.get(sec), f"匯出區塊 {sec} 是空的"
     assert any(r.get("sentence_text_zh") for r in exported["g"]), "g.sentence_text_zh 全空"
+    # ADR-032 §8 訊號 6：`sentence_text_en` 加欄後若 clone／`PUT /full` 靜默丟值，
+    # 就代表 D7.2 的三處同步（model／schema／load_full）沒做全。**斷言鍵存在**而非
+    # 有值——值取決於 `dev_seed_i18n_labels.py` 跑過沒有，鍵存在與否才是同步點本身。
+    for sec in ("b", "g", "p_bases", "p_addons", "m_verbs", "x", "i"):
+        assert all("sentence_text_en" in r for r in exported[sec]), f"{sec}.sentence_text_en 未匯出"
     assert all("display_rule" in r and "max_select" in r for r in exported["p_addons"])
     assert all("vision_scope" in r for r in exported["i"])
     assert exported["m_foot"], "m_foot 整表缺失（D2 修過的漏表）"

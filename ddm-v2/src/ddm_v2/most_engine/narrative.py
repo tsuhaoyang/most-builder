@@ -1,5 +1,8 @@
 """後端敘事產生：cycle + vocab 名 + rule-set 標籤/句字 → 可朗讀 METHOD 句（單一權威）。
 
+**改這裡通常必須也改 `narrative_en.py`**（ADR-032 R3）：英文是平行的獨立組句系統，
+不是本檔的分支。新增敘事規則（例如再加一個 `display_rule` 值）只改單邊，英文會靜默落後。
+
 存檔時由此產生並存 most_cycles.narrative_zh，供匯出/讀回使用（不靠前端拼）。
 依據 minimost-sequence-model-core-logic-spec §5 ＋ ADR-014 E6（v3 認證顯示規則）：
 - P 附加 display_rule 三態：show_self（插入/卡合取代 base 動詞）、prefix_visible_term（對準前綴）、hidden（只計 TMU 不入句）。

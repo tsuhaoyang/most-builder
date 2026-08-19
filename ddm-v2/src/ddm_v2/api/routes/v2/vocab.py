@@ -65,7 +65,9 @@ async def patch_vocab(item_id: uuid.UUID, payload: VocabPatchIn, session: AsyncS
         raise HTTPException(status_code=404, detail=f"詞彙不存在：{item_id}")
     if payload.name_zh is not None:
         v.name_zh = payload.name_zh
-    if payload.name_en is not None:
+    if "name_en" in payload.model_fields_set:
+        # 用「有沒有送這個鍵」而不是「值是不是 None」判斷——schema 把空白/空字串的英文名
+        # 正規化成 None（清掉英文名是合法操作），若照 `is not None` 判會變成靜默不生效。
         v.name_en = payload.name_en
     if payload.external_code is not None:
         v.external_code = payload.external_code or None

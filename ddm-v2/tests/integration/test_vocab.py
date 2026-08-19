@@ -1,4 +1,4 @@
-"""主數據詞彙 CRUD + RBAC + 搜尋/分頁/is_active toggle。"""
+"""主數據詞彙 CRUD + RBAC + 搜尋/分頁/is_active toggle + 名稱空白邊界。"""
 from __future__ import annotations
 
 import pytest
@@ -148,3 +148,47 @@ async def test_vocab_no_limit_returns_all(client):
     finally:
         for vid in ids:
             await client.delete(f"/api/v2/vocab/{vid}")
+
+
+# ── 名稱空白邊界（H-1 根因：空白詞彙名會讓英文敘事在讀取時 500）────────
+
+# 含全形空白（U+3000）與 nbsp（U+00A0）——`str.strip()` 是 Unicode-aware 的，現行實作
+# 擋得住；只放 ASCII 的話，日後把驗證收窄成 `.strip(" \t\n")` 不會有測試變紅，
+# 而全形空白是中文輸入法最容易打出、肉眼與半形無異的那一種。
+@pytest.mark.parametrize("blank", ["   ", "\t", "", " \t ", "\u3000", "\xa0"])
+async def test_vocab_create_rejects_blank_name_zh(client, blank):
+    r = await client.post("/api/v2/vocab", json={"kind": "object", "name_zh": blank})
+    assert r.status_code == 422, r.text
+
+
+@pytest.mark.parametrize("blank", ["   ", "\t", "", "\u3000", "\xa0"])
+async def test_vocab_blank_name_en_is_stored_as_null(client, blank):
+    """英文名不同於中文名：空白＝清掉英文名，正規化為 null 而不是 422。"""
+    r = await client.post("/api/v2/vocab",
+                          json={"kind": "object", "name_zh": " UT詞彙空白英文名 ", "name_en": blank})
+    assert r.status_code in (200, 201), r.text
+    body = r.json()
+    assert body["name_en"] is None
+    assert body["name_zh"] == "UT詞彙空白英文名"        # 前後空白已 strip
+    await client.delete(f"/api/v2/vocab/{body['id']}")
+
+
+async def test_vocab_patch_blank_name_zh_rejected_and_name_en_cleared(client):
+    r = await client.post("/api/v2/vocab",
+                          json={"kind": "object", "name_zh": "UT詞彙補丁", "name_en": "Patch item"})
+    assert r.status_code in (200, 201), r.text
+    vid = r.json()["id"]
+    try:
+        bad = await client.patch(f"/api/v2/vocab/{vid}", json={"name_zh": "   "})
+        assert bad.status_code == 422, bad.text
+
+        cleared = await client.patch(f"/api/v2/vocab/{vid}", json={"name_en": "  "})
+        assert cleared.status_code == 200, cleared.text
+        assert cleared.json()["name_en"] is None    # 送了鍵＝要清空，不是「沒送」
+        assert cleared.json()["name_zh"] == "UT詞彙補丁"
+
+        untouched = await client.patch(f"/api/v2/vocab/{vid}", json={"is_active": True})
+        assert untouched.status_code == 200 and untouched.json()["name_zh"] == "UT詞彙補丁"
+    finally:
+        await client.delete(f"/api/v2/vocab/{vid}")
+

@@ -110,14 +110,54 @@ async def load_options_from_db(session: Any, code: str) -> dict[str, Any]:
             comp: [{"max_value": _f(r.max_value), "index": r.index_value} for r in a if r.component == comp]
             for comp in ("reach", "twist", "foot")
         },
-        "b": [{"code": r.code, "label": r.label_zh, "label_en": r.label_en, "index": r.index_value, "is_default": r.is_default, "sentence": r.sentence_text_zh} for r in await rows(rt.RuleBOption)],
-        "g": [{"code": r.code, "label": r.label_zh, "label_en": r.label_en, "modifier_key": r.modifier_key, "requires_modifier": r.requires_modifier, "base_tmu": r.base_tmu, "sentence": r.sentence_text_zh} for r in await rows(rt.RuleGAction)],
-        "p_bases": [{"code": r.code, "label": r.label_zh, "label_en": r.label_en, "base_tmu": r.base_tmu, "sentence": r.sentence_text_zh} for r in await rows(rt.RulePBase)],
-        "p_addons": [{"code": r.code, "label": r.label_zh, "label_en": r.label_en, "delta": r.delta_tmu, "needs_precision": r.needs_precision, "sentence": r.sentence_text_zh, "display_rule": r.display_rule} for r in await rows(rt.RulePAddon)],
-        "m_verbs": [{"code": r.code, "label": r.label_zh, "label_en": r.label_en, "pricing_kind": r.pricing_kind, "sentence": r.sentence_text_zh} for r in await rows(rt.RuleMVerb)],
-        "x": [{"code": r.code, "label": r.label_zh, "label_en": r.label_en, "mode": r.mode, "sentence": r.sentence_text_zh} for r in await rows(rt.RuleXOption)],
-        "i": [{"code": r.code, "label": r.label_zh, "label_en": r.label_en, "index": r.index_value, "vision_scope": r.vision_scope, "sentence": r.sentence_text_zh} for r in await rows(rt.RuleIOption)],
+        "b": [{"code": r.code, "label": r.label_zh, "label_en": r.label_en, "index": r.index_value, "is_default": r.is_default, "sentence": r.sentence_text_zh, "sentence_en": r.sentence_text_en} for r in await rows(rt.RuleBOption)],
+        "g": [{"code": r.code, "label": r.label_zh, "label_en": r.label_en, "modifier_key": r.modifier_key, "requires_modifier": r.requires_modifier, "base_tmu": r.base_tmu, "sentence": r.sentence_text_zh, "sentence_en": r.sentence_text_en} for r in await rows(rt.RuleGAction)],
+        "p_bases": [{"code": r.code, "label": r.label_zh, "label_en": r.label_en, "base_tmu": r.base_tmu, "sentence": r.sentence_text_zh, "sentence_en": r.sentence_text_en} for r in await rows(rt.RulePBase)],
+        "p_addons": [{"code": r.code, "label": r.label_zh, "label_en": r.label_en, "delta": r.delta_tmu, "needs_precision": r.needs_precision, "sentence": r.sentence_text_zh, "sentence_en": r.sentence_text_en, "display_rule": r.display_rule} for r in await rows(rt.RulePAddon)],
+        "m_verbs": [{"code": r.code, "label": r.label_zh, "label_en": r.label_en, "pricing_kind": r.pricing_kind, "sentence": r.sentence_text_zh, "sentence_en": r.sentence_text_en} for r in await rows(rt.RuleMVerb)],
+        "x": [{"code": r.code, "label": r.label_zh, "label_en": r.label_en, "mode": r.mode, "sentence": r.sentence_text_zh, "sentence_en": r.sentence_text_en} for r in await rows(rt.RuleXOption)],
+        "i": [{"code": r.code, "label": r.label_zh, "label_en": r.label_en, "index": r.index_value, "vision_scope": r.vision_scope, "sentence": r.sentence_text_zh, "sentence_en": r.sentence_text_en} for r in await rows(rt.RuleIOption)],
     }
+
+
+def build_label_map(opts: dict[str, Any]) -> dict[str, dict[str, Any]]:
+    """`load_options_from_db()` 的選項清單 → 兩個敘事模組吃的 `{param: {code: entry}}`。
+
+    中英兩套樣板共用同一份 entry（`label`/`sentence` ＋ `label_en`/`sentence_en`），
+    所以這裡是**單一**的形狀來源——先前 worksheet 與 motion module 兩個 service 各自
+    抄了一份 `_lmap`，加英文欄時等於要記得改兩個地方。
+    """
+    def _one(rows_: list[dict[str, Any]]) -> dict[str, dict[str, Any]]:
+        return {
+            o["code"]: {
+                "label": o.get("label"), "sentence": o.get("sentence"),
+                "label_en": o.get("label_en"), "sentence_en": o.get("sentence_en"),
+                "display_rule": o.get("display_rule"),
+            }
+            for o in rows_
+        }
+
+    return {"g": _one(opts["g"]), "p_base": _one(opts["p_bases"]), "p_addon": _one(opts["p_addons"]),
+            "m_verb": _one(opts["m_verbs"]), "x": _one(opts["x"]), "i": _one(opts["i"])}
+
+
+async def load_options_by_rule_set_id(session: Any, rule_set_id: Any) -> dict[str, Any] | None:
+    """同 `load_options_from_db`，但以 rule_set **id** 定位版本。找不到 → 回 None。
+
+    存在的理由是回放：`most_cycles.rule_set_id` 與 `motion_module_versions.rule_set_id`
+    釘的是 id 而非 code，用 active code 去載標籤等於拿現行字典重新詮釋歷史列
+    （ADR-032 I4）。`rule_sets.code` 有 UNIQUE，故 id → code → 既有載入器是等價的。
+    """
+    from sqlalchemy import select
+
+    from ddm_v2.models.v2.rule_set import RuleSet
+
+    code = (await session.execute(
+        select(RuleSet.code).where(RuleSet.id == rule_set_id)
+    )).scalar_one_or_none()
+    if code is None:
+        return None
+    return await load_options_from_db(session, code)
 
 
 async def load_rule_set_from_db(session: Any, code: str) -> RuleSetData:

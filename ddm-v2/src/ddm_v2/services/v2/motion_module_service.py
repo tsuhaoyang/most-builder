@@ -25,7 +25,12 @@ from ddm_v2.models.v2.worksheet import LevelEntry, MostCycle, MostWorksheet, Pro
 from ddm_v2.most_engine import SequenceError, compute_cycle, load_rule_set_from_db
 from ddm_v2.most_engine.calculate import compute_table
 from ddm_v2.most_engine.narrative import HAND_NAMES, build_narrative
-from ddm_v2.most_engine.providers import load_options_from_db
+from ddm_v2.most_engine.narrative_en import build_narrative_en
+from ddm_v2.most_engine.providers import (
+    build_label_map,
+    load_options_by_rule_set_id,
+    load_options_from_db,
+)
 from ddm_v2.most_engine.rule_set_data import TMU_TO_SEC, RuleSetData
 from ddm_v2.schemas.v2.most import CycleIn, cycle_in_to_engine, resolve_cycle_rule_set
 from ddm_v2.schemas.v2.motion_module import (
@@ -177,14 +182,7 @@ async def _validate_and_compute_rows(
 
     # 敘事素材：rule-set 標籤/句字 + vocab 名（單一權威 = most_engine.narrative）
     opts = await load_options_from_db(session, rule_set_code)
-
-    def _lmap(rows_: list[dict[str, Any]]) -> dict[str, dict[str, Any]]:
-        return {o["code"]: {"label": o.get("label"), "sentence": o.get("sentence"),
-                            "display_rule": o.get("display_rule")} for o in rows_}
-
-    labels = {"g": _lmap(opts["g"]), "p_base": _lmap(opts["p_bases"]),
-              "p_addon": _lmap(opts["p_addons"]), "m_verb": _lmap(opts["m_verbs"]),
-              "x": _lmap(opts["x"]), "i": _lmap(opts["i"])}
+    labels = build_label_map(opts)
 
     vids: set[uuid.UUID] = set()
     for row in rows:
@@ -232,7 +230,55 @@ async def _validate_and_compute_rows(
     return validated_rows, float(table["total_tmu"]), float(table["total_seconds"])
 
 
-def _module_to_response(
+async def _rows_with_narrative_en(
+    session: AsyncSession, version: MotionModuleVersion
+) -> list[dict[str, Any]]:
+    """版本 rows ＋ 即時產生的 `narrative_en`（ADR-032 D7.2）。
+
+    **刻意不落盤**：`motion_module_versions` 是不可變版本快照（rows JSONB 連同
+    `narrative_zh` 一起凍結），為舊快照回填等於改寫不可變列。英文敘事改為讀取時
+    以該版本自己 pin 的 `rule_set_id` 產生——這同時滿足 I4（不得以現行 active
+    字典重新詮釋歷史版本）。
+
+    回傳的是 rows 的**淺複本**：直接改 `version.rows` 的 dict 會弄髒 JSONB 欄位，
+    讓一次唯讀請求在 flush 時把敘事寫回不可變快照。
+    """
+    rows = [dict(r) for r in version.rows]
+    opts = await load_options_by_rule_set_id(session, version.rule_set_id)
+    if opts is None:
+        return rows
+    labels = build_label_map(opts)
+
+    vids: set[uuid.UUID] = set()
+    for row in rows:
+        for key in ("object_vocab_id", "from_vocab_id", "to_vocab_id"):
+            raw = (row.get("vocab_refs") or {}).get(key)
+            if raw:
+                try:
+                    vids.add(uuid.UUID(str(raw)))
+                except ValueError:
+                    pass  # 非 UUID 的 ref 不阻斷讀取（與 publish 期同一個寬容度）
+    vname_en: dict[str, str] = {}
+    if vids:
+        res = await session.execute(select(WorkVocabItem).where(WorkVocabItem.id.in_(vids)))
+        vname_en = {str(v.id): (v.name_en or v.name_zh) for v in res.scalars().all()}
+
+    for row in rows:
+        cycle = row.get("cycle")
+        if not cycle:
+            continue
+        refs = row.get("vocab_refs") or {}
+        row["narrative_en"] = build_narrative_en(cycle, labels, {
+            "object": vname_en.get(str(refs.get("object_vocab_id")), ""),
+            "from": vname_en.get(str(refs.get("from_vocab_id")), ""),
+            "to": vname_en.get(str(refs.get("to_vocab_id")), ""),
+            "hand": row.get("hand") or "",
+        })
+    return rows
+
+
+async def _module_to_response(
+    session: AsyncSession,
     m: MotionModule,
     version: MotionModuleVersion | None = None,
     *,
@@ -270,7 +316,7 @@ def _module_to_response(
                 module_id=version.module_id,
                 version_no=version.version_no,
                 rule_set_id=version.rule_set_id,
-                rows=list(version.rows),
+                rows=await _rows_with_narrative_en(session, version),
                 narrative_zh=version.narrative_zh,
                 total_tmu=float(version.total_tmu),
                 total_seconds=float(version.total_seconds),
@@ -320,13 +366,15 @@ async def _current_versions_map(
     return {v.module_id: v for v in res.scalars().all()}
 
 
-def _version_to_response(v: MotionModuleVersion) -> MotionModuleVersionResponse:
+async def _version_to_response(
+    session: AsyncSession, v: MotionModuleVersion
+) -> MotionModuleVersionResponse:
     return MotionModuleVersionResponse(
         id=v.id,
         module_id=v.module_id,
         version_no=v.version_no,
         rule_set_id=v.rule_set_id,
-        rows=list(v.rows),
+        rows=await _rows_with_narrative_en(session, v),
         narrative_zh=v.narrative_zh,
         total_tmu=float(v.total_tmu),
         total_seconds=float(v.total_seconds),
@@ -371,7 +419,7 @@ async def create_module(
     )
     session.add(m)
     await session.flush()
-    return _module_to_response(m)
+    return await _module_to_response(session, m)
 
 
 async def get_module(
@@ -400,7 +448,7 @@ async def get_module(
             )
         )
         version = res.scalar_one_or_none()
-    return _module_to_response(m, version)
+    return await _module_to_response(session, m, version)
 
 
 async def list_modules(
@@ -467,7 +515,7 @@ async def list_modules(
 
     vmap = await _current_versions_map(session, modules)
     return [
-        _module_to_response(m, vmap.get(m.id), include_detail=False)
+        await _module_to_response(session, m, vmap.get(m.id), include_detail=False)
         for m in modules
     ]
 
@@ -509,7 +557,7 @@ async def update_module(
         m.site_id = data.site_id
     m.updated_at = datetime.now(timezone.utc)
     await session.flush()
-    return _module_to_response(m)
+    return await _module_to_response(session, m)
 
 
 # ── 刪除 ─────────────────────────────────────────────────────────────
@@ -643,7 +691,7 @@ async def clone_module(
     except Exception as exc:
         logger.warning("clone search 投影失敗 module=%s: %s", new_m.id, exc)
 
-    return _module_to_response(new_m, cloned_ver)
+    return await _module_to_response(session, new_m, cloned_ver)
 
 
 # ── 版本發布 ─────────────────────────────────────────────────────────
@@ -751,7 +799,7 @@ async def publish_version(
     except Exception as exc:
         logger.warning("search 投影失敗 module=%s: %s", module_id, exc)
 
-    return _version_to_response(ver)
+    return await _version_to_response(session, ver)
 
 
 # ── apply-back：從 rows 建立新版本（F-03b §3）────────────────────────
@@ -818,7 +866,7 @@ async def create_version_from_rows(
     m.updated_at = now
     await session.flush()
 
-    return _version_to_response(ver)
+    return await _version_to_response(session, ver)
 
 
 # ── 版本歷史 ─────────────────────────────────────────────────────────
@@ -846,7 +894,7 @@ async def get_versions(
         .order_by(MotionModuleVersion.version_no)
     )
     versions = list(result.scalars().all())
-    return [_version_to_response(v) for v in versions]
+    return [await _version_to_response(session, v) for v in versions]
 
 
 # ── row 級操作（ADR-022 A-2：WI 微調 = Inspector 後端）───────────────
@@ -923,7 +971,7 @@ async def _republish_rows(
     m.current_version = new_version_no
     m.updated_at = now
     await session.flush()
-    return _version_to_response(ver)
+    return await _version_to_response(session, ver)
 
 
 async def update_row(

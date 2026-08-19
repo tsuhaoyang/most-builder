@@ -112,16 +112,22 @@ jobs:
       # （主守門的 `assert rows` ＋ allowlist stale 檢查，實測 3 failed）。
       # 詞典先前只活在開發機的執行期資料裡＝守門在 CI 上從未真的守過（D3-030 B1）。
       #
-      # dev_seed_i18n_labels.py 不是同一種理由（L-2，2026-08-18 第三輪複審實測
-      # 澄清）：`tests/integration/test_i18n_review_state.py`／`test_i18n_routes.py`
-      # 的每個需要 i18n 資料的測試都在自己的 session 裡呼叫
-      # `SEED.seed_i18n_labels(db_session)` 灌好才斷言——CI 不跑這一步，
-      # `pytest tests/integration` 一樣是全綠（501 passed），沒有任何測試依賴
-      # 它在 CI 上跑過。保留這一步的真正理由是把它當**部署腳本的煙霧測試**：
-      # 確保 `dev_seed_i18n_labels.py` 在乾淨環境下真的能跑到底、不會半路壞掉
-      # （這支腳本本身沒有其他地方會被自動驗證），同時讓 CI 的資料形狀貼近未來
-      # dev／staging 環境（兩邊最終都要跑這支腳本）。順序接在 dev_seed_synonyms.py
-      # 之後：兩者互不依賴，沿用既有慣例（先字典類、後衍生的側表）。
+      # dev_seed_i18n_labels.py：**Phase C 起是承重的，不要刪。**
+      # （2026-08-18 第三輪複審寫過「沒有任何測試依賴它在 CI 上跑過、保留它只是
+      # 部署腳本的煙霧測試」——那在 Phase B 成立，Phase C 起**不再成立**，
+      # 2026-08-19 delta 複審更正。）
+      # 差別在灌種責任歸屬：`test_i18n_review_state.py`／`test_i18n_routes.py` 的每
+      # 個測試都在自己的 session 裡呼叫 `SEED.seed_i18n_labels(db_session)` 才斷言，
+      # 不靠這一步；但 Phase C 的 `test_narrative_en_endpoints.py` **不自己灌種**，
+      # 它查 `/rule-sets/{code}/full` 沒有 `sentence_text_en` 就 `pytest.skip`。
+      # 刪掉這一步 → 該檔兩條最強的斷言會**靜默降級成 skip、CI 依然全綠**：
+      #   - test_english_narrative_contains_no_chinese_when_material_is_seeded
+      #     （素材齊全時英文敘事不得殘留中文）
+      #   - test_module_version_narrative_en_reads_the_pinned_rule_sets_material
+      #     （ADR-032 I4：讀該版本自己 pin 的字典，不是現行 active）
+      # 次要理由仍成立：它同時是這支腳本唯一的自動化煙霧測試（確保乾淨環境下跑得完），
+      # 並讓 CI 的資料形狀貼近 dev／staging。順序接在 dev_seed_synonyms.py 之後：
+      # 兩者互不依賴，沿用既有慣例（先字典類、後衍生的側表）。
       - name: Migrate + seed（整合測試要有 rule-set/worksheet/詞典，否則 skip 或紅）
         run: |
           alembic upgrade head
