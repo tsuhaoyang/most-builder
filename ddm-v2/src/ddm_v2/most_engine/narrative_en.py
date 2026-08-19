@@ -104,7 +104,7 @@ def build_narrative_en(cycle: dict[str, Any], labels: dict[str, dict[str, Any]],
     hand = (vocab.get("hand") or "").strip()
     frm = _noun(vocab.get("from") or "")
     to = _noun(vocab.get("to") or "")
-    obj = _noun(vocab.get("object") or "part")
+    obj = _noun((vocab.get("object") or "").strip() or "part")   # 先 strip 再回退：`"   "` 是 truthy
     g2 = cycle.get("g2") or {}
     g = _sent(labels.get("g", {}).get(g2.get("g_code"))) or "get"
 

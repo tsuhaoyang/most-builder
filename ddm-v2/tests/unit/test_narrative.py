@@ -81,6 +81,15 @@ def render(locale: str, cycle: dict) -> str:
     return build_narrative_en(cycle, LABELS, VOCAB_EN)
 
 
+def render_with(locale: str, cycle: dict, **vocab_overrides) -> str:
+    """`render()` 的可覆寫 vocab 版：空白邊界要餵髒詞彙名，兩語各自的 vocab 基底不同。"""
+    base = VOCAB if locale == "zh" else VOCAB_EN
+    vocab = dict(base, **vocab_overrides)
+    if locale == "zh":
+        return build_narrative(cycle, LABELS, vocab)
+    return build_narrative_en(cycle, LABELS, vocab)
+
+
 def occurrences(text: str, term: str) -> int:
     """大小寫不敏感——英文樣板會把受詞降格（Main board → the main board），
     語意不變式不該因為這種呈現層細節而紅。"""
@@ -386,36 +395,68 @@ def test_en_acronym_object_names_keep_their_capitalisation():
 # 全形空白是中文輸入法極易打出、且肉眼與半形無異的字元（工廠詞彙的實際毒源）。
 BLANK_NAMES = ["   ", "\t", "\n", " \t ", "", "\u3000", "\xa0", "\u3000 \xa0"]
 
+TAIL = {"zh": "最後收束返回。", "en": "Finally, return to the start position."}
 
+# 空白蒸發後各語系「不該留下什麼」——中文的殘骸長相與英文完全不同（前置介詞 vs 冠詞），
+# 所以照本檔 `_expect_*` 的慣例逐語系派工，而不是拿英文的 regex 硬套中文。
+DEBRIS = {
+    "zh": (
+        r"「\s*」",        # 空白受詞：「   」原樣入句（strip 前的實際輸出）
+        r"從\s*[，。]",     # 來源蒸發後留下的孤兒「從」
+        r"到\s*[，。]",     # 目的地蒸發後留下的孤兒「到」
+        r"在\s*一側",       # CM 的「在『to』一側」整段該消失
+    ),
+    "en": (
+        r"\b(the|from|to|at)\s*[.,]",
+    ),
+}
+
+
+@pytest.mark.parametrize("locale", LOCALES)
 @pytest.mark.parametrize("blank", BLANK_NAMES)
 @pytest.mark.parametrize("slot", ["object", "from", "to"])
-def test_en_blank_vocab_name_does_not_crash(slot, blank):
-    """三個 vocab 槽都會經過 `_noun()`——純空白曾在 `split(maxsplit=1)[0]` 拋 IndexError。
+def test_both_blank_vocab_name_does_not_crash(slot, blank, locale):
+    """三個 vocab 槽在英文都會經過 `_noun()`——純空白曾在 `split(maxsplit=1)[0]` 拋 IndexError。
 
     Phase C 之後敘事是讀取時產生的：一筆空白詞彙名＝**任何人**（含 viewer）讀模組/版本/
     工作表都 500，且改被讀的那筆資料修不好。所以這裡守的是「絕不拋例外」，不是輸出長相。
     """
-    vocab = dict(VOCAB_EN, **{slot: blank})
     for cycle in (_gm_cycle(["a_align"], twist=90), _gm_cycle(p_repeat=3), _cm_cycle()):
-        out = build_narrative_en(cycle, LABELS, vocab)
-        assert out.endswith("Finally, return to the start position.")
+        assert render_with(locale, cycle, **{slot: blank}).endswith(TAIL[locale])
 
 
+@pytest.mark.parametrize("locale", LOCALES)
 @pytest.mark.parametrize("blank", BLANK_NAMES)
 @pytest.mark.parametrize("slot", ["object", "from", "to"])
-def test_en_blank_vocab_name_leaves_no_dangling_phrase(slot, blank):
-    """空白受詞要整段消失，不能留下 "the  " / "from ." 這種殘骸或原始的 tab/換行。"""
-    vocab = dict(VOCAB_EN, **{slot: blank})
+def test_both_blank_vocab_name_leaves_no_dangling_phrase(slot, blank, locale):
+    """空白詞要整段消失，不能留下 "the  " / "from ." 或「   」/ 孤兒「從」這種殘骸。"""
     for cycle in (_gm_cycle(["a_align"], twist=90), _cm_cycle()):
-        out = build_narrative_en(cycle, LABELS, vocab)
+        out = render_with(locale, cycle, **{slot: blank})
         assert "\t" not in out and "\n" not in out
-        assert "\u3000" not in out and "\xa0" not in out, out   # 全形空白/nbsp 同樣不得留在句中
-        assert "  " not in out, out                       # 受詞蒸發後不得留下雙空格
-        assert re.search(r"\b(the|from|to|at)\s*[.,]", out) is None, out
+        assert "\u3000" not in out and "\xa0" not in out, out  # 全形空白/nbsp 同樣不得留在句中
+        assert "  " not in out, out                            # 受詞蒸發後不得留下雙空格
+        for pattern in DEBRIS[locale]:
+            assert re.search(pattern, out) is None, (pattern, out)
 
 
+@pytest.mark.parametrize("locale", LOCALES)
 @pytest.mark.parametrize("blank", BLANK_NAMES)
-def test_en_object_name_padded_with_spaces_is_trimmed(blank):
+@pytest.mark.parametrize("slot", ["object", "from", "to"])
+def test_both_empty_and_blank_vocab_name_render_identically(slot, blank, locale):
+    """空字串與純空白必須產出**完全相同**的句子。
+
+    這是「先 strip 再套回退」的等價性保證：順序寫反（`vocab.get(x) or "part"` 再 strip）
+    時 `"   "` 是 truthy，回退不生效、受詞整個蒸發，而 `""` 走回退拿到泛稱——
+    同一種「沒填」在兩條路徑上分岔（Phase C 英文側殘留的 L-1 不一致）。
+    """
+    for cycle in (_gm_cycle(["a_align"], twist=90), _cm_cycle()):
+        assert render_with(locale, cycle, **{slot: blank}) == render_with(locale, cycle, **{slot: ""})
+
+
+@pytest.mark.parametrize("locale", LOCALES)
+@pytest.mark.parametrize("blank", BLANK_NAMES)
+def test_both_object_name_padded_with_spaces_is_trimmed(blank, locale):
     """反向：有內容但前後帶空白的名字要被 trim，而不是連著空白塞進句子。"""
-    out = build_narrative_en(_gm_cycle(), LABELS, dict(VOCAB_EN, object=f"{blank}Main board{blank}"))
-    assert "the main board" in out and "  " not in out
+    name = VOCAB["object"] if locale == "zh" else VOCAB_EN["object"]
+    out = render_with(locale, _gm_cycle(), object=f"{blank}{name}{blank}")
+    assert TERMS["object"][locale] in out.lower() and "  " not in out

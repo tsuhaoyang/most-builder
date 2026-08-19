@@ -58,10 +58,14 @@ def _p_visible(p5: dict[str, Any], labels: dict[str, dict[str, Any]]) -> str:
 def build_narrative(cycle: dict[str, Any], labels: dict[str, dict[str, Any]], vocab: dict[str, str]) -> str:
     """cycle＝CycleIn dict；labels 見模組 docstring；vocab＝{object/from/to/hand}。"""
     seq = cycle.get("seq")
-    hand = vocab.get("hand") or ""
-    frm = vocab.get("from") or ""
-    to = vocab.get("to") or ""
-    obj = vocab.get("object") or "目標物"
+    # 空白防呆與 `narrative_en._noun()` 對齊（ADR-032 R3）：純空白詞彙名若原樣入句，
+    # 中文會產出「抓握「   」」這種空白受詞並落盤、跟著匯出。`obj` 必須**先 strip 再回退**
+    # ——`"   "` 是 truthy，順序反了會繞過「目標物」而讓受詞整個消失。
+    # 此 strip 只影響入口驗證已擋掉、DB 零存量的空白輸入；對任何實際資料位元級不變（ADR-032 I2）。
+    hand = (vocab.get("hand") or "").strip()
+    frm = (vocab.get("from") or "").strip()
+    to = (vocab.get("to") or "").strip()
+    obj = (vocab.get("object") or "").strip() or "目標物"
     g2 = cycle.get("g2") or {}
     g = _sent(labels.get("g", {}).get(g2.get("g_code"))) or "取得"
 
