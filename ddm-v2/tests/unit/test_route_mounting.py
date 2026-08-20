@@ -33,6 +33,7 @@ from typing import Any
 
 import pytest
 from fastapi import APIRouter, FastAPI
+from fastapi.testclient import TestClient
 from starlette.routing import BaseRoute, Host, Match, Mount, Route, WebSocketRoute
 
 from ddm_v2.api import route_registry
@@ -43,6 +44,7 @@ from ddm_v2.api.route_registry import (
     iter_mounted_api_routes,
     mount_v2_routers,
 )
+from ddm_v2.exceptions import ValidationError
 from ddm_v2.main import create_app
 
 pytestmark = pytest.mark.unit
@@ -449,3 +451,46 @@ def test_preview_server_exposes_the_same_api_surface(monkeypatch):
         f"preview 少了 {len(only_in_app)} 條 {only_in_app[:10]}；"
         f"preview 多了 {len(only_in_preview)} 條 {only_in_preview[:10]}"
     )
+
+
+def test_preview_server_registers_the_same_exception_handlers(monkeypatch):
+    """preview_server 的 domain 例外對映必須**逐個等於** `create_app()`。
+
+    抓的是與 API 面漂移同一類、但更難察覺的缺口：路由都在、請求打得到，只有「被拒絕時
+    回什麼」不一樣。實測（修正前）同一個
+    `POST /api/v2/i18n/review/mark-reviewed {"target_en": ""}`：正式 app 回 422 ＋
+    `I18N_REVIEW_TARGET_MISSING`，preview 回裸 `500 Internal Server Error`（純文字，
+    連 JSON 都不是）。e2e 與本機開發打的都是 preview，等於錯誤處理永遠測不到。
+
+    比 handler 註冊表而不是只比行為：新增一種 domain 例外時，「main 加了、preview 沒加」
+    要當場紅，而不是等到某條路徑真的拋出它。
+    """
+    preview = _load_preview_server(monkeypatch)
+    app_handlers = set(create_app().exception_handlers)
+    preview_handlers = set(preview.app.exception_handlers)
+
+    assert ValidationError in app_handlers, "前提失效：create_app() 沒有註冊 domain 例外 handler"
+    missing = sorted(getattr(e, "__name__", str(e)) for e in app_handlers - preview_handlers)
+    assert not missing, (
+        f"preview_server 少註冊了這些例外 handler：{missing}"
+        "（請用 api/error_handlers.register_exception_handlers，不要自己抄一份）"
+    )
+
+
+def test_preview_server_maps_domain_error_to_status_and_code(monkeypatch):
+    """上一條比的是註冊表；這條證明它真的生效——`ValidationError` → 422 ＋ JSON error code。
+
+    註冊表相等仍可能兩邊都是空的（例如有人把 `register_exception_handlers(app)` 兩邊
+    一起刪掉）。掛一條只會拋例外的臨時路由（掛在本測試自己載入的那份 app 上），
+    直接看 HTTP 回應。
+    """
+    preview = _load_preview_server(monkeypatch)
+
+    @preview.app.get("/__test__/boom")
+    def _boom():
+        raise ValidationError("刻意拋出", {"code": "TEST_ONLY_CODE"})
+
+    resp = TestClient(preview.app, raise_server_exceptions=False).get("/__test__/boom")
+
+    assert resp.status_code == 422, f"preview_server 沒把 domain 例外轉成 HTTP（body={resp.text!r}）"
+    assert resp.json()["error"]["code"] == "TEST_ONLY_CODE"

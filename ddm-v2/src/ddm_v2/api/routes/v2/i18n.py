@@ -58,6 +58,7 @@ def _to_item(r: svc.TranslatableRow) -> I18nReviewItemOut:
         rule_set_code=r.rule_set_code,
         source_zh=r.source_zh,
         target_en=r.target_en,
+        source_is_fallback=r.source_is_fallback,
         source_changed=r.source_changed,
         target_changed=r.target_changed,
         review_source=r.review_source,  # type: ignore[arg-type]

@@ -347,9 +347,11 @@ def _candidates_sql() -> str:
     句面留空的那幾條會拿一個引擎根本沒讀、seed 也沒記過的字串去算 sha256，
     整批句面會永遠顯示 `stale`。**代價是 `source_zh` 看不出中文句面本身是不是空的**
     ——所以每一列另外帶一欄 `source_is_fallback`（句面列＝`sentence_text_zh` 為
-    NULL／空字串；label 與主數據列一律 `false`）。它不是給使用者看的：
-    `_is_reviewable_target()` 用它判斷「把英文句面標成空字串」是不是 D7.6 的
-    「刻意不入句」（合法）還是把有中文的句子標成沒英文（橡皮圖章，422）。
+    NULL／空字串；label 與主數據列一律 `false`）。`_is_reviewable_target()` 用它判斷
+    「把英文句面標成空字串」是不是 D7.6 的「刻意不入句」（合法）還是把有中文的句子
+    標成沒英文（橡皮圖章，422）；同一個布林也隨 `/pending` 回給前端（2026-08-20 補），
+    讓覆核介面能在送出前就知道哪一列留空是正解——前端不得自己重算（那會是第二個
+    真相來源），也不得用「`source_zh` 等於標籤」反推（句面剛好等於標籤時會誤判）。
 
     每一列額外帶一欄 `rule_set_is_active`（rule_option 來自 `rs.is_active`；
     vocab/template 無版本概念，一律 `NULL`），**只用來排序，不進最終 SELECT**——

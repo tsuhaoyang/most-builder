@@ -57,6 +57,17 @@ class I18nReviewItemOut(BaseModel):
             "（`target_sha256` 為 NULL）一律 `false`——沒有基準可比較。"
         ),
     )
+    source_is_fallback: bool = Field(
+        default=False,
+        description=(
+            "`source_zh` 是回退來的、不是這一列自己的中文——只有 `field='sentence'` 且"
+            "中文句面（`sentence_text_zh`）為空時為真（那時 `source_zh` 顯示的是標籤）。"
+            "用途是讓前端能事前分辨「英文句面留空」屬於 D7.6「刻意不入句」（合法，"
+            "active 版共 7 條）還是把有中文的句子標成沒英文（會被 422 "
+            "`I18N_REVIEW_TARGET_MISSING` 擋下）。**不可用「`source_zh` 等於標籤」反推**"
+            "——句面剛好等於標籤時那會誤判；這裡回的是服務層算的同一個布林。"
+        ),
+    )
     review_source: ReviewSource | None
     translated_by: str | None
     translated_at: datetime | None
@@ -103,9 +114,15 @@ _MAX_TARGET_EN_BY_FIELD: dict[str, int] = {
 class I18nMarkReviewedIn(_ReviewTargetIn):
     """標記已覆核；可選在同一個請求裡順手修正譯文（同交易）。
 
-    `target_en=None` ＝不改譯文（沿用現有的 `_en`）。**清空譯文請走 `_en` 專用
-    寫入端點**（`PATCH /rule-sets/{code}/params/{param}/options/{code}/en`）——
+    `target_en=None` ＝不改譯文（沿用現有的 `_en`）。**把既有譯文清成空請走 `_en`
+    專用寫入端點**（`PATCH /rule-sets/{code}/params/{param}/options/{code}/en`）——
     「覆核」與「把譯文清成空」是兩個相反的動作，不該共用一個請求。
+
+    **唯一的例外是句面（`field='sentence'`）且該列中文句面本身為空**（D7.6「刻意
+    不入句」，active 版 7 條）：那時空字串**就是**要覆核的那個值，`target_en=''`
+    走這裡是對的。判準在 `_is_reviewable_target`（`_BLANK_OK_FIELDS` ＋ 該列的
+    `source_is_fallback`），不是「只要是句面就放行」；`None` 對這種列代表「沿用現有
+    的 NULL」→ 仍會被 `I18N_REVIEW_TARGET_MISSING` 擋下，所以前端必須顯式送 `''`。
 
     **`target_en` 一律 strip**（與 `schemas/v2/vocab.py` 的 `NameEn` 同一個語意，
     以及 `OptionEnTextIn` 的兩欄）：這條路徑會寫進 `name_en`／`label_en`／

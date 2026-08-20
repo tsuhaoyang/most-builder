@@ -2157,6 +2157,12 @@ export interface components {
              * @default false
              */
             target_changed: boolean;
+            /**
+             * Source Is Fallback
+             * @description `source_zh` 是回退來的、不是這一列自己的中文——只有 `field='sentence'` 且中文句面（`sentence_text_zh`）為空時為真（那時 `source_zh` 顯示的是標籤）。用途是讓前端能事前分辨「英文句面留空」屬於 D7.6「刻意不入句」（合法，active 版共 7 條）還是把有中文的句子標成沒英文（會被 422 `I18N_REVIEW_TARGET_MISSING` 擋下）。**不可用「`source_zh` 等於標籤」反推**——句面剛好等於標籤時那會誤判；這裡回的是服務層算的同一個布林。
+             * @default false
+             */
+            source_is_fallback: boolean;
             /** Review Source */
             review_source: ("machine" | "human" | "legacy_seed" | "untranslated") | null;
             /** Translated By */
@@ -2205,6 +2211,12 @@ export interface components {
              * @default false
              */
             target_changed: boolean;
+            /**
+             * Source Is Fallback
+             * @description `source_zh` 是回退來的、不是這一列自己的中文——只有 `field='sentence'` 且中文句面（`sentence_text_zh`）為空時為真（那時 `source_zh` 顯示的是標籤）。用途是讓前端能事前分辨「英文句面留空」屬於 D7.6「刻意不入句」（合法，active 版共 7 條）還是把有中文的句子標成沒英文（會被 422 `I18N_REVIEW_TARGET_MISSING` 擋下）。**不可用「`source_zh` 等於標籤」反推**——句面剛好等於標籤時那會誤判；這裡回的是服務層算的同一個布林。
+             * @default false
+             */
+            source_is_fallback: boolean;
             /** Review Source */
             review_source: ("machine" | "human" | "legacy_seed" | "untranslated") | null;
             /** Translated By */

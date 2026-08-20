@@ -269,13 +269,101 @@ async def test_pending_list_items_have_the_documented_shape(client, db_session):
     sample = items[0]
     assert {
         "entity_type", "scope_key", "field", "status", "rule_set_code",
-        "source_zh", "target_en", "source_changed", "review_source", "translated_by",
-        "translated_at", "reviewed_by", "reviewed_at",
+        "source_zh", "target_en", "source_is_fallback", "source_changed", "review_source",
+        "translated_by", "translated_at", "reviewed_by", "reviewed_at",
     } <= set(sample)
     assert sample["entity_type"] == "rule_option"
     assert sample["status"] == "unreviewed"
     assert sample["review_source"] in ("machine", "legacy_seed")
     assert isinstance(sample["source_changed"], bool)
+
+
+async def _blank_zh_sentence_keys(db_session) -> set[tuple[str, str]]:
+    """DB 現況：`(scope_key, rule_set_code)` 中**中文句面本身為空**的那些選項列。
+
+    對照組刻意直接查 DB，而不是把 D7.6 的 7 個 code 抄進測試——抄一份就是第二個
+    真相來源，字典改了測試也不會知道（下面的 active 版另有一條顯式的 pin，
+    那條的用途相反：釘住「這批到底是哪幾條」，改動時要當場看見）。
+    """
+    rule_set_ids = await _in_scope_rule_set_ids(db_session)
+    keys: set[tuple[str, str]] = set()
+    for model, param, _labels in SEED.RULE_OPTION_TABLES:
+        rows = (await db_session.execute(
+            select(model.code, RuleSet.code)
+            .join(RuleSet, RuleSet.id == model.rule_set_id)
+            .where(
+                model.rule_set_id.in_(rule_set_ids),
+                (model.sentence_text_zh.is_(None)) | (model.sentence_text_zh == ""),
+            )
+        )).all()
+        keys.update((f"{param}:{code}", rs_code) for code, rs_code in rows)
+    return keys
+
+
+async def test_pending_items_expose_source_is_fallback_matching_blank_zh_sentences(client, db_session):
+    """`source_is_fallback` 必須逐列等於「這一列的中文句面是不是空的」。
+
+    前端要靠它事前分辨「英文句面留空」是 D7.6 的刻意不入句（合法）還是把有中文的
+    句子標成沒英文（422 `I18N_REVIEW_TARGET_MISSING`）。**不可用「`source_zh` 看起來
+    等於 label」反推**——`source_zh` 走 `COALESCE(NULLIF(sentence_text_zh,''), label_zh)`，
+    句面剛好等於標籤時那個反推會誤判；這條測試釘的就是「API 回的是服務層算的那個
+    布林」。`field='label'` 與主數據（vocab/template）一律 `false`：它們沒有回退鏈。
+    """
+    if not await _seeded(db_session):
+        pytest.skip("rule-set 未種")
+    await _seed_labels(db_session)
+    expected_true = await _blank_zh_sentence_keys(db_session)
+
+    r = await client.get("/api/v2/i18n/review/pending")
+    assert r.status_code == 200, r.text
+    items = r.json()
+    assert items, "前提失效：待審清單是空的，這條測試會變成沒斷言到任何事"
+    assert all("source_is_fallback" in i for i in items), "API 沒有回 source_is_fallback"
+
+    actual_true = {
+        (i["scope_key"], i["rule_set_code"])
+        for i in items
+        if i["field"] == "sentence" and i["source_is_fallback"]
+    }
+    returned = {(i["scope_key"], i["rule_set_code"]) for i in items if i["field"] == "sentence"}
+    assert actual_true == (expected_true & returned), (
+        "source_is_fallback 與 DB 的中文句面空值不一致："
+        f"多報 {sorted(actual_true - expected_true)}；少報 {sorted((expected_true & returned) - actual_true)}"
+    )
+    assert actual_true, "前提失效：清單裡一條中文句面為空的列都沒有（D7.6 那批不在範圍內）"
+
+    assert not [i for i in items if i["field"] != "sentence" and i["source_is_fallback"]], (
+        "只有 field='sentence' 才可能是回退來的（label／vocab／template 沒有回退鏈）"
+    )
+
+
+async def test_source_is_fallback_pins_the_d76_codes_on_the_active_rule_set(client, db_session):
+    """active 版「刻意不入句」那批＝D7.6 的 7 條——改動時要當場看見（ADR-032 D7.6）。
+
+    上一條測試拿 DB 當對照組，所以字典整批改了它也照樣綠；這條相反，顯式列出目前的
+    7 個 code。它紅了不代表壞掉，代表「哪些選項不入敘事句」變了——那是需要有人看一眼
+    的核心邏輯改動，不是實作細節。只在 active 版就是認證版（`MINIMOST_FACTORY_V2`）
+    時才斷言：其他環境的 active 版可能自訂過選項集合。
+    """
+    if not await _seeded(db_session):
+        pytest.skip("rule-set 未種")
+    active_code = (await db_session.execute(
+        select(RuleSet.code).where(RuleSet.is_active.is_(True))
+    )).scalars().first()
+    if active_code != CERTIFIED:
+        pytest.skip(f"active rule-set 是 {active_code!r}，非認證版——選項集合可能被自訂過")
+    await _seed_labels(db_session)
+
+    r = await client.get("/api/v2/i18n/review/pending", params={"entity_type": "rule_option"})
+    assert r.status_code == 200, r.text
+    active_fallback = {
+        i["scope_key"]
+        for i in r.json()
+        if i["rule_set_code"] == active_code and i["field"] == "sentence" and i["source_is_fallback"]
+    }
+    assert active_fallback == {
+        "b:b_none", "p:a_hard", "p:a_press", "m:m_hand", "m:m_foot", "x:x_none", "i:i_none",
+    }, f"active 版「刻意不入句」的選項集合已變動：{sorted(active_fallback)}"
 
 
 async def test_pending_list_filters_by_entity_type(client, db_session):

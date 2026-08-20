@@ -26,6 +26,7 @@ from fastapi import FastAPI
 from fastapi.responses import FileResponse, HTMLResponse
 from fastapi.staticfiles import StaticFiles
 
+from ddm_v2.api.error_handlers import register_exception_handlers
 from ddm_v2.api.route_registry import mount_v2_routers
 from ddm_v2.auth.startup_checks import warn_if_identity_config_insecure
 
@@ -45,6 +46,12 @@ app = FastAPI(title="v2 MOST Workbench 預覽")
 # 原本這裡自己抄一份 include_router，已經漂移成少掛 ai_review / parse_jobs / wi_context
 # 三支——預覽（含 e2e）看到的 API 面跟正式 app 不一樣，是最難查的那種假 404。
 mount_v2_routers(app)
+
+# domain 例外 → HTTP 狀態的對映：同樣與 main.create_app() 共用一份（api/error_handlers）。
+# 少了它，服務層拋的 `ValidationError` 會冒到 uvicorn 變成裸 500 ＋ 純文字
+# "Internal Server Error"——正式 app 回的是 422 ＋ 具體 error code。前端在預覽／e2e
+# 環境下因此看不到任何錯誤訊息，等於開發時測不到正確的錯誤處理。
+register_exception_handlers(app)
 
 # 已建置的前端靜態資源（Vite 產物在 dist/assets）
 if (DIST / "assets").is_dir():

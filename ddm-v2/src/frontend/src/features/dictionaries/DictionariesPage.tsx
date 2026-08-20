@@ -8,9 +8,10 @@
  *
  * Tab 1「詞彙庫」: WorkVocabItem CRUD (viewer 唯讀；analyst+ 可新增/停用/啟用)
  * Tab 2「動作模組範本」: MotionTemplate list + promote (approver+ 才顯示升格按鈕)
- * Tab 3「英文覆核」: ADR-032 D6 待審清單（唯讀；本頁本身已由側欄 minRole:'analyst'
- *   gating，見 features/layout/Sidebar.tsx——與 D6「誰看得到：analyst 以上」一致，
- *   不另加一層頁內 gating）
+ * Tab 3「英文覆核」: ADR-032 D6 待審清單 ＋ 逐條覆核／指派（本頁已由側欄
+ *   minRole:'analyst' gating，見 features/layout/Sidebar.tsx——與 D6「誰看得到：
+ *   analyst 以上」一致；**寫入入口另由 I18nReviewTab 自己用 canEdit(me) 再擋一層**，
+ *   兩層擋的是不同的事：側欄擋「進得來嗎」、頁內擋「看得到寫入嗎」）
  */
 import { useState, useRef } from 'react'
 import { useTranslation } from 'react-i18next'

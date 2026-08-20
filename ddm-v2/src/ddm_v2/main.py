@@ -14,30 +14,19 @@ import os
 from contextlib import asynccontextmanager
 from pathlib import Path
 
-from fastapi import FastAPI, Request, status
+from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import FileResponse, JSONResponse, RedirectResponse
+from fastapi.responses import FileResponse, RedirectResponse
 from fastapi.staticfiles import StaticFiles
-from sqlalchemy.exc import IntegrityError
 
-# v2 定點重建路由（清單與掛載自我檢查都在 route_registry，preview_server 共用同一份）
+# 例外 handler 與 v2 路由清單都抽在 api/ 底下：preview_server 共用同一份，不另抄
+from ddm_v2.api.error_handlers import register_exception_handlers
 from ddm_v2.api.route_registry import mount_v2_routers
 from ddm_v2.auth.startup_checks import (  # noqa: F401  （TRUSTED_GATEWAY_ENV 對外沿用舊匯入路徑）
     TRUSTED_GATEWAY_ENV,
     warn_if_identity_config_insecure,
 )
 from ddm_v2.database import get_engine
-from ddm_v2.exceptions import (
-    ConflictError,
-    DomainError,
-    ForbiddenError,
-    NotFoundError,
-    UnauthorizedError,
-    ValidationError,
-)
-from ddm_v2.schemas.common import ErrorDetail, ErrorResponse
-from ddm_v2.services.v2.policy_service import NoDefaultPolicy
-from ddm_v2.services.v2.rule_set_service import NoActiveRuleSet
 from ddm_v2.settings import Settings, get_settings
 
 logger = logging.getLogger(__name__)
@@ -186,7 +175,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     # 且 FastAPI 0.141 已示範過「include_router 的結構會變」——見 route_registry docstring。
     mount_v2_routers(app)
 
-    _register_exception_handlers(app)
+    register_exception_handlers(app)
 
     # 服務已建置的 React 前端（src/frontend/dist）：有 build 就在根目錄出 SPA，否則導 /docs。
     dist = Path(__file__).resolve().parents[1] / "frontend" / "dist"
@@ -201,93 +190,6 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         return RedirectResponse(url="/docs", status_code=302)
 
     return app
-
-
-def _register_exception_handlers(app: FastAPI) -> None:
-    """把 domain 例外對映到 HTTP 狀態 + 統一錯誤格式。"""
-
-    @app.exception_handler(NotFoundError)
-    async def not_found_handler(request: Request, exc: NotFoundError) -> JSONResponse:
-        return JSONResponse(
-            status_code=status.HTTP_404_NOT_FOUND,
-            content=ErrorResponse(error=ErrorDetail(code="NOT_FOUND", message=exc.message, detail=exc.detail)).model_dump(),
-        )
-
-    @app.exception_handler(ValidationError)
-    async def validation_error_handler(request: Request, exc: ValidationError) -> JSONResponse:
-        error_code = (exc.detail or {}).get("code") or "VALIDATION_ERROR"
-        return JSONResponse(
-            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
-            content=ErrorResponse(error=ErrorDetail(code=error_code, message=exc.message, detail=exc.detail)).model_dump(),
-        )
-
-    @app.exception_handler(ConflictError)
-    async def conflict_error_handler(request: Request, exc: ConflictError) -> JSONResponse:
-        error_code = (exc.detail or {}).get("code") or "CONFLICT"
-        if error_code == "CONFLICT":
-            if "published" in exc.message.lower():
-                error_code = "VERSION_PUBLISHED"
-            elif "time_source" in exc.message.lower():
-                error_code = "TIME_SOURCE_IMMUTABLE"
-        return JSONResponse(
-            status_code=status.HTTP_409_CONFLICT,
-            content=ErrorResponse(error=ErrorDetail(code=error_code, message=exc.message, detail=exc.detail)).model_dump(),
-        )
-
-    @app.exception_handler(ForbiddenError)
-    async def forbidden_error_handler(request: Request, exc: ForbiddenError) -> JSONResponse:
-        return JSONResponse(
-            status_code=status.HTTP_403_FORBIDDEN,
-            content=ErrorResponse(error=ErrorDetail(code="FORBIDDEN", message=exc.message, detail=exc.detail)).model_dump(),
-        )
-
-    @app.exception_handler(UnauthorizedError)
-    async def unauthorized_error_handler(request: Request, exc: UnauthorizedError) -> JSONResponse:
-        return JSONResponse(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            content=ErrorResponse(error=ErrorDetail(code="UNAUTHORIZED", message=exc.message, detail=exc.detail)).model_dump(),
-        )
-
-    @app.exception_handler(NoActiveRuleSet)
-    async def no_active_rule_set_handler(request: Request, exc: NoActiveRuleSet) -> JSONResponse:
-        """ADR-023 §3.5：無 active rule-set＝系統設定錯誤（非使用者錯誤）→ 500，不得靜默 fallback。"""
-        return JSONResponse(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            content=ErrorResponse(error=ErrorDetail(code="NO_ACTIVE_RULE_SET", message=str(exc))).model_dump(),
-        )
-
-    @app.exception_handler(NoDefaultPolicy)
-    async def no_default_policy_handler(request: Request, exc: NoDefaultPolicy) -> JSONResponse:
-        """R2a：缺 factory default published policy＝設定錯誤 → 500，不得靜默 NULL。"""
-        return JSONResponse(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            content=ErrorResponse(error=ErrorDetail(code="NO_DEFAULT_POLICY", message=str(exc))).model_dump(),
-        )
-
-    @app.exception_handler(IntegrityError)
-    async def integrity_error_handler(request: Request, exc: IntegrityError) -> JSONResponse:
-        """併發 activate 的敗方（撞 uq_rule_sets_single_active）→ 409 可重試，而非裸 500。
-
-        ADR-023 §3.2：partial unique index 是「恆有且僅有一個 active」的 DB 防線；
-        它被觸發代表另一交易剛搶先啟用，屬可重試的衝突，不是伺服器故障。
-        其他 IntegrityError 維持既有 500 語意（不吞錯）。
-        """
-        if "uq_rule_sets_single_active" in str(exc.orig):
-            return JSONResponse(
-                status_code=status.HTTP_409_CONFLICT,
-                content=ErrorResponse(error=ErrorDetail(
-                    code="RULE_SET_ACTIVATE_CONFLICT",
-                    message="另一個規則版本剛被啟用，請重新整理後再試",
-                )).model_dump(),
-            )
-        raise exc
-
-    @app.exception_handler(DomainError)
-    async def domain_error_handler(request: Request, exc: DomainError) -> JSONResponse:
-        return JSONResponse(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            content=ErrorResponse(error=ErrorDetail(code="INTERNAL_ERROR", message=exc.message, detail=exc.detail)).model_dump(),
-        )
 
 
 app = create_app()
