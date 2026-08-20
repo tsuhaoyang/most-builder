@@ -1,10 +1,11 @@
 """i18n 覆核狀態服務（ADR-032 D5／D6）。
 
-三件事：
+四件事：
 1. `i18n_review_state` 的讀寫原語（`get_review_state` / `upsert_review_state`）
-   ——供灌值腳本與（未來的）人工覆核端點共用，是覆核狀態的唯一寫入路徑。
+   ——供灌值腳本與人工覆核端點共用，是覆核狀態的唯一寫入路徑。
 2. 待審清單的三態聯集查詢（D6）——「目標欄位 IS NULL」／「有側表列且
-   source ∈ {machine,legacy_seed}」／「有側表列且來源已過期（sha256 不符）」。
+   source ∈ {machine,legacy_seed,untranslated}」／「有側表列且來源已過期
+   （中文 sha256 不符）**或譯文在覆核後被改過**（英文 sha256 不符，v2_0043）」。
 3. 覆核正確性的保護機制（D5 原始設計；2026-08-18 第四輪簡化定案，拆除寫入前
    逐字比對防線）——完全依賴上面第 2 點「讀取時的 sha256 過期偵測」：
    `upsert_review_state` 如實記錄呼叫端聲明的 `source_text`，不對它的內容做
@@ -20,6 +21,8 @@
    同一個問題的第二個、版本無關、精度更低的答案，而且是過去兩輪每一個阻擋級
    複審問題（B1、L1，以及第三輪複審再抓到的問題）的唯一來源，故直接拆除，
    不是再修一次。
+4. 覆核 mutation（`mark_reviewed` / `assign_review`，2026-08-20 D6 後半）——
+   「標記已覆核」與「指派」，譯文修正與側表寫入同交易，見檔案末節的檔頭。
 
 **`_en` 的編輯權＝analyst 以上（D4）：本模組所有函式都不呼叫
 `rule_set_service.assert_editable`**——`_en` 標籤／名稱的可變性不受
@@ -43,22 +46,29 @@ from datetime import datetime, timezone
 from sqlalchemy import select, text
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from ddm_v2.exceptions import NotFoundError
-from ddm_v2.models.v2 import rule_set_tables as rt
+from ddm_v2.exceptions import NotFoundError, ValidationError
 from ddm_v2.models.v2.i18n import ENTITY_TYPES, FIELDS, SOURCES, I18nReviewState
 from ddm_v2.models.v2.motion_template import MotionTemplate
+from ddm_v2.models.v2.rule_set import RuleSet
 from ddm_v2.models.v2.vocab import WorkVocabItem
 from ddm_v2.nlp.normalization import normalize
+from ddm_v2.schemas.v2.rule_set_options import OptionSpec, resolve
+from ddm_v2.services.v2.audit_service import log_audit
 
 __all__ = [
     "ENTITY_TYPES",
     "FIELDS",
     "PENDING_STATUSES",
     "SOURCES",
+    "ReviewRowNotFound",
+    "ReviewTargetMissing",
     "TranslatableRow",
     "UnknownReviewScopeKey",
+    "assign_review",
+    "find_translatable_row",
     "get_review_state",
     "list_translatable_rows",
+    "mark_reviewed",
     "norm_sha256",
     "pending_rows",
     "summary",
@@ -67,17 +77,23 @@ __all__ = [
 
 PENDING_STATUSES = ("never_translated", "unreviewed", "stale")
 
-# rule_option 的 scope_key 前綴（"{param}:{code}"）→ 可能承載該 code 的 ORM 表。
+# rule_option 的 scope_key 前綴（"{param}:{code}"）→ 可能承載該 code 的 `OptionSpec`。
 # 'p' 前綴同時被 rule_p_bases（p_ 開頭 code）與 rule_p_addons（a_ 開頭 code）共用
 # （scope_key 設計見 D5／`dev_seed_i18n_labels.py` 檔頭：兩表 code 命名空間不重疊，
 # 逐一嘗試即可，不需要另外解析 code 前綴）。
-_RULE_OPTION_MODELS_BY_PARAM: dict[str, tuple[type, ...]] = {
-    "b": (rt.RuleBOption,),
-    "g": (rt.RuleGAction,),
-    "p": (rt.RulePBase, rt.RulePAddon),
-    "m": (rt.RuleMVerb,),
-    "x": (rt.RuleXOption,),
-    "i": (rt.RuleIOption,),
+#
+# **值是 `OptionSpec` 而不是裸 model**（ADR-032 D6 mutation 輪次改）：覆核端點要能
+# 「順手改譯文」就得回頭呼叫 `rule_option_service.update_option_en_text(code, param,
+# section, ...)`，而 section 只有 P 才分岔——與其在這裡另外維護一份「哪個表對哪個
+# section」的對照（第二份真相，必然漂移），不如直接持有 ADR-023 D2 分派表
+# （`schemas/v2/rule_set_options.resolve`）解出來的 spec，model 與 section 都從它取。
+_RULE_OPTION_SPECS_BY_PARAM: dict[str, tuple[OptionSpec, ...]] = {
+    "b": (resolve("B", "default"),),
+    "g": (resolve("G", "default"),),
+    "p": (resolve("P", "base"), resolve("P", "addon")),
+    "m": (resolve("M", "verb"),),
+    "x": (resolve("X", "default"),),
+    "i": (resolve("I", "default"),),
 }
 
 # `rule_option` 的合法 `field` 值——同時充當「這個 field 對 rule_option 有沒有意義」
@@ -134,9 +150,10 @@ async def _scope_key_exists(session: AsyncSession, entity_type: str, scope_key: 
         param, sep, code = scope_key.partition(":")
         if not sep or field not in _RULE_OPTION_FIELDS:
             return False
-        for model in _RULE_OPTION_MODELS_BY_PARAM.get(param, ()):
-            # `model` 是 `_RULE_OPTION_MODELS_BY_PARAM`（`tuple[type, ...]`）裡的
-            # 元素——七張表沒有共同的 mixin/Protocol 宣告 `id`／`code`，mypy 看不到
+        for spec in _RULE_OPTION_SPECS_BY_PARAM.get(param, ()):
+            model = spec.model
+            # `model` 是 `OptionSpec.model`（宣告型別 `Any`）——七張表沒有共同的
+            # mixin/Protocol 宣告 `id`／`code`，mypy 看不到
             # 這個裸 `type` 上有這兩個屬性。用 `getattr` 取（回傳 `Any`）是既有慣例
             # （`_candidates_sql` 之外，本檔原本的 `_authoritative_zh_text` 對動態
             # 欄位也是同一招），不是繞過型別檢查，是型別檢查本來就到不了這裡。
@@ -201,6 +218,8 @@ async def upsert_review_state(
     note: str | None = None,
     reviewed_by: str | None = None,
     reviewed_at: datetime | None = None,
+    target_text: str | None = None,
+    translated_at: datetime | None = None,
 ) -> I18nReviewState:
     """建立或覆寫 `(entity_type, scope_key, field, locale)` 的覆核狀態列。
 
@@ -229,12 +248,27 @@ async def upsert_review_state(
     ——這不是「內容跟某個版本比對」，是「這個覆核對象根本不存在」，兩者是
     不同的檢查，見 `UnknownReviewScopeKey`。查無時拒絕（404），不靜默建立一筆
     指向虛構對象的覆核狀態。
+
+    **`target_text`（v2_0043）**：覆核當下的**英文譯文**，落成 `target_sha256`
+    （與 `source_text`→`source_sha256` 對稱，同一支 `norm_sha256`）。`None` ＝
+    這次寫入沒有記錄譯文基準 → `target_sha256` 一併清成 NULL，維持本函式
+    last-write-wins 的整列語意（`source`／`reviewed_by` 本來就是這個規則）。
+
+    **`translated_at`：`None` ＝取 now()（原行為）**；顯式帶值是給「只覆核、
+    沒改譯文」的路徑保存原本的翻譯時間用的——譯文一個字沒動卻把翻譯時間往前推，
+    是憑空捏造的事實。
+
+    **`assigned_to`／`assigned_at` 刻意不在 last-write-wins 的範圍內**：指派是與
+    「譯文的來源／覆核狀態」正交的第三種事實（誰在處理它），不該因為某人重跑一次
+    灌值腳本或標了一次覆核就被清掉。改指派只走 `assign_review()`。
     """
     if not await _scope_key_exists(session, entity_type, scope_key, field):
         raise UnknownReviewScopeKey(entity_type=entity_type, scope_key=scope_key, field=field)
     existing = await get_review_state(session, entity_type, scope_key, field, locale)
     sha = norm_sha256(source_text)
+    target_sha = norm_sha256(target_text) if target_text is not None else None
     now = datetime.now(timezone.utc)
+    translated = translated_at or now
     if existing is None:
         row = I18nReviewState(
             id=uuid.uuid4(),
@@ -245,9 +279,10 @@ async def upsert_review_state(
             source=source,
             source_sha256=sha,
             translated_by=translated_by,
-            translated_at=now,
+            translated_at=translated,
             reviewed_by=reviewed_by,
             reviewed_at=reviewed_at,
+            target_sha256=target_sha,
             note=note,
         )
         session.add(row)
@@ -255,9 +290,10 @@ async def upsert_review_state(
         existing.source = source
         existing.source_sha256 = sha
         existing.translated_by = translated_by
-        existing.translated_at = now
+        existing.translated_at = translated
         existing.reviewed_by = reviewed_by
         existing.reviewed_at = reviewed_at
+        existing.target_sha256 = target_sha
         existing.note = note
         row = existing
     await session.flush()
@@ -290,10 +326,30 @@ IN_SCOPE_RULE_SET_SQL = "(rs.status = 'draft' OR rs.is_active)"
 
 
 def _candidates_sql() -> str:
-    """組出**單一** SQL 陳述式：9 個來源 UNION ALL，再 LEFT JOIN 覆核側表。
+    """組出**單一** SQL 陳述式：16 個來源 UNION ALL，再 LEFT JOIN 覆核側表。
 
     表／欄名皆為本模組常數（非外部輸入），故用 f-string 組 SQL 是安全的
     （與 `rule_set_service.count_references` 同慣例，noqa: S608）。
+
+    **7 張選項表各出兩列候選：`field='label'` 與 `field='sentence'`**
+    （2026-08-20，D6 mutation 輪次補；先前只出 `'label'`）。Phase C 已經把 63 筆
+    `field='sentence'` 的覆核狀態寫進側表，但它們**永遠不會出現在待審清單裡**——
+    也就是使用者在英文介面實際讀到的那些句子（METHOD 敘事）覆核追蹤是 0% 且不可達，
+    風險低得多的下拉標籤反而 100% 可見。清單一旦要能操作（可指派、可標記完成），
+    這個缺口就必須補。代價是 `summary()` 的分母從 63 變成 126（ADR-032 D10 Phase B
+    的「n/63」已隨本輪補記更新為「n/126」）。
+
+    **句面的來源中文取 `COALESCE(NULLIF(sentence_text_zh,''), label_zh)`**：這不是
+    「順手加個 fallback」，而是必須與引擎的回退鏈逐字一致——`narrative._sent()` 是
+    `entry.get("sentence") or entry.get("label")`（空字串也會回退），
+    `dev_seed_i18n_labels` 算 `source_sha256` 時用的是同一條鏈
+    （`row.sentence_text_zh or row.label_zh`）。若這裡改用裸 `sentence_text_zh`，
+    句面留空的那幾條會拿一個引擎根本沒讀、seed 也沒記過的字串去算 sha256，
+    整批句面會永遠顯示 `stale`。**代價是 `source_zh` 看不出中文句面本身是不是空的**
+    ——所以每一列另外帶一欄 `source_is_fallback`（句面列＝`sentence_text_zh` 為
+    NULL／空字串；label 與主數據列一律 `false`）。它不是給使用者看的：
+    `_is_reviewable_target()` 用它判斷「把英文句面標成空字串」是不是 D7.6 的
+    「刻意不入句」（合法）還是把有中文的句子標成沒英文（橡皮圖章，422）。
 
     每一列額外帶一欄 `rule_set_is_active`（rule_option 來自 `rs.is_active`；
     vocab/template 無版本概念，一律 `NULL`），**只用來排序，不進最終 SELECT**——
@@ -306,7 +362,20 @@ def _candidates_sql() -> str:
         SELECT 'rule_option' AS entity_type, '{param}:' || t.code AS scope_key,
                'label' AS field, rs.code AS rule_set_code,
                t.label_zh AS source_zh, t.label_en AS target_en,
+               false AS source_is_fallback,
                rs.is_active AS rule_set_is_active
+        FROM {table} t JOIN rule_sets rs ON rs.id = t.rule_set_id
+        WHERE {IN_SCOPE_RULE_SET_SQL}
+        """
+        for table, param in _RULE_OPTION_SOURCES
+    ]
+    parts += [
+        f"""
+        SELECT 'rule_option', '{param}:' || t.code,
+               'sentence', rs.code,
+               COALESCE(NULLIF(t.sentence_text_zh, ''), t.label_zh), t.sentence_text_en,
+               (t.sentence_text_zh IS NULL OR t.sentence_text_zh = ''),
+               rs.is_active
         FROM {table} t JOIN rule_sets rs ON rs.id = t.rule_set_id
         WHERE {IN_SCOPE_RULE_SET_SQL}
         """
@@ -317,14 +386,14 @@ def _candidates_sql() -> str:
     parts.append(
         """
         SELECT 'vocab_item', v.id::text, 'name', NULL,
-               v.name_zh, v.name_en, NULL::boolean
+               v.name_zh, v.name_en, false, NULL::boolean
         FROM work_vocab_items v
         """
     )
     parts.append(
         """
         SELECT 'motion_template', m.id::text, 'name', NULL,
-               m.name_zh, m.name_en, NULL::boolean
+               m.name_zh, m.name_en, false, NULL::boolean
         FROM motion_templates m
         """
     )
@@ -332,8 +401,11 @@ def _candidates_sql() -> str:
     return f"""
     WITH candidates AS ({candidates})
     SELECT c.entity_type, c.scope_key, c.field, c.rule_set_code, c.source_zh, c.target_en,
+           c.source_is_fallback,
            r.source AS review_source, r.source_sha256 AS review_sha256,
-           r.translated_by, r.translated_at, r.reviewed_by, r.reviewed_at
+           r.target_sha256 AS review_target_sha256,
+           r.translated_by, r.translated_at, r.reviewed_by, r.reviewed_at,
+           r.assigned_to, r.assigned_at
     FROM candidates c
     LEFT JOIN i18n_review_state r
       ON r.entity_type = c.entity_type AND r.scope_key = c.scope_key
@@ -359,6 +431,20 @@ class TranslatableRow:
     對覆核者的意義不同（(b) 代表「這批機器翻譯可能已經對不上現在的中文」），
     但 `status` 這個欄位本身看不出差異。`source_changed=True` 把這個區別
     顯式標出來，而不是讓它悄悄消失在 `unreviewed` 這一個值裡。
+
+    `target_changed`（v2_0043，D6 末尾 park 的設計題定案）：與 `source_changed`
+    正交的第二個維度——**英文譯文**在覆核之後被改過（`target_sha256` 比對）。
+    兩者都會讓 `status` 變成 `stale`（都是「曾經被覆核，之後內容變了」），但
+    「中文改了、譯文要跟上」與「有人動了譯文、要重新確認」對覆核者是兩件事，
+    所以照 `source_changed` 的先例再加一個獨立布林欄位，**不引入第四個 status 值**
+    （`status` 的三態聯集維持 D6 定義的形狀不變）。`target_sha256 is None`
+    （從未覆核過）時一律 `False`：沒有基準可比較，不能算「變了」。
+
+    `source_is_fallback`（2026-08-20 覆核修正）：`source_zh` 是**回退**來的，不是這一
+    列自己的中文——只有 `field='sentence'` 且 `sentence_text_zh` 為 NULL／空字串時為
+    真（那時 `source_zh` 取的是 `label_zh`，見 `_candidates_sql`）。存在的唯一理由是
+    `_is_reviewable_target()` 要分辨「中文句面本身就是空的」（D7.6 刻意不入句 → 英文
+    句面可以是空字串）與「中文句面有字」（英文空字串＝沒翻譯，不得標成已覆核）。
     """
 
     entity_type: str
@@ -367,16 +453,26 @@ class TranslatableRow:
     rule_set_code: str | None
     source_zh: str
     target_en: str | None
+    source_is_fallback: bool
     status: str | None
     source_changed: bool
+    target_changed: bool
     review_source: str | None
     translated_by: str | None
     translated_at: datetime | None
     reviewed_by: str | None
     reviewed_at: datetime | None
+    assigned_to: str | None
+    assigned_at: datetime | None
 
 
-def _classify(source_zh: str, target_en: str | None, review_source: str | None, review_sha256: str | None) -> str | None:
+def _classify(
+    source_zh: str,
+    target_en: str | None,
+    review_source: str | None,
+    review_sha256: str | None,
+    review_target_sha256: str | None = None,
+) -> str | None:
     """D6 的三態聯集判準（單一函式，避免三處各自寫一次判斷式而漂移）。
 
     **優先序（`unreviewed` 先於 `stale` 判定）是刻意的，不是巧合**：`stale`
@@ -388,19 +484,64 @@ def _classify(source_zh: str, target_en: str | None, review_source: str | None, 
     仍報 `unreviewed`——對使用者更有意義的訊息是「這條還沒人看過」，
     不是「這條過期了」（過期意味著曾經有人確認過、現在需要重新確認）。
 
-    第三支（`target_en` 非 NULL 但查無側表列）理論上不該發生——本模組的寫入
-    路徑（`upsert_review_state`）與灌值腳本（`dev_seed_i18n_labels.py`）保證
-    「灌值同時寫 `_en` 欄與側表列，兩者同交易」（ADR-032 D6）。若真的出現
-    （例如未來有其他路徑繞過本模組直寫 `_en`），不靜默放過——`review_sha256`
-    為 None 必然 `!=` 任何 sha256，會落進 `stale` 分支而不是被吃掉。
+    **第四支（`target_changed`，v2_0043）**：中文沒變、但**英文譯文**在覆核之後
+    被改過（`target_sha256` 對不上現行 `_en`）——同樣是「曾經被覆核，之後內容
+    變了」，所以歸同一個 `stale`，不另立第四個 status 值（見
+    `TranslatableRow.target_changed`）。這一支的存在讓 D4 開出來的線上編輯路徑
+    （`rule_option_service.update_option_en_text`）不會把已覆核狀態帶著走：改了
+    英文卻不重新覆核，這一列會自己回到待審清單。
+
+    **有譯文但查無側表列（`review_source is None`）→ `unreviewed`，不是 `stale`**
+    （2026-08-20 覆核修正）：沒有側表列代表**從來沒有人覆核過這一列**，而 `stale`
+    的定義是「曾經被覆核，之後內容變了」——一條沒有覆核基準的列不可能「過期」，
+    報 `stale` 傳達的訊息與事實相反。這一支**日常可達，不是理論邊角**：
+    `POST /api/v2/vocab` 帶 `name_en` 建新詞彙時完全不寫側表列，每一筆新詞彙一
+    出生就會落進來；D4 開的 `_en` 線上編輯閘也只寫欄位、不碰側表（那是刻意的：
+    文字一個真相、覆核狀態一個真相）。修正前這一支靠「`review_sha256` 為 None
+    必然 `!=` 任何 sha256」掉進 `stale`，並且讓 `assign_review()` 就地補一筆
+    `legacy_seed` 側表列的動作**把 status 從 `stale` 改成 `unreviewed`**——那與
+    「指派記的是誰在處理，不改變處理到哪」這句三處明文承諾（`assign_review`
+    檔頭、`api/routes/v2/i18n.py`、ADR-032 D6 補記）直接矛盾。改成在這裡顯式
+    回 `unreviewed` 之後，指派前後的 status 一致，那三處承諾才是真的。
+    `unreviewed` 與 `stale` 同屬 `PENDING_STATUSES`，`summary()` 的分子分母不變。
     """
     if target_en is None:
         return "never_translated"
-    if review_source in ("machine", "legacy_seed"):
+    if review_source is None:
+        return "unreviewed"  # 沒有側表列＝從未被覆核，不可能「過期」
+    if review_source in _UNREVIEWED_SOURCES:
         return "unreviewed"
     if review_sha256 != norm_sha256(source_zh):
         return "stale"
+    if _target_changed(target_en, review_target_sha256):
+        return "stale"
     return None
+
+
+# 「有側表列但尚未經人覆核」的 source 值域。`untranslated`（v2_0043）＝側表列只為
+# 記指派而存在、尚無譯文——若這樣的列日後被別的路徑填了 `_en`（例如 D4 的線上
+# 編輯閘只寫欄位、不碰側表），它必須報 `unreviewed` 而不是掉進「已覆核」那一支。
+_UNREVIEWED_SOURCES = frozenset({"machine", "legacy_seed", "untranslated"})
+
+
+def _target_changed(target_en: str | None, review_target_sha256: str | None) -> bool:
+    """覆核當下記下的英文譯文是否已被改過（v2_0043；D6 末尾 park 的設計題）。
+
+    `review_target_sha256 is None` → `False`：從未被覆核過的列沒有基準可比較，
+    不能算「變了」（與 `_source_changed` 對 `review_sha256 is None` 的處理對稱，
+    ADR-032 D6 L3 已有這條先例）。**既有列一律是這種情形**（v2_0043 純加法，
+    既有列的 `target_sha256` 全為 NULL），所以本欄位上線當下不會讓任何一列
+    憑空變成 `stale`。
+
+    `target_en is None`（覆核過的譯文被清空）→ `True`：那也是「內容變了」。
+    這一列的 `status` 本來就會因為 `target_en is None` 而報 `never_translated`，
+    但布林欄位仍如實回報「這條曾經有覆核基準，現在對不上了」。
+    """
+    if review_target_sha256 is None:
+        return False
+    if target_en is None:
+        return True
+    return review_target_sha256 != norm_sha256(target_en)
 
 
 def _source_changed(source_zh: str, review_sha256: str | None) -> bool:
@@ -426,7 +567,10 @@ async def list_translatable_rows(
     for r in rows:
         if entity_type is not None and r["entity_type"] != entity_type:
             continue
-        status = _classify(r["source_zh"], r["target_en"], r["review_source"], r["review_sha256"])
+        status = _classify(
+            r["source_zh"], r["target_en"], r["review_source"],
+            r["review_sha256"], r["review_target_sha256"],
+        )
         out.append(
             TranslatableRow(
                 entity_type=r["entity_type"],
@@ -435,13 +579,17 @@ async def list_translatable_rows(
                 rule_set_code=r["rule_set_code"],
                 source_zh=r["source_zh"],
                 target_en=r["target_en"],
+                source_is_fallback=r["source_is_fallback"],
                 status=status,
                 source_changed=_source_changed(r["source_zh"], r["review_sha256"]),
+                target_changed=_target_changed(r["target_en"], r["review_target_sha256"]),
                 review_source=r["review_source"],
                 translated_by=r["translated_by"],
                 translated_at=r["translated_at"],
                 reviewed_by=r["reviewed_by"],
                 reviewed_at=r["reviewed_at"],
+                assigned_to=r["assigned_to"],
+                assigned_at=r["assigned_at"],
             )
         )
     return out
@@ -492,3 +640,376 @@ async def summary(session: AsyncSession, *, entity_type: str | None = None) -> d
     total = len(distinct_rows)
     pending = sum(1 for r in distinct_rows if r.status is not None)
     return {"total": total, "reviewed": total - pending, "pending": pending}
+
+
+# ══════════════════════════════════════════════════════════════════
+# 覆核 mutation（ADR-032 D6 的後半：標記已覆核／指派）
+#
+# D6 的驗收定義是「覆核進度是**可見且可下降**的數字」——Phase B 只交付了「可見」
+# （唯讀清單），這一節是「可下降」。三個設計約束，每一個都對應 ADR 的一句話：
+#
+# 1. **改譯文與寫側表必須同一個交易**（譯文寫了、側表沒寫，或反之，就是資料不
+#    一致：清單會顯示「已覆核」但字沒改，或字改了卻永遠停在未覆核）。本節的函式
+#    全程只用呼叫端傳進來的同一個 `session`，自己**不 commit**——交易邊界由路由層
+#    的 `get_db_session` 統一負責（成功 commit／例外 rollback）。
+# 2. **譯文一律經 D4 的 `_en` 寫入閘**（`rule_option_service.update_option_en_text`），
+#    不在這裡直接 `setattr` 到 rule-set 子表——否則 D4 的欄位白名單與 I5 唯一性
+#    檢查就被繞過了，而繞過它的正是「覆核」這個最常走的路徑。
+# 3. **不做批次核准**（ADR-032 R1／I5）：`g_grasp`(6 TMU)／`g_touch`(3 TMU) 這種
+#    「英文看起來一樣」的風險只有逐條人看才擋得住，一次核准 126 列會把覆核變成
+#    橡皮圖章，等於把 D2 賴以成立的第三個前提（每條譯文都有人負責）作廢。
+# ══════════════════════════════════════════════════════════════════
+
+
+class ReviewRowNotFound(NotFoundError):
+    """指定的 `(entity_type, scope_key, field[, rule_set_code])` 不在候選集合裡（404）。
+
+    與 `UnknownReviewScopeKey` 的差別：那支問「這個 entity 存在嗎」（跨所有版本），
+    這支問「它在**待審清單的來源集合**裡嗎」——D6 的來源集合是 active rule-set ＋
+    現存 draft ＋ 全部主數據，`published(非 active)`／`retired` 的凍結歷史不在內。
+    對一個清單上根本看不到的列做覆核沒有意義，fail-closed 拒絕。
+    """
+
+    def __init__(self, *, entity_type: str, scope_key: str, field: str, rule_set_code: str | None) -> None:
+        where = f"（rule_set_code={rule_set_code}）" if rule_set_code else "（未指定 rule_set_code → 以 active 版為準）"
+        super().__init__(
+            f"覆核對象不在待審清單的來源集合裡：{entity_type}/{scope_key}/{field}{where}。"
+            "來源集合＝active rule-set ＋ 現存 draft ＋ 全部主數據（ADR-032 D6）；"
+            "若這個 code 只存在於某個 draft，請顯式帶上該 draft 的 rule_set_code。",
+            detail={
+                "code": "I18N_REVIEW_ROW_NOT_FOUND",
+                "entity_type": entity_type,
+                "scope_key": scope_key,
+                "field": field,
+                "rule_set_code": rule_set_code or "",
+            },
+        )
+
+
+class ReviewTargetMissing(ValidationError):
+    """要標記已覆核，但這一列沒有可覆核的英文（422）。
+
+    **這是反橡皮圖章的那道檢查，不是型別驗證**：把一條還沒有譯文（或譯文是空白）
+    的列標成「已覆核」，等於用覆核狀態掩蓋一個空欄位——覆核率會上升，英文介面
+    卻還是空的。要覆核就得先有字：請在同一個請求帶 `target_en`。
+
+    `field='sentence'` 是**刻意的例外，但有前提**：句面空字串是合法且有意義的值
+    （「這條刻意不入句」，ADR-032 D7.6／`dev_seed_i18n_labels.py` 句面表註解），
+    對它可以覆核——**前提是這一列的中文句面本身就是空的**（`source_is_fallback`）。
+    2026-08-20 覆核修正前這個例外是無條件的，等於一張橡皮圖章：中文句面「抓握」
+    的那一列也吃得下 `target_en=""`，回 200、`status` 變 null、離開待審清單，而
+    英文是空的——63 條句面用 63 個空字串請求就能把 `n/126` 推到 126/126 而英文全空，
+    正是 ADR-032 R2 寫明的「本 ADR 最可能的失敗模式」。標籤／名稱沒有「刻意不入句」
+    這種語意，空白一律拒絕。
+    """
+
+    def __init__(self, *, entity_type: str, scope_key: str, field: str) -> None:
+        super().__init__(
+            f"{entity_type}/{scope_key}/{field} 目前沒有可覆核的英文譯文——"
+            "要標記已覆核請在同一個請求帶入 `target_en`（不得把空白標成已覆核）。",
+            detail={
+                "code": "I18N_REVIEW_TARGET_MISSING",
+                "entity_type": entity_type,
+                "scope_key": scope_key,
+                "field": field,
+            },
+        )
+
+
+# `field` → 主數據／選項表上承載英文的欄位。`rule_option` 兩個 field 對到 D4 白名單
+# 的兩欄（`EN_WRITABLE_FIELDS`）；主數據只有一個 `name_en`。
+_EN_COLUMN_BY_FIELD = {"label": "label_en", "sentence": "sentence_text_en", "name": "name_en"}
+
+# 允許空字串當作合法譯文的 field。只有句面，且**還要中文句面本身為空**才放行
+# （`_is_reviewable_target`）——見 `ReviewTargetMissing` 檔頭。
+_BLANK_OK_FIELDS = frozenset({"sentence"})
+
+
+def _is_reviewable_target(field: str, target_en: str | None, *, source_is_fallback: bool) -> bool:
+    """這段英文算不算「可覆核的譯文」（見 `ReviewTargetMissing` 檔頭）。
+
+    空字串的放行條件是**恰好是空字串**（不是「strip 後為空」）**且**這一列的中文
+    句面本身為空——前者讓 `"   "` 這種純空白落到下面的 `strip()` 判斷去（純空白不是
+    「刻意不入句」，是沒翻譯；而且 `narrative_en._sent()` 的回退鏈
+    `sentence_en or label_en` 吃不掉 truthy 的空白字串，會把空白當動詞組進句子）；
+    後者見上面的檔頭。
+    """
+    if target_en is None:
+        return False
+    if target_en == "":
+        return field in _BLANK_OK_FIELDS and source_is_fallback
+    return bool(target_en.strip())
+
+
+async def find_translatable_row(
+    session: AsyncSession,
+    *,
+    entity_type: str,
+    scope_key: str,
+    field: str,
+    rule_set_code: str | None = None,
+) -> TranslatableRow:
+    """在待審清單的候選集合裡定位一列（找不到 → `ReviewRowNotFound`）。
+
+    **刻意重用 `list_translatable_rows()` 而不是另寫一支查詢**：mutation 端點記錄的
+    `source_sha256`／`target_sha256` 必須是「覆核者在清單上**看到的那個** 中文／英文」，
+    兩邊只要有一處對來源欄位的解讀不同（例如句面的 `sentence_text_zh` 回退鏈），
+    覆核完的列就會立刻被讀取端判成 `stale`。同一份 SQL ＝不可能漂移。
+    資料量小（現況 rule_option 126 ＋ 主數據 ~75 列），一次全掃可接受。
+
+    **也刻意不接受呼叫端傳來的中文／英文字串**：那等於讓 client 宣告「我覆核的是
+    這段文字」，與 ADR-023 D2「API 不收 client 端算好的值」同一個理由。
+
+    `rule_set_code` 的語意：`rule_option` 的同一個 `scope_key` 可能同時存在於 active
+    與多個 draft（D5 刻意讓 scope_key 不含 rule_set_id）。未指定時**以 active 版為準**
+    （與 `summary()` 的 active-first 去重同一個口徑），active 版沒有這個 code 時
+    **不靜默改挑一個 draft**，直接 404 並在訊息裡指出要顯式帶 rule_set_code。
+    """
+    rows = [
+        r for r in await list_translatable_rows(session, entity_type=entity_type)
+        if r.scope_key == scope_key and r.field == field
+    ]
+    if entity_type == "rule_option":
+        wanted = rule_set_code
+        if wanted is None:
+            from ddm_v2.services.v2.rule_set_service import get_active_rule_set_code
+
+            wanted = await get_active_rule_set_code(session)
+        rows = [r for r in rows if r.rule_set_code == wanted]
+    if not rows:
+        raise ReviewRowNotFound(
+            entity_type=entity_type, scope_key=scope_key, field=field, rule_set_code=rule_set_code
+        )
+    return rows[0]
+
+
+async def _resolve_option_spec(
+    session: AsyncSession, *, rule_set_code: str, param: str, code: str
+) -> OptionSpec:
+    """`scope_key` 的參數前綴 ＋ option code → `OptionSpec`（決定要打哪張表／哪個 section）。
+
+    只有 P 需要分辨（base／addon），但**用查表而不是解析 code 前綴**：命名慣例
+    （`p_` vs `a_`）是資料現況，不是 schema 約束，draft 裡新增一個不照慣例命名的
+    code 完全合法。查表則對任何命名都正確。
+    """
+    rs_id = (
+        await session.execute(select(RuleSet.id).where(RuleSet.code == rule_set_code))
+    ).scalar_one_or_none()
+    if rs_id is not None:
+        for spec in _RULE_OPTION_SPECS_BY_PARAM.get(param, ()):
+            model = spec.model
+            found = (
+                await session.execute(
+                    select(getattr(model, "id")).where(  # noqa: B009 - 見 `_scope_key_exists`
+                        getattr(model, "rule_set_id") == rs_id,  # noqa: B009
+                        getattr(model, "code") == code,  # noqa: B009
+                    )
+                )
+            ).first()
+            if found is not None:
+                return spec
+    raise ReviewRowNotFound(
+        entity_type="rule_option", scope_key=f"{param}:{code}", field="label", rule_set_code=rule_set_code
+    )
+
+
+async def _write_target_en(
+    session: AsyncSession, row: TranslatableRow, target_en: str, *, actor: str
+) -> None:
+    """把新譯文落盤。`rule_option` **一律經 D4 的 `_en` 寫入閘**（見本節檔頭第 2 點）。"""
+    column = _EN_COLUMN_BY_FIELD[row.field]
+    if row.entity_type == "rule_option":
+        from ddm_v2.services.v2 import rule_option_service
+
+        param, _sep, code = row.scope_key.partition(":")
+        spec = await _resolve_option_spec(
+            session, rule_set_code=row.rule_set_code or "", param=param, code=code
+        )
+        await rule_option_service.update_option_en_text(
+            session, row.rule_set_code or "", spec.param, spec.section, code,
+            {column: target_en}, actor=actor,
+        )
+        return
+    # 主數據（ADR-024）：詞彙／範本無版本、無凍結狀態，`name_en` 本來就有 analyst
+    # 級的 PATCH 路徑（`vocab.py`／`motion_template.py`），這裡只是同交易內就地寫。
+    # **前後值的留痕由呼叫端負責**（`mark_reviewed` 把 `changed_fields` 放進
+    # `i18n_review_mark` 的 payload）：`rule_option` 走上面的 `_en` 閘、有自己的
+    # `option_en_update` 稽核記前後值，主數據這條沒有對應的稽核路徑，
+    # 若不補就只剩「某人覆核過這條」而還原不了被改成什麼（sec 覆審 2026-08-20）。
+    model = WorkVocabItem if row.entity_type == "vocab_item" else MotionTemplate
+    obj = await session.get(model, uuid.UUID(row.scope_key))
+    if obj is None:  # pragma: no cover - find_translatable_row 已保證存在
+        raise ReviewRowNotFound(
+            entity_type=row.entity_type, scope_key=row.scope_key, field=row.field,
+            rule_set_code=None,
+        )
+    setattr(obj, column, target_en)
+    await session.flush()
+
+
+async def _log_review_audit(
+    session: AsyncSession, row: TranslatableRow, *, action: str, actor: str, **payload: object
+) -> None:
+    """覆核／指派的留痕（D5：「覆蓋寫入由既有 `workflow_audit_log` 承接即可」）。
+
+    側表本身是 last-write-wins，**覆蓋掉的前一次覆核不留痕**——所以誰在什麼時候
+    把某條標成已覆核（尤其是覆蓋別人的覆核）只有 audit log 說得清。
+    `entity_id` 對 `rule_option` 取該 rule-set 的 id（scope_key 不是 UUID，而
+    `workflow_audit_log.entity_id` 是 UUID NOT NULL），對主數據取該列 id。
+    """
+    if row.entity_type == "rule_option":
+        entity_type, entity_id = "rule_set", (
+            await session.execute(select(RuleSet.id).where(RuleSet.code == row.rule_set_code))
+        ).scalar_one()
+    else:
+        entity_type, entity_id = row.entity_type, uuid.UUID(row.scope_key)
+    await log_audit(
+        session,
+        entity_type=entity_type,
+        entity_id=entity_id,
+        action=action,
+        from_status=None,
+        to_status=None,
+        actor=actor,
+        payload={
+            "scope_key": row.scope_key, "field": row.field, "locale": "en",
+            "rule_set_code": row.rule_set_code, **payload,
+        },
+    )
+    await session.flush()
+
+
+async def mark_reviewed(
+    session: AsyncSession,
+    *,
+    entity_type: str,
+    scope_key: str,
+    field: str,
+    reviewed_by: str,
+    target_en: str | None = None,
+    rule_set_code: str | None = None,
+    note: str | None = None,
+    locale: str = "en",
+) -> TranslatableRow:
+    """標記一列英文為「已由人覆核」，可選在同一個請求裡順手修正譯文。
+
+    落盤內容：`source='human'` ＋ `reviewed_by`／`reviewed_at` ＋ `target_sha256`
+    （＝覆核當下的英文譯文；之後有人改英文，讀取端就會把它判回 `stale`）。
+    `source='human'` 時 `reviewed_by` 必填由 **DB CHECK** 保證（v2_0040）。
+
+    **`target_en` 帶了就先落盤、再寫側表，全程同一個交易**（本節檔頭第 1 點）：
+    順序是刻意的——先過 D4 的 `_en` 寫入閘（retired／欄位白名單／I5 唯一性都在
+    那裡擋），閘擋下來時側表一個字都還沒寫；閘過了之後側表寫入若失敗，
+    路由層的 rollback 會把譯文一起收回。兩邊不可能只成功一半。
+
+    **不改譯文時，`translated_by`／`translated_at`／`note` 沿用既有值**：`upsert_
+    review_state` 是整列 last-write-wins，不顯式沿用就會把「這批是哪個模型翻的、
+    什麼時候翻的」抹成 `None`——那是還原不回來的事實，而覆核並沒有改變它。
+
+    **稽核 payload 帶 `changed_fields`（形狀比照 `option_en_update`）**：改了譯文時
+    記 `{欄位: {before, after}}`，沒改時為 `None`。`rule_option` 的前後值另有
+    `option_en_update` 一筆（走 `_en` 閘），主數據（`vocab_item`／`motion_template`，
+    約 75 條）先前**完全沒有前後值留痕**——只看得到「某人覆核過這條」，還原不了
+    英文被改成什麼。兩類物件的稽核形狀在這裡統一（sec 覆審 2026-08-20）。
+    """
+    row = await find_translatable_row(
+        session, entity_type=entity_type, scope_key=scope_key, field=field, rule_set_code=rule_set_code
+    )
+    existing = await get_review_state(session, entity_type, scope_key, field, locale)
+
+    changed_fields: dict[str, dict[str, str | None]] | None = None
+    if target_en is not None:
+        if not _is_reviewable_target(field, target_en, source_is_fallback=row.source_is_fallback):
+            raise ReviewTargetMissing(entity_type=entity_type, scope_key=scope_key, field=field)
+        await _write_target_en(session, row, target_en, actor=reviewed_by)
+        # `row.target_en` 是寫入前的值（`find_translatable_row` 在上面就取好了，
+        # 與待審清單同一份 SQL），故此處的 before/after 是如實的前後值。
+        changed_fields = {_EN_COLUMN_BY_FIELD[field]: {"before": row.target_en, "after": target_en}}
+        effective_target = target_en
+    else:
+        if not _is_reviewable_target(field, row.target_en, source_is_fallback=row.source_is_fallback):
+            raise ReviewTargetMissing(entity_type=entity_type, scope_key=scope_key, field=field)
+        effective_target = row.target_en  # type: ignore[assignment]  # _is_reviewable_target 已排除 None
+
+    await upsert_review_state(
+        session,
+        entity_type=entity_type,
+        scope_key=scope_key,
+        field=field,
+        locale=locale,
+        source="human",
+        source_text=row.source_zh,
+        target_text=effective_target,
+        translated_by=reviewed_by if target_en is not None else (existing.translated_by if existing else reviewed_by),
+        translated_at=None if target_en is not None else (existing.translated_at if existing else None),
+        reviewed_by=reviewed_by,
+        reviewed_at=datetime.now(timezone.utc),
+        note=note if note is not None else (existing.note if existing else None),
+    )
+    await _log_review_audit(
+        session, row, action="i18n_review_mark", actor=reviewed_by,
+        previous_source=existing.source if existing else None,
+        previous_reviewed_by=existing.reviewed_by if existing else None,
+        target_changed=target_en is not None,
+        changed_fields=changed_fields,
+    )
+    return await find_translatable_row(
+        session, entity_type=entity_type, scope_key=scope_key, field=field, rule_set_code=rule_set_code
+    )
+
+
+async def assign_review(
+    session: AsyncSession,
+    *,
+    entity_type: str,
+    scope_key: str,
+    field: str,
+    assigned_to: str | None,
+    actor: str,
+    rule_set_code: str | None = None,
+    locale: str = "en",
+) -> TranslatableRow:
+    """指派／取消指派一條待審項（D6 驗收定義「每條**可指派**」）。
+
+    `assigned_to=None`（或全空白）＝取消指派，兩個欄位一起回 NULL。
+
+    **側表列不存在時就地建立一筆**——指派最需要用到的正是 `never_translated`
+    那些列（還沒有譯文、最需要有人認領），而它們依 D5 的預設值表本來就「無列」。
+    新建列的 `source` 取值：
+    - 沒有譯文 → `'untranslated'`（v2_0043 新增的值域；舊三個值每一個都是在描述
+      「譯文從哪來」，對一條還沒有譯文的列填任何一個都是謊，見 migration 檔頭）；
+    - 有譯文卻沒有側表列 → `'legacy_seed'`，那正是這個值的既有語意
+      （ADR-032 1.2c：「有值但出處不明，等同未覆核」）。可能的來路：D4 的 `_en`
+      線上編輯閘只寫欄位、不碰側表（那是刻意的——文字一個真相、覆核狀態一個真相）。
+
+    兩種取值都落在 `_UNREVIEWED_SOURCES` 裡，所以**指派不會改變一列的 `status`**
+    （指派是「誰在處理」，不是「處理到哪」）。
+    """
+    row = await find_translatable_row(
+        session, entity_type=entity_type, scope_key=scope_key, field=field, rule_set_code=rule_set_code
+    )
+    assignee = (assigned_to or "").strip() or None
+    state = await get_review_state(session, entity_type, scope_key, field, locale)
+    now = datetime.now(timezone.utc)
+    if state is None:
+        state = I18nReviewState(
+            id=uuid.uuid4(),
+            entity_type=entity_type,
+            scope_key=scope_key,
+            field=field,
+            locale=locale,
+            source="untranslated" if row.target_en is None else "legacy_seed",
+            source_sha256=norm_sha256(row.source_zh),
+            translated_by=None,
+            translated_at=now,
+        )
+        session.add(state)
+    state.assigned_to = assignee
+    state.assigned_at = now if assignee else None
+    await session.flush()
+    await _log_review_audit(
+        session, row, action="i18n_review_assign", actor=actor, assigned_to=assignee,
+    )
+    return await find_translatable_row(
+        session, entity_type=entity_type, scope_key=scope_key, field=field, rule_set_code=rule_set_code
+    )

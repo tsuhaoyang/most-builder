@@ -13,6 +13,17 @@
 `source_sha256`：翻譯當下「中文來源字串」正規化後（`ddm_v2.nlp.normalization.normalize`）
 的 sha256，與 gold review 的 `norm_sha256` 手法同構——中文來源變了、英文還沒
 跟上即視為過期（stale），見 `services/v2/i18n_service.py`。
+
+`target_sha256`（v2_0043，ADR-032 D6 末尾 park 的設計題）：與 `source_sha256` 對稱，
+記「**覆核當下的英文譯文**」的 sha256（同一支 `norm_sha256`）。沒有它，「覆核完之後
+有人改了 `label_en`」讀取端看不出來，那條英文會一直顯示已覆核。**既有列一律 NULL**
+＝沒有基準可比較 → 不算「變了」（比照 `source_changed` 對 `review_sha256 is None`
+的既有處理，D6 L3）。
+
+`assigned_to`／`assigned_at`（v2_0043）：D6 驗收定義的「每條**可指派**」。為了讓
+「還沒有譯文的列」也能被指派，`source` 值域同批加入 `'untranslated'`——舊值域三個值
+都是在描述「譯文從哪來」，對一條還沒有譯文的列填任何一個都是謊（理由全文見 v2_0043
+migration 檔頭）。
 """
 from __future__ import annotations
 
@@ -27,12 +38,13 @@ from ddm_v2.models.v2.base import Base, uuid_pk
 ENTITY_TYPES = ("rule_option", "vocab_item", "motion_template")
 FIELDS = ("label", "sentence", "name")
 LOCALES = ("en",)
-SOURCES = ("machine", "human", "legacy_seed")
+# `untranslated`＝側表列只為記指派而存在，尚無譯文（v2_0043；見 migration 檔頭）。
+SOURCES = ("machine", "human", "legacy_seed", "untranslated")
 
 _ENTITY_TYPE_CK = "entity_type IN ('rule_option','vocab_item','motion_template')"
 _FIELD_CK = "field IN ('label','sentence','name')"
 _LOCALE_CK = "locale IN ('en')"
-_SOURCE_CK = "source IN ('machine','human','legacy_seed')"
+_SOURCE_CK = "source IN ('machine','human','legacy_seed','untranslated')"
 # D5：`reviewed_by` 在 `source='human'` 時必填——DB CHECK 承擔（見 v2_0040 檔頭：
 # 這個不變式必須對任何寫入路徑成立，不只是走過某一支 service 函式的呼叫）。
 _REVIEWED_BY_CK = "(source <> 'human') OR (reviewed_by IS NOT NULL)"
@@ -56,6 +68,10 @@ class I18nReviewState(Base):
     )
     reviewed_by: Mapped[str | None] = mapped_column(Text)
     reviewed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    # 覆核當下的英文譯文 sha256（v2_0043）；NULL＝從未覆核過，沒有基準可比較。
+    target_sha256: Mapped[str | None] = mapped_column(Text)
+    assigned_to: Mapped[str | None] = mapped_column(Text)
+    assigned_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     note: Mapped[str | None] = mapped_column(Text)
 
     __table_args__ = (

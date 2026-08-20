@@ -1079,6 +1079,34 @@ export interface paths {
         patch: operations["update_param_option_api_v2_rule_sets__code__params__param__options__option_code__patch"];
         trace?: never;
     };
+    "/api/v2/rule-sets/{code}/params/{param}/options/{option_code}/en": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        /**
+         * Update Param Option En Text
+         * @description **只**改英文標籤／句面（ADR-032 D4；ADR-023 §3.3 規則 1 的 `_en` 那一列）。
+         *
+         *     與同層的 `PATCH .../options/{option_code}` 是兩支端點而不是一支加旗標：那一支
+         *     受 `assert_editable` 管（draft-only ＋ `certified_import` 一律 409），本支受
+         *     `assert_en_editable` 管（僅 retired 409），**因此本支能寫進 active 的認證版**——
+         *     正是 D4 授權的那件事。能寫的欄位只有 `label_en`／`sentence_text_en` 兩個，
+         *     白名單在 service 層（`EN_WRITABLE_FIELDS`），schema 層另有 `extra="forbid"`。
+         *
+         *     未帶的欄位不動（`exclude_unset`）；顯式帶 `null` ＝清空該欄。
+         */
+        patch: operations["update_param_option_en_text_api_v2_rule_sets__code__params__param__options__option_code__en_patch"];
+        trace?: never;
+    };
     "/api/v2/rule-sets/{code}/params/{param}/options/{option_code}/duplicate": {
         parameters: {
             query?: never;
@@ -1643,6 +1671,57 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v2/i18n/review/mark-reviewed": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Mark Reviewed
+         * @description 把一列標成「已由人覆核」（`source='human'` ＋ `reviewed_by`／`reviewed_at`
+         *     ＋ `target_sha256`），可選在同一個請求裡帶入修正後的英文。
+         *
+         *     `target_en` 一併帶入時：譯文先經 D4 的 `_en` 寫入閘落盤，再寫側表，**同一個
+         *     交易**——任一步失敗整批 rollback，不會出現「字改了但清單還說未覆核」或反之。
+         *
+         *     覆核之後若有人再改英文，`target_sha256` 對不上 → 這一列自動回到待審清單
+         *     （`status='stale'` ＋ `target_changed=true`）。
+         */
+        post: operations["mark_reviewed_api_v2_i18n_review_mark_reviewed_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v2/i18n/review/assign": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Assign Review
+         * @description 指派一條待審項給某位員工（`assigned_to=null`／空白 ＝取消指派）。
+         *
+         *     指派不改變 `status`——它記的是「誰在處理」，不是「處理到哪」。側表列不存在時
+         *     就地建立（`never_translated` 的列本來就沒有側表列，而那正是最需要有人認領的一批），
+         *     詳見 `i18n_service.assign_review`。
+         */
+        post: operations["assign_review_api_v2_i18n_review_assign_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/": {
         parameters: {
             query?: never;
@@ -1985,7 +2064,67 @@ export interface components {
             /** Detail */
             detail?: components["schemas"]["ValidationError"][];
         };
-        /** I18nPendingItemOut */
+        /**
+         * I18nAssignIn
+         * @description 指派一條待審項給某人。`assigned_to=None`／空白 ＝取消指派。
+         */
+        I18nAssignIn: {
+            /**
+             * Entity Type
+             * @enum {string}
+             */
+            entity_type: "rule_option" | "vocab_item" | "motion_template";
+            /** Scope Key */
+            scope_key: string;
+            /**
+             * Field
+             * @enum {string}
+             */
+            field: "label" | "sentence" | "name";
+            /** Rule Set Code */
+            rule_set_code?: string | null;
+            /** Assigned To */
+            assigned_to?: string | null;
+        };
+        /**
+         * I18nMarkReviewedIn
+         * @description 標記已覆核；可選在同一個請求裡順手修正譯文（同交易）。
+         *
+         *     `target_en=None` ＝不改譯文（沿用現有的 `_en`）。**清空譯文請走 `_en` 專用
+         *     寫入端點**（`PATCH /rule-sets/{code}/params/{param}/options/{code}/en`）——
+         *     「覆核」與「把譯文清成空」是兩個相反的動作，不該共用一個請求。
+         *
+         *     **`target_en` 一律 strip**（與 `schemas/v2/vocab.py` 的 `NameEn` 同一個語意，
+         *     以及 `OptionEnTextIn` 的兩欄）：這條路徑會寫進 `name_en`／`label_en`／
+         *     `sentence_text_en` 三種欄位，其中主數據那兩種先前是裸 `setattr`，實測同一個
+         *     字串經覆核路徑存成 `'   Padded   '`、經 `PATCH /api/v2/vocab/{id}` 存成
+         *     `'Padded'`——同一份資料兩個入口兩種結果。`vocab.py` 檔頭明講「字串一律 strip，
+         *     在入口擋掉」，這條新入口補上。
+         */
+        I18nMarkReviewedIn: {
+            /**
+             * Entity Type
+             * @enum {string}
+             */
+            entity_type: "rule_option" | "vocab_item" | "motion_template";
+            /** Scope Key */
+            scope_key: string;
+            /**
+             * Field
+             * @enum {string}
+             */
+            field: "label" | "sentence" | "name";
+            /** Rule Set Code */
+            rule_set_code?: string | null;
+            /** Target En */
+            target_en?: string | null;
+            /** Note */
+            note?: string | null;
+        };
+        /**
+         * I18nPendingItemOut
+         * @description 待審清單的一列——`status` 必為三態之一（清單依定義只回 `status` 非空的列）。
+         */
         I18nPendingItemOut: {
             /**
              * Entity Type
@@ -2012,8 +2151,14 @@ export interface components {
              * @description S6：現行中文來源是否已與這筆翻譯依據的來源不同（`review_sha256` 比對）。`status='unreviewed'` 本身無法區分「剛翻好、中文沒變過」與「翻過，但中文後來又改了、它還沒被人看過」——這個欄位把後者標出來，不影響 `status` 本身的分類（見 ADR-032 D6 補記）。
              */
             source_changed: boolean;
+            /**
+             * Target Changed
+             * @description 英文譯文在覆核之後被改過（`target_sha256` 比對，v2_0043）。與 `source_changed` 正交：兩者都會讓 `status` 變成 `stale`，但「中文改了、譯文要跟上」與「有人動了譯文、要重新確認」對覆核者是兩件事。從未覆核過（`target_sha256` 為 NULL）一律 `false`——沒有基準可比較。
+             * @default false
+             */
+            target_changed: boolean;
             /** Review Source */
-            review_source: ("machine" | "human" | "legacy_seed") | null;
+            review_source: ("machine" | "human" | "legacy_seed" | "untranslated") | null;
             /** Translated By */
             translated_by: string | null;
             /** Translated At */
@@ -2022,6 +2167,58 @@ export interface components {
             reviewed_by: string | null;
             /** Reviewed At */
             reviewed_at: string | null;
+            /** Assigned To */
+            assigned_to?: string | null;
+            /** Assigned At */
+            assigned_at?: string | null;
+        };
+        /**
+         * I18nReviewItemOut
+         * @description 一個可譯欄位的現況。`status is None` ＝已覆核且未過期（不在待審清單裡）。
+         */
+        I18nReviewItemOut: {
+            /**
+             * Entity Type
+             * @enum {string}
+             */
+            entity_type: "rule_option" | "vocab_item" | "motion_template";
+            /** Scope Key */
+            scope_key: string;
+            /** Field */
+            field: string;
+            /** Status */
+            status: ("never_translated" | "unreviewed" | "stale") | null;
+            /** Rule Set Code */
+            rule_set_code: string | null;
+            /** Source Zh */
+            source_zh: string;
+            /** Target En */
+            target_en: string | null;
+            /**
+             * Source Changed
+             * @description S6：現行中文來源是否已與這筆翻譯依據的來源不同（`review_sha256` 比對）。`status='unreviewed'` 本身無法區分「剛翻好、中文沒變過」與「翻過，但中文後來又改了、它還沒被人看過」——這個欄位把後者標出來，不影響 `status` 本身的分類（見 ADR-032 D6 補記）。
+             */
+            source_changed: boolean;
+            /**
+             * Target Changed
+             * @description 英文譯文在覆核之後被改過（`target_sha256` 比對，v2_0043）。與 `source_changed` 正交：兩者都會讓 `status` 變成 `stale`，但「中文改了、譯文要跟上」與「有人動了譯文、要重新確認」對覆核者是兩件事。從未覆核過（`target_sha256` 為 NULL）一律 `false`——沒有基準可比較。
+             * @default false
+             */
+            target_changed: boolean;
+            /** Review Source */
+            review_source: ("machine" | "human" | "legacy_seed" | "untranslated") | null;
+            /** Translated By */
+            translated_by: string | null;
+            /** Translated At */
+            translated_at: string | null;
+            /** Reviewed By */
+            reviewed_by: string | null;
+            /** Reviewed At */
+            reviewed_at: string | null;
+            /** Assigned To */
+            assigned_to?: string | null;
+            /** Assigned At */
+            assigned_at?: string | null;
         };
         /**
          * I18nReviewSummaryOut
@@ -2568,6 +2765,22 @@ export interface components {
             context?: components["schemas"]["NLDraftContextIn"] | null;
             /** Worksheet Id */
             worksheet_id?: string | null;
+        };
+        /**
+         * OptionEnTextIn
+         * @description `PATCH /rule-sets/{code}/params/{param}/options/{code}/en` 的 body。
+         *
+         *     兩欄皆為 `str | None` 且**預設不動**：未帶的欄位不寫（靠 `exclude_unset`），
+         *     顯式帶 `null` ＝清空該欄英文（合法操作——清掉錯譯回到「未翻譯」是覆核流程
+         *     的一部分，比照 `schemas/v2/vocab.py` 對 `name_en` 的既有立場）。
+         *
+         *     兩欄皆 strip 並設長度上限，理由見上方常數區塊。
+         */
+        OptionEnTextIn: {
+            /** Label En */
+            label_en?: string | null;
+            /** Sentence Text En */
+            sentence_text_en?: string | null;
         };
         /** PSlot */
         PSlot: {
@@ -5637,6 +5850,48 @@ export interface operations {
             };
         };
     };
+    update_param_option_en_text_api_v2_rule_sets__code__params__param__options__option_code__en_patch: {
+        parameters: {
+            query?: {
+                /** @description P/M 的次級區塊（P: base|addon；M: verb|ladder|foot|rotation|hand）。缺省 → 400，不會靜默選一個。 */
+                section?: string | null;
+            };
+            header?: never;
+            path: {
+                code: string;
+                param: string;
+                option_code: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["OptionEnTextIn"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     duplicate_param_option_api_v2_rule_sets__code__params__param__options__option_code__duplicate_post: {
         parameters: {
             query?: {
@@ -7026,6 +7281,72 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["I18nPendingItemOut"][];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    mark_reviewed_api_v2_i18n_review_mark_reviewed_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["I18nMarkReviewedIn"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["I18nReviewItemOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    assign_review_api_v2_i18n_review_assign_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["I18nAssignIn"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["I18nReviewItemOut"];
                 };
             };
             /** @description Validation Error */

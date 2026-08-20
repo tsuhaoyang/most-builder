@@ -83,6 +83,44 @@ async def assert_editable(
     return rs
 
 
+class RuleSetRetired(NotEditable):
+    """`_en` 寫入閘（ADR-032 D4）的唯一拒絕理由：retired 是終態。
+
+    繼承 NotEditable 讓既有 409 對映不必改；訊息與 `assert_editable` 的「請先建立
+    草稿」不同——`_en` 在 draft／published／published+active 都寫得，建草稿救不了
+    retired，那條路徑對想改 retired 版英文的人是錯誤指引。
+    """
+
+
+async def assert_en_editable(session: AsyncSession, code: str) -> RuleSet:
+    """`_en` 標籤／句面專用的可寫性 gate（ADR-032 D4 修訂 ADR-023 §3.3 規則 1）。
+
+    **與 `assert_editable` 並列，不是它的放寬版**——這是刻意的兩條路，不是一條路
+    加參數：`assert_editable` 守的是「值與 `_zh` 文字」（draft-only ＋ certified 凍結），
+    本函式守的是「`_en` 顯示字串」（僅 retired 不可寫）。若改成在 `assert_editable`
+    裡開一個 `allow_en=True` 旁路，任何未來忘了關那個旁路的呼叫端就會連
+    `base_tmu`／`label_zh` 一起解凍——這正是 ADR-032 D4 要避免的形狀。
+
+    404（不存在）→ 409（retired）→ 放行。**刻意不看 `provenance`**：active 的 V2 正是
+    `certified_import`，若照 ADR-023 §3.3 規則 3 一律 409，D4 在矩陣新增的那一列
+    （`_en` 在 published+active ✅）就形同虛設，一批不可能改變 TMU 的顯示字串得為了
+    改一個字而發一個新的認證版本。**也刻意不觸發 clone-on-write**（D4 明文）。
+
+    呼叫端的義務（本函式擋不住、只能靠呼叫端自律）：經此 gate 的寫入**只准碰
+    `label_en`／`sentence_text_en`**。唯一的呼叫端是
+    `rule_option_service.update_option_en_text`，它以欄位白名單把這件事變成機械保證，
+    並有 `tests/integration/test_i18n_review_mutations.py` 的負向測試守著。
+    """
+    rs = (await session.execute(select(RuleSet).where(RuleSet.code == code))).scalar_one_or_none()
+    if rs is None:
+        raise RuleSetNotFound(code)
+    if rs.status == "retired":
+        raise RuleSetRetired(
+            f"rule-set {code} 已下架（retired 為終態），英文標籤／句面不可再寫入（ADR-032 D4）"
+        )
+    return rs
+
+
 class NoActiveRuleSet(Exception):
     """全庫無 is_active 版本＝系統設定錯誤（非使用者錯誤）→ 500。"""
 

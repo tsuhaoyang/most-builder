@@ -8,9 +8,11 @@
 句面的英文資料契約（不含連接詞、G 不帶受詞、P/M 自足含代名詞、X 動名詞、I 過去分詞）
 見 `most_engine/narrative_en.py` 檔頭——**改那份契約必須同時改這裡的翻譯表**。
 
-`i18n_service._candidates_sql()` 的待審清單目前只列 `field='label'` 候選，故句面的
-覆核狀態存在側表但尚未進入待審 UI；那是 Phase B 待審清單的擴充範圍（`summary` 的
-分母定義會跟著變），不在 Phase C 內。
+**（2026-08-20 更新：此段已過期，保留以說明演進）** Phase C 當下
+`i18n_service._candidates_sql()` 只列 `field='label'` 候選，故句面的覆核狀態
+寫得進側表卻永遠查不出來、不會進待審 UI。D6 覆核 mutation 輪次已補上兩種 field
+都出候選，`summary()` 的 rule_option 分母因此由 63 變成 126（ADR-032 D6
+「分母修正」補記）。本檔灌值的行為沒有變，變的是清單看不看得到那批句面。
 
 執行：
   DATABASE_URL=... PYTHONPATH=src .venv/bin/python scripts/dev_seed_i18n_labels.py

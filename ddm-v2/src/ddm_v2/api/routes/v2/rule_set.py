@@ -33,6 +33,7 @@ from ddm_v2.most_engine.rule_set_data import RuleSetIncomplete
 from ddm_v2.schemas.v2.rule_set_options import (
     BandInvalid,
     BandsReplaceIn,
+    OptionEnTextIn,
     ParamInvalid,
     SectionInvalid,
     SectionRequired,
@@ -290,10 +291,20 @@ _SECTION_Q = Query(
 _COMPONENT_Q = Query(None, description="A 的分量（reach|twist|foot）；即 A 的 section。")
 
 
-def _handle(exc: Exception) -> HTTPException:
-    """選項級端點的統一錯誤對映（單一實作＝不會有端點對映不一致）。"""
+def option_http_error(exc: Exception) -> HTTPException:
+    """選項級端點的統一錯誤對映（單一實作＝不會有端點對映不一致）。
+
+    **公開（無底線）是刻意的**：`api/routes/v2/i18n.py` 的覆核 mutation 也會走到
+    `_en` 寫入閘（ADR-032 D4），因此會拋出同一組例外（`EnLabelNotUnique` 等）。
+    兩支路由共用這一份對映，而不是在 i18n 那邊再寫一份「差不多」的 —— 否則同一個
+    衝突在兩個端點會回不同的狀態碼／錯誤碼。
+    """
     if isinstance(exc, svc.CertifiedImmutable):
         return HTTPException(status_code=409, detail={"code": "CERTIFIED_IMMUTABLE", "message": str(exc)})
+    if isinstance(exc, svc.RuleSetRetired):
+        # `_en` 寫入閘的唯一拒絕理由（ADR-032 D4）：終態，且「先建草稿」救不了它，
+        # 故不與 RULE_SET_FROZEN 共用 code——前端要能分辨「去建草稿」與「這版已下架」。
+        return HTTPException(status_code=409, detail={"code": "RULE_SET_RETIRED", "message": str(exc)})
     if isinstance(exc, svc.NotEditable):
         return HTTPException(status_code=409, detail={"code": "RULE_SET_FROZEN", "message": str(exc)})
     if isinstance(exc, svc.RuleSetNotFound):
@@ -306,6 +317,12 @@ def _handle(exc: Exception) -> HTTPException:
         return HTTPException(status_code=400, detail=str(exc))
     if isinstance(exc, (opt_svc.BandInvalid, opt_svc.BandsNotSupported, opt_svc.OptionConstraintViolation)):
         return HTTPException(status_code=400, detail=str(exc))
+    if isinstance(exc, opt_svc.EnLabelNotUnique):
+        # I5：同參數內英文標籤必須可辨義（衝突＝資源狀態衝突，不是 payload 格式錯）
+        return HTTPException(status_code=409, detail={"code": "EN_LABEL_NOT_UNIQUE", "message": str(exc)})
+    if isinstance(exc, opt_svc.EnFieldNotWritable):
+        # 白名單外的欄位＝payload 內容不被接受 → 422（與 schema 層的 extra="forbid" 同碼）
+        return HTTPException(status_code=422, detail={"code": "EN_FIELD_NOT_WRITABLE", "message": str(exc)})
     if isinstance(exc, ValidationError):
         # payload 與該 (param, section) 的 schema 不符 → 422（欄位級錯誤原樣回傳）
         return HTTPException(status_code=422, detail=exc.errors(include_url=False))
@@ -313,7 +330,8 @@ def _handle(exc: Exception) -> HTTPException:
 
 
 _OPT_ERRORS = (
-    svc.CertifiedImmutable, svc.NotEditable, svc.RuleSetNotFound,
+    svc.CertifiedImmutable, svc.RuleSetRetired, svc.NotEditable, svc.RuleSetNotFound,
+    opt_svc.EnFieldNotWritable, opt_svc.EnLabelNotUnique,
     opt_svc.OptionNotFound, opt_svc.OptionExists, opt_svc.OptionConstraintViolation,
     opt_svc.BandInvalid, opt_svc.BandsNotSupported,
     SectionRequired, SectionInvalid, ParamInvalid, ValidationError,
@@ -334,7 +352,7 @@ async def list_param_options(
     try:
         return await opt_svc.list_options(session, code, param, section or component, active_only=active_only)
     except _OPT_ERRORS as e:
-        raise _handle(e) from e
+        raise option_http_error(e) from e
 
 
 @router.post("/rule-sets/{code}/params/{param}/options")
@@ -349,7 +367,7 @@ async def create_param_option(
     try:
         return await opt_svc.create_option(session, code, param, section, payload, actor=user.employee_no)
     except _OPT_ERRORS as e:
-        raise _handle(e) from e
+        raise option_http_error(e) from e
 
 
 @router.patch("/rule-sets/{code}/params/{param}/options/{option_code}")
@@ -366,7 +384,36 @@ async def update_param_option(
     try:
         return await opt_svc.update_option(session, code, param, section, option_code, payload, actor=user.employee_no)
     except _OPT_ERRORS as e:
-        raise _handle(e) from e
+        raise option_http_error(e) from e
+
+
+@router.patch("/rule-sets/{code}/params/{param}/options/{option_code}/en")
+async def update_param_option_en_text(
+    code: str,
+    param: str,
+    option_code: str,
+    payload: OptionEnTextIn = Body(...),
+    section: str | None = _SECTION_Q,
+    session: AsyncSession = Depends(get_db_session, scope="function"),
+    user: CurrentUser = Depends(require_role("analyst")),
+) -> dict:
+    """**只**改英文標籤／句面（ADR-032 D4；ADR-023 §3.3 規則 1 的 `_en` 那一列）。
+
+    與同層的 `PATCH .../options/{option_code}` 是兩支端點而不是一支加旗標：那一支
+    受 `assert_editable` 管（draft-only ＋ `certified_import` 一律 409），本支受
+    `assert_en_editable` 管（僅 retired 409），**因此本支能寫進 active 的認證版**——
+    正是 D4 授權的那件事。能寫的欄位只有 `label_en`／`sentence_text_en` 兩個，
+    白名單在 service 層（`EN_WRITABLE_FIELDS`），schema 層另有 `extra="forbid"`。
+
+    未帶的欄位不動（`exclude_unset`）；顯式帶 `null` ＝清空該欄。
+    """
+    try:
+        return await opt_svc.update_option_en_text(
+            session, code, param, section, option_code,
+            payload.model_dump(exclude_unset=True), actor=user.employee_no,
+        )
+    except _OPT_ERRORS as e:
+        raise option_http_error(e) from e
 
 
 @router.delete("/rule-sets/{code}/params/{param}/options/{option_code}")
@@ -382,7 +429,7 @@ async def delete_param_option(
     try:
         return await opt_svc.delete_option(session, code, param, section, option_code, actor=user.employee_no)
     except _OPT_ERRORS as e:
-        raise _handle(e) from e
+        raise option_http_error(e) from e
 
 
 @router.post("/rule-sets/{code}/params/{param}/options/{option_code}/duplicate")
@@ -398,7 +445,7 @@ async def duplicate_param_option(
     try:
         return await opt_svc.duplicate_option(session, code, param, section, option_code, actor=user.employee_no)
     except _OPT_ERRORS as e:
-        raise _handle(e) from e
+        raise option_http_error(e) from e
 
 
 @router.put("/rule-sets/{code}/params/{param}/bands")
@@ -419,4 +466,4 @@ async def replace_param_bands(
     try:
         return await opt_svc.replace_bands(session, code, param, component or section, payload.items, actor=user.employee_no)
     except _OPT_ERRORS as e:
-        raise _handle(e) from e
+        raise option_http_error(e) from e

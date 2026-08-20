@@ -123,6 +123,14 @@ async def test_admin_can_read_too(client):
 # 正常路徑：摘要與清單反映灌值後的狀態
 # ══════════════════════════════════════════════════════════════════
 
+# 每一列選項對應**兩個**可譯欄位：`label`（下拉標籤）與 `sentence`（敘事句面）
+# ——2026-08-20 起 `i18n_service._candidates_sql()` 兩種 field 都出候選（先前只出
+# `label`，句面的覆核狀態寫得進側表卻永遠不會出現在待審清單裡）。分母因此從
+# 「相異 scope_key 數」變成「相異 (scope_key, field) 數」。**刻意不寫死 ×2**：
+# 逐 field 建鍵，日後再多一種 field 時測試自己會跟著對。
+_RULE_OPTION_REVIEW_FIELDS = ("label", "sentence")
+
+
 async def _in_scope_rule_set_ids(db_session) -> list:
     """`i18n_service.IN_SCOPE_RULE_SET_SQL` 的 Python 版（active ＋ 現存 draft）
     ——與 service 用同一個字面判準（`status='draft' OR is_active`），不是自己
@@ -133,9 +141,10 @@ async def _in_scope_rule_set_ids(db_session) -> list:
     )).scalars().all()
 
 
-async def _rule_option_distinct_scope_key_count(db_session) -> int:
+async def _rule_option_distinct_review_key_count(db_session) -> int:
     """`summary()` 的分母（DISTINCT `(entity_type, scope_key, field)`）——**刻意
-    不硬編 63**：63 是「乾淨 DB、沒有 draft」時的實測數字，DB 上一旦出現任何
+    不硬編 126**：126 是「乾淨 DB、沒有 draft」時的實測數字（63 個 option code
+    × label／sentence 兩個 field；2026-08-20 句面進清單之前是 63），DB 上一旦出現任何
     draft（不論是本測試自己建的、還是環境裡殘留的），summary 的分母**依然**
     等於相異 scope_key 數（因為 S2 修正把 summary 改成 DISTINCT 計數），
     但若那個 draft 帶著跟 active 不同的 code 集合（例如自訂了新選項），
@@ -143,13 +152,13 @@ async def _rule_option_distinct_scope_key_count(db_session) -> int:
     `(param, code)` 的相異個數，對應側表 `scope_key` 的業務鍵）。
     """
     rule_set_ids = await _in_scope_rule_set_ids(db_session)
-    scope_keys: set[str] = set()
+    keys: set[tuple[str, str]] = set()
     for model, param, _labels in SEED.RULE_OPTION_TABLES:
         codes = (await db_session.execute(
             select(model.code).where(model.rule_set_id.in_(rule_set_ids))
         )).scalars().all()
-        scope_keys.update(f"{param}:{c}" for c in codes)
-    return len(scope_keys)
+        keys.update((f"{param}:{c}", field) for c in codes for field in _RULE_OPTION_REVIEW_FIELDS)
+    return len(keys)
 
 
 async def _rule_option_row_count(db_session) -> int:
@@ -165,14 +174,14 @@ async def _rule_option_row_count(db_session) -> int:
         total += (await db_session.execute(
             select(func.count()).select_from(model).where(model.rule_set_id.in_(rule_set_ids))
         )).scalar_one()
-    return int(total)
+    return int(total) * len(_RULE_OPTION_REVIEW_FIELDS)
 
 
 async def test_summary_shape_matches_active_rule_option_count(client, db_session):
     if not await _seeded(db_session):
         pytest.skip("rule-set 未種")
     await _seed_labels(db_session)
-    expected = await _rule_option_distinct_scope_key_count(db_session)
+    expected = await _rule_option_distinct_review_key_count(db_session)
 
     r = await client.get("/api/v2/i18n/review/summary", params={"entity_type": "rule_option"})
     assert r.status_code == 200, r.text
@@ -189,20 +198,22 @@ async def test_summary_denominator_does_not_double_count_when_a_draft_shares_sco
     """
     await _reset_rule_option_en_labels_for_in_scope_rule_sets(db_session)  # M1
     await _seed_labels(db_session)
-    expected = await _rule_option_distinct_scope_key_count(db_session)
+    expected = await _rule_option_distinct_review_key_count(db_session)
     # draft 與 active 共用完全相同的 code 集合（clone 出來的），所以這裡的
     # DISTINCT 個數應該等於「只看 active」時的個數——先驗證這個前提成立，
     # 才有資格說「summary 沒有把 draft 重複算進去」。
     active_only = (await db_session.execute(
         select(RuleSet.id).where(RuleSet.code == CERTIFIED)
     )).scalar_one()
-    active_only_keys: set[str] = set()
+    active_only_keys: set[tuple[str, str]] = set()
     for model, param, _labels in SEED.RULE_OPTION_TABLES:
         codes = (await db_session.execute(
             select(model.code).where(model.rule_set_id == active_only)
         )).scalars().all()
-        active_only_keys.update(f"{param}:{c}" for c in codes)
-    assert expected == len(active_only_keys), "draft 不應該改變 DISTINCT scope_key 的個數"
+        active_only_keys.update(
+            (f"{param}:{c}", field) for c in codes for field in _RULE_OPTION_REVIEW_FIELDS
+        )
+    assert expected == len(active_only_keys), "draft 不應該改變 DISTINCT (scope_key, field) 的個數"
 
     r = await client.get("/api/v2/i18n/review/summary", params={"entity_type": "rule_option"})
     assert r.status_code == 200, r.text
@@ -234,7 +245,7 @@ async def test_summary_aggregates_across_entity_types_when_unfiltered(client, db
     if not await _seeded(db_session):
         pytest.skip("rule-set 未種")
     await _seed_labels(db_session)
-    rule_option_count = await _rule_option_distinct_scope_key_count(db_session)
+    rule_option_count = await _rule_option_distinct_review_key_count(db_session)
     vocab_count, template_count = await _vocab_and_template_counts(db_session)
 
     r = await client.get("/api/v2/i18n/review/summary")

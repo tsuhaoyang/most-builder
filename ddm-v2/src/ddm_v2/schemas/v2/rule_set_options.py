@@ -15,9 +15,9 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Any, Literal
+from typing import Annotated, Any, Literal
 
-from pydantic import BaseModel, ConfigDict, Field, model_validator
+from pydantic import BaseModel, ConfigDict, Field, StringConstraints, model_validator
 
 from ddm_v2.models.v2 import rule_set_tables as rt
 
@@ -156,6 +156,48 @@ class BandsReplaceIn(_Strict):
     """整組替換的 body。"""
 
     items: list[dict[str, Any]] = Field(min_length=1)
+
+
+# `_en` 自由文字的長度上限與空白處理（ADR-032 D4／R2，2026-08-20 覆核修正）。
+#
+# **為什麼要有上限**：這條 `_en` 寫入閘是唯一能寫進**生產字典的 active 認證版**的
+# 路徑（D4），而任何 analyst 都走得到——實測未設限時 200,001 字元寫得進去。
+# 取值對齊 `import_service` 對 vocab 名稱的既有處理（截到 200 字元）；句面是一整句
+# 敘事，放寬到 500（現況實測最長 45）。
+#
+# **`strip_whitespace=True` 是同一條修正的另一半**：`narrative_en._sent()` 的回退鏈是
+# `sentence_en or label_en`，`"   "` 是 truthy → **不會**回退，會把一段空白當動詞組進
+# 英文敘事句（與 `_noun()` 先前修掉的是同一類缺陷）。擋在入口，不改引擎——引擎那側
+# 一動就要重跑黃金值，而且中英對稱性要重新評估。純空白 strip 後成為空字串，
+# 對句面即 D7.6 的「刻意不入句」（合法值），對標籤則是「清空英文標籤」（本來就合法）。
+MAX_EN_LABEL_LEN = 200
+MAX_EN_SENTENCE_LEN = 500
+
+EnLabelText = Annotated[str, StringConstraints(strip_whitespace=True, max_length=MAX_EN_LABEL_LEN)]
+EnSentenceText = Annotated[
+    str, StringConstraints(strip_whitespace=True, max_length=MAX_EN_SENTENCE_LEN)
+]
+
+
+# ── `_en` 專用寫入 payload（ADR-032 D4）────────────────────────────
+#
+# **欄位集就是白名單本身**：`_Strict`（`extra="forbid"`）讓 `label_zh`／`base_tmu`
+# 這類欄位在**驗證層**就 422，不必等 service 層過濾。這是 D4 那條閘「只准寫兩欄」
+# 的第一道保證；service 層（`rule_option_service.update_option_en_text`）另有一道
+# 欄位白名單，兩道都在是刻意的——這條路徑是唯一能繞過 `assert_editable` 寫進
+# `certified_import` active 版的入口，值得雙保險（ADR-032 I3 的鄰居）。
+class OptionEnTextIn(_Strict):
+    """`PATCH /rule-sets/{code}/params/{param}/options/{code}/en` 的 body。
+
+    兩欄皆為 `str | None` 且**預設不動**：未帶的欄位不寫（靠 `exclude_unset`），
+    顯式帶 `null` ＝清空該欄英文（合法操作——清掉錯譯回到「未翻譯」是覆核流程
+    的一部分，比照 `schemas/v2/vocab.py` 對 `name_en` 的既有立場）。
+
+    兩欄皆 strip 並設長度上限，理由見上方常數區塊。
+    """
+
+    label_en: EnLabelText | None = None
+    sentence_text_en: EnSentenceText | None = None
 
 
 class BandInvalid(ValueError):

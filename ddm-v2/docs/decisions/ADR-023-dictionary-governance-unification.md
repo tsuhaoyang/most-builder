@@ -185,6 +185,13 @@ allowlist 清空 → 「插入」那條紅；`label_derived` 恆真 → 紅。
 `rule_sets.provenance ∈ {certified_import, manual, cloned}`：
 - `certified_import`＝由 `import_v3_dictionary.py` → seed → `dev_seed_v2.py` 產生（V1/V2 屬此）
 - **`provenance='certified_import'` 的版本，任何選項級寫入或 `PUT /full` 一律 409，即使 status='draft'。**
+  - **唯一例外＝`_en` 標籤／句面**（規則 1 那一列，ADR-032 D4）：走**另一條並列的 gate**
+    `rule_set_service.assert_en_editable()`（只擋 `retired`，不看 `provenance`），
+    端點 `PATCH /rule-sets/{code}/params/{param}/options/{option_code}/en`，
+    欄位白名單只有 `label_en`／`sentence_text_en`。**規則 3 本身沒有被放寬**：
+    `assert_editable()` 一個字沒改，值與 `_zh` 對認證版本仍然一律 409
+    （對照測試：`tests/integration/test_i18n_review_mutations.py::
+    test_ordinary_option_patch_on_certified_rule_set_is_still_409`）。
 
 這讓 ADR-014 的「認證版本禁手改」從文件約定變成 **DB 可驗證的規則**。IE 要改認證值只有一條路：改 JSON → 重跑腳本 → 新版本。
 

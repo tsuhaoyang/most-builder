@@ -190,6 +190,34 @@ JIT 建立（`roles=[]`）。所以每一個 API 呼叫背後都有一個 `app_u
 （只影響建議／顯示層 → 不需 approver），且與 rule-set 選項寫入現行的 `require_role("analyst")` 一致。
 `_en` 的寫入**不觸發 clone-on-write 攔截**（與同義詞相同的繞道），否則規則 1 的新列形同虛設。
 
+**D4 實作補記（2026-08-20，D6 mutation 輪次一併落地）**：D4 自 2026-08-18 裁定後
+**一直沒有實作**——`rule_set_service.assert_editable()` 對 `provenance='certified_import'`
+一律 409，而 active 的 V2 正是 `certified_import`，所以矩陣新列所授權的那 63 列
+rule-option 英文，實際上一個字都改不動。本輪補上：
+
+- **新增一條與 `assert_editable` 並列的 gate**：`rule_set_service.assert_en_editable()`
+  ——404（不存在）→ 409（`retired`）→ 放行，**刻意不看 `provenance`、也不要求 `status='draft'`**。
+  **不是**在 `assert_editable` 上開 `allow_en=True` 旁路：那條路一旦有人忘了關，
+  `label_zh` 與 `base_tmu` 會跟著解凍，正是 D4 要避免的形狀。
+- **唯一的寫入端點**：`PATCH /api/v2/rule-sets/{code}/params/{param}/options/{option_code}/en`
+  → `rule_option_service.update_option_en_text()`。欄位白名單
+  `EN_WRITABLE_FIELDS = {label_en, sentence_text_en}`（schema 層另有 `extra="forbid"`，
+  兩道），白名單外一律 422；`retired` 409；RBAC `analyst`；走 `workflow_audit_log`
+  （`action='option_en_update'`，記前後值）。
+- **I5 的唯一性檢查下沉到這條路徑**：先前 I5 只在灌值腳本裡守（灌值當下避免碰撞），
+  線上編輯一開，`g_grasp`(6 TMU)／`g_touch`(3 TMU) 被改成同一個英文字面就沒人擋了。
+  現在同 (rule_set, 參數表) 內 `label_en` 正規化後重複 → 409 `EN_LABEL_NOT_UNIQUE`。
+  **2026-08-20 checkpoint 更正**：上面這段先前只在 `update_option_en_text` 一條路成立，
+  讀起來卻像洞補上了——`label_en` 也是 `_OptionIn` 的可寫欄位，`create_option`／
+  `update_option` 走 `validate_payload` 完全沒有唯一性檢查，任何 draft 上仍改得出兩個
+  相同的英文標籤。三條路徑現已共用同一支 `_assert_en_label_unique`（上線前實測既有
+  63 筆 `label_en` 零衝突，接上不會讓既有編輯操作開始 409）。**`duplicate_option`
+  刻意不接**：它整列複製（含 `label_en`），接上等於複製功能對任何已有英文標籤的選項
+  一律 409；複製出來的列本來就是待改的半成品（`code` 也只是 `{code}_copy`）。
+  這是下面「已知邊界」的第 3 條。
+  句面（`sentence_text_en`）不受此限——句面本來就允許重複（多條「刻意不入句」同為空字串），
+  唯一性是下拉選單辨義的要求，不是句子的要求。
+
 ### D5 翻譯來源標記＝獨立側表 `i18n_review_state`（文字仍留在原欄）
 
 （User 同意架構師提案，2026-08-18 裁決第 5 條）
@@ -203,12 +231,17 @@ i18n_review_state
   scope_key       text  not null  -- 見下方「鍵的選擇」
   field           text  not null  CHECK IN ('label','sentence','name')
   locale          text  not null  CHECK IN ('en')          -- 加法擴充：日後新語系加值
-  source          text  not null  CHECK IN ('machine','human','legacy_seed')
+  source          text  not null  CHECK IN ('machine','human','legacy_seed','untranslated')
+                                  -- 'untranslated'＝v2_0043 新增：側表列只為記指派而
+                                  --   存在、尚無譯文（理由見 D6 後半的補記）
   source_sha256   text  not null  -- 翻譯當下「中文來源字串」正規化後的 sha256
   translated_by   text            -- machine：服務／模型識別字串；human：員工號
   translated_at   timestamptz not null
   reviewed_by     text            -- source='human' 時必填（CHECK）
   reviewed_at     timestamptz
+  target_sha256   text            -- v2_0043：覆核當下「英文譯文」正規化後的 sha256
+  assigned_to     text            -- v2_0043：指派給誰（員工號）；NULL＝未指派
+  assigned_at     timestamptz
   note            text
   UNIQUE (entity_type, scope_key, field, locale)
 ```
@@ -265,6 +298,17 @@ i18n_review_state
 （＝曾經被覆核）；`machine`／`legacy_seed` 從未離開過待審清單，談不上「重回」。對使用者
 更有意義的訊息也是「這條還沒人看過」，不是「這條過期了」（過期暗示曾經有人確認過）。
 
+**「有譯文但查無側表列」也歸 `unreviewed`，不是 `stale`（2026-08-20 checkpoint 修正）**：
+上面那條優先序只講了 (2)（`source` 值域）與 (3)（sha 不符）的重疊，漏了第三種情形——
+一列**根本沒有側表列**，但 `_en` 欄位有字。這一支先前落進 `stale`（`review_sha256` 為
+`None` 必然不等於任何 sha256），而 `stale` 的語意是「曾經被覆核，之後內容變了」：一列
+沒有覆核基準，不可能過期，報 `stale` 傳達的訊息與事實相反。這不是理論邊角——
+`POST /api/v2/vocab` 帶 `name_en` 建新詞彙時完全不寫側表列（**每一筆新詞彙一出生就是
+`stale`**），D4 的 `_en` 線上編輯閘也只寫欄位、不碰側表。而且它讓「指派不改變 status」
+這句本 ADR 與程式碼三處明文的承諾**不成立**：`assign_review()` 就地補一筆 `legacy_seed`
+側表列，status 就從 `stale` 變成 `unreviewed`。`_classify` 現在顯式先回 `unreviewed`；
+兩者同屬待審，`n/126` 的分子分母不變。
+
 **`source_changed` 欄位（同一次實作補記）**：因為上面的優先序，`status='unreviewed'`
 本身分不出「剛翻好、中文沒變過」與「翻過，但中文後來又改了、它還沒被人看過」——兩者對覆核者
 的意義不同，但單看 `status` 看不出差異。API 回應（`I18nPendingItemOut`）與服務層
@@ -301,9 +345,39 @@ sha 而非英文本身。D4 允許逐欄編輯譯文，這條路徑理論可達�
 （候選方案：side table 增加 `target_sha256`，或限制覆核只能對 active 版
 的候選列進行）。
 
+**定案（2026-08-20，User 裁決；migration v2_0043）：採 `target_sha256`。**
+側表新增 `target_sha256 text NULL`，語意與 `source_sha256` 對稱——記「**覆核當下的
+英文譯文**」正規化後的 sha256（同一支 `norm_sha256`）。讀取端的 `stale` 判定因此擴充為
+「**中文來源變了 或 英文譯文在覆核後被改過**」：兩者都是「曾經被覆核、之後內容變了」，
+所以歸同一個 `stale`；區分兩者的是一個與 `source_changed` 正交的新布林欄位
+`target_changed`（照 S6 的先例，**不引入第四個 status 值**，D6 的三態形狀不變）。
+`target_sha256 IS NULL`（既有列全部如此，純加法）→ 沒有基準可比較 → `target_changed`
+一律 `false`，比照 L3 對 `review_sha256 is None` 的處理——所以這個欄位上線當下不會讓
+任何一列憑空變成 `stale`。**不採候選方案二（限制覆核只能對 active 版進行）**：D4 明文
+允許 IE 在 draft 新增 active 沒有的選項，方案二會讓那些列永遠無法覆核——把一個
+「精度不足」的問題換成一個「整類資料不可覆核」的問題。
+
 **來源集合限定為：active rule-set ＋ 現存 draft ＋ 全部主數據。**
 `published(非 active)` 與 `retired` 版本是凍結的歷史，不需要翻譯，也不該灌大家的待辦清單。
 這同時把 rule-set 側的工作量從 113 列收斂為 **63 列**（active V2）。
+
+**分母修正：63 → 126（2026-08-20，覆核 mutation 輪次；這是缺陷修正，不是範圍擴張）**。
+上面那個「63」算的是 **option code 數**，但一個 option 有**兩個**可譯欄位——
+`label`（下拉標籤）與 `sentence`（敘事句面），D5 的側表 `field` 值域本來就同時收這兩個，
+Phase C 也真的把 63 筆 `field='sentence'` 的覆核狀態寫進了側表。**問題是它們永遠不會
+出現在待審清單裡**：`i18n_service._candidates_sql()` 對 `rule_option` 硬寫
+`'label' AS field`，句面那 63 筆寫得進側表、卻查不出來。後果是**風險排序完全顛倒**——
+英文使用者在 METHOD 欄實際讀到的整句敘事（句面）覆核追蹤是 0% 且不可達，
+風險低得多的下拉標籤反而 100% 可見。清單一旦要能操作（可指派、可標記完成），這個缺口
+就必須補，否則「覆核率 100%」會是一個只涵蓋一半資料的數字。故 `_candidates_sql()`
+自本輪起 7 張選項表各出兩列候選，**`summary()` 的 rule_option 分母由 63 變成 126**
+（實測 `{'total': 126, 'reviewed': 0, 'pending': 126}`；含主數據的全體分母由 138 變成 201）。
+下文「驗收定義」與 D10 Phase B 原本寫的「`n/63`」一併更新為「`n/126`」。
+
+句面候選的**來源中文**取 `COALESCE(NULLIF(sentence_text_zh,''), label_zh)`——必須與引擎的
+回退鏈逐字一致（`narrative._sent()` ＝ `sentence or label`，灌值腳本算 `source_sha256`
+時用的也是同一條鏈）。取裸 `sentence_text_zh` 的話，句面留空的那幾條（`m_hand`／`m_foot`／
+`b_none`…）會拿一個引擎根本沒讀的字串去算 sha256，整批句面永遠顯示過期。
 
 **誰看得到**：`analyst`（IE）以上（與 D4 的編輯權一致）。`viewer` 不顯示入口。
 依據 ADR-024 的權責分界：清單同時涵蓋**字典**（admin 入口「MOST 字典」）與**主數據**
@@ -325,8 +399,72 @@ status／關鍵字篩選、覆核進度數字（`n/total`）可見」——**唯
 mutation 端點與「標記已覆核」UI 留給下一輪。**不要把 Phase B 標記為已完成**：這一輪只是
 前端唯讀半部落地，不是 D6 驗收定義的全部。
 
+**後半的後端已落地（2026-08-20；UI 仍未做，Phase B 仍不得標記完成）**：
+
+| 端點 | 角色 | 語意 |
+|---|---|---|
+| `POST /api/v2/i18n/review/mark-reviewed` | analyst+ | `source='human'` ＋ `reviewed_by`／`reviewed_at` ＋ `target_sha256`；可選帶 `target_en`，在**同一個交易**內先經 D4 的 `_en` 寫入閘改譯文、再寫側表 |
+| `POST /api/v2/i18n/review/assign` | analyst+ | `assigned_to`／`assigned_at`（v2_0043 新增欄）；`null` ＝取消指派 |
+| `PATCH /api/v2/rule-sets/{code}/params/{param}/options/{option_code}/en` | analyst+ | D4 的 `_en` 專用寫入閘（見 D4 實作補記） |
+
+三個刻意的設計選擇，每一個都對應本 ADR 的一句話：
+
+1. **沒有批次核准端點**（I5／R1）：`g_grasp`(6 TMU)／`g_touch`(3 TMU) 這種「英文看起來
+   一樣」的誤譯只有逐條人看才擋得住，一次核准 126 列會把覆核變成橡皮圖章——而「每條
+   譯文都有人負責」正是 D2 賴以成立的第三個前提。要開這條路得先回答「怎麼避免橡皮
+   圖章」，那是新的裁決，不是實作細節。
+2. **沒有譯文的列不得被標成已覆核**（422 `I18N_REVIEW_TARGET_MISSING`）：否則覆核率
+   會上升而英文介面還是空的。要覆核就在同一個請求帶 `target_en`。
+   `field='sentence'` 的空字串是例外——那是 D7.6 的「刻意不入句」，是有意義的值——
+   **但這個例外有前提：該列的中文句面本身必須是空的**（2026-08-20 checkpoint 修正）。
+   先前這個例外無條件放行，等於一張橡皮圖章：中文句面「抓握」的 `g_grasp` 也吃得下
+   `target_en=""`，回 200、`sentence_text_en` 被清成空、離開待審清單；`sentence_text_en`
+   為 NULL、連側表列都沒有的列同樣吃得下——**完全沒有英文，卻算已覆核**。63 條句面用
+   63 個空字串請求就能把 `n/126` 推到 126/126 而英文全空，正是 R2 寫明的「本 ADR 最可能
+   的失敗模式」。判準改成看中文句面（`sentence_text_zh IS NULL OR = ''`，現況 active 版
+   7 條：`b_none`／`a_hard`／`a_press`／`m_hand`／`m_foot`／`x_none`／`i_none`），
+   與 D7.6 的定義同一個判準。純空白（`"   "`）一律不是「刻意不入句」：它在入口就被
+   strip 成空字串，再套用上面的前提。
+3. **`_en` 自由文字在入口 strip 並設長度上限**（同一次修正）：`label_en`／`name_en`
+   ≤ 200 字元（對齊 `import_service` 對 vocab 名稱的既有處理）、`sentence_text_en`
+   ≤ 500——這條路徑碰得到**生產字典的 active 認證版**而任何 analyst 都走得到，實測
+   未設限時 200,001 字元寫得進去。strip 的理由有兩個：`narrative_en._sent()` 的回退鏈
+   是 `sentence_en or label_en`，`"   "` 是 truthy → 不會回退，會把一段空白當動詞組進
+   英文敘事句（引擎側不動，擋入口就夠）；以及覆核路徑先前是裸 `setattr`，同一個字串
+   經覆核路徑存成 `'   Padded   '`、經 `PATCH /api/v2/vocab/{id}` 存成 `'Padded'`，
+   而 `schemas/v2/vocab.py` 檔頭明講「字串一律 strip，在入口擋掉」。
+4. **主數據的譯文改動也留前後值**（同一次修正）：`rule_option` 有 `option_en_update`
+   記 `changed_fields: {before, after}`，`vocab_item`／`motion_template`（約 75 條）
+   先前只留得下「某人覆核過這條」，還原不了英文被改成什麼。`i18n_review_mark` 的
+   payload 現在帶同樣形狀的 `changed_fields`。
+3. **端點不收 client 端宣告的中文／英文原文**：`source_sha256`／`target_sha256` 一律由
+   伺服器從候選查詢（與待審清單**同一份 SQL**）取現行值計算。兩邊只要有一處對來源
+   欄位的解讀不同，覆核完的列會立刻被讀取端判成 `stale`。
+
+指派欄位為此在側表新增，並且 `source` 值域加了 `'untranslated'`（v2_0043）——
+`never_translated` 的列本來就沒有側表列，而那正是最需要有人認領的一批；舊值域三個值
+（machine／human／legacy_seed）**每一個都是在描述「譯文從哪來」**，對一條還沒有譯文的列
+填其中任何一個都是謊。讀取端把 `'untranslated'` 與 machine／legacy_seed 同列為
+`unreviewed`，所以**指派不會改變一列的 `status`**（指派記的是「誰在處理」，不是「處理到哪」）。
+
+**已知邊界（2026-08-20 checkpoint 記票，本輪刻意不處理）**：
+
+1. **I5 與側表 upsert 沒有 DB 約束背書，並發可穿透**：唯一性是「先查再寫」的應用層
+   檢查，兩個同時進來的請求可以雙雙通過檢查再雙雙寫入；側表的 upsert 同理（讀-改-寫，
+   沒有 `ON CONFLICT`）。現況是**單一 IE 逐條覆核**的工作型態，衝突視窗小到不值得為它
+   加 unique index／`ON CONFLICT`（那會牽動灌值腳本與 `_en` 閘兩條既有路徑）。
+   要處理就一起處理，不是在覆核端點單點補。
+2. **`_en` 專用端點寫得進 V1（published 非 active），覆核端點碰不到 V1**：前者的 gate
+   是 `assert_en_editable`（只擋 retired），後者的候選集合是「active ＋ 現存 draft」
+   （D6 明文）。兩條路徑對「哪些版本可寫」的定義不一致——不是安全問題（V1 的英文標籤
+   本來就允許後補），但**同一件事兩個答案**，日後要收斂成一個。
+3. **`duplicate_option` 不受 I5 約束**：整列複製會複製 `label_en`，複製當下就產生一組
+   重複的英文標籤（見上方 D4 補記）。要修得先決定複製時 `label_en` 的處理（跟 `code`
+   一樣加尾綴？清空？），那是新的裁決，不是實作細節。
+
 **驗收定義（重要，否則「之後再修」是空話）**：Phase B 的完成判準**不是**「翻譯都有了」，
-而是「**覆核進度是可見且可下降的數字**」——字典／主數據頁標頭顯示 `英文覆核 n/63`，
+而是「**覆核進度是可見且可下降的數字**」——字典／主數據頁標頭顯示 `英文覆核 n/126`
+（原文寫 `n/63`，2026-08-20 隨句面進入清單一併更新，理由見上方「分母修正」），
 點進去是待審清單，每條可指派、可標記完成。本 ADR **不設期限**（期限屬 User 的排程權）。
 
 ### D7 敘事英文化：平行樣板系統，不是翻譯管道
@@ -462,7 +600,7 @@ M 格 `pricing_kind` ∈ {`hand`,`foot`}（`m_hand`／`m_foot`）的分量**兩�
 | 階段 | 內容 | 完成判準 |
 |---|---|---|
 | **A** | 前端 i18n 框架導入 ＋ UI 外殼字串外部化 ＋ 標頭語言切換 ＋ `app_users.locale` ＋ `/me` 帶 locale ＋ `PATCH /me/locale` | 切到 en 後，**外殼**（側欄 7 項＋admin 2 項、標頭、按鈕、表頭）無中文殘留；切回 zh 與 v3 截圖對照一致；e2e 全綠 |
-| **B** | 7 張選項表 ＋ 詞彙 ＋ 範本的 `label_en`／`name_en` 機器灌值 ＋ `i18n_review_state` ＋ 待審清單 ＋ 覆核 UI | active 版 63 列選項與 59 筆詞彙**皆有英文且皆有來源標記**；待審清單顯示 `n/63` 且可指派；`legacy_seed` 16 筆正確落在未覆核側；**英文標籤唯一性檢查（I5）零衝突** |
+| **B** | 7 張選項表 ＋ 詞彙 ＋ 範本的 `label_en`／`name_en` 機器灌值 ＋ `i18n_review_state` ＋ 待審清單 ＋ 覆核 UI | active 版 63 列選項（＝**126 個可譯欄位**：label ＋ sentence）與 59 筆詞彙**皆有英文且皆有來源標記**；待審清單顯示 `n/126` 且可指派；`legacy_seed` 16 筆正確落在未覆核側；**英文標籤唯一性檢查（I5）零衝突** |
 | **C** | `sentence_text_en`（7 表＋clone 路徑三處）＋ 英文樣板系統 ＋ `most_cycles.narrative_en` ＋ 回填腳本 ＋ 雙語參數化敘事測試 | D7.4 的四個語序案例在英文輸出中成立；`run_all.py` 黃金值 **GM=28／CM=29** 不變；回填腳本對 TMU 零改動（前後 diff 為空） |
 
 **A 可獨立上線**（外殼英文＋資料仍中文，是可用的中間態）。**B 依賴 A**（沒有語系切換，灌了也看不到）。
@@ -644,7 +782,7 @@ M 格 `pricing_kind` ∈ {`hand`,`foot`}（`m_hand`／`m_foot`）的分量**兩�
 （"grab" vs "grasp"）——這只能靠 IE 覆核，也正是待審清單存在的理由。
 
 **R2 — 「之後有空再修」永遠不會發生**
-這是本 ADR 最可能的失敗模式：MT 灌完、清單建好、`n/63` 停在 63，兩年後沒人記得那個數字的意思。
+這是本 ADR 最可能的失敗模式：MT 灌完、清單建好、`n/126` 停在 126，兩年後沒人記得那個數字的意思。
 **緩解**：Phase B 的完成判準寫的是「數字可見且可下降」而非「翻譯存在」；清單預設過濾為
 「active 版 ＋ 主數據」把工作量壓在 122 條以內（不是 113＋59 全量）。
 **殘留風險**：本 ADR 不設期限（期限屬 User 的排程權）。若六個月後覆核率仍為 0%，

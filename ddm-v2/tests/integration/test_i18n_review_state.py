@@ -669,6 +669,14 @@ async def test_english_labels_are_unique_within_each_rule_set_table(db_session):
 # 待審清單服務（供 API 層覆用）
 # ══════════════════════════════════════════════════════════════════
 
+# 每一列選項對應**兩個**可譯欄位：`label`（下拉標籤）與 `sentence`（敘事句面）
+# ——2026-08-20 起 `i18n_service._candidates_sql()` 兩種 field 都出候選（先前只出
+# `label`，句面的覆核狀態寫得進側表卻永遠不會出現在待審清單裡）。分母因此從
+# 「相異 scope_key 數」變成「相異 (scope_key, field) 數」。**刻意不寫死 ×2**：
+# 逐 field 建鍵，日後再多一種 field 時測試自己會跟著對。
+_RULE_OPTION_REVIEW_FIELDS = ("label", "sentence")
+
+
 async def _in_scope_rule_set_ids(db_session) -> list[uuid.UUID]:
     """`i18n_service.IN_SCOPE_RULE_SET_SQL` 的 Python 版（active ＋ 現存 draft）。"""
     return (await db_session.execute(
@@ -676,29 +684,31 @@ async def _in_scope_rule_set_ids(db_session) -> list[uuid.UUID]:
     )).scalars().all()
 
 
-async def _rule_option_distinct_scope_key_count(db_session) -> int:
-    """`summary()` 的分母：DISTINCT `(param, code)`——**不硬編 63**（S2）：
-    有 draft 時 63 這個常數不再保證成立，只有直接查 DB 現況才準。
+async def _rule_option_distinct_review_key_count(db_session) -> int:
+    """`summary()` 的分母：DISTINCT `(param, code, field)`——**不硬編 126**（S2）：
+    有 draft 時常數不再保證成立，只有直接查 DB 現況才準。
+    （2026-08-20 起每個 code 出 label／sentence 兩個候選，見 `_RULE_OPTION_REVIEW_FIELDS`。）
     """
     rule_set_ids = await _in_scope_rule_set_ids(db_session)
-    scope_keys: set[str] = set()
+    keys: set[tuple[str, str]] = set()
     for model, param, _labels in SEED.RULE_OPTION_TABLES:
         codes = (await db_session.execute(
             select(model.code).where(model.rule_set_id.in_(rule_set_ids))
         )).scalars().all()
-        scope_keys.update(f"{param}:{c}" for c in codes)
-    return len(scope_keys)
+        keys.update((f"{param}:{c}", field) for c in codes for field in _RULE_OPTION_REVIEW_FIELDS)
+    return len(keys)
 
 
 async def _rule_option_row_count(db_session) -> int:
-    """`pending_rows()` 的候選列數（不去重，見 `pending_rows` 檔頭）。"""
+    """`pending_rows()` 的候選列數（不去重，見 `pending_rows` 檔頭）；每列出
+    label ＋ sentence 兩個候選。"""
     rule_set_ids = await _in_scope_rule_set_ids(db_session)
     total = 0
     for model, _param, _labels in SEED.RULE_OPTION_TABLES:
         total += (await db_session.execute(
             select(func.count()).select_from(model).where(model.rule_set_id.in_(rule_set_ids))
         )).scalar_one()
-    return int(total)
+    return int(total) * len(_RULE_OPTION_REVIEW_FIELDS)
 
 
 async def test_summary_and_pending_rows_reflect_seeded_state(db_session):
@@ -707,7 +717,7 @@ async def test_summary_and_pending_rows_reflect_seeded_state(db_session):
     await SEED.seed_i18n_labels(db_session)
     await db_session.flush()
 
-    expected_distinct = await _rule_option_distinct_scope_key_count(db_session)
+    expected_distinct = await _rule_option_distinct_review_key_count(db_session)
     expected_rows = await _rule_option_row_count(db_session)
 
     summary = await svc.summary(db_session, entity_type="rule_option")
@@ -730,7 +740,7 @@ async def test_summary_and_pending_rows_reflect_seeded_state_with_draft_present(
     await SEED.seed_i18n_labels(db_session)
     await db_session.flush()
 
-    expected_distinct = await _rule_option_distinct_scope_key_count(db_session)
+    expected_distinct = await _rule_option_distinct_review_key_count(db_session)
     expected_rows = await _rule_option_row_count(db_session)
     assert expected_rows == 2 * expected_distinct, (
         f"draft_rs={draft_rs!r} 與 active 共用完全相同的 code 集合，"

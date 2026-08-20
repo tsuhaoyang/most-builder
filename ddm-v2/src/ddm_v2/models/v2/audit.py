@@ -25,6 +25,8 @@ class WorkflowAuditLog(Base):
     """工作流稽核紀錄：僅追加，記錄狀態遷移（ADR-018 裁決 3）。
 
     entity_type: 'process_version' | 'motion_module' | 'rule_set' | 'motion_template'
+                 | 'vocab_item'（v2_0043：ADR-032 D6 的覆核／指派留痕；DB CHECK 是
+                 值域的權威，本表沒有宣告 CheckConstraint，改值域一律走 migration）
     action:      'approve' | 'promote' | 'publish' | 'override' | 'retire'
     """
 
