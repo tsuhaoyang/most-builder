@@ -4,6 +4,7 @@
 //   「重算並儲存」→ PUT /motion-modules/{id}/rows/{row_index} → 後端重算發新版
 //   前端不算 TMU（DISC-02）：預覽 TMU 走後端 calculate（debounce 400ms）。
 import { useEffect, useMemo, useState } from 'react'
+import { useTranslation } from 'react-i18next'
 import { useRuleSetOptions, useVocab, useCalculate } from '../wi-workbench/api'
 import { useCreateVocab } from '../master-data/api'
 import type { VocabIn } from '../master-data/api'
@@ -16,7 +17,7 @@ import {
   useUpdateModuleRow, useMotionModuleDetail, apiErrorMessage, type MotionModuleRow,
 } from './api'
 
-const HAND_NAME: Record<string, string> = { RH: '右手', LH: '左手', BH: '雙手' }
+const HAND_CODES = ['RH', 'LH', 'BH'] as const
 
 export interface WiItemInspectorProps {
   /** WI（category='wi-template'）模組 id 與名稱 */
@@ -34,6 +35,7 @@ export interface WiItemInspectorProps {
 export function WiItemInspector({
   moduleId, moduleName, rowIndex, row, onClose, onSaved,
 }: WiItemInspectorProps) {
+  const { t } = useTranslation()
   // ADR-014 值權威：row 重算/發版一律用 V2（與工作台一致；WI rows 為 V2 選項碼快照）
   const activeRs = useActiveRuleSet()
   const { data: opts, error: optsErr } = useRuleSetOptions(activeRs.data?.code)
@@ -109,7 +111,10 @@ export function WiItemInspector({
     .map((r, j) => ({ index: j, row: r }))
     .filter(({ index, row: r }) => index !== rowIndex && r.simo_pair_index == null)
   const rowLabel = (r: MotionModuleRow, j: number) =>
-    `第 ${j + 1} 列 · ${r.narrative_zh ?? r.sub_activity ?? '（無敘述）'}`
+    t('workbench.inspector.rowLabel', {
+      n: j + 1,
+      text: r.narrative_zh ?? r.sub_activity ?? t('workbench.inspector.noNarrative'),
+    })
 
   // 顯示用算術（非 TMU 規則計算）：eff = tmu × freq
   const effTmu = tmu != null ? Math.round(tmu * (cur.freq || 1) * 1000) / 1000 : null
@@ -164,51 +169,55 @@ export function WiItemInspector({
         {/* header */}
         <div className="flex items-center justify-between px-4 py-3 border-b">
           <div className="min-w-0">
-            <h3 className="font-semibold text-base">動作模組詳情</h3>
+            <h3 className="font-semibold text-base">{t('workbench.inspector.title')}</h3>
             <p className="text-xs text-slate-400 truncate" title={moduleName}>
-              {moduleName} · 第 {rowIndex + 1} 列
+              {t('workbench.inspector.subtitle', { name: moduleName, index: rowIndex + 1 })}
             </p>
           </div>
           <button
             onClick={onClose}
             className="text-slate-400 hover:text-slate-600 text-xl leading-none px-1"
-            aria-label="關閉"
+            aria-label={t('workbench.inspector.closeAria')}
           >✕</button>
         </div>
 
         {/* body */}
         <div className="flex-1 overflow-y-auto p-4 space-y-4">
           {ruleSetErr && <RuleSetUnavailable error={ruleSetErr} />}
-          {!opts && !ruleSetErr && <p className="text-sm text-slate-500">載入 rule-set…</p>}
+          {!opts && !ruleSetErr && <p className="text-sm text-slate-500">{t('workbench.loadingRuleSet')}</p>}
           {opts && (
             <>
               {/* 列摘要：句子＋SIMO 標記 */}
               <div className="rounded-lg border px-3 py-2 bg-slate-50 space-y-1">
                 <p className="text-sm text-slate-700">
-                  {row.narrative_zh ?? row.sub_activity ?? '（無敘述）'}
+                  {row.narrative_zh ?? row.sub_activity ?? t('workbench.inspector.noNarrative')}
                 </p>
                 <div className="flex items-center gap-3 text-xs text-slate-500">
-                  <span>{cur.seq === 'GM' ? '一般移動' : '控制移動'}</span>
-                  <span>{HAND_NAME[cur.handCode] ?? cur.handCode}</span>
+                  <span>{cur.seq === 'GM' ? t('workbench.seq.GM') : t('workbench.seq.CM')}</span>
+                  <span>
+                    {(HAND_CODES as readonly string[]).includes(cur.handCode)
+                      ? t(`workbench.hand.${cur.handCode}`)
+                      : cur.handCode}
+                  </span>
                   {isSimo && (
                     <span className="text-orange-600 font-medium">
-                      SIMO 從屬（主列 #{(simoPair ?? 0) + 1}，貢獻 0）
+                      {t('workbench.inspector.simoFollower', { n: (simoPair ?? 0) + 1 })}
                     </span>
                   )}
                   {isMainRow && (
-                    <span className="text-sky-600 font-medium">SIMO 主列（吸收從屬列時間）</span>
+                    <span className="text-sky-600 font-medium">{t('workbench.inspector.simoLeader')}</span>
                   )}
                 </div>
               </div>
 
               <label className="block space-y-1">
-                <span className="text-sm text-slate-500">動作語句</span>
+                <span className="text-sm text-slate-500">{t('workbench.inspector.subActivityLabel')}</span>
                 <textarea
                   className="w-full rounded border px-3 py-2 text-sm"
                   rows={3}
                   value={subActivity}
                   onChange={e => setSubActivity(e.target.value)}
-                  placeholder="可覆寫此 WI 子列的動作語句"
+                  placeholder={t('workbench.inspector.subActivityPlaceholder')}
                   data-testid="inspector-sub-activity"
                 />
               </label>
@@ -216,7 +225,7 @@ export function WiItemInspector({
               {/* SIMO 配對（B-3；ADR-020：宣告者＝從屬列，貢獻 0，時間由主列吸收） */}
               <div className="rounded-lg border px-3 py-2 space-y-1">
                 <label className="flex items-center gap-2 text-sm">
-                  <span className="text-slate-500 shrink-0">同動於</span>
+                  <span className="text-slate-500 shrink-0">{t('workbench.inspector.simoPairLabel')}</span>
                   <select
                     className="flex-1 min-w-0 border rounded px-2 py-1 text-sm disabled:bg-slate-100"
                     value={simoPair == null ? '' : String(simoPair)}
@@ -224,7 +233,7 @@ export function WiItemInspector({
                     onChange={e => setSimoPair(e.target.value === '' ? null : Number(e.target.value))}
                     data-testid="inspector-simo-pair"
                   >
-                    <option value="">無（獨立列）</option>
+                    <option value="">{t('workbench.inspector.simoNone')}</option>
                     {simoCandidates.map(({ index, row: r }) => (
                       <option key={index} value={index}>{rowLabel(r, index)}</option>
                     ))}
@@ -232,29 +241,29 @@ export function WiItemInspector({
                 </label>
                 <p className="text-xs text-slate-400">
                   {isMainRow
-                    ? '本列已被其他列指為主列 → 依 ADR-020，主列不得自身宣告配對（需先解除該列配對）。'
+                    ? t('workbench.inspector.simoHintMainRow')
                     : allRows.length <= 1
-                      ? '此 WI 僅一列，無可配對的對象。'
-                      : '選定後本列成為 SIMO 從屬列：納入總時間為 0，時間由主列吸收。'}
+                      ? t('workbench.inspector.simoHintSingle')
+                      : t('workbench.inspector.simoHintDefault')}
                 </p>
               </div>
 
               {/* 手 / 頻率 */}
               <div className="flex items-center gap-6">
                 <label className="flex items-center gap-2 text-sm">
-                  <span className="text-slate-500">使用手</span>
+                  <span className="text-slate-500">{t('workbench.inspector.handLabel')}</span>
                   <select
                     className="border rounded px-2 py-1 text-sm"
                     value={cur.handCode}
                     onChange={e => set({ handCode: e.target.value })}
                   >
-                    <option value="RH">右手</option>
-                    <option value="LH">左手</option>
-                    <option value="BH">雙手</option>
+                    <option value="RH">{t('workbench.hand.RH')}</option>
+                    <option value="LH">{t('workbench.hand.LH')}</option>
+                    <option value="BH">{t('workbench.hand.BH')}</option>
                   </select>
                 </label>
                 <label className="flex items-center gap-2 text-sm">
-                  <span className="text-slate-500">頻率</span>
+                  <span className="text-slate-500">{t('workbench.inspector.freqLabel')}</span>
                   <input
                     type="number" min={1}
                     className="border rounded w-20 px-2 py-1 text-sm"
@@ -288,15 +297,15 @@ export function WiItemInspector({
               <div className="flex flex-wrap items-center gap-x-5 gap-y-1 rounded-lg border px-3 py-2 text-sm"
                 style={{ background: 'linear-gradient(135deg,#f8fbff 0%,#f0f7ff 100%)', borderColor: '#d4e5f7' }}>
                 <span>
-                  <span className="text-slate-400 text-xs mr-1">基礎 TMU</span>
+                  <span className="text-slate-400 text-xs mr-1">{t('workbench.inspector.baseTmu')}</span>
                   <b style={{ color: '#1a73e8' }}>{tmu ?? '—'}</b>
                 </span>
                 <span>
-                  <span className="text-slate-400 text-xs mr-1">有效 TMU</span>
+                  <span className="text-slate-400 text-xs mr-1">{t('workbench.inspector.effTmu')}</span>
                   <b className="text-red-600">{effTmu ?? '—'}</b>
                 </span>
                 <span>
-                  <span className="text-slate-400 text-xs mr-1">CT(秒)</span>
+                  <span className="text-slate-400 text-xs mr-1">{t('workbench.inspector.ctSeconds')}</span>
                   {ctSec ?? '—'}
                 </span>
                 {tech && <span className="font-mono text-xs text-slate-400">{tech}</span>}
@@ -306,8 +315,8 @@ export function WiItemInspector({
               {savedComputed && (
                 <div className="rounded-lg border border-emerald-200 bg-emerald-50 px-3 py-2 text-sm text-emerald-700"
                   data-testid="inspector-saved">
-                  已重算並發布新版本：本列 Base <b>{savedComputed.total_tmu}</b> TMU · Eff{' '}
-                  <b>{savedComputed.eff_tmu}</b> TMU · 納入{' '}
+                  {t('workbench.inspector.savedPrefix')} <b>{savedComputed.total_tmu}</b> TMU · Eff{' '}
+                  <b>{savedComputed.eff_tmu}</b> TMU · {t('workbench.inspector.included')}{' '}
                   {savedComputed.contribution_tmu === 0
                     ? <b className="line-through text-slate-400">0</b>
                     : <b>{savedComputed.contribution_tmu}</b>}{' '}TMU
@@ -318,12 +327,12 @@ export function WiItemInspector({
               {errMsg && (
                 <div className="rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700 break-all"
                   data-testid="inspector-error">
-                  儲存失敗：{errMsg}
+                  {t('workbench.inspector.saveFailed', { message: errMsg })}
                 </div>
               )}
 
               <p className="text-xs text-slate-400">
-                此微調僅套用於目前 WI（快照複本），不會變更動作清單中的原始動作；儲存後 WI 發布新版本並標記「已微調」。
+                {t('workbench.inspector.note')}
               </p>
             </>
           )}
@@ -335,14 +344,14 @@ export function WiItemInspector({
             onClick={onClose}
             className="px-4 py-1.5 border rounded-lg text-sm text-slate-600 hover:bg-slate-50"
           >
-            取消
+            {t('workbench.inspector.cancel')}
           </button>
           <button
             onClick={handleSave}
             disabled={saving || !opts}
             className="px-4 py-1.5 bg-blue-600 text-white rounded-lg text-sm font-medium disabled:opacity-40"
           >
-            {saving ? '重算中…' : '重算並儲存'}
+            {saving ? t('workbench.inspector.saving') : t('workbench.inspector.save')}
           </button>
         </div>
       </div>

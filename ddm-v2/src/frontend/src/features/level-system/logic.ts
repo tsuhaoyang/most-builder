@@ -35,7 +35,13 @@ export interface LevelPayloadRow {
 }
 
 // 由分組推導 ascription/order/level/parent（IE 不手填）；空母群組的子 cub 自動攤平 parent
-export function derive(rows: Row[], lm: Record<string, LevelCell>, gm: Record<string, GroupMeta>): LevelPayloadRow[] {
+//
+// `narrOf`：本地新加的列 `row.narr` 是空的（敘述不入 state，見 store.ts），呼叫端傳
+// `useRowNarr()` 進來即時重算；預設值只是讓純資料測試不必準備 rule-set 選項。
+export function derive(
+  rows: Row[], lm: Record<string, LevelCell>, gm: Record<string, GroupMeta>,
+  narrOf: (r: Row) => string = (r) => r.narr,
+): LevelPayloadRow[] {
   return rows.map((r, i) => {
     const m = lm[r.id] || blankCell(i)
     const c = (m.countersignature || '').trim()
@@ -50,7 +56,7 @@ export function derive(rows: Row[], lm: Record<string, LevelCell>, gm: Record<st
     const par = c && gm[c]?.parent ? gm[c].parent : ''
     const parOk = !!par && rowsIn(rows, lm, par).length > 0
     return {
-      content: r.narr, raw_seconds: r.seconds, coefficient: Number(m.coefficient) || 1,
+      content: narrOf(r), raw_seconds: r.seconds, coefficient: Number(m.coefficient) || 1,
       number: m.number?.trim() ? m.number.trim() : null,
       number_count: m.number_count === '' || m.number_count == null ? null : Number(m.number_count),
       ascription, level, countersignature: c || null, parent_countersignature: parOk ? par : null, order,

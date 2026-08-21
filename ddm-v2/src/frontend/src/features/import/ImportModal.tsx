@@ -1,4 +1,6 @@
 import { useState, useEffect } from 'react'
+import { Trans, useTranslation } from 'react-i18next'
+import type { TFunction } from 'i18next'
 import { useQueryClient } from '@tanstack/react-query'
 import { useUploadImport, useMapColumns, useCreateProfile, useSubmitImport, type UploadOut, type PreviewOut, type PreviewRow, type ProfileOut, type SubmitOut, type MatchOption, type RowMatch } from './api'
 import { useWorkspace } from '../../shared/workspace'
@@ -17,16 +19,14 @@ function optionOf(m: RowMatch, tid: string | undefined): MatchOption {
 }
 const rowMatch = (r: PreviewRow): RowMatch | null => (r.match ?? null)
 
-const FIELD_ZH: Record<string, string> = {
-  description: '描述（必）', part_no: '料號', hand: '手', seconds: '秒（工時）',
-  quantity: '次數', element_class: '類別', notes: '備註',
-}
+/** 欄位顯示名在 `importWizard.field.*`；未知欄位沿用原始欄名。 */
+const fieldLabel = (t: TFunction, f: string) => t(`importWizard.field.${f}`, { defaultValue: f })
 const txt = (v: unknown) => (v === null || v === undefined ? '' : String(v))
 
-const STEP_LABELS = ['上傳', '對應欄位', '預覽', '提交'] as const
 const STEP_KEYS = ['upload', 'map', 'preview', 'done'] as const
 
 export function ImportModal({ onClose }: { onClose: () => void }) {
+  const { t } = useTranslation()
   const qc = useQueryClient()
   const upload = useUploadImport()
   const mapCols = useMapColumns()
@@ -84,7 +84,7 @@ export function ImportModal({ onClose }: { onClose: () => void }) {
   }
   function doPreview() {
     if (!up) return
-    if ((colMap.description ?? -1) < 0) { setMsg('⚠️ 「描述」為必填，請先對應欄位'); return }
+    if ((colMap.description ?? -1) < 0) { setMsg(t('importWizard.needDescription')); return }
     setMsg('')
     mapCols.mutate({ importId: up.import_id, body: { sheet, header_row: headerRow, column_map: cleanMap(colMap), time_unit: timeUnit } },
       { onSuccess: setPreview, onError: fail })
@@ -92,7 +92,7 @@ export function ImportModal({ onClose }: { onClose: () => void }) {
   function saveProfile() {
     if (!profileName.trim()) return
     createProfile.mutate({ name: profileName.trim(), sheet_hint: sheet, header_row: headerRow, column_map: cleanMap(colMap), time_unit: timeUnit },
-      { onSuccess: () => setMsg('✓ 已存為對應範本（Profile）'), onError: fail })
+      { onSuccess: () => setMsg(t('importWizard.profileSaved')), onError: fail })
   }
   // 切換單列採用（只有可採用的列才允許勾選）
   function toggleAdopt(i: number) {
@@ -121,7 +121,7 @@ export function ImportModal({ onClose }: { onClose: () => void }) {
   function doSubmit() {
     if (!up || !preview) return
     const wsId = activeWs
-    if (!wsId) { setMsg('⚠️ 請先從分析案件開啟工時表，再回來提交'); return }
+    if (!wsId) { setMsg(t('importWizard.needWorksheet')); return }
     setMsg('')
     // 只送「採用」的列，且只送 row_index＋template_id（TMU 一律後端以 active 重算）
     const rowAdoptions = preview.rows.flatMap((_r, i) => {
@@ -152,7 +152,7 @@ export function ImportModal({ onClose }: { onClose: () => void }) {
         },
         onError: (e) => {
           if (e instanceof ApiError && e.status === 409 && e.code === 'WORKSHEET_REVISION_CONFLICT') {
-            setMsg('⚠️ 提交衝突：工序表已被更新。請重新載入工時表後再提交。')
+            setMsg(t('importWizard.submitConflict'))
             void qc.invalidateQueries({ queryKey: ['worksheet', wsId] })
             return
           }
@@ -166,11 +166,11 @@ export function ImportModal({ onClose }: { onClose: () => void }) {
     <div className="fixed inset-0 bg-black/40 z-50 flex items-center justify-center p-4" onClick={onClose}>
       <div className="bg-white rounded-xl w-full max-w-4xl max-h-[90vh] overflow-auto" onClick={e => e.stopPropagation()}>
         <div className="flex items-center justify-between px-4 py-3 border-b sticky top-0 bg-white">
-          <h2 className="font-semibold">📥 匯入 Excel
+          <h2 className="font-semibold">{t('importWizard.title')}
             <span className="ml-2 text-xs text-slate-400">
-              {STEP_LABELS.map((s, i) => (
-                <span key={s} className={i === STEP_KEYS.indexOf(step) ? 'text-sky-600 font-medium' : ''}>
-                  {i ? ' › ' : ''}{s}
+              {STEP_KEYS.map((k, i) => (
+                <span key={k} className={i === STEP_KEYS.indexOf(step) ? 'text-sky-600 font-medium' : ''}>
+                  {i ? ' › ' : ''}{t(`importWizard.step.${k === 'done' ? 'submit' : k}`)}
                 </span>
               ))}
             </span>
@@ -181,25 +181,25 @@ export function ImportModal({ onClose }: { onClose: () => void }) {
         <div className="p-4 space-y-4">
           {step === 'upload' && (
             <div className="space-y-2">
-              <p className="text-sm text-slate-600">選擇 .xlsx 檔。系統會自動偵測分頁與表頭列，再由你確認欄位對應。</p>
+              <p className="text-sm text-slate-600">{t('importWizard.uploadHint')}</p>
               <input type="file" accept=".xlsx" disabled={upload.isPending}
                 onChange={e => { const f = e.target.files?.[0]; if (f) onFile(f) }} className="text-sm" />
-              {upload.isPending && <p className="text-sm text-slate-500">解析中…</p>}
+              {upload.isPending && <p className="text-sm text-slate-500">{t('importWizard.parsing')}</p>}
             </div>
           )}
 
           {step === 'map' && up && (
             <>
               <div className="flex flex-wrap items-end gap-3 text-sm">
-                <label>分頁 <select className="border rounded px-2 py-1" value={sheet} onChange={e => setSheet(e.target.value)}>
+                <label>{t('importWizard.sheetLabel')} <select className="border rounded px-2 py-1" value={sheet} onChange={e => setSheet(e.target.value)}>
                   {up.sheets.map(s => <option key={s.name} value={s.name}>{s.name}（{s.n_rows}×{s.n_cols}）</option>)}
                 </select></label>
-                <label>表頭列（0 起）<input type="number" min={0} className="border rounded w-20 px-2 py-1" value={headerRow} onChange={e => setHeaderRow(parseInt(e.target.value) || 0)} /></label>
-                <label>工時單位 <select className="border rounded px-2 py-1" value={timeUnit} onChange={e => setTimeUnit(e.target.value)}>
-                  <option value="sec">秒</option><option value="min">分</option>
+                <label>{t('importWizard.headerRowLabel')}<input type="number" min={0} className="border rounded w-20 px-2 py-1" value={headerRow} onChange={e => setHeaderRow(parseInt(e.target.value) || 0)} /></label>
+                <label>{t('importWizard.timeUnitLabel')} <select className="border rounded px-2 py-1" value={timeUnit} onChange={e => setTimeUnit(e.target.value)}>
+                  <option value="sec">{t('importWizard.unitSec')}</option><option value="min">{t('importWizard.unitMin')}</option>
                 </select></label>
                 {up.profiles.length > 0 && (
-                  <label>套用範本 <select className="border rounded px-2 py-1" defaultValue="" onChange={e => { const p = up.profiles.find(x => x.id === e.target.value); if (p) applyProfile(p) }}>
+                  <label>{t('importWizard.applyProfileLabel')} <select className="border rounded px-2 py-1" defaultValue="" onChange={e => { const p = up.profiles.find(x => x.id === e.target.value); if (p) applyProfile(p) }}>
                     <option value="">—</option>{up.profiles.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
                   </select></label>
                 )}
@@ -221,16 +221,16 @@ export function ImportModal({ onClose }: { onClose: () => void }) {
               )}
 
               <div>
-                <h3 className="text-sm font-medium mb-1">欄位對應（我們的欄位 ← Excel 欄）</h3>
+                <h3 className="text-sm font-medium mb-1">{t('importWizard.mapTitle')}</h3>
                 <div className="grid grid-cols-2 md:grid-cols-3 gap-2 text-sm">
                   {up.target_fields.map(f => (
                     <label key={f} className="flex items-center gap-1">
-                      <span className="w-24 text-slate-600">{FIELD_ZH[f] ?? f}</span>
+                      <span className="w-24 text-slate-600">{fieldLabel(t, f)}</span>
                       <select className="border rounded px-1 py-1 flex-1" value={colMap[f] ?? -1}
                         onChange={e => setColMap({ ...colMap, [f]: parseInt(e.target.value) })}>
                         <option value={-1}>—</option>
                         {curSheet && Array.from({ length: curSheet.n_cols }).map((_, ci) => (
-                          <option key={ci} value={ci}>第{ci}欄：{txt(curSheet.grid[headerRow]?.[ci]) || '(空)'}</option>
+                          <option key={ci} value={ci}>{t('importWizard.columnOption', { i: ci, text: txt(curSheet.grid[headerRow]?.[ci]) || t('importWizard.emptyCell') })}</option>
                         ))}
                       </select>
                     </label>
@@ -239,8 +239,8 @@ export function ImportModal({ onClose }: { onClose: () => void }) {
               </div>
 
               <div className="flex items-center gap-2">
-                <button onClick={doPreview} disabled={mapCols.isPending} className="px-3 py-1.5 bg-blue-600 text-white rounded text-sm disabled:opacity-40">預覽</button>
-                <button onClick={() => { setUp(null); setMsg('') }} className="px-3 py-1.5 border rounded text-sm">重新上傳</button>
+                <button onClick={doPreview} disabled={mapCols.isPending} className="px-3 py-1.5 bg-blue-600 text-white rounded text-sm disabled:opacity-40">{t('importWizard.preview')}</button>
+                <button onClick={() => { setUp(null); setMsg('') }} className="px-3 py-1.5 border rounded text-sm">{t('importWizard.reupload')}</button>
                 <span className="text-xs text-slate-500">{msg}</span>
               </div>
             </>
@@ -248,10 +248,12 @@ export function ImportModal({ onClose }: { onClose: () => void }) {
 
           {step === 'preview' && preview && (
             <>
-              <div className="text-sm">正規化 <b>{preview.n}</b> 列（暫存，尚未寫入工時表）。</div>
+              <div className="text-sm">
+                <Trans i18nKey="importWizard.normalized" values={{ count: preview.n }} components={{ n: <b /> }} />
+              </div>
               {preview.warnings.length > 0 && (
                 <div className="text-xs bg-amber-50 border border-amber-200 rounded p-2 max-h-24 overflow-auto">
-                  ⚠️ {preview.warnings.length} 則警告：<ul className="list-disc ml-4">{preview.warnings.slice(0, 30).map((w, i) => <li key={i}>{w}</li>)}</ul>
+                  {t('importWizard.warnings', { count: preview.warnings.length })}<ul className="list-disc ml-4">{preview.warnings.slice(0, 30).map((w, i) => <li key={i}>{w}</li>)}</ul>
                 </div>
               )}
 
@@ -269,16 +271,16 @@ export function ImportModal({ onClose }: { onClose: () => void }) {
                   真正涉及信任邊界的是上方採用面板，那個一律全渲染。兩表性質不同，區別對待。 */}
               <details className="border rounded">
                 <summary className="text-xs text-slate-600 px-2 py-1.5 cursor-pointer select-none">
-                  檢視正規化後的原始資料（{preview.fields.length} 欄 × {preview.n} 列）
+                  {t('importWizard.rawTable', { cols: preview.fields.length, rows: preview.n })}
                 </summary>
                 {preview.rows.length > 100 && (
                   <div className="text-[11px] text-amber-700 bg-amber-50 border-t px-2 py-1">
-                    ⚠️ 此參考表僅顯示前 100 列；完整 {preview.n} 列將依「上方採用面板」的設定提交。
+                    {t('importWizard.rawTableNote', { count: preview.n })}
                   </div>
                 )}
                 <div className="overflow-auto max-h-60 border-t">
                   <table className="text-xs w-full">
-                    <thead><tr className="bg-slate-100 text-left">{preview.fields.map(f => <th key={f} className="p-1">{FIELD_ZH[f] ?? f}</th>)}</tr></thead>
+                    <thead><tr className="bg-slate-100 text-left">{preview.fields.map(f => <th key={f} className="p-1">{fieldLabel(t, f)}</th>)}</tr></thead>
                     <tbody>
                       {preview.rows.slice(0, 100).map((r, i) => (
                         <tr key={i} className="border-t">{preview.fields.map(f => <td key={f} className="p-1 whitespace-nowrap max-w-[180px] truncate">{txt(r[f])}</td>)}</tr>
@@ -288,19 +290,19 @@ export function ImportModal({ onClose }: { onClose: () => void }) {
                 </div>
               </details>
               <div className="flex flex-wrap items-center gap-2">
-                <input className="border rounded px-2 py-1 text-sm" placeholder="對應範本名稱" value={profileName} onChange={e => setProfileName(e.target.value)} />
-                <button onClick={saveProfile} disabled={createProfile.isPending} className="px-3 py-1.5 bg-emerald-600 text-white rounded text-sm disabled:opacity-40">存為對應範本</button>
-                <button onClick={() => setPreview(null)} className="px-3 py-1.5 border rounded text-sm">← 改對應</button>
+                <input className="border rounded px-2 py-1 text-sm" placeholder={t('importWizard.profileNamePlaceholder')} value={profileName} onChange={e => setProfileName(e.target.value)} />
+                <button onClick={saveProfile} disabled={createProfile.isPending} className="px-3 py-1.5 bg-emerald-600 text-white rounded text-sm disabled:opacity-40">{t('importWizard.saveProfile')}</button>
+                <button onClick={() => setPreview(null)} className="px-3 py-1.5 border rounded text-sm">{t('importWizard.backToMap')}</button>
                 <span className="text-xs text-slate-500">{msg}</span>
               </div>
               <div className="border-t pt-3 flex items-center justify-between">
                 <div className="text-sm text-slate-600">
-                  共 <span className="font-medium">{preview.n}</span> 列可提交至目前工序表
+                  <Trans i18nKey="importWizard.submittable" values={{ count: preview.n }} components={{ n: <span className="font-medium" /> }} />
                   <span className="ml-2 text-emerald-700" data-testid="adopt-count">
-                    （{preview.rows.filter((_r, i) => adopted[i] && selected[i]).length} 列採用範本自動建模）
+                    {t('importWizard.adoptedCount', { count: preview.rows.filter((_r, i) => adopted[i] && selected[i]).length })}
                   </span>
                   {!activeWs && (
-                    <span className="ml-2 text-amber-600">（請先從分析案件開啟工時表）</span>
+                    <span className="ml-2 text-amber-600">{t('importWizard.noWorksheet')}</span>
                   )}
                 </div>
                 <button
@@ -308,7 +310,7 @@ export function ImportModal({ onClose }: { onClose: () => void }) {
                   disabled={submit.isPending || !activeWs}
                   className="px-4 py-2 bg-sky-600 text-white rounded-lg text-sm hover:bg-sky-700 disabled:opacity-50"
                 >
-                  {submit.isPending ? '提交中…' : '提交到工序表 →'}
+                  {submit.isPending ? t('importWizard.submitting') : t('importWizard.submit')}
                 </button>
               </div>
             </>
@@ -317,23 +319,23 @@ export function ImportModal({ onClose }: { onClose: () => void }) {
           {step === 'done' && submitted && (
             <div className="space-y-3 text-sm">
               <div className="p-4 bg-green-50 border border-green-200 rounded-lg">
-                <p className="font-medium text-green-800">✓ 匯入完成，已建立 {submitted.n_rows} 列</p>
+                <p className="font-medium text-green-800">{t('importWizard.done', { count: submitted.n_rows })}</p>
                 <div className="mt-2 text-green-700 space-y-1">
-                  <p>MOST 草稿已推斷：{submitted.n_with_analysis} 列</p>
-                  <p>需人工補 MOST：{submitted.n_need_review} 列</p>
+                  <p>{t('importWizard.doneWithAnalysis', { count: submitted.n_with_analysis })}</p>
+                  <p>{t('importWizard.doneNeedReview', { count: submitted.n_need_review })}</p>
                 </div>
               </div>
               {submitted.warnings.length > 0 && (
                 <div className="p-3 bg-amber-50 border border-amber-200 rounded-lg text-amber-800">
-                  <p className="font-medium mb-1">警告（{submitted.warnings.length}）</p>
+                  <p className="font-medium mb-1">{t('importWizard.doneWarnings', { count: submitted.warnings.length })}</p>
                   <ul className="list-disc list-inside space-y-0.5">
                     {submitted.warnings.map((w, i) => <li key={i}>{w}</li>)}
                   </ul>
                 </div>
               )}
-              <p className="text-slate-500">已提交的列在分析案件的工時表中可見；MOST 草稿欄位需 IE 填入。</p>
+              <p className="text-slate-500">{t('importWizard.doneNote')}</p>
               <button onClick={onClose} className="px-4 py-2 bg-slate-100 rounded-lg hover:bg-slate-200">
-                關閉
+                {t('importWizard.close')}
               </button>
             </div>
           )}
@@ -362,6 +364,7 @@ function MatchPanel({ rows, selected, adopted, onToggle, onChoose, onAdoptAll }:
   onChoose: (i: number, tid: string) => void
   onAdoptAll: (v: boolean) => void
 }) {
+  const { t } = useTranslation()
   let nHit = 0, nErr = 0, nManual = 0, nAdopted = 0
   rows.forEach((r, i) => {
     const m = rowMatch(r)
@@ -373,26 +376,28 @@ function MatchPanel({ rows, selected, adopted, onToggle, onChoose, onAdoptAll }:
   return (
     <div data-testid="match-panel" className="border rounded">
       <div className="flex flex-wrap items-center gap-2 px-2.5 py-2 border-b bg-slate-50 text-xs">
-        <span className="font-medium text-slate-700">自動建模建議</span>
-        <span className="text-emerald-700">命中 {nHit}</span>
-        {nErr > 0 && <span className="text-rose-600">命中但無法計算 {nErr}</span>}
-        <span className="text-slate-500">須手動建模 {nManual}</span>
-        <span className="ml-auto text-slate-500">已採用 <b className="text-emerald-700">{nAdopted}</b> 列</span>
+        <span className="font-medium text-slate-700">{t('importWizard.matchTitle')}</span>
+        <span className="text-emerald-700">{t('importWizard.matchHit', { count: nHit })}</span>
+        {nErr > 0 && <span className="text-rose-600">{t('importWizard.matchError', { count: nErr })}</span>}
+        <span className="text-slate-500">{t('importWizard.matchManual', { count: nManual })}</span>
+        <span className="ml-auto text-slate-500">
+          <Trans i18nKey="importWizard.matchAdopted" values={{ count: nAdopted }} components={{ n: <b className="text-emerald-700" /> }} />
+        </span>
         <button type="button" onClick={() => onAdoptAll(true)} data-testid="adopt-all"
-          className="px-2 py-0.5 border rounded hover:bg-white">全部採用</button>
+          className="px-2 py-0.5 border rounded hover:bg-white">{t('importWizard.adoptAll')}</button>
         <button type="button" onClick={() => onAdoptAll(false)} data-testid="adopt-none"
-          className="px-2 py-0.5 border rounded hover:bg-white">全部不採用</button>
+          className="px-2 py-0.5 border rounded hover:bg-white">{t('importWizard.adoptNone')}</button>
       </div>
       <div className="overflow-auto max-h-72">
         <table className="text-xs w-full">
           <thead>
             <tr className="bg-white text-left text-slate-500 border-b sticky top-0">
-              <th className="p-1.5 w-10">採用</th>
-              <th className="p-1.5">描述</th>
-              <th className="p-1.5">建議範本</th>
-              <th className="p-1.5 w-14">類型</th>
+              <th className="p-1.5 w-10">{t('importWizard.colAdopt')}</th>
+              <th className="p-1.5">{t('importWizard.colDescription')}</th>
+              <th className="p-1.5">{t('importWizard.colTemplate')}</th>
+              <th className="p-1.5 w-14">{t('importWizard.colSeq')}</th>
               <th className="p-1.5 w-16 text-right">TMU</th>
-              <th className="p-1.5">命中</th>
+              <th className="p-1.5">{t('importWizard.colHit')}</th>
             </tr>
           </thead>
           <tbody>
@@ -417,7 +422,8 @@ function MatchRow({ i, row, selectedTid, adopted, onToggle, onChoose }: {
   onToggle: (i: number) => void
   onChoose: (i: number, tid: string) => void
 }) {
-  const desc = txt(row.description) || <span className="text-slate-300">（無描述）</span>
+  const { t } = useTranslation()
+  const desc = txt(row.description) || <span className="text-slate-300">{t('importWizard.noDescription')}</span>
   const m = rowMatch(row)
 
   // 狀態 3：完全無命中 → 中性灰、須手動建模（非錯誤，是預期路徑）
@@ -428,8 +434,8 @@ function MatchRow({ i, row, selectedTid, adopted, onToggle, onChoose }: {
         <td className="p-1.5 max-w-[220px] truncate">{desc}</td>
         <td className="p-1.5 text-slate-400" colSpan={4}>
           <span data-testid={`match-manual-${i}`} className="inline-flex items-center gap-1">
-            <span className="px-1.5 py-0.5 rounded bg-slate-200 text-slate-600">須手動建模</span>
-            無命中範本，提交後由 IE 於工序表建模
+            <span className="px-1.5 py-0.5 rounded bg-slate-200 text-slate-600">{t('importWizard.manualBadge')}</span>
+            {t('importWizard.manualNote')}
           </span>
         </td>
       </tr>
@@ -455,7 +461,13 @@ function MatchRow({ i, row, selectedTid, adopted, onToggle, onChoose }: {
             className="border rounded px-1 py-0.5 max-w-[180px]">
             {options.map(o => (
               <option key={o.template_id} value={o.template_id}>
-                {o.template_name_zh}（{o.seq_kind}{o.computed_tmu !== null ? ` · ${o.computed_tmu} TMU` : ' · 無法計算'}）
+                {t('importWizard.candidate', {
+                  name: o.template_name_zh,
+                  seq: o.seq_kind,
+                  tmu: o.computed_tmu !== null
+                    ? t('importWizard.candidateTmu', { tmu: o.computed_tmu })
+                    : t('importWizard.candidateNoTmu'),
+                })}
               </option>
             ))}
           </select>
@@ -469,15 +481,15 @@ function MatchRow({ i, row, selectedTid, adopted, onToggle, onChoose }: {
       <td className="p-1.5 text-right" data-testid={`match-tmu-${i}`}>
         {opt.computed_tmu !== null
           ? <span className="font-medium tabular-nums">{opt.computed_tmu}</span>
-          : <span data-testid={`match-error-${i}`} className="text-rose-600">無法計算</span>}
+          : <span data-testid={`match-error-${i}`} className="text-rose-600">{t('importWizard.cannotCompute')}</span>}
       </td>
       <td className="p-1.5">
         {adoptable
           ? <span className="text-slate-500">
-              分 {opt.score}<span className="text-slate-400"> · {opt.matched_keywords.join('、') || '—'}</span>
+              {t('importWizard.score', { score: opt.score })}<span className="text-slate-400">{t('importWizard.scoreKeywords', { keywords: opt.matched_keywords.join(t('workbench.listSeparator')) || '—' })}</span>
             </span>
           : <span data-testid={`match-error-msg-${i}`} className="text-rose-600">
-              {opt.error ?? '目前無法計算此列 TMU'}
+              {opt.error ?? t('importWizard.defaultError')}
             </span>}
       </td>
     </tr>

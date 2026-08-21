@@ -1,5 +1,5 @@
-import { useQuery, useMutation } from '@tanstack/react-query'
-import { apiGet, apiPost } from '../../shared/api/client'
+import { useMutation } from '@tanstack/react-query'
+import { apiPost } from '../../shared/api/client'
 
 export interface WiPreviewRow {
   seq_no?: number
@@ -17,9 +17,9 @@ export interface WiPreview {
 }
 export interface LbApiResult { status: string; note: string; worksheet_id: string; payload: unknown }
 
-export const useWiPreview = (wsId: string) =>
-  useQuery({ queryKey: ['wi-preview', wsId], queryFn: () => apiGet<WiPreview>(`/api/v2/worksheets/${wsId}/export/wi-preview`) })
-
+// 匯出面板本體已收進 features/cases/CasesPage.tsx（ADR-021 Phase 3）；
+// 這裡只留該頁實際用到的東西。原有的 `useWiPreview` hook 隨舊 ExportPanel 一併移除——
+// CasesPage 是在 onClick 裡直接 `apiGet<WiPreview>` 取預覽（按下才抓，不是掛載即抓）。
 export const useLbApi = (wsId: string) =>
   useMutation({ mutationFn: () => apiPost<LbApiResult>(`/api/v2/worksheets/${wsId}/export/lb-api`) })
 

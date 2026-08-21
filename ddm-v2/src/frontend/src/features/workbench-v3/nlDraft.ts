@@ -9,25 +9,26 @@ import type { AiCycleDraft, NlDraftLegacySlot, NlDraftResponse } from '../wi-wor
 export type NlDraftSlot = NlDraftLegacySlot
 export type NlDraftRes = NlDraftResponse
 
-/** NL slot field → 顯示標籤（結果面板用） */
-export const NL_FIELD_LABELS: Record<string, string> = {
-  a_code: 'A1 距離',
-  b_code: 'B1 身體',
-  g_code: 'G 取得',
-  a_code2: 'A2 距離',
-  b_code2: 'B2 身體',
-  p_base_code: 'P 放置',
-  a_code3: 'A3 距離',
-}
+/**
+ * F-05 badge 四態：明確(exact)／推斷(longest_match/retrieval)／預設(default)／待確認(缺)。
+ *
+ * 回傳的是「態」而不是可顯示文字（ADR-032 Phase A）：顯示文字在
+ * `workbench.nl.badge.*`，缺漏的「待確認」由呼叫端（沒有 chosen 時）自己出。
+ * 呼叫端同時用這個值挑配色，所以它必須是語言無關的鍵——曾經是中文字面值，
+ * 一旦翻成英文，比對 '明確' 的配色分支就會靜默全部落到 else。
+ */
+export type NlBadgeKind = 'exact' | 'inferred' | 'default'
 
-/** F-05 badge 四態：明確(exact)／推斷(longest_match/retrieval)／預設(default)／待確認(缺) */
-export function sourceBadge(source: string): string {
+/** 完整四態＝三種來源態＋「這一格根本沒有 chosen」的待確認態。 */
+export type NlBadgeState = NlBadgeKind | 'pending'
+
+export function sourceBadge(source: string): NlBadgeKind {
   switch (source) {
-    case 'exact': return '明確'
+    case 'exact': return 'exact'
     case 'longest_match':
-    case 'retrieval': return '推斷'
-    case 'default': return '預設'
-    default: return '推斷'
+    case 'retrieval': return 'inferred'
+    case 'default': return 'default'
+    default: return 'inferred'
   }
 }
 

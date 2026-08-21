@@ -14,6 +14,9 @@
  *   - TanStack Query for all async — no local data fabrication
  */
 import React, { useState, useEffect, useCallback } from 'react'
+import { useTranslation } from 'react-i18next'
+import type { TFunction } from 'i18next'
+import i18n from '../../shared/i18n/i18n'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { apiGet, apiPost, apiPut, apiDelete } from '../../shared/api/client'
 import { TMU_SEC } from '../../shared/config'
@@ -129,20 +132,20 @@ const STATUS_BADGE: Record<string, string> = {
   archived: 'bg-amber-100 text-amber-700',
 }
 
-const STATUS_ZH: Record<string, string> = {
-  draft: '草稿',
-  active: '作用中',
-  archived: '已封存',
-}
+const STATUS_CODES = ['draft', 'active', 'archived']
+/** 未知 status 原樣顯示（後端新增列舉值時不會變成空白）。 */
+const statusLabel = (t: TFunction, v: string) =>
+  STATUS_CODES.includes(v) ? t(`wiSet.status.${v}`) : v
 
 function StatusBadge({ status }: { status: string }) {
+  const { t } = useTranslation()
   return (
     <span
       className={`px-2 py-0.5 rounded text-xs font-medium ${
         STATUS_BADGE[status] ?? 'bg-slate-100 text-slate-500'
       }`}
     >
-      {STATUS_ZH[status] ?? status}
+      {statusLabel(t, status)}
     </span>
   )
 }
@@ -201,7 +204,7 @@ function useCreateProject() {
     mutationFn: ({ form }) =>
       apiPost<WiSetProjectOut>('/api/v2/wi-set-projects', {
         project_code: form.project_code.trim() || `WIS-${Date.now()}`,
-        name: form.name.trim() || '未命名專案',
+        name: form.name.trim() || i18n.t('wiSet.untitled'),
         site: form.site || null,
         bu: form.bu.trim() || null,
         process: form.process.trim() || null,
@@ -339,18 +342,19 @@ interface ProjectMetadataFormProps {
 }
 
 function ProjectMetadataForm({ form, status, onChange, editable }: ProjectMetadataFormProps) {
+  const { t } = useTranslation()
   const autoCode = [form.site, form.bu, form.process, form.family, form.model]
     .filter(Boolean)
     .join('-')
 
   return (
     <div className="bg-white rounded-xl border p-4">
-      <h2 className="font-semibold text-sm mb-3 text-slate-700">A — 專案資訊</h2>
+      <h2 className="font-semibold text-sm mb-3 text-slate-700">{t('wiSet.sectionInfo')}</h2>
 
       {/* Row 1: project_code | name | status */}
       <div className="grid grid-cols-3 gap-3 mb-3">
         <label className="flex flex-col gap-1 text-xs text-slate-500">
-          專案代碼
+          {t('wiSet.codeLabel')}
           <div className="flex gap-1">
             <input
               className={INP + ' flex-1 min-w-0'}
@@ -364,7 +368,7 @@ function ProjectMetadataForm({ form, status, onChange, editable }: ProjectMetada
               disabled={!editable || !autoCode}
               onClick={() => onChange({ ...form, project_code: autoCode })}
               className="px-2 py-1 text-xs border rounded bg-slate-50 hover:bg-slate-100 disabled:opacity-40 whitespace-nowrap"
-              title="自動填入 site-bu-process-family-model"
+              title={t('wiSet.codeAutoTitle')}
             >
               Auto
             </button>
@@ -372,18 +376,18 @@ function ProjectMetadataForm({ form, status, onChange, editable }: ProjectMetada
         </label>
 
         <label className="flex flex-col gap-1 text-xs text-slate-500">
-          專案名稱 <span className="text-red-400">*</span>
+          {t('wiSet.nameLabel')} <span className="text-red-400">*</span>
           <input
             className={INP}
             value={form.name}
             disabled={!editable}
             onChange={(e) => onChange({ ...form, name: e.target.value })}
-            placeholder="e.g. 組裝站 WI 組合"
+            placeholder={t('wiSet.namePlaceholder')}
           />
         </label>
 
         <div className="flex flex-col gap-1 text-xs text-slate-500">
-          狀態
+          {t('wiSet.statusLabel')}
           <div className="mt-1.5">
             {status ? <StatusBadge status={status} /> : <span className="text-slate-300">—</span>}
           </div>
@@ -393,14 +397,14 @@ function ProjectMetadataForm({ form, status, onChange, editable }: ProjectMetada
       {/* Row 2: site | bu | process | family */}
       <div className="grid grid-cols-4 gap-3 mb-3">
         <label className="flex flex-col gap-1 text-xs text-slate-500">
-          廠區 (Site)
+          {t('wiSet.siteLabel')}
           <select
             className={INP}
             value={form.site}
             disabled={!editable}
             onChange={(e) => onChange({ ...form, site: e.target.value })}
           >
-            <option value="">— 選擇 —</option>
+            <option value="">{t('wiSet.pickPlaceholder')}</option>
             {SITE_OPTIONS.map((s) => (
               <option key={s} value={s}>{s}</option>
             ))}
@@ -419,7 +423,7 @@ function ProjectMetadataForm({ form, status, onChange, editable }: ProjectMetada
         </label>
 
         <label className="flex flex-col gap-1 text-xs text-slate-500">
-          製程 (Process)
+          {t('wiSet.processLabel')}
           <input
             className={INP}
             value={form.process}
@@ -444,7 +448,7 @@ function ProjectMetadataForm({ form, status, onChange, editable }: ProjectMetada
       {/* Row 3: model | description */}
       <div className="grid grid-cols-4 gap-3">
         <label className="flex flex-col gap-1 text-xs text-slate-500">
-          機型 (Model)
+          {t('wiSet.modelLabel')}
           <input
             className={INP}
             value={form.model}
@@ -455,14 +459,14 @@ function ProjectMetadataForm({ form, status, onChange, editable }: ProjectMetada
         </label>
 
         <label className="flex flex-col gap-1 text-xs text-slate-500 col-span-3">
-          說明
+          {t('wiSet.descLabel')}
           <textarea
             className={INP + ' resize-none'}
             rows={2}
             value={form.description}
             disabled={!editable}
             onChange={(e) => onChange({ ...form, description: e.target.value })}
-            placeholder="用途、製程說明…"
+            placeholder={t('wiSet.descPlaceholder')}
           />
         </label>
       </div>
@@ -482,6 +486,7 @@ const POOL_COL_SPAN = 8
  * SIMO 從屬列（simo_pair_index != null）：Y 標記＋Eff TMU 劃線（貢獻 0，ADR-020）。
  */
 function ExpandedRows({ moduleId }: { moduleId: string }) {
+  const { t } = useTranslation()
   const { data, isLoading } = useModuleDetail(moduleId)
   const rows = data?.current_version_detail?.rows
 
@@ -489,7 +494,7 @@ function ExpandedRows({ moduleId }: { moduleId: string }) {
     return (
       <tr>
         <td colSpan={POOL_COL_SPAN} className="px-10 py-2 text-xs text-slate-400 bg-slate-50">
-          載入動作明細…
+          {t('wiSet.loadingRows')}
         </td>
       </tr>
     )
@@ -499,7 +504,7 @@ function ExpandedRows({ moduleId }: { moduleId: string }) {
     return (
       <tr>
         <td colSpan={POOL_COL_SPAN} className="px-10 py-2 text-xs text-slate-400 bg-slate-50">
-          無動作行
+          {t('wiSet.noRows')}
         </td>
       </tr>
     )
@@ -513,10 +518,10 @@ function ExpandedRows({ moduleId }: { moduleId: string }) {
             <thead>
               <tr className="text-[10px] text-slate-400 text-left">
                 <th className="p-1 w-8 font-medium">#</th>
-                <th className="p-1 font-medium">動作句</th>
-                <th className="p-1 w-12 font-medium">手</th>
+                <th className="p-1 font-medium">{t('wiSet.colSentence')}</th>
+                <th className="p-1 w-12 font-medium">{t('wiSet.colHand')}</th>
                 <th className="p-1 text-right w-20 font-medium">Base TMU</th>
-                <th className="p-1 text-right w-14 font-medium">頻率</th>
+                <th className="p-1 text-right w-14 font-medium">{t('wiSet.colFreq')}</th>
                 <th className="p-1 text-right w-20 font-medium">Eff TMU</th>
                 <th className="p-1 text-center w-14 font-medium">SIMO</th>
               </tr>
@@ -539,7 +544,7 @@ function ExpandedRows({ moduleId }: { moduleId: string }) {
                       className={`p-1 text-right font-mono ${
                         isSimoFollower ? 'line-through text-slate-400' : 'text-slate-700'
                       }`}
-                      title={isSimoFollower ? 'SIMO 從屬列，貢獻 0' : undefined}
+                      title={isSimoFollower ? t('wiSet.simoFollowerTitle') : undefined}
                     >
                       {row.computed != null ? row.computed.eff_tmu.toFixed(1) : '—'}
                     </td>
@@ -569,6 +574,7 @@ interface WIPoolSearchProps {
 }
 
 function WIPoolSearch({ onAdd, adding }: WIPoolSearchProps) {
+  const { t } = useTranslation()
   const { data: allModules = [], isLoading } = usePoolModules()
   const [raw, setRaw] = useState('')
   const [q, setQ] = useState('')
@@ -577,8 +583,8 @@ function WIPoolSearch({ onAdd, adding }: WIPoolSearchProps) {
 
   // Debounce 350 ms
   useEffect(() => {
-    const t = setTimeout(() => setQ(raw.toLowerCase().trim()), 350)
-    return () => clearTimeout(t)
+    const timer = setTimeout(() => setQ(raw.toLowerCase().trim()), 350)
+    return () => clearTimeout(timer)
   }, [raw])
 
   const filtered =
@@ -624,17 +630,17 @@ function WIPoolSearch({ onAdd, adding }: WIPoolSearchProps) {
 
   return (
     <div className="bg-white rounded-xl border p-4">
-      <h2 className="font-semibold text-sm mb-3 text-slate-700">B — WI 庫搜尋</h2>
+      <h2 className="font-semibold text-sm mb-3 text-slate-700">{t('wiSet.sectionSearch')}</h2>
 
       <div className="flex gap-2 mb-3 items-center">
         <input
           className="border rounded px-2 py-1 text-sm flex-1 focus:outline-none focus:ring-1 focus:ring-blue-400"
           value={raw}
           onChange={(e) => setRaw(e.target.value)}
-          placeholder="輸入關鍵字搜尋 WI 名稱…"
+          placeholder={t('wiSet.searchPlaceholder')}
         />
         {isLoading && (
-          <span className="text-xs text-slate-400 whitespace-nowrap">載入中…</span>
+          <span className="text-xs text-slate-400 whitespace-nowrap">{t('wiSet.loading')}</span>
         )}
         <button
           disabled={selected.size === 0 || adding}
@@ -642,8 +648,8 @@ function WIPoolSearch({ onAdd, adding }: WIPoolSearchProps) {
           className="px-3 py-1 text-sm bg-blue-600 text-white rounded disabled:opacity-40 hover:bg-blue-700 whitespace-nowrap"
         >
           {adding
-            ? '加入中…'
-            : `加入 WI Set${selected.size > 0 ? ` (${selected.size})` : ''}`}
+            ? t('wiSet.adding')
+            : selected.size > 0 ? t('wiSet.addToSetN', { count: selected.size }) : t('wiSet.addToSet')}
         </button>
       </div>
 
@@ -656,11 +662,11 @@ function WIPoolSearch({ onAdd, adding }: WIPoolSearchProps) {
                 <input type="checkbox" checked={allSelected} onChange={toggleAll} />
               </th>
               <th className="p-2 w-24">WI Code</th>
-              <th className="p-2">WI 名稱</th>
-              <th className="p-2 text-right w-16">動作數</th>
+              <th className="p-2">{t('wiSet.colName')}</th>
+              <th className="p-2 text-right w-16">{t('wiSet.colActions')}</th>
               <th className="p-2 text-right w-24">Total TMU</th>
-              <th className="p-2 text-right w-24">CT(秒)</th>
-              <th className="p-2 w-24">建立日</th>
+              <th className="p-2 text-right w-24">{t('wiSet.colCt')}</th>
+              <th className="p-2 w-24">{t('wiSet.colCreated')}</th>
               <th className="p-2 w-8"></th>
             </tr>
           </thead>
@@ -671,7 +677,7 @@ function WIPoolSearch({ onAdd, adding }: WIPoolSearchProps) {
                   colSpan={POOL_COL_SPAN}
                   className="p-6 text-center text-slate-400 text-xs"
                 >
-                  {q ? '無符合結果' : '尚無 WI 模組'}
+                  {q ? t('wiSet.noMatch') : t('wiSet.emptyLibrary')}
                 </td>
               </tr>
             )}
@@ -707,7 +713,7 @@ function WIPoolSearch({ onAdd, adding }: WIPoolSearchProps) {
                     <button
                       onClick={() => toggleExpand(m.id)}
                       className="text-slate-400 hover:text-slate-700 text-xs px-1"
-                      title="展開動作明細"
+                      title={t('wiSet.expandTitle')}
                     >
                       {expanded.has(m.id) ? '▲' : '▼'}
                     </button>
@@ -721,7 +727,7 @@ function WIPoolSearch({ onAdd, adding }: WIPoolSearchProps) {
       </div>
 
       <div className="mt-1.5 text-xs text-slate-400">
-        顯示 {filtered.length} / {allModules.length} 筆
+        {t('wiSet.showing', { shown: filtered.length, total: allModules.length })}
       </div>
     </div>
   )
@@ -736,6 +742,7 @@ interface SelectedWISetTableProps {
 }
 
 function SelectedWISetTable({ projectId, items, editable }: SelectedWISetTableProps) {
+  const { t } = useTranslation()
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set())
   const [dragIdx, setDragIdx] = useState<number | null>(null)
   const [dragOverIdx, setDragOverIdx] = useState<number | null>(null)
@@ -786,7 +793,7 @@ function SelectedWISetTable({ projectId, items, editable }: SelectedWISetTablePr
 
   const handleRemoveOne = (itemId: string) => {
     if (!projectId) return
-    if (!confirm('確定移除此 WI？')) return
+    if (!confirm(t('wiSet.confirmRemoveItem'))) return
     removeItem.mutate({ projectId, itemId })
   }
 
@@ -854,9 +861,9 @@ function SelectedWISetTable({ projectId, items, editable }: SelectedWISetTablePr
   if (sorted.length === 0) {
     return (
       <div className="bg-white rounded-xl border p-4">
-        <h2 className="font-semibold text-sm mb-3 text-slate-700">C — 已選 WI 清單</h2>
+        <h2 className="font-semibold text-sm mb-3 text-slate-700">{t('wiSet.sectionSelected')}</h2>
         <div className="p-8 text-center text-slate-400 text-sm border rounded-lg border-dashed">
-          尚未加入任何 WI —— 從上方搜尋後勾選並加入
+          {t('wiSet.noneSelected')}
         </div>
       </div>
     )
@@ -866,13 +873,13 @@ function SelectedWISetTable({ projectId, items, editable }: SelectedWISetTablePr
 
   return (
     <div className="bg-white rounded-xl border p-4">
-      <h2 className="font-semibold text-sm mb-3 text-slate-700">C — 已選 WI 清單</h2>
+      <h2 className="font-semibold text-sm mb-3 text-slate-700">{t('wiSet.sectionSelected')}</h2>
 
       {/* Toolbar */}
       <div className="flex items-center justify-between mb-2">
         <span className="text-xs font-medium text-slate-500">
-          已選{' '}
-          <span className="text-blue-600 font-semibold">{sorted.length}</span> 筆
+          {t('wiSet.selectedPrefix')}{' '}
+          <span className="text-blue-600 font-semibold">{sorted.length}</span> {t('wiSet.selectedSuffix')}
         </span>
         {editable && (
           <button
@@ -880,7 +887,7 @@ function SelectedWISetTable({ projectId, items, editable }: SelectedWISetTablePr
             onClick={handleRemoveSelected}
             className="px-2 py-1 text-xs border border-red-300 text-red-600 rounded hover:bg-red-50 disabled:opacity-40"
           >
-            移除選取 ({selectedIds.size})
+            {t('wiSet.removeSelected', { count: selectedIds.size })}
           </button>
         )}
       </div>
@@ -897,12 +904,12 @@ function SelectedWISetTable({ projectId, items, editable }: SelectedWISetTablePr
               )}
               <th className="p-2 w-16">⠿ #</th>
               <th className="p-2 w-28">WI Code</th>
-              <th className="p-2">WI 名稱</th>
-              <th className="p-2 text-right w-16">動作數</th>
+              <th className="p-2">{t('wiSet.colName')}</th>
+              <th className="p-2 text-right w-16">{t('wiSet.colActions')}</th>
               <th className="p-2 text-right w-20">TMU</th>
-              <th className="p-2 text-right w-24">CT(秒)</th>
-              <th className="p-2 w-36">備註</th>
-              {editable && <th className="p-2 w-24">操作</th>}
+              <th className="p-2 text-right w-24">{t('wiSet.colCt')}</th>
+              <th className="p-2 w-36">{t('wiSet.colNote')}</th>
+              {editable && <th className="p-2 w-24">{t('wiSet.colOps')}</th>}
             </tr>
           </thead>
           <tbody>
@@ -968,7 +975,7 @@ function SelectedWISetTable({ projectId, items, editable }: SelectedWISetTablePr
                       onChange={(e) =>
                         setLocalNotes((prev) => ({ ...prev, [item.id]: e.target.value }))
                       }
-                      placeholder="備注…"
+                      placeholder={t('wiSet.notePlaceholder')}
                     />
                   </td>
                   {editable && (
@@ -1013,22 +1020,23 @@ function SelectedWISetTable({ projectId, items, editable }: SelectedWISetTablePr
 // ─── Section D: WISetSummary ──────────────────────────────────────────────────
 
 function WISetSummary({ items }: { items: WiSetItemOut[] }) {
+  const { t } = useTranslation()
   const totalTmu = items.reduce((s, i) => s + i.total_tmu_snapshot, 0)
   const totalSec = items.reduce((s, i) => s + i.total_seconds_snapshot, 0)
   const totalActions = items.reduce((s, i) => s + i.action_count_snapshot, 0)
   const totalMin = totalSec / 60
 
   const cards: { label: string; value: string; color: string }[] = [
-    { label: 'WI 數', value: String(items.length), color: 'text-blue-600' },
-    { label: '總動作數', value: String(totalActions), color: 'text-slate-700' },
-    { label: '總 TMU', value: totalTmu.toFixed(1), color: 'text-emerald-600' },
-    { label: '總 CT(秒)', value: totalSec.toFixed(3), color: 'text-amber-600' },
-    { label: '總 CT(分)', value: totalMin.toFixed(3), color: 'text-violet-600' },
+    { label: t('wiSet.sumWi'), value: String(items.length), color: 'text-blue-600' },
+    { label: t('wiSet.sumActions'), value: String(totalActions), color: 'text-slate-700' },
+    { label: t('wiSet.sumTmu'), value: totalTmu.toFixed(1), color: 'text-emerald-600' },
+    { label: t('wiSet.sumCtSec'), value: totalSec.toFixed(3), color: 'text-amber-600' },
+    { label: t('wiSet.sumCtMin'), value: totalMin.toFixed(3), color: 'text-violet-600' },
   ]
 
   return (
     <div className="bg-white rounded-xl border p-4">
-      <h2 className="font-semibold text-sm mb-3 text-slate-700">D — 彙總</h2>
+      <h2 className="font-semibold text-sm mb-3 text-slate-700">{t('wiSet.sectionSummary')}</h2>
       <div className="grid grid-cols-5 gap-3">
         {cards.map((c) => (
           <div key={c.label} className="bg-slate-50 rounded-lg p-3 text-center">
@@ -1059,6 +1067,7 @@ function CreateAnalysisCaseModal({
   onClose,
   onCreated,
 }: CreateAnalysisCaseModalProps) {
+  const { t } = useTranslation()
   const { data: products = [] } = useProducts()
   const [productId, setProductId] = useState('')
   const { data: skus = [] } = useSkus(productId || undefined)
@@ -1094,33 +1103,33 @@ function CreateAnalysisCaseModal({
         onClick={(event) => event.stopPropagation()}
       >
         <div>
-          <h2 id="create-analysis-case-title" className="font-semibold text-slate-800">建立分析案件</h2>
+          <h2 id="create-analysis-case-title" className="font-semibold text-slate-800">{t('wiSet.caseTitle')}</h2>
           <p className="mt-1 text-xs text-slate-500">
-            將依專案順序匯入 {project.items.length} 筆 WI。任一筆失敗時不會留下空案件。
+            {t('wiSet.caseNote', { count: project.items.length })}
           </p>
         </div>
 
         <label className="block text-sm text-slate-600">
-          產品
+          {t('wiSet.productLabel')}
           <select
             className="mt-1 w-full rounded border bg-white px-2 py-1.5"
             value={productId}
             onChange={(event) => { setProductId(event.target.value); setSkuId('') }}
           >
-            <option value="">請選擇產品…</option>
+            <option value="">{t('wiSet.productPick')}</option>
             {products.map((item) => <option key={item.id} value={item.id}>{item.name_zh}</option>)}
           </select>
         </label>
 
         <label className="block text-sm text-slate-600">
-          SKU / 機種
+          {t('wiSet.skuLabel')}
           <select
             className="mt-1 w-full rounded border bg-white px-2 py-1.5"
             value={skuId}
             disabled={!productId}
             onChange={(event) => setSkuId(event.target.value)}
           >
-            <option value="">{productId ? '請選擇 SKU…' : '請先選擇產品'}</option>
+            <option value="">{productId ? t('wiSet.skuPick') : t('wiSet.skuNeedProduct')}</option>
             {skus.map((item) => (
               <option key={item.id} value={item.id}>
                 {item.sku_code}{item.name_zh ? `（${item.name_zh}）` : ''}
@@ -1130,7 +1139,7 @@ function CreateAnalysisCaseModal({
         </label>
 
         <label className="block text-sm text-slate-600">
-          機種/線別名稱
+          {t('wiSet.lineLabel')}
           <input
             className="mt-1 w-full rounded border px-2 py-1.5"
             value={modelLabel}
@@ -1139,7 +1148,7 @@ function CreateAnalysisCaseModal({
         </label>
 
         <label className="block text-sm text-slate-600">
-          負責人（員編）
+          {t('wiSet.ownerLabel')}
           <input
             className="mt-1 w-full rounded border px-2 py-1.5"
             value={analyst}
@@ -1148,17 +1157,17 @@ function CreateAnalysisCaseModal({
         </label>
 
         {instantiate.isError && (
-          <p className="text-sm text-red-600">建立失敗：{instantiate.error.message}</p>
+          <p className="text-sm text-red-600">{t('wiSet.caseFailed', { message: instantiate.error.message })}</p>
         )}
 
         <div className="flex justify-end gap-2">
-          <button className="rounded border px-3 py-1.5 text-sm" onClick={onClose}>取消</button>
+          <button className="rounded border px-3 py-1.5 text-sm" onClick={onClose}>{t('wiSet.cancel')}</button>
           <button
             className="rounded bg-blue-600 px-3 py-1.5 text-sm text-white disabled:opacity-40"
             disabled={!skuId || instantiate.isPending}
             onClick={submit}
           >
-            {instantiate.isPending ? '建立並匯入中…' : '建立並匯入 WI'}
+            {instantiate.isPending ? t('wiSet.caseCreating') : t('wiSet.caseCreate')}
           </button>
         </div>
       </div>
@@ -1169,6 +1178,7 @@ function CreateAnalysisCaseModal({
 // ─── Page ─────────────────────────────────────────────────────────────────────
 
 export function WISetBuilderPage() {
+  const { t } = useTranslation()
   const { data: me } = useMe()
   const editable = canEdit(me)
   const setActiveCase = useWorkspace((state) => state.setActiveCase)
@@ -1210,8 +1220,8 @@ export function WISetBuilderPage() {
   // auto-dismiss flash messages
   useEffect(() => {
     if (!successMsg) return
-    const t = setTimeout(() => setSuccessMsg(null), 3000)
-    return () => clearTimeout(t)
+    const timer = setTimeout(() => setSuccessMsg(null), 3000)
+    return () => clearTimeout(timer)
   }, [successMsg])
 
   // ── helpers ────────────────────────────────────────────────────────────────
@@ -1255,7 +1265,7 @@ export function WISetBuilderPage() {
       // Auto-create project if none loaded
       if (!pid) {
         if (!form.name.trim()) {
-          flashError('請先填寫專案名稱，或建立專案後再加入 WI')
+          flashError(t('wiSet.needProjectName'))
           setAdding(false)
           return
         }
@@ -1263,7 +1273,7 @@ export function WISetBuilderPage() {
         pid = created.id
         setProjectId(pid)
         setForm((prev) => ({ ...prev, project_code: created.project_code }))
-        flash('已自動建立專案')
+        flash(t('wiSet.autoCreated'))
       }
 
       // POST each WI as an item — 只送 wi_template_id，快照由伺服器回填（審查 8.2）
@@ -1277,10 +1287,10 @@ export function WISetBuilderPage() {
         addedCount++
       }
 
-      flash(`已加入 ${addedCount} 筆 WI`)
+      flash(t('wiSet.added', { count: addedCount }))
       await refetchProject()
     } catch (err) {
-      flashError(`加入失敗：${(err as Error).message}`)
+      flashError(t('wiSet.addFailed', { message: (err as Error).message }))
     } finally {
       setAdding(false)
     }
@@ -1290,11 +1300,11 @@ export function WISetBuilderPage() {
 
   const handleSave = async () => {
     if (!form.name.trim()) {
-      flashError('專案名稱為必填')
+      flashError(t('wiSet.nameRequired'))
       return
     }
     if (!form.project_code.trim()) {
-      flashError('專案代碼為必填')
+      flashError(t('wiSet.codeRequired'))
       return
     }
     setErrorMsg(null)
@@ -1302,15 +1312,15 @@ export function WISetBuilderPage() {
       if (projectId) {
         const updated = await updateProject.mutateAsync({ id: projectId, form })
         setForm((prev) => ({ ...prev, project_code: updated.project_code }))
-        flash('已儲存')
+        flash(t('wiSet.saved'))
       } else {
         const created = await createProject.mutateAsync({ form })
         setProjectId(created.id)
         setForm((prev) => ({ ...prev, project_code: created.project_code }))
-        flash('已建立')
+        flash(t('wiSet.created'))
       }
     } catch (err) {
-      flashError(`儲存失敗：${(err as Error).message}`)
+      flashError(t('wiSet.saveFailed', { message: (err as Error).message }))
     }
   }
 
@@ -1320,26 +1330,26 @@ export function WISetBuilderPage() {
     try {
       const copy = await duplicateProject.mutateAsync(projectId)
       setProjectId(copy.id)
-      flash(`已複製為新專案 ${copy.project_code}`)
+      flash(t('wiSet.duplicated', { code: copy.project_code }))
     } catch (err) {
-      flashError(`複製失敗：${(err as Error).message}`)
+      flashError(t('wiSet.duplicateFailed', { message: (err as Error).message }))
     }
   }
 
   const handleDelete = async () => {
     if (!projectId) return
     if (projectData?.status !== 'draft') {
-      flashError('只有草稿狀態的專案可刪除')
+      flashError(t('wiSet.deleteOnlyDraft'))
       return
     }
-    if (!confirm(`確定刪除專案「${projectData?.name}」？此操作不可復原。`)) return
+    if (!confirm(t('wiSet.confirmDelete', { name: projectData?.name ?? '' }))) return
     setErrorMsg(null)
     try {
       await deleteProject.mutateAsync(projectId)
-      flash('已刪除')
+      flash(t('wiSet.deleted'))
       resetForm()
     } catch (err) {
-      flashError(`刪除失敗：${(err as Error).message}`)
+      flashError(t('wiSet.deleteFailed', { message: (err as Error).message }))
     }
   }
 
@@ -1385,9 +1395,9 @@ export function WISetBuilderPage() {
       {/* ── Page header ── */}
       <div className="bg-white rounded-xl border px-5 py-3 flex items-center justify-between gap-4 flex-wrap">
         <div>
-          <h1 className="font-semibold text-base">WI 專案建立</h1>
+          <h1 className="font-semibold text-base">{t('wiSet.pageTitle')}</h1>
           <p className="text-xs text-slate-400">
-            從 WI 庫搜尋並組合 WI 集合，快照版本、排序、彙總
+            {t('wiSet.pageSubtitle')}
           </p>
         </div>
 
@@ -1396,15 +1406,15 @@ export function WISetBuilderPage() {
           <select
             // 這個 select 原本沒有任何可及名稱（螢幕閱讀器只念得出選項），
             // e2e 也只能用 `locator('select').first()` 靠 DOM 順序猜它是哪一個。
-            aria-label="選擇現有專案"
+            aria-label={t('wiSet.pickProjectAria')}
             className="border rounded px-2 py-1 text-sm max-w-xs focus:outline-none focus:ring-1 focus:ring-blue-400"
             value={projectId ?? ''}
             onChange={(e) => handleSelectProject(e.target.value)}
           >
-            <option value="">— 選擇現有專案 —</option>
+            <option value="">{t('wiSet.pickProject')}</option>
             {projectList.map((p) => (
               <option key={p.id} value={p.id}>
-                {p.project_code} — {p.name} ({STATUS_ZH[p.status] ?? p.status})
+                {p.project_code} — {p.name} ({statusLabel(t, p.status)})
               </option>
             ))}
           </select>
@@ -1413,7 +1423,7 @@ export function WISetBuilderPage() {
             onClick={resetForm}
             className="px-3 py-1 text-sm border rounded bg-white hover:bg-slate-50"
           >
-            新增專案
+            {t('wiSet.newProject')}
           </button>
         </div>
       </div>
@@ -1462,7 +1472,7 @@ export function WISetBuilderPage() {
       {/* Section E */}
       {editable && (
         <div className="bg-white rounded-xl border p-4">
-          <h2 className="font-semibold text-sm mb-3 text-slate-700">E — 操作</h2>
+          <h2 className="font-semibold text-sm mb-3 text-slate-700">{t('wiSet.sectionOps')}</h2>
           <div className="flex flex-wrap gap-2">
             {/* Save / Create */}
             <button
@@ -1471,10 +1481,10 @@ export function WISetBuilderPage() {
               className="px-4 py-1.5 text-sm bg-blue-600 text-white rounded hover:bg-blue-700 disabled:opacity-40"
             >
               {isBusy && !adding
-                ? '處理中…'
+                ? t('wiSet.working')
                 : projectId
-                ? '儲存專案'
-                : '建立專案'}
+                ? t('wiSet.saveProject')
+                : t('wiSet.createProject')}
             </button>
 
             {/* Duplicate */}
@@ -1483,7 +1493,7 @@ export function WISetBuilderPage() {
               onClick={handleDuplicate}
               className="px-4 py-1.5 text-sm border rounded hover:bg-slate-50 disabled:opacity-40"
             >
-              複製專案
+              {t('wiSet.duplicateProject')}
             </button>
 
             <button
@@ -1491,7 +1501,7 @@ export function WISetBuilderPage() {
               onClick={() => setShowCreateCase(true)}
               className="px-4 py-1.5 text-sm border border-blue-300 text-blue-700 rounded hover:bg-blue-50 disabled:opacity-40"
             >
-              建立分析案件
+              {t('wiSet.createCase')}
             </button>
 
             {/* Delete — only draft */}
@@ -1500,15 +1510,15 @@ export function WISetBuilderPage() {
               onClick={handleDelete}
               className="px-4 py-1.5 text-sm border border-red-300 text-red-600 rounded hover:bg-red-50 disabled:opacity-40"
               title={
-                projectData?.status !== 'draft' ? '只有草稿狀態可刪除' : undefined
+                projectData?.status !== 'draft' ? t('wiSet.deleteOnlyDraftTitle') : undefined
               }
             >
-              刪除專案
+              {t('wiSet.deleteProject')}
             </button>
 
             {projectData?.status !== 'draft' && projectId && (
               <span className="self-center text-xs text-slate-400">
-                （非草稿狀態不可刪除）
+                {t('wiSet.deleteHint')}
               </span>
             )}
           </div>

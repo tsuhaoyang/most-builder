@@ -12,23 +12,25 @@ import { ComboBox } from '../../shared/ui/ComboBox'
 import { Hint } from '../../shared/ui/Hint'
 import { useCreateVocab, type VocabIn } from '../master-data/api'
 import {
-  defaultCycle, buildPayload, aBandOpts, shortNarr, payloadToState,
+  defaultCycle, buildPayload, aBandOpts, payloadToState,
   type CycleState, type ASlot, type ABand,
 } from './cycle'
 import { AiDraftPanel } from './AiDraftPanel'
 import { useLevelStore } from '../level-system/store'
 import { derive } from '../level-system/logic'
 import { useWorksheetWorkspace } from './useWorksheetWorkspace'
+import { useRowNarr } from './useRowNarr'
 import {
   useWiTemplates, useInstantiateToWorksheet,
   type MotionModuleSummary,
 } from '../workbench-v3/api'
+import { Trans, useTranslation } from 'react-i18next'
 
 // ─── Local types ───────────────────────────────────────────────────────────────
 interface WiGroup { id: string; name: string; rowIds: string[] }
 type SlotKey = 'a0' | 'b1' | 'g' | 'a3' | 'b4' | 'p' | 'm' | 'x' | 'i' | 'a6'
 
-const HANDS = [{ v: 'RH', l: '右手' }, { v: 'LH', l: '左手' }, { v: 'BH', l: '雙手' }]
+const HAND_CODES = ['RH', 'LH', 'BH'] as const
 
 // ── [ADR-022 E-4] Toast（插入 WI 結果回饋）──────────────────────────────────────
 interface WiToastState { msg: string; type: 'ok' | 'warn' | 'err' }
@@ -52,6 +54,7 @@ function InsertWiModal({ onClose, onInsert, inserting }: {
   onInsert: (mod: MotionModuleSummary) => void
   inserting: boolean
 }) {
+  const { t } = useTranslation()
   const { data: wis = [], isLoading } = useWiTemplates()
   const [q, setQ] = useState('')
   const filtered = q.trim()
@@ -65,12 +68,12 @@ function InsertWiModal({ onClose, onInsert, inserting }: {
         data-testid="insert-wi-modal"
       >
         <div className="flex items-center justify-between">
-          <h3 className="font-semibold text-base">從 WI 庫插入</h3>
-          <button onClick={onClose} className="text-slate-400 hover:text-slate-600 text-lg leading-none" aria-label="關閉">✕</button>
+          <h3 className="font-semibold text-base">{t('workbench.wiEditor.insertTitle')}</h3>
+          <button onClick={onClose} className="text-slate-400 hover:text-slate-600 text-lg leading-none" aria-label={t('workbench.wiEditor.closeAria')}>✕</button>
         </div>
         <input
           className="w-full border rounded px-2 py-1.5 text-sm"
-          placeholder="搜尋 WI 名稱…"
+          placeholder={t('workbench.wiEditor.searchPlaceholder')}
           value={q}
           onChange={e => setQ(e.target.value)}
           autoFocus
@@ -79,19 +82,19 @@ function InsertWiModal({ onClose, onInsert, inserting }: {
           <table className="w-full text-sm">
             <thead className="sticky top-0 bg-slate-100">
               <tr className="text-left">
-                <th className="p-2">WI 名稱</th>
-                <th className="p-2 w-20 text-right">動作數</th>
+                <th className="p-2">{t('workbench.wiEditor.colName')}</th>
+                <th className="p-2 w-20 text-right">{t('workbench.wiEditor.colActions')}</th>
                 <th className="p-2 w-24 text-right">TMU</th>
                 <th className="p-2 w-20"></th>
               </tr>
             </thead>
             <tbody>
               {isLoading && (
-                <tr><td colSpan={4} className="p-3 text-slate-400 text-center">載入中…</td></tr>
+                <tr><td colSpan={4} className="p-3 text-slate-400 text-center">{t('workbench.wiEditor.loading')}</td></tr>
               )}
               {!isLoading && filtered.length === 0 && (
                 <tr><td colSpan={4} className="p-3 text-slate-400 text-center">
-                  {q ? '無相符 WI' : 'WI 庫尚無項目（請先在 MOST 工作台建立 WI）'}
+                  {q ? t('workbench.wiEditor.noMatch') : t('workbench.wiEditor.empty')}
                 </td></tr>
               )}
               {filtered.map(w => (
@@ -105,10 +108,10 @@ function InsertWiModal({ onClose, onInsert, inserting }: {
                     <button
                       onClick={() => onInsert(w)}
                       disabled={inserting || !w.current_version}
-                      title={!w.current_version ? '尚無已發布版本' : undefined}
+                      title={!w.current_version ? t('workbench.wiEditor.noVersionTitle') : undefined}
                       className="text-xs px-2.5 py-1 bg-blue-600 text-white rounded disabled:opacity-40"
                     >
-                      {inserting ? '插入中…' : '插入'}
+                      {inserting ? t('workbench.wiEditor.inserting') : t('workbench.wiEditor.insert')}
                     </button>
                   </td>
                 </tr>
@@ -127,6 +130,7 @@ function InsertWiModal({ onClose, onInsert, inserting }: {
 // 非 retired（published/draft）或 default_rule_set===null → 不顯示（不誤報）。
 function RetiredRuleSetBadge({ drs }: { drs: DefaultRuleSetInfo | null | undefined }) {
   if (!drs || drs.status !== 'retired') return null
+  // 只有 <Trans>，不需要 t()
   return (
     <div
       data-testid="worksheet-retired-ruleset-badge"
@@ -134,8 +138,11 @@ function RetiredRuleSetBadge({ drs }: { drs: DefaultRuleSetInfo | null | undefin
     >
       <span aria-hidden className="mt-0.5">⚠</span>
       <span>
-        本工序表使用已下架規則版本 <span className="font-mono">{drs.code}</span>
-        。現有數值仍為原版回放（維持正確）；重新分析時建議改用啟用中版本。
+        <Trans
+          i18nKey="workbench.wiEditor.retiredBadge"
+          values={{ code: drs.code }}
+          components={{ code: <span className="font-mono" /> }}
+        />
       </span>
     </div>
   )
@@ -191,10 +198,12 @@ function aIsFilled(slot: ASlot): boolean {
 
 // ─── Main component ────────────────────────────────────────────────────────────
 export function WiWorkbench() {
+  const { t } = useTranslation()
   const { data: me } = useMe()
   const active = useActiveRuleSet()
   const { data: opts, error: optsErr } = useRuleSetOptions(active.data?.code)
   const { data: vocab = [] } = useVocab()
+  const rowNarr = useRowNarr()   // 顯示時重算，不入 state（切語言後舊列才會跟著變）
   const calc = useCalculate()
   const createVocab = useCreateVocab()
   const activeWs = useWorkspace(s => s.activeWs)
@@ -238,7 +247,7 @@ export function WiWorkbench() {
   }
 
   async function insertWiFromLibrary(mod: MotionModuleSummary) {
-    if (!activeWs) { showWiToast('請先從分析案件開啟工時表', 'err'); return }
+    if (!activeWs) { showWiToast(t('workbench.wiEditor.needWorksheet'), 'err'); return }
     try {
       // 既有實體化端點：POST /api/v2/worksheets/{wid}/rows/from-module（body: module_id）。
       // hook onSuccess 會 invalidate ['worksheet', wid] → wsData refetch → 上方 effect
@@ -255,18 +264,18 @@ export function WiWorkbench() {
         })
       }
       setInsertWiOpen(false)
-      showWiToast(`已插入「${mod.name_zh}」：${result.new_rows.length} 列`, 'ok')
+      showWiToast(t('workbench.wiEditor.inserted', { name: mod.name_zh, count: result.new_rows.length }), 'ok')
       // TMU 漂移警告（沿 ProcessWorkspace 既有機制：instantiate 回應內 tmu_drift）
       if (result.tmu_drift && result.tmu_drift.length > 0) {
-        setTimeout(() => showWiToast('部分列 TMU 因規則集不同已重算調整', 'warn'), 1500)
+        setTimeout(() => showWiToast(t('workbench.wiEditor.insertedRecalc'), 'warn'), 1500)
       }
     } catch (e) {
       const err = e as Error & { code?: string | null; humanMessage?: string; status?: number }
       if (err.status === 409 && err.code === 'WORKSHEET_REVISION_CONFLICT') {
-        showWiToast('插入衝突：工序表已被更新，請重新載入後再插入', 'err')
+        showWiToast(t('workbench.wiEditor.insertConflict'), 'err')
         qc.invalidateQueries({ queryKey: ['worksheet', activeWs] })
       } else {
-        showWiToast('插入失敗：' + (err.humanMessage || err.message), 'err')
+        showWiToast(t('workbench.wiEditor.insertFailed', { message: err.humanMessage || err.message }), 'err')
       }
     }
   }
@@ -285,7 +294,7 @@ export function WiWorkbench() {
   // 錯誤態必須與載入態可分（否則設定錯誤會永遠停在 spinner）
   const ruleSetErr = active.error ?? optsErr
   if (ruleSetErr) return <div className="bg-white rounded-xl border p-6"><RuleSetUnavailable error={ruleSetErr} /></div>
-  if (!opts) return <div className="bg-white rounded-xl border p-6 text-slate-500">載入 rule-set…</div>
+  if (!opts) return <div className="bg-white rounded-xl border p-6 text-slate-500">{t('workbench.loadingRuleSet')}</div>
 
   // ── helpers ───────────────────────────────────────────────────────────────
   const set = (patch: Partial<CycleState>) => setCur(c => ({ ...c, ...patch }))
@@ -306,7 +315,7 @@ export function WiWorkbench() {
   // ── slot builder helpers (used in modal) ───────────────────────────────────
   const aBlock = (slot: ASlot, onSlot: (s: ASlot) => void) => (
     <span className="inline-flex flex-wrap items-center gap-1 align-middle px-1 bg-blue-50 border border-blue-200 rounded">
-      <Hint tip="A 移動/伸手：取 伸手、手度(扭轉)、腳步 三者分級的最大值；距離越大分數越高。" />
+      <Hint tip={t('workbench.wiEditor.aHint')} />
       {(['reach', 'twist', 'foot'] as const).map(comp => (
         <Sel key={comp} value={String(slot[comp] || 0)}
           opts={aBandOpts(opts.a_bands[comp], comp).map(o => ({ v: String(o.v), l: o.l }))}
@@ -316,39 +325,42 @@ export function WiWorkbench() {
   )
   const bBlock = (key: 'b1' | 'b4') => (
     <span className="inline-flex items-center align-middle">
-      <Hint tip="B 身體動作：彎腰/起身/站坐等輔助動作（無=0）。" />
+      <Hint tip={t('workbench.slot.b.hint')} />
       <Sel value={cur[key] ?? ''} onChange={v => set({ [key]: v || null } as Partial<CycleState>)}
-        opts={[{ v: '', l: '身體:無' }, ...opts.b.filter(b => b.code !== 'b_none').map(b => ({ v: b.code, l: b.label }))]} />
+        opts={[{ v: '', l: t('workbench.slot.b.none') }, ...opts.b.filter(b => b.code !== 'b_none').map(b => ({ v: b.code, l: b.label }))]} />
     </span>
   )
   const gBlock = () => {
     const g = opts.g.find(x => x.code === cur.g)
     return (
       <span className="inline-flex flex-wrap items-center gap-1 align-middle">
-        <Hint tip="G 取得：抓握/接觸/拿取等方式；部分方式需勾修飾子，否則計 0。" />
+        <Hint tip={t('workbench.slot.g.hint')} />
         <Sel value={cur.g} onChange={v => set({ g: v, gMod: {} })}
-          opts={[{ v: '', l: '—取得方式—' }, ...opts.g.map(o => ({ v: o.code, l: o.label }))]} />
+          opts={[{ v: '', l: t('workbench.wiEditor.gPick') }, ...opts.g.map(o => ({ v: o.code, l: o.label }))]} />
         {g?.requires_modifier && g.modifier_key && (
           <Sel value={cur.gMod[g.modifier_key] ? '1' : '0'}
             onChange={v => set({ gMod: { ...cur.gMod, [g.modifier_key!]: v === '1' } })}
-            opts={[{ v: '0', l: `—${g.modifier_key} 未勾—` }, { v: '1', l: `✓ ${g.modifier_key}` }]} />
+            opts={[
+              { v: '0', l: t('workbench.slot.g.modifierOff', { key: g.modifier_key }) },
+              { v: '1', l: `✓ ${g.modifier_key}` },
+            ]} />
         )}
       </span>
     )
   }
   const pBlock = () => (
     <span className="inline-flex flex-wrap items-center gap-1 align-middle">
-      <Hint tip="P 放置：放/組/保持等 + 最多 2 個附加（對準、插入、壓合…）。選「對準」須再勾精度(<4mm)。" />
+      <Hint tip={t('workbench.slot.p.hint')} />
       <Sel value={cur.p_base} onChange={v => set({ p_base: v })}
-        opts={[{ v: '', l: '—放置—' }, ...opts.p_bases.map(o => ({ v: o.code, l: o.label }))]} />
+        opts={[{ v: '', l: t('workbench.wiEditor.pPick') }, ...opts.p_bases.map(o => ({ v: o.code, l: o.label }))]} />
       {[0, 1].map(i => (
         <Sel key={i} value={cur.p_addons[i] ?? ''}
           onChange={v => { const a = cur.p_addons.filter((_, j) => j !== i); if (v) a.splice(i, 0, v); set({ p_addons: a.slice(0, 2) }) }}
-          opts={[{ v: '', l: '—附加—' }, ...opts.p_addons.map(o => ({ v: o.code, l: o.label }))]} />
+          opts={[{ v: '', l: t('workbench.wiEditor.pAddon') }, ...opts.p_addons.map(o => ({ v: o.code, l: o.label }))]} />
       ))}
       {cur.p_addons.some(c => opts.p_addons.find(a => a.code === c)?.needs_precision) && (
         <Sel value={cur.precision ? '1' : '0'} onChange={v => set({ precision: v === '1' })}
-          opts={[{ v: '0', l: '精度未勾' }, { v: '1', l: '精度<4mm' }]} />
+          opts={[{ v: '0', l: t('workbench.slot.p.precisionOff') }, { v: '1', l: t('workbench.slot.p.precisionOn') }]} />
       )}
     </span>
   )
@@ -358,18 +370,18 @@ export function WiWorkbench() {
     const k = mv?.pricing_kind
     return (
       <span className="inline-flex flex-wrap items-center gap-1 align-middle">
-        <Hint tip="M 控制移動：推/拉/旋轉/鎖附等受控動作；依動詞種類自動要距離、角度或圈數。" />
+        <Hint tip={t('workbench.slot.m.hint')} />
         <Sel value={cur.m.verb} onChange={v => set({ m: { ...cur.m, verb: v } })}
-          opts={[{ v: '', l: '—控制動詞—' }, ...opts.m_verbs.map(o => ({ v: o.code, l: o.label }))]} />
+          opts={[{ v: '', l: t('workbench.slot.m.verbNone') }, ...opts.m_verbs.map(o => ({ v: o.code, l: o.label }))]} />
         {(k === 'ladder' || k === 'foot' || k === 'distance_ladder') && (
           <Sel value={String(cur.m.distance)} onChange={v => set({ m: { ...cur.m, distance: parseFloat(v) } })}
-            opts={[4, 12, 18, 30, 45].map(d => ({ v: String(d), l: '距離 ' + d + 'cm' }))} />)}
+            opts={[4, 12, 18, 30, 45].map(d => ({ v: String(d), l: t('workbench.slot.m.distance', { cm: d }) }))} />)}
         {(k === 'hand' || k === 'hand_twist') && (
           <Sel value={String(cur.m.angle)} onChange={v => set({ m: { ...cur.m, angle: parseFloat(v) } })}
-            opts={[{ v: '90', l: '≤90度' }, { v: '180', l: '≤180度' }]} />)}
+            opts={[{ v: '90', l: t('workbench.slot.m.angle90') }, { v: '180', l: t('workbench.slot.m.angle180') }]} />)}
         {(k === 'rotate' || k === 'rotation_by_diameter') && (
           <Sel value={String(cur.m.rev)} onChange={v => set({ m: { ...cur.m, rev: parseInt(v) } })}
-            opts={[1, 2, 3].map(r => ({ v: String(r), l: r + '圈' }))} />)}
+            opts={[1, 2, 3].map(r => ({ v: String(r), l: t('workbench.slot.m.revolutions', { count: r }) }))} />)}
       </span>
     )
   }
@@ -377,19 +389,19 @@ export function WiWorkbench() {
     const xo = opts.x.find(o => o.code === cur.x)
     return (
       <span className="inline-flex flex-wrap items-center gap-1 align-middle">
-        <Hint tip="X 製程時間：機器/製程造成的等待（熱壓、測試、掃描）；連續式需輸入秒數。" />
+        <Hint tip={t('workbench.slot.x.hint')} />
         <Sel value={cur.x} onChange={v => set({ x: v })} opts={opts.x.map(o => ({ v: o.code, l: o.label }))} />
         {xo?.mode === 'seconds' && (
           <input type="number" min={0} step={0.1}
             className="border-2 border-dashed border-slate-300 rounded w-20 px-1 text-sm bg-amber-50"
-            value={cur.x_sec} onChange={e => set({ x_sec: parseFloat(e.target.value) || 0 })} placeholder="秒" />
+            value={cur.x_sec} onChange={e => set({ x_sec: parseFloat(e.target.value) || 0 })} placeholder={t('workbench.slot.x.secondsPlaceholder')} />
         )}
       </span>
     )
   }
   const iBlock = () => (
     <span className="inline-flex items-center align-middle">
-      <Hint tip="I 對準/檢查：定位對準或檢查確認動作的分級。" />
+      <Hint tip={t('workbench.slot.i.hint')} />
       <Sel value={cur.i} onChange={v => set({ i: v })} opts={opts.i.map(o => ({ v: o.code, l: o.label }))} />
     </span>
   )
@@ -397,7 +409,7 @@ export function WiWorkbench() {
   // ── [C] slot block definitions ─────────────────────────────────────────────
   const gmSlots: Array<{ key: SlotKey; label: string; param: string; isFilled: boolean; abbrev: string }> = [
     {
-      key: 'a0', label: 'A (取得)', param: 'A',
+      key: 'a0', label: t('workbench.wiEditor.slotLabel.aGet'), param: 'A',
       isFilled: aIsFilled(cur.a0),
       abbrev: aAbbrev(cur.a0, opts.a_bands),
     },
@@ -407,12 +419,12 @@ export function WiWorkbench() {
       abbrev: cur.b1 ? (opts.b.find(b => b.code === cur.b1)?.label.slice(0, 4) ?? 'B?') : '—',
     },
     {
-      key: 'g', label: 'G (取得)', param: 'G',
+      key: 'g', label: t('workbench.wiEditor.slotLabel.g'), param: 'G',
       isFilled: !!cur.g,
       abbrev: cur.g ? (opts.g.find(g => g.code === cur.g)?.label.slice(0, 4) ?? 'G?') : '—',
     },
     {
-      key: 'a3', label: 'A (放置)', param: 'A',
+      key: 'a3', label: t('workbench.wiEditor.slotLabel.aPlace'), param: 'A',
       isFilled: aIsFilled(cur.a3),
       abbrev: aAbbrev(cur.a3, opts.a_bands),
     },
@@ -422,19 +434,19 @@ export function WiWorkbench() {
       abbrev: cur.b4 ? (opts.b.find(b => b.code === cur.b4)?.label.slice(0, 4) ?? 'B?') : '—',
     },
     {
-      key: 'p', label: 'P (放置)', param: 'P',
+      key: 'p', label: t('workbench.wiEditor.slotLabel.p'), param: 'P',
       isFilled: !!cur.p_base,
       abbrev: cur.p_base ? (opts.p_bases.find(p => p.code === cur.p_base)?.label.slice(0, 4) ?? 'P?') : '—',
     },
     {
-      key: 'a6', label: 'A (返回)', param: 'A',
+      key: 'a6', label: t('workbench.wiEditor.slotLabel.aReturn'), param: 'A',
       isFilled: aIsFilled(cur.a6),
       abbrev: aAbbrev(cur.a6, opts.a_bands),
     },
   ]
   const cmSlots: Array<{ key: SlotKey; label: string; param: string; isFilled: boolean; abbrev: string }> = [
     {
-      key: 'a0', label: 'A (取得)', param: 'A',
+      key: 'a0', label: t('workbench.wiEditor.slotLabel.aGet'), param: 'A',
       isFilled: aIsFilled(cur.a0),
       abbrev: aAbbrev(cur.a0, opts.a_bands),
     },
@@ -444,27 +456,27 @@ export function WiWorkbench() {
       abbrev: cur.b1 ? (opts.b.find(b => b.code === cur.b1)?.label.slice(0, 4) ?? 'B?') : '—',
     },
     {
-      key: 'g', label: 'G (取得)', param: 'G',
+      key: 'g', label: t('workbench.wiEditor.slotLabel.g'), param: 'G',
       isFilled: !!cur.g,
       abbrev: cur.g ? (opts.g.find(g => g.code === cur.g)?.label.slice(0, 4) ?? 'G?') : '—',
     },
     {
-      key: 'm', label: 'M (動作)', param: 'M',
+      key: 'm', label: t('workbench.wiEditor.slotLabel.m'), param: 'M',
       isFilled: !!cur.m.verb,
       abbrev: cur.m.verb ? (opts.m_verbs.find(m => m.code === cur.m.verb)?.label.slice(0, 4) ?? 'M?') : '—',
     },
     {
-      key: 'x', label: 'X (製程)', param: 'X',
+      key: 'x', label: t('workbench.wiEditor.slotLabel.x'), param: 'X',
       isFilled: cur.x !== 'x_none',
       abbrev: cur.x !== 'x_none' ? (opts.x.find(x => x.code === cur.x)?.label.slice(0, 4) ?? 'X?') : '—',
     },
     {
-      key: 'i', label: 'I (對準)', param: 'I',
+      key: 'i', label: t('workbench.wiEditor.slotLabel.i'), param: 'I',
       isFilled: cur.i !== 'i_none',
       abbrev: cur.i !== 'i_none' ? (opts.i.find(i => i.code === cur.i)?.label.slice(0, 4) ?? 'I?') : '—',
     },
     {
-      key: 'a6', label: 'A (返回)', param: 'A',
+      key: 'a6', label: t('workbench.wiEditor.slotLabel.aReturn'), param: 'A',
       isFilled: aIsFilled(cur.a6),
       abbrev: aAbbrev(cur.a6, opts.a_bands),
     },
@@ -472,18 +484,9 @@ export function WiWorkbench() {
   const currentSlots = gm ? gmSlots : cmSlots
 
   // Modal label per slot
-  const slotModalLabels: Record<SlotKey, string> = {
-    a0: 'A 移動 — 取得段',
-    b1: 'B 身體動作 — 取得段',
-    g: 'G 取得',
-    a3: 'A 移動 — 放置段',
-    b4: 'B 身體動作 — 放置段',
-    p: 'P 放置',
-    m: 'M 控制移動',
-    x: 'X 製程時間',
-    i: 'I 對準/檢查',
-    a6: 'A 移動 — 返回段',
-  }
+  // 與 workbench-v3/SlotBuilder 的格位 modal 抬頭逐字相同 → 共用同一組 key，
+  // 不再各抄一份（同一個格位在兩個編輯器叫不同名字是遲早會發生的漂移）。
+  const slotModalLabel = (k: SlotKey) => t(`workbench.slot.modalTitle.${k}`)
 
   // ── [D] DnD handlers ───────────────────────────────────────────────────────
   function onDragStart(idx: number, e: React.DragEvent) {
@@ -550,28 +553,29 @@ export function WiWorkbench() {
     if (tmu == null) return
     addRow({
       id: crypto.randomUUID(), seq: cur.seq, handCode: cur.handCode, freq: cur.freq, simoGroup: cur.simoGroup,
-      nv: { ...cur.nv }, narr: shortNarr(cur, label, vname), tmu, seconds: tmu * TMU_SEC, payload,
+      // narr 留空＝「還沒有後端敘述」；預覽句由 useRowNarr 在顯示時重算
+      nv: { ...cur.nv }, narr: '', tmu, seconds: tmu * TMU_SEC, payload,
     } as Row)
   }
 
   async function saveAsTemplate() {
     if (!opts) return
-    const name = window.prompt('範本名稱（中文）？'); if (!name) return
-    const kw = window.prompt('關鍵字（逗號分隔，供匯入比對；可留空）：', '') || ''
+    const name = window.prompt(t('workbench.wiEditor.templateNamePrompt')); if (!name) return
+    const kw = window.prompt(t('workbench.wiEditor.templateKeywordsPrompt'), '') || ''
     try {
       await apiPost('/api/v2/motion-templates', {
         name_zh: name, seq_kind: cur.seq,
         keywords: kw.split(/[,，]/).map(s => s.trim()).filter(Boolean), cycle_template: buildPayload(cur, opts.code),
       })
       qc.invalidateQueries({ queryKey: ['templates'] })
-      setSaveMsg('✓ 已存為草稿範本：' + name)
-    } catch (e) { setSaveMsg('存範本失敗：' + (e as Error).message) }
+      setSaveMsg(t('workbench.wiEditor.templateSaved', { name }))
+    } catch (e) { setSaveMsg(t('workbench.wiEditor.templateSaveFailed', { message: (e as Error).message })) }
   }
 
   async function doSave() {
-    setSaveMsg('儲存中…')
+    setSaveMsg(t('workbench.wiEditor.saving'))
     const lv = useLevelStore.getState()
-    const d = derive(rows, lv.levelMap, lv.groupMeta)
+    const d = derive(rows, lv.levelMap, lv.groupMeta, rowNarr)
     const baseRevision = useWiStore.getState().revisionNo
     const body = {
       base_revision: baseRevision ?? undefined,
@@ -581,7 +585,7 @@ export function WiWorkbench() {
           id: r.id, seq_no: i + 1, hand: r.handCode,
           object_vocab_id: r.nv.obj || null,
           from_vocab_id: r.nv.from || null, to_vocab_id: r.nv.to || null,
-          frequency: r.freq, simo_group_id: r.simoGroup || null, narrative: r.narr, cycle: r.payload,
+          frequency: r.freq, simo_group_id: r.simoGroup || null, narrative: rowNarr(r), cycle: r.payload,
           level: {
             coefficient: e.coefficient ?? 1, ascription: e.ascription ?? 'main', level: e.level ?? String(i + 1),
             countersignature: e.countersignature ?? null, parent_countersignature: e.parent_countersignature ?? null,
@@ -602,14 +606,19 @@ export function WiWorkbench() {
       qc.invalidateQueries({ queryKey: ['wi-preview'] })
       qc.invalidateQueries({ queryKey: ['versions'] })
       qc.invalidateQueries({ queryKey: ['worksheet', activeWs] })
-      setSaveMsg(`✓ 已儲存：${res.rows.length} 列，合計 ${res.total_tmu} TMU（≈ ${(res.total_tmu * TMU_SEC).toFixed(2)} 秒）· rev ${res.revision_no ?? '?'}`)
+      setSaveMsg(t('workbench.wiEditor.saved', {
+        rows: res.rows.length,
+        tmu: res.total_tmu,
+        seconds: (res.total_tmu * TMU_SEC).toFixed(2),
+        rev: res.revision_no ?? '?',
+      }))
     } catch (e) {
       const err = e as Error & { code?: string | null; humanMessage?: string; status?: number }
       if (err.status === 409 && err.code === 'WORKSHEET_REVISION_CONFLICT') {
-        setSaveMsg('⚠️ 儲存衝突：工序表已被其他人更新。請重新載入後再存（不會靜默覆寫）。')
+        setSaveMsg(t('workbench.wiEditor.saveConflict'))
         qc.invalidateQueries({ queryKey: ['worksheet', activeWs] })
       } else {
-        setSaveMsg('⚠️ 儲存失敗：' + (err.humanMessage || err.message))
+        setSaveMsg(t('workbench.wiEditor.saveFailed', { message: err.humanMessage || err.message }))
       }
     }
   }
@@ -643,26 +652,27 @@ export function WiWorkbench() {
 
         {/* Sequence type + hand */}
         <div className="flex flex-wrap items-center gap-3">
-          <h2 className="font-semibold">編輯一條工序</h2>
+          <h2 className="font-semibold">{t('workbench.wiEditor.editorTitle')}</h2>
           <label className="text-sm flex items-center gap-1">
-            <input type="radio" checked={gm} onChange={() => set({ seq: 'GM' })} /> 一般移動(取放)
+            <input type="radio" checked={gm} onChange={() => set({ seq: 'GM' })} /> {t('workbench.wiEditor.seqGm')}
           </label>
           <label className="text-sm flex items-center gap-1">
-            <input type="radio" checked={!gm} onChange={() => set({ seq: 'CM' })} /> 控制移動(推拉鎖)
+            <input type="radio" checked={!gm} onChange={() => set({ seq: 'CM' })} /> {t('workbench.wiEditor.seqCm')}
           </label>
           <div className="flex items-center gap-1 ml-2">
-            <span className="text-sm text-slate-500">手</span>
-            <Sel value={cur.handCode} onChange={v => set({ handCode: v })} opts={HANDS}
+            <span className="text-sm text-slate-500">{t('workbench.wiEditor.handLabel')}</span>
+            <Sel value={cur.handCode} onChange={v => set({ handCode: v })}
+              opts={HAND_CODES.map(code => ({ v: code, l: t(`workbench.hand.${code}`) }))}
               cls="border rounded px-1 py-0.5 text-sm" />
           </div>
         </div>
 
         {/* Context fields (vocabulary) */}
         <div className="flex flex-wrap items-center gap-2 text-sm">
-          <span className="text-slate-500">從</span>{mkVocab('from', 'from', '—來源—')}
-          <span className="text-slate-500">取得</span>{mkVocab('object', 'obj', '—物件—')}
-          {gm && <><span className="text-slate-500">放至</span>{mkVocab('to', 'to', '—目的地—')}</>}
-          {!gm && <><span className="text-slate-500">在</span>{mkVocab('to', 'to', '—地點—')}</>}
+          <span className="text-slate-500">{t('workbench.wiEditor.fromLabel')}</span>{mkVocab('from', 'from', t('workbench.wiEditor.vocabFrom'))}
+          <span className="text-slate-500">{t('workbench.wiEditor.getLabel')}</span>{mkVocab('object', 'obj', t('workbench.wiEditor.vocabObject'))}
+          {gm && <><span className="text-slate-500">{t('workbench.wiEditor.toLabel')}</span>{mkVocab('to', 'to', t('workbench.wiEditor.vocabTo'))}</>}
+          {!gm && <><span className="text-slate-500">{t('workbench.wiEditor.atLabel')}</span>{mkVocab('to', 'to', t('workbench.wiEditor.vocabWhere'))}</>}
         </div>
 
         {/* [C] Visual slot blocks */}
@@ -674,7 +684,7 @@ export function WiWorkbench() {
               ${slot.isFilled ? clr.filled : clr.empty}`
             return (
               <button key={slot.key} className={cls} onClick={() => setActiveSlot(slot.key)}
-                title={slotModalLabels[slot.key]}>
+                title={slotModalLabel(slot.key)}>
                 <span className="text-[10px] font-medium opacity-70 leading-none mb-1">{slot.label}</span>
                 <span className="font-bold text-sm leading-none">{slot.abbrev}</span>
                 <span className={`w-2 h-2 rounded-full mt-1.5 ${slot.isFilled ? 'bg-green-400' : 'bg-gray-300'}`} />
@@ -685,26 +695,32 @@ export function WiWorkbench() {
 
         {/* Tech line + TMU + controls */}
         <div className="flex flex-wrap items-center gap-3 pt-2 border-t text-sm">
-          <span className="text-slate-500">次數</span>
+          <span className="text-slate-500">{t('workbench.wiEditor.freqLabel')}</span>
           <input type="number" min={1} className="border rounded w-16 px-1 py-0.5"
             value={cur.freq} onChange={e => set({ freq: parseInt(e.target.value) || 1 })} />
-          <span className="text-slate-500">SIMO(同動群)</span>
+          <span className="text-slate-500">{t('workbench.wiEditor.simoLabel')}</span>
           <input className="border rounded w-20 px-1 py-0.5" value={cur.simoGroup}
-            onChange={e => set({ simoGroup: e.target.value })} placeholder="可空" />
+            onChange={e => set({ simoGroup: e.target.value })} placeholder={t('workbench.wiEditor.simoPlaceholder')} />
           <span className="font-mono text-slate-500 text-xs">{tech || '—'}</span>
-          <span className="ml-auto">本列 <b className="text-sky-700 text-lg">{tmu ?? '—'}</b> TMU ≈ {tmu != null ? (tmu * TMU_SEC).toFixed(2) : '—'} 秒</span>
-          {editable && <button onClick={saveAsTemplate} className="px-2 py-1.5 border rounded">＋存為範本</button>}
+          <span className="ml-auto">
+            <Trans
+              i18nKey="workbench.wiEditor.rowTmu"
+              values={{ tmu: tmu ?? '—', seconds: tmu != null ? (tmu * TMU_SEC).toFixed(2) : '—' }}
+              components={{ tmu: <b className="text-sky-700 text-lg" /> }}
+            />
+          </span>
+          {editable && <button onClick={saveAsTemplate} className="px-2 py-1.5 border rounded">{t('workbench.wiEditor.saveAsTemplate')}</button>}
           <button disabled={!editable || tmu == null} onClick={add}
-            className="px-3 py-1.5 bg-blue-600 text-white rounded-lg disabled:opacity-40">＋ 加入工時表</button>
+            className="px-3 py-1.5 bg-blue-600 text-white rounded-lg disabled:opacity-40">{t('workbench.wiEditor.addToWorksheet')}</button>
         </div>
-        {!editable && <p className="text-xs text-amber-600">目前身分無編輯權限（需 IE 以上）。</p>}
+        {!editable && <p className="text-xs text-amber-600">{t('workbench.wiEditor.noEditPermission')}</p>}
       </div>
 
       {/* ═══ Table section ═══ */}
       <div className="bg-white rounded-xl border p-4">
         <div className="flex items-center justify-between mb-2">
           <div className="flex items-center gap-3">
-            <h2 className="font-semibold">工時表</h2>
+            <h2 className="font-semibold">{t('workbench.wiEditor.worksheetTitle')}</h2>
             {/* [ADR-022 E-4] 從 WI 庫插入（實體化；需編輯權限＋已開啟工時表） */}
             {editable && activeWs && (
               <button
@@ -712,11 +728,17 @@ export function WiWorkbench() {
                 className="text-sm px-3 py-1 border border-blue-300 text-blue-700 rounded-lg hover:bg-blue-50"
                 data-testid="insert-wi-btn"
               >
-                ＋ 從 WI 庫插入
+                {t('workbench.wiEditor.insertFromWi')}
               </button>
             )}
           </div>
-          <div className="text-sm">合計 <b className="text-emerald-600 text-lg">{total}</b> TMU ≈ <b className="text-emerald-600">{(total * TMU_SEC).toFixed(2)}</b> 秒</div>
+          <div className="text-sm">
+            <Trans
+              i18nKey="workbench.wiEditor.totalTmu"
+              values={{ tmu: total, seconds: (total * TMU_SEC).toFixed(2) }}
+              components={{ tmu: <b className="text-emerald-600 text-lg" />, sec: <b className="text-emerald-600" /> }}
+            />
+          </div>
         </div>
 
         <div className="overflow-x-auto">
@@ -735,17 +757,17 @@ export function WiWorkbench() {
                     }} />
                 </th>
                 <th className="p-1">#</th>
-                <th className="p-1">手</th>
-                <th className="p-1">敘述</th>
+                <th className="p-1">{t('workbench.wiEditor.colHand')}</th>
+                <th className="p-1">{t('workbench.wiEditor.colNarrative')}</th>
                 <th className="p-1">Base TMU</th>
                 {/* D-3 freq input */}
-                <th className="p-1">頻率</th>
+                <th className="p-1">{t('workbench.wiEditor.colFreq')}</th>
                 <th className="p-1">Eff TMU</th>
-                <th className="p-1">CT(秒)</th>
+                <th className="p-1">{t('workbench.wiEditor.colCt')}</th>
                 {/* D-4 simo checkbox */}
                 <th className="p-1">SIMO</th>
                 {/* D-5 納入TMU */}
-                <th className="p-1">納入 TMU</th>
+                <th className="p-1">{t('workbench.wiEditor.colIncluded')}</th>
                 <th className="p-1"></th>
               </tr>
             </thead>
@@ -776,7 +798,7 @@ export function WiWorkbench() {
                         draggable
                         onDragStart={e => onDragStart(i, e)}
                         onDragEnd={onDragEnd}
-                        title="拖拉排序"
+                        title={t('workbench.wiEditor.dragTitle')}
                       >⠿</span>
                     </td>
                     {/* D-2 checkbox */}
@@ -786,7 +808,7 @@ export function WiWorkbench() {
                     </td>
                     <td className="p-1">{i + 1}</td>
                     <td className="p-1">{r.handCode}</td>
-                    <td className="p-1 max-w-xs truncate">{r.narr}</td>
+                    <td className="p-1 max-w-xs truncate">{rowNarr(r)}</td>
                     <td className="p-1"><b>{r.tmu}</b></td>
                     {/* D-3 freq input */}
                     <td className="p-1">
@@ -821,14 +843,14 @@ export function WiWorkbench() {
                           delRow(r.id)
                           const n = new Set(selectedRowIds); n.delete(r.id); setSelectedRowIds(n)
                           const h = new Set(highlightedRowIds); h.delete(r.id); setHighlightedRowIds(h)
-                        }}>刪</button>
+                        }}>{t('workbench.wiEditor.rowDelete')}</button>
                       )}
                     </td>
                   </tr>
                 )
               })}
               {rows.length === 0 && (
-                <tr><td colSpan={12} className="p-3 text-slate-400">尚無列。</td></tr>
+                <tr><td colSpan={12} className="p-3 text-slate-400">{t('workbench.wiEditor.noRows')}</td></tr>
               )}
             </tbody>
           </table>
@@ -837,11 +859,11 @@ export function WiWorkbench() {
         {/* [E-1] Floating action bar */}
         {selectedRowIds.size > 0 && (
           <div className="mt-3 p-3 bg-blue-50 border border-blue-200 rounded-lg flex flex-wrap items-center gap-3">
-            <span className="text-sm text-blue-700 font-medium">已選 {selectedRowIds.size} 個動作</span>
-            <span className="text-sm text-slate-500">WI 名稱：</span>
+            <span className="text-sm text-blue-700 font-medium">{t('workbench.wiEditor.selectedActions', { count: selectedRowIds.size })}</span>
+            <span className="text-sm text-slate-500">{t('workbench.wiEditor.wiNameLabel')}</span>
             <input
               className="border rounded px-2 py-1 text-sm flex-1 min-w-0"
-              placeholder="輸入 WI 名稱…"
+              placeholder={t('workbench.wiEditor.wiNamePlaceholder')}
               value={wiNameInput}
               onChange={e => setWiNameInput(e.target.value)}
               onKeyDown={e => { if (e.key === 'Enter') addToWi() }}
@@ -850,15 +872,15 @@ export function WiWorkbench() {
               onClick={addToWi}
               disabled={!wiNameInput.trim()}
               className="px-3 py-1.5 bg-blue-600 text-white text-sm rounded disabled:opacity-40 shrink-0"
-            >加入 WI</button>
+            >{t('workbench.wiEditor.addToWi')}</button>
             <button onClick={() => setSelectedRowIds(new Set())}
-              className="text-xs text-slate-500 underline shrink-0">取消選擇</button>
+              className="text-xs text-slate-500 underline shrink-0">{t('workbench.wiEditor.clearSelection')}</button>
           </div>
         )}
 
         <div className="flex gap-2 mt-3 items-center">
           <button disabled={!editable || !rows.length || save.isPending} onClick={doSave}
-            className="px-3 py-1.5 bg-emerald-600 text-white rounded-lg disabled:opacity-40">儲存</button>
+            className="px-3 py-1.5 bg-emerald-600 text-white rounded-lg disabled:opacity-40">{t('workbench.wiEditor.save')}</button>
           <span className="text-xs text-slate-500">{saveMsg}</span>
         </div>
       </div>
@@ -867,7 +889,7 @@ export function WiWorkbench() {
       {wiGroups.length > 0 && (
         <div className="bg-white rounded-xl border p-4">
           <div className="flex items-center justify-between mb-3">
-            <h2 className="font-semibold">WI 大綱 · {wiGroups.length} 筆 WI</h2>
+            <h2 className="font-semibold">{t('workbench.wiEditor.outlineTitle', { count: wiGroups.length })}</h2>
           </div>
           <div className="space-y-2">
             {wiGroups.map(group => {
@@ -884,29 +906,29 @@ export function WiWorkbench() {
                   >
                     <span className="text-slate-400 text-lg leading-none">{isExpanded ? '▾' : '▸'}</span>
                     <span className="font-medium text-sm flex-1 truncate">{group.name}</span>
-                    <span className="text-xs text-slate-500 shrink-0">{group.rowIds.length} 個動作</span>
+                    <span className="text-xs text-slate-500 shrink-0">{t('workbench.wiEditor.groupActions', { count: group.rowIds.length })}</span>
                     <span className="text-sm shrink-0">
                       <b className="text-blue-700">{grpTmu.toFixed(1)}</b>
                       <span className="text-slate-400"> TMU ≈ </span>
                       <b className="text-emerald-600">{(grpTmu * TMU_SEC).toFixed(3)}</b>
-                      <span className="text-slate-400"> 秒</span>
+                      <span className="text-slate-400">{t('workbench.wiEditor.seconds')}</span>
                     </span>
                     <button
                       onClick={e => { e.stopPropagation(); deleteWiGroup(group.id) }}
                       className="text-red-400 hover:text-red-600 text-xs ml-2 shrink-0"
-                    >刪除</button>
+                    >{t('workbench.wiEditor.groupDelete')}</button>
                   </div>
                   {/* Expanded: list action rows */}
                   {isExpanded && (
                     <div className="divide-y">
                       {groupRows.length === 0 && (
-                        <div className="px-3 py-2 text-xs text-slate-400">（所有動作已被刪除）</div>
+                        <div className="px-3 py-2 text-xs text-slate-400">{t('workbench.wiEditor.allDeleted')}</div>
                       )}
                       {groupRows.map((r, idx) => (
                         <div key={r.id} className="flex items-center gap-3 px-4 py-1.5 text-sm hover:bg-slate-50">
                           <span className="text-xs text-slate-400 w-5 shrink-0">{idx + 1}.</span>
                           <span className="text-xs text-slate-500 shrink-0">{r.handCode}</span>
-                          <span className="flex-1 truncate text-xs">{r.narr}</span>
+                          <span className="flex-1 truncate text-xs">{rowNarr(r)}</span>
                           <span className="text-xs text-blue-600 shrink-0">{r.tmu} TMU</span>
                         </div>
                       ))}
@@ -940,7 +962,7 @@ export function WiWorkbench() {
             onClick={e => e.stopPropagation()}
           >
             <div className="flex items-center justify-between">
-              <h3 className="font-semibold text-base">{slotModalLabels[activeSlot]}</h3>
+              <h3 className="font-semibold text-base">{slotModalLabel(activeSlot)}</h3>
               <button onClick={() => setActiveSlot(null)}
                 className="text-slate-400 hover:text-slate-600 text-lg leading-none">✕</button>
             </div>
@@ -958,12 +980,12 @@ export function WiWorkbench() {
             </div>
             {/* Live TMU preview in modal */}
             <div className="text-xs text-slate-500 border-t pt-2">
-              預覽 TMU: <b className="text-sky-700">{tmu ?? '計算中…'}</b>
+              {t('workbench.slot.previewTmu')} <b className="text-sky-700">{tmu ?? t('workbench.slot.computing')}</b>
               {tech && <span className="ml-2 font-mono text-slate-400">{tech}</span>}
             </div>
             <div className="flex justify-end">
               <button onClick={() => setActiveSlot(null)}
-                className="px-4 py-2 bg-blue-600 text-white rounded-lg text-sm">確認</button>
+                className="px-4 py-2 bg-blue-600 text-white rounded-lg text-sm">{t('workbench.slot.confirm')}</button>
             </div>
           </div>
         </div>

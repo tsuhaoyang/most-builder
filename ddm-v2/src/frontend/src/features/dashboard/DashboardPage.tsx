@@ -2,17 +2,14 @@
 // 三張卡：Rule-set 總覽 / 案件狀態統計 / 近期案件。
 // 一切數據來自後端 API（前端只聚合渲染，不計算 TMU、不寫死預設值）。
 import type { ReactNode } from 'react'
+import { useTranslation } from 'react-i18next'
 import { useRuleSetVersions } from '../dictionary/api'
 import { useCases, type CaseOut } from '../cases/api'
+import { useStatusLabel } from '../cases/status'
 
 // ─── Shared bits ──────────────────────────────────────────────────────────────
-
-const STATUS_ZH: Record<string, string> = {
-  draft: '草稿',
-  approved: '已核准',
-  retired: '已退役',
-  published: '已發布',
-}
+// 狀態文字共用 `cases/status` 的 `useStatusLabel`（ADR-032 Phase A 第 4 批）；
+// 這裡只留本卡自己的配色（多一個 `published`，案件那邊沒有這個狀態）。
 
 const STATUS_BADGE: Record<string, string> = {
   draft: 'bg-amber-100 text-amber-800',
@@ -22,9 +19,10 @@ const STATUS_BADGE: Record<string, string> = {
 }
 
 function StatusBadge({ status }: { status: string }) {
+  const statusLabel = useStatusLabel()
   return (
     <span className={`px-2 py-0.5 rounded text-xs font-medium ${STATUS_BADGE[status] ?? 'bg-slate-100 text-slate-600'}`}>
-      {STATUS_ZH[status] ?? status}
+      {statusLabel(status)}
     </span>
   )
 }
@@ -38,25 +36,30 @@ function Card({ title, children }: { title: string; children: ReactNode }) {
   )
 }
 
-const Loading = () => <p className="text-sm text-slate-400">載入中…</p>
-const LoadError = ({ error }: { error: unknown }) => (
-  <p className="text-sm text-red-600">載入失敗：{(error as Error).message}</p>
-)
+const Loading = () => {
+  const { t } = useTranslation()
+  return <p className="text-sm text-slate-400">{t('dashboard.loading')}</p>
+}
+const LoadError = ({ error }: { error: unknown }) => {
+  const { t } = useTranslation()
+  return <p className="text-sm text-red-600">{t('dashboard.loadFailed', { message: (error as Error).message })}</p>
+}
 
 // ─── Card 1: MOST 字典總覽 ────────────────────────────────────────────────────
 // 「新工序表預設」＝後端 is_active 旗標（ADR-023 §3.5），不再由前端寫死版本 code。
 
 function RuleSetCard() {
+  const { t } = useTranslation()
   const { data, isLoading, error } = useRuleSetVersions()
 
   return (
-    <Card title="MOST 字典總覽">
+    <Card title={t('dashboard.ruleSetCard')}>
       {isLoading ? (
         <Loading />
       ) : error ? (
         <LoadError error={error} />
       ) : !data?.length ? (
-        <p className="text-sm text-slate-400">尚無 rule-set</p>
+        <p className="text-sm text-slate-400">{t('dashboard.noRuleSet')}</p>
       ) : (
         <ul className="divide-y">
           {data.map((rs) => (
@@ -69,7 +72,7 @@ function RuleSetCard() {
               </div>
               {rs.is_active && (
                 <span className="px-2 py-0.5 rounded text-xs font-medium bg-emerald-100 text-emerald-800 whitespace-nowrap">
-                  啟用中
+                  {t('dashboard.ruleSetActive')}
                 </span>
               )}
               <StatusBadge status={rs.status} />
@@ -83,10 +86,11 @@ function RuleSetCard() {
 
 // ─── Card 2: 案件狀態統計 ─────────────────────────────────────────────────────
 
-const COUNT_STYLES: { status: string; label: string; color: string }[] = [
-  { status: 'draft',    label: '草稿',   color: 'text-amber-600' },
-  { status: 'approved', label: '已核准', color: 'text-emerald-600' },
-  { status: 'retired',  label: '已退役', color: 'text-slate-500' },
+// 標籤走共用的 `status.*`（見檔頭），這裡只列出要統計的狀態與其顏色。
+const COUNT_STYLES: { status: string; color: string }[] = [
+  { status: 'draft',    color: 'text-amber-600' },
+  { status: 'approved', color: 'text-emerald-600' },
+  { status: 'retired',  color: 'text-slate-500' },
 ]
 
 /**
@@ -101,27 +105,29 @@ function CaseStatsCard({ items, total, isLoading, error }: {
   isLoading: boolean
   error: unknown
 }) {
+  const { t } = useTranslation()
+  const statusLabel = useStatusLabel()
   return (
-    <Card title="案件狀態統計">
+    <Card title={t('dashboard.caseStatsCard')}>
       {isLoading ? (
         <Loading />
       ) : error ? (
         <LoadError error={error} />
       ) : !items?.length ? (
-        <p className="text-sm text-slate-400">目前沒有案件</p>
+        <p className="text-sm text-slate-400">{t('dashboard.noCases')}</p>
       ) : (
         <>
           <div className="grid grid-cols-3 gap-2 flex-1">
-            {COUNT_STYLES.map(({ status, label, color }) => (
+            {COUNT_STYLES.map(({ status, color }) => (
               <div key={status} className="flex flex-col items-center justify-center bg-slate-50 rounded-lg py-3">
                 <span className={`text-2xl font-bold ${color}`}>
                   {items.filter((i) => i.status === status).length}
                 </span>
-                <span className="text-xs text-slate-500 mt-1">{label}</span>
+                <span className="text-xs text-slate-500 mt-1">{statusLabel(status)}</span>
               </div>
             ))}
           </div>
-          <p className="text-xs text-slate-400">共 {total ?? items.length} 件案件（狀態依最新版）</p>
+          <p className="text-xs text-slate-400">{t('dashboard.caseTotal', { count: total ?? items.length })}</p>
         </>
       )}
     </Card>
@@ -138,17 +144,18 @@ function RecentCasesCard({ items, isLoading, error }: {
   isLoading: boolean
   error: unknown
 }) {
+  const { t, i18n } = useTranslation()
   const goCases = () =>
     window.dispatchEvent(new CustomEvent('ddm:switch-tab', { detail: 'case' }))
 
   return (
-    <Card title="近期案件">
+    <Card title={t('dashboard.recentCasesCard')}>
       {isLoading ? (
         <Loading />
       ) : error ? (
         <LoadError error={error} />
       ) : !items?.length ? (
-        <p className="text-sm text-slate-400">目前沒有案件</p>
+        <p className="text-sm text-slate-400">{t('dashboard.noCases')}</p>
       ) : (
         <ul className="divide-y">
           {items.slice(0, 5).map((c) => (
@@ -163,12 +170,12 @@ function RecentCasesCard({ items, isLoading, error }: {
                 </span>
                 {c.version_count > 1 && (
                   <span className="px-1.5 py-0.5 rounded bg-slate-100 text-slate-600 text-xs whitespace-nowrap">
-                    {c.version_count} 版
+                    {t('dashboard.versionCount', { count: c.version_count })}
                   </span>
                 )}
                 <StatusBadge status={c.status} />
                 <span className="text-xs text-slate-400 whitespace-nowrap">
-                  {new Date(updatedAt(c)).toLocaleDateString('zh-TW')}
+                  {new Date(updatedAt(c)).toLocaleDateString(i18n.language)}
                 </span>
               </button>
             </li>
@@ -182,11 +189,12 @@ function RecentCasesCard({ items, isLoading, error }: {
 // ─── Page ─────────────────────────────────────────────────────────────────────
 
 export function DashboardPage() {
+  const { t } = useTranslation()
   const cases = useCases()
 
   return (
     <div className="space-y-4">
-      <h2 className="text-lg font-semibold text-slate-800">儀表板</h2>
+      <h2 className="text-lg font-semibold text-slate-800">{t('dashboard.heading')}</h2>
       <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
         <RuleSetCard />
         <CaseStatsCard items={cases.data?.items} total={cases.data?.total} isLoading={cases.isLoading} error={cases.error} />

@@ -1,6 +1,7 @@
 import { useNlDraft, usePostReviews } from './api'
 import { useAiDraftStore } from './aiDraft.store'
 import { useWiStore } from './store'
+import { useTranslation } from 'react-i18next'
 import { ActionCard } from './ActionCard'
 import type { CycleState } from './cycle'
 import type { NlDraftLegacySlot, NlDraftResponse } from './aiTypes'
@@ -39,6 +40,7 @@ export function AiDraftPanel({
   onAdoptCycle: (cycle: Record<string, unknown>) => void
   onLegacyFill: (patch: Partial<CycleState>) => void
 }) {
+  const { t } = useTranslation()
   const text = useAiDraftStore((s) => s.text)
   const setText = useAiDraftStore((s) => s.setText)
   const lastResponse = useAiDraftStore((s) => s.lastResponse)
@@ -82,9 +84,7 @@ export function AiDraftPanel({
       && curRev != null
       && Number(srcRev) !== Number(curRev)
     ) {
-      window.alert(
-        `AI 草稿已過期（source rev ${srcRev} ≠ 目前 rev ${curRev}）。請重新解析後再採用。`,
-      )
+      window.alert(t('workbench.aiDraft.stale', { src: srcRev, cur: curRev }))
       return true
     }
     return false
@@ -106,6 +106,7 @@ export function AiDraftPanel({
               {
                 event_type: 'accept_plan',
                 target: { action_id: actionId },
+                // i18n-exempt: 送後端的 review 事件 payload 欄位，不是 UI 文案；跟著介面語言變會讓學習迴圈的紀錄依操作者語言分裂成兩群
                 reason: '採用單一 draft 至編輯器',
               },
             ],
@@ -134,11 +135,11 @@ export function AiDraftPanel({
   return (
     <div className="space-y-2 pb-2 border-b border-slate-100" data-testid="ai-draft-panel">
       <div className="flex flex-wrap items-start gap-2">
-        <span className="text-xs font-semibold text-slate-500 mt-2 shrink-0">AI 草稿</span>
+        <span className="text-xs font-semibold text-slate-500 mt-2 shrink-0">{t('workbench.aiDraft.title')}</span>
         <textarea
           rows={1}
           className="flex-1 min-w-0 border rounded px-2 py-1.5 text-sm resize-none focus:outline-none focus:ring-1 focus:ring-blue-400"
-          placeholder="輸入口語描述，解析成可審核的 MOST 草稿…"
+          placeholder={t('workbench.aiDraft.placeholder')}
           value={text}
           onChange={(e) => setText(e.target.value)}
           onKeyDown={(e) => {
@@ -155,7 +156,7 @@ export function AiDraftPanel({
           disabled={nlDraft.isPending || !text.trim() || !ruleSetCode}
           className="px-3 py-1.5 bg-indigo-600 text-white text-sm rounded disabled:opacity-40 shrink-0"
         >
-          {nlDraft.isPending ? '解析中…' : '解析'}
+          {nlDraft.isPending ? t('workbench.aiDraft.parsing') : t('workbench.aiDraft.parse')}
         </button>
       </div>
 
@@ -163,13 +164,13 @@ export function AiDraftPanel({
 
       {stale && (
         <p className="text-xs text-amber-700 bg-amber-50 border border-amber-200 rounded px-2 py-1">
-          已重新解析：編輯器內容未自動覆寫（標為 stale）。請再按「採用」載入新草稿。
+          {t('workbench.aiDraft.reparsed')}
         </p>
       )}
 
       {lastResponse?.multi_action_warning && (
         <p className="text-xs text-amber-800 bg-amber-50 border border-amber-200 rounded px-2 py-1">
-          多個動作草稿 — 請逐筆採用，勿靜默只取第一筆。
+          {t('workbench.aiDraft.multi')}
         </p>
       )}
 
@@ -201,13 +202,13 @@ export function AiDraftPanel({
         </div>
       ) : lastResponse ? (
         <div className="flex items-center gap-2 text-xs text-slate-600">
-          <span>無完整 AI draft（可能僅 rule 建議）</span>
+          <span>{t('workbench.aiDraft.noDraft')}</span>
           <button
             type="button"
             className="px-2 py-1 rounded border text-indigo-700 border-indigo-200 hover:bg-indigo-50"
             onClick={applyLegacy}
           >
-            填入編輯器（相容）
+            {t('workbench.aiDraft.fillCompat')}
           </button>
         </div>
       ) : null}

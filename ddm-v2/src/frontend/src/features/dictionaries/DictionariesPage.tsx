@@ -15,6 +15,7 @@
  */
 import { useState, useRef } from 'react'
 import { useTranslation } from 'react-i18next'
+import type { TFunction } from 'i18next'
 import { useMe, canEdit, canPublish } from '../../shared/auth/useMe'
 import {
   useVocabItems,
@@ -32,9 +33,9 @@ import { I18nReviewTab } from './I18nReviewTab'
 const VOCAB_KINDS = ['object', 'component', 'tool', 'from', 'to', 'hand'] as const
 type VocabKind = (typeof VOCAB_KINDS)[number]
 
-const kindLabel: Record<string, string> = {
-  object: '物件', component: '元件', tool: '器具', from: '來源', to: '目的地', hand: '手勢',
-}
+/** 未知 kind 原樣顯示（後端新增列舉值時不會變成空白）。 */
+const kindLabel = (t: TFunction, kind: string) =>
+  (VOCAB_KINDS as readonly string[]).includes(kind) ? t(`masterData.vocabKind.${kind}`) : kind
 
 // ── simple debounce hook ──────────────────────────────────────────────────────
 
@@ -53,6 +54,7 @@ function useDebouncedState(delay = 300): [string, string, (v: string) => void] {
 // ── Tab 1 ─────────────────────────────────────────────────────────────────────
 
 function VocabTab() {
+  const { t } = useTranslation()
   const { data: me } = useMe()
   const canModify = canEdit(me)
 
@@ -78,7 +80,7 @@ function VocabTab() {
       { kind: newKind, name_zh: newName.trim() },
       {
         onSuccess: () => { setNewName(''); setShowForm(false); setFormMsg('') },
-        onError: (e) => setFormMsg('建立失敗：' + (e as Error).message),
+        onError: (e) => setFormMsg(t('masterData.vocab.createFailed', { message: (e as Error).message })),
       },
     )
   }
@@ -87,8 +89,8 @@ function VocabTab() {
     patch.mutate({ id, body: { is_active: !current } })
   }
 
-  if (isLoading) return <div className="p-4 text-slate-500 text-sm">載入詞彙庫…</div>
-  if (error) return <div className="p-4 text-red-600 text-sm">載入失敗：{(error as Error).message}</div>
+  if (isLoading) return <div className="p-4 text-slate-500 text-sm">{t('masterData.vocab.loading')}</div>
+  if (error) return <div className="p-4 text-red-600 text-sm">{t('masterData.loadError', { message: (error as Error).message })}</div>
 
   return (
     <div className="space-y-3">
@@ -96,7 +98,7 @@ function VocabTab() {
       <div className="flex flex-wrap items-center gap-2">
         <input
           className="border rounded px-2 py-1 text-sm w-44"
-          placeholder="搜尋 name_zh…"
+          placeholder={t('masterData.vocab.searchPlaceholder')}
           value={rawQ}
           onChange={e => setQ(e.target.value)}
         />
@@ -105,9 +107,9 @@ function VocabTab() {
           value={kindFilter}
           onChange={e => setKindFilter(e.target.value)}
         >
-          <option value="">全部 kind</option>
+          <option value="">{t('masterData.vocab.allKinds')}</option>
           {VOCAB_KINDS.map(k => (
-            <option key={k} value={k}>{kindLabel[k] ?? k}</option>
+            <option key={k} value={k}>{kindLabel(t, k)}</option>
           ))}
         </select>
         {canModify && (
@@ -115,7 +117,7 @@ function VocabTab() {
             className="ml-auto px-3 py-1.5 bg-blue-600 text-white rounded text-sm hover:bg-blue-700 disabled:opacity-40"
             onClick={() => setShowForm(v => !v)}
           >
-            {showForm ? '取消' : '+ 新增詞彙'}
+            {showForm ? t('masterData.vocab.cancel') : t('masterData.vocab.add')}
           </button>
         )}
       </div>
@@ -124,22 +126,22 @@ function VocabTab() {
       {showForm && canModify && (
         <div className="border rounded p-3 bg-slate-50 flex flex-wrap gap-2 items-end text-sm">
           <label className="flex flex-col gap-0.5">
-            名稱
+            {t('masterData.vocab.nameLabel')}
             <input
               className="border rounded px-2 py-1 w-44"
               value={newName}
               onChange={e => setNewName(e.target.value)}
-              placeholder="中文詞彙名稱"
+              placeholder={t('masterData.vocab.namePlaceholder')}
             />
           </label>
           <label className="flex flex-col gap-0.5">
-            類別
+            {t('masterData.vocab.kindLabel')}
             <select
               className="border rounded px-2 py-1"
               value={newKind}
               onChange={e => setNewKind(e.target.value as VocabKind)}
             >
-              {VOCAB_KINDS.map(k => <option key={k} value={k}>{kindLabel[k] ?? k}</option>)}
+              {VOCAB_KINDS.map(k => <option key={k} value={k}>{kindLabel(t, k)}</option>)}
             </select>
           </label>
           <button
@@ -147,7 +149,7 @@ function VocabTab() {
             disabled={!newName.trim() || create.isPending}
             onClick={handleCreate}
           >
-            {create.isPending ? '建立中…' : '建立'}
+            {create.isPending ? t('masterData.vocab.creating') : t('masterData.vocab.create')}
           </button>
           {formMsg && <span className="text-red-600">{formMsg}</span>}
         </div>
@@ -161,15 +163,15 @@ function VocabTab() {
               <th className="px-3 py-2">name_zh</th>
               <th className="px-3 py-2">kind</th>
               <th className="px-3 py-2">source_system</th>
-              <th className="px-3 py-2">狀態</th>
-              {canModify && <th className="px-3 py-2">操作</th>}
+              <th className="px-3 py-2">{t('masterData.vocab.colStatus')}</th>
+              {canModify && <th className="px-3 py-2">{t('masterData.vocab.colActions')}</th>}
             </tr>
           </thead>
           <tbody>
             {items.length === 0 && (
               <tr>
                 <td colSpan={canModify ? 5 : 4} className="px-3 py-6 text-center text-slate-400">
-                  無符合條件的詞彙
+                  {t('masterData.vocab.empty')}
                 </td>
               </tr>
             )}
@@ -178,13 +180,13 @@ function VocabTab() {
                 <td className="px-3 py-2 font-medium">{item.name_zh}</td>
                 <td className="px-3 py-2">
                   <span className="px-1.5 py-0.5 rounded text-xs bg-slate-100 text-slate-700">
-                    {kindLabel[item.kind] ?? item.kind}
+                    {kindLabel(t, item.kind)}
                   </span>
                 </td>
                 <td className="px-3 py-2 text-slate-500">{item.source_system}</td>
                 <td className="px-3 py-2">
                   <span className={`px-1.5 py-0.5 rounded text-xs font-medium ${item.is_active ? 'bg-emerald-100 text-emerald-800' : 'bg-slate-200 text-slate-600'}`}>
-                    {item.is_active ? '啟用' : '停用'}
+                    {item.is_active ? t('masterData.active') : t('masterData.inactive')}
                   </span>
                 </td>
                 {canModify && (
@@ -194,7 +196,7 @@ function VocabTab() {
                       disabled={patch.isPending}
                       onClick={() => handleToggleActive(item.id, item.is_active)}
                     >
-                      {item.is_active ? '停用' : '啟用'}
+                      {item.is_active ? t('masterData.inactive') : t('masterData.active')}
                     </button>
                   </td>
                 )}
@@ -210,6 +212,7 @@ function VocabTab() {
 // ── Tab 2 ─────────────────────────────────────────────────────────────────────
 
 function TemplatesTab() {
+  const { t } = useTranslation()
   const { data: me } = useMe()
   const canPromote = canPublish(me)
 
@@ -232,8 +235,8 @@ function TemplatesTab() {
     })
   }
 
-  if (isLoading) return <div className="p-4 text-slate-500 text-sm">載入動作模組範本…</div>
-  if (error) return <div className="p-4 text-red-600 text-sm">載入失敗：{(error as Error).message}</div>
+  if (isLoading) return <div className="p-4 text-slate-500 text-sm">{t('masterData.templates.loading')}</div>
+  if (error) return <div className="p-4 text-red-600 text-sm">{t('masterData.loadError', { message: (error as Error).message })}</div>
 
   return (
     <div className="space-y-3">
@@ -241,7 +244,7 @@ function TemplatesTab() {
       <div className="flex flex-wrap items-center gap-2">
         <input
           className="border rounded px-2 py-1 text-sm w-44"
-          placeholder="搜尋名稱/關鍵字…"
+          placeholder={t('masterData.templates.searchPlaceholder')}
           value={rawQ}
           onChange={e => setQ(e.target.value)}
         />
@@ -250,9 +253,9 @@ function TemplatesTab() {
           value={statusFilter}
           onChange={e => setStatusFilter(e.target.value)}
         >
-          <option value="">全部狀態</option>
-          <option value="draft">草稿</option>
-          <option value="standard">標準</option>
+          <option value="">{t('masterData.templates.allStatuses')}</option>
+          <option value="draft">{t('masterData.templates.statusDraft')}</option>
+          <option value="standard">{t('masterData.templates.statusStandard')}</option>
         </select>
       </div>
 
@@ -263,48 +266,48 @@ function TemplatesTab() {
             <tr className="bg-slate-100 text-left text-xs uppercase tracking-wide text-slate-500">
               <th className="px-3 py-2">name_zh</th>
               <th className="px-3 py-2">seq_kind</th>
-              <th className="px-3 py-2">狀態</th>
-              <th className="px-3 py-2">擁有者</th>
-              {canPromote && <th className="px-3 py-2">操作</th>}
+              <th className="px-3 py-2">{t('masterData.templates.colStatus')}</th>
+              <th className="px-3 py-2">{t('masterData.templates.colOwner')}</th>
+              {canPromote && <th className="px-3 py-2">{t('masterData.templates.colActions')}</th>}
             </tr>
           </thead>
           <tbody>
             {templates.length === 0 && (
               <tr>
                 <td colSpan={canPromote ? 5 : 4} className="px-3 py-6 text-center text-slate-400">
-                  無符合條件的範本
+                  {t('masterData.templates.empty')}
                 </td>
               </tr>
             )}
-            {templates.map(t => (
-              <tr key={t.id} className="border-t">
-                <td className="px-3 py-2 font-medium">{t.name_zh}</td>
+            {templates.map(tpl => (
+              <tr key={tpl.id} className="border-t">
+                <td className="px-3 py-2 font-medium">{tpl.name_zh}</td>
                 <td className="px-3 py-2">
-                  <span className="px-1.5 py-0.5 rounded text-xs bg-blue-100 text-blue-800">{t.seq_kind}</span>
+                  <span className="px-1.5 py-0.5 rounded text-xs bg-blue-100 text-blue-800">{tpl.seq_kind}</span>
                 </td>
                 <td className="px-3 py-2">
-                  <span className={`px-1.5 py-0.5 rounded text-xs font-medium ${t.status === 'standard' ? 'bg-emerald-100 text-emerald-800' : 'bg-amber-100 text-amber-800'}`}>
-                    {t.status === 'standard' ? '廠標準' : '草稿'}
+                  <span className={`px-1.5 py-0.5 rounded text-xs font-medium ${tpl.status === 'standard' ? 'bg-emerald-100 text-emerald-800' : 'bg-amber-100 text-amber-800'}`}>
+                    {tpl.status === 'standard' ? t('masterData.templates.plantStandard') : t('masterData.templates.draft')}
                   </span>
                 </td>
-                <td className="px-3 py-2 text-slate-500">{t.owner ?? '—'}</td>
+                <td className="px-3 py-2 text-slate-500">{tpl.owner ?? '—'}</td>
                 {canPromote && (
                   <td className="px-3 py-2">
-                    {t.status === 'draft' ? (
+                    {tpl.status === 'draft' ? (
                       <div className="flex items-center gap-1">
                         <button
                           className="px-2 py-0.5 rounded text-xs bg-emerald-600 text-white hover:bg-emerald-700 disabled:opacity-40"
                           disabled={promote.isPending}
-                          onClick={() => handlePromote(t.id)}
+                          onClick={() => handlePromote(tpl.id)}
                         >
-                          升格 standard
+                          {t('masterData.templates.promote')}
                         </button>
-                        {promoteMsg[t.id] && (
-                          <span className="text-xs text-red-600">{promoteMsg[t.id]}</span>
+                        {promoteMsg[tpl.id] && (
+                          <span className="text-xs text-red-600">{promoteMsg[tpl.id]}</span>
                         )}
                       </div>
                     ) : (
-                      <span className="text-xs text-slate-400">已是廠標準</span>
+                      <span className="text-xs text-slate-400">{t('masterData.templates.alreadyStandard')}</span>
                     )}
                   </td>
                 )}
@@ -329,22 +332,20 @@ export function DictionariesPage() {
   return (
     <div className="space-y-4">
       <div className="bg-white rounded-xl border p-4">
-        <h2 className="font-semibold">主數據管理</h2>
+        <h2 className="font-semibold">{t('masterData.heading')}</h2>
         <p className="text-xs text-slate-500 mt-0.5">
-          管理工作詞彙（WorkVocabItem）、動作模組範本（MotionTemplate）與英文覆核進度（ADR-032 D6）。
-          身分：{me?.employee_no}（{me?.roles?.join(' · ') || 'viewer'}）
+          {t('masterData.description', {
+            employee: me?.employee_no ?? '',
+            roles: me?.roles?.join(' · ') || 'viewer',
+          })}
         </p>
       </div>
 
-      {/* Tab bar */}
-      {/* S8（一併修，便宜）：'vocab'／'templates' 的標籤目前硬編中文，未走 i18n key——
-          Phase A 的字串外部化只做了「側欄／標頭／共用元件」第一批（ADR-032 §5），
-          這兩個分頁標籤還沒排到。已知缺口，非本輪漏改；下一個做 Phase A 外部化的人
-          補上 `nav.vocab`／`nav.templates`（或等價 key）即可，不要誤以為這裡是新債。 */}
+      {/* Tab bar（三個標籤都走 i18n key：ADR-032 Phase A 第 2 批已補上前兩個） */}
       <div className="flex border-b bg-white rounded-t-xl overflow-hidden">
         {([
-          ['vocab', '詞彙庫'],
-          ['templates', '動作模組範本'],
+          ['vocab', t('masterData.tab.vocab')],
+          ['templates', t('masterData.tab.templates')],
           ['i18n-review', t('i18nReview.tabLabel')],
         ] as [DictTab, string][]).map(([id, label]) => (
           <button

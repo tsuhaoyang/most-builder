@@ -3,6 +3,7 @@
 // 檔位動態來自後端 options 的 a_bands.reach（DISC-06 不寫死）；band.index 即該檔 TMU（前端不算，僅呈現）。
 // value 慣例沿用 ASlot.reach：檔位值 = band.max_value（最末開放檔 null → 999；0 = 未選）。
 import { useMemo, useState } from 'react'
+import { useTranslation } from 'react-i18next'
 import type { ABand } from '../wi-workbench/cycle'
 
 export interface ADistanceSelectorProps {
@@ -46,6 +47,7 @@ const bandPath = (outerR: number, innerR: number) =>
   `L ${CX + innerR} ${CY} A ${innerR} ${innerR} 0 0 0 ${CX - innerR} ${CY} Z`
 
 export function ADistanceSelector({ value, onChange, bands }: ADistanceSelectorProps) {
+  const { t } = useTranslation()
   const [manualCm, setManualCm] = useState('')
 
   const zones = useMemo<Zone[]>(() => bands.map((b, i) => {
@@ -151,11 +153,11 @@ export function ADistanceSelector({ value, onChange, bands }: ADistanceSelectorP
           {/* 界線標籤 */}
           <g>
             <rect x={CX - NATURAL_R - 4} y={CY - 26} width="72" height="16" rx="3" fill="#e8f5e9" stroke="#1b5e20" strokeWidth="1" />
-            <text x={CX - NATURAL_R + 32} y={CY - 14} textAnchor="middle" fontSize="9" fill="#1b5e20" fontWeight="bold">自然伸手 {NATURAL_CM}cm</text>
+            <text x={CX - NATURAL_R + 32} y={CY - 14} textAnchor="middle" fontSize="9" fill="#1b5e20" fontWeight="bold">{t('workbench.aDistance.naturalReach', { cm: NATURAL_CM })}</text>
           </g>
           <g>
             <rect x={CX - MAXREACH_R - 4} y={CY - 26} width="72" height="16" rx="3" fill="#fbe9e7" stroke="#bf360c" strokeWidth="1" />
-            <text x={CX - MAXREACH_R + 32} y={CY - 14} textAnchor="middle" fontSize="9" fill="#bf360c" fontWeight="bold">最大伸手 {MAX_REACH_CM}cm</text>
+            <text x={CX - MAXREACH_R + 32} y={CY - 14} textAnchor="middle" fontSize="9" fill="#bf360c" fontWeight="bold">{t('workbench.aDistance.maxReach', { cm: MAX_REACH_CM })}</text>
           </g>
 
           {/* 前向軸刻度 */}
@@ -195,8 +197,8 @@ export function ADistanceSelector({ value, onChange, bands }: ADistanceSelectorP
           <line x1={CX + 45} y1={CY - 85} x2={CX + 45} y2={CY - 90} stroke="#a1887f" strokeWidth="1.3" strokeLinecap="round" />
           <line x1={CX + 48} y1={CY - 84} x2={CX + 49} y2={CY - 88} stroke="#a1887f" strokeWidth="1.3" strokeLinecap="round" />
           {/* 手臂姿勢註記 */}
-          <text x={CX - 58} y={CY - 66} fontSize="7.5" fill="#1b5e20" fontWeight="700">自然姿勢</text>
-          <text x={CX + 54} y={CY - 86} fontSize="7.5" fill="#bf360c" fontWeight="700">極限伸展</text>
+          <text x={CX - 58} y={CY - 66} fontSize="7.5" fill="#1b5e20" fontWeight="700">{t('workbench.aDistance.naturalPosture')}</text>
+          <text x={CX + 54} y={CY - 86} fontSize="7.5" fill="#bf360c" fontWeight="700">{t('workbench.aDistance.maxPosture')}</text>
           {/* 原點十字（肩關節中心） */}
           <circle cx={CX} cy={CY} r="4" fill="#fff" stroke="#212121" strokeWidth="2" />
           <line x1={CX - 7} y1={CY} x2={CX + 7} y2={CY} stroke="#212121" strokeWidth="1" />
@@ -208,8 +210,8 @@ export function ADistanceSelector({ value, onChange, bands }: ADistanceSelectorP
           )}
 
           {/* 標題／說明 */}
-          <text x={VB_W / 2} y="16" textAnchor="middle" fontSize="11" fill="#333" fontWeight="700">工位伸手範圍圖 (俯視)</text>
-          <text x={VB_W / 2} y="332" textAnchor="middle" fontSize="8" fill="#999">量測基準：以肩關節中心向前量測｜點擊對應區域直接選取</text>
+          <text x={VB_W / 2} y="16" textAnchor="middle" fontSize="11" fill="#333" fontWeight="700">{t('workbench.aDistance.diagramTitle')}</text>
+          <text x={VB_W / 2} y="332" textAnchor="middle" fontSize="8" fill="#999">{t('workbench.aDistance.diagramNote')}</text>
         </svg>
       </div>
 
@@ -220,22 +222,22 @@ export function ADistanceSelector({ value, onChange, bands }: ADistanceSelectorP
           {selected ? (
             <div className="flex flex-col gap-1.5">
               <div className="flex flex-col">
-                <span className="text-[10px] text-slate-400 tracking-wide">目前距離區間</span>
+                <span className="text-[10px] text-slate-400 tracking-wide">{t('workbench.aDistance.currentRange')}</span>
                 <span className="text-sm font-bold" style={{ color: selected.color }}>{selected.shortLabel} cm</span>
               </div>
               <div className="flex flex-col">
-                <span className="text-[10px] text-slate-400 tracking-wide">距離 TMU</span>
+                <span className="text-[10px] text-slate-400 tracking-wide">{t('workbench.aDistance.currentTmu')}</span>
                 <span className="text-[22px] leading-tight font-extrabold text-blue-800">{selected.tmu}</span>
               </div>
             </div>
           ) : (
-            <div className="text-xs text-slate-400 text-center py-2">請選擇距離區間</div>
+            <div className="text-xs text-slate-400 text-center py-2">{t('workbench.aDistance.pickPrompt')}</div>
           )}
         </div>
 
         {/* 距離對照表 */}
         <div className="rounded-md border border-slate-200 bg-white px-2 py-1.5">
-          <div className="text-[10px] font-semibold text-slate-500 mb-1">距離對照表</div>
+          <div className="text-[10px] font-semibold text-slate-500 mb-1">{t('workbench.aDistance.tableTitle')}</div>
           <div className="flex flex-col gap-px">
             {zones.map(z => (
               <button
@@ -259,18 +261,18 @@ export function ADistanceSelector({ value, onChange, bands }: ADistanceSelectorP
 
         {/* 實際距離輸入（自動落檔） */}
         <div className="rounded-md border border-slate-200 bg-white px-2.5 py-2">
-          <div className="text-[10px] font-semibold text-slate-500 mb-1">實際距離 (cm)</div>
+          <div className="text-[10px] font-semibold text-slate-500 mb-1">{t('workbench.aDistance.manualTitle')}</div>
           <input
             type="number" min={0} max={200} step={5}
             className="w-full border rounded px-2 py-1 text-sm"
             value={manualCm}
             onChange={e => onCmInput(e.target.value)}
-            placeholder="輸入 cm 自動落檔"
+            placeholder={t('workbench.aDistance.manualPlaceholder')}
             data-testid="a-distance-cm-input"
           />
           {manualZone && (
             <div className="text-[11px] font-semibold text-blue-700 mt-1">
-              → {manualZone.shortLabel} cm（{manualZone.tmu} TMU）
+              {t('workbench.aDistance.manualResult', { label: manualZone.shortLabel, tmu: manualZone.tmu })}
             </div>
           )}
         </div>

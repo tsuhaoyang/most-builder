@@ -1,4 +1,5 @@
 import { useState, type ReactNode } from 'react'
+import { Trans, useTranslation } from 'react-i18next'
 
 /**
  * 破壞性版本操作的二次確認。
@@ -25,6 +26,7 @@ export function ConfirmDialog({ title, body, confirmLabel, tone = 'warn', requir
   onCancel: () => void
   onConfirm: () => void
 }) {
+  const { t } = useTranslation()
   const [typed, setTyped] = useState('')
   const blocked = (requireText !== undefined && typed !== requireText) || !!blockConfirm
 
@@ -37,7 +39,11 @@ export function ConfirmDialog({ title, body, confirmLabel, tone = 'warn', requir
           {requireText !== undefined && (
             <div className="pt-1">
               <label htmlFor="confirm-code" className="block text-xs text-slate-600 mb-1">
-                請輸入版本代碼 <span className="font-mono text-slate-800">{requireText}</span> 以確認：
+                <Trans
+                  i18nKey="dictionary.confirmDialog.typePrompt"
+                  values={{ code: requireText }}
+                  components={{ code: <span className="font-mono text-slate-800" /> }}
+                />
               </label>
               <input
                 id="confirm-code" autoComplete="off" disabled={busy}
@@ -52,12 +58,12 @@ export function ConfirmDialog({ title, body, confirmLabel, tone = 'warn', requir
           {blockConfirm && blockReason && (
             <span className="text-xs text-slate-500 mr-auto" data-testid="confirm-blocked-reason">{blockReason}</span>
           )}
-          <button onClick={onCancel} disabled={busy} className="px-3 py-1 rounded border text-sm">取消</button>
+          <button onClick={onCancel} disabled={busy} className="px-3 py-1 rounded border text-sm">{t('dictionary.confirmDialog.cancel')}</button>
           <button
             onClick={onConfirm} disabled={busy || blocked}
             className={`px-3 py-1 rounded text-white text-sm disabled:opacity-40 disabled:cursor-not-allowed ${tone === 'danger' ? 'bg-red-600' : 'bg-amber-600'}`}
           >
-            {busy ? '處理中…' : confirmLabel}
+            {busy ? t('dictionary.confirmDialog.busy') : confirmLabel}
           </button>
         </div>
       </div>

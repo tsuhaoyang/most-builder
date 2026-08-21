@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react'
+import { Trans, useTranslation } from 'react-i18next'
 import type { OptionRow } from './api'
 import type { SectionSpec } from './paramSchema'
 
@@ -22,6 +23,7 @@ export function BandEditor({ section, items, readOnly, onSave }: {
   /** 回 'aborted'＝未寫入（例如轉去建草稿）→ 保留編輯內容與 dirty，不顯示成功。 */
   onSave: (items: Record<string, unknown>[]) => Promise<'saved' | 'aborted'>
 }) {
+  const { t } = useTranslation()
   // 帶型欄位不含 id；送出時只送 schema 欄位（後端 extra='forbid'）
   const cols = section.fields
   const toDraft = (rows: OptionRow[]) =>
@@ -76,15 +78,19 @@ export function BandEditor({ section, items, readOnly, onSave }: {
   return (
     <div className="space-y-3" data-testid="dict-band-editor">
       <div className="rounded-lg border border-sky-200 bg-sky-50 px-3 py-2 text-xs text-sky-900">
-        <p className="font-medium">帶界規則</p>
-        <p>上界必須遞增、不得重疊；開放帶（上界留空）僅能在末位。整組一起送出，按「儲存帶」才生效。</p>
+        <p className="font-medium">{t('dictionary.bandEditor.rulesTitle')}</p>
+        <p>{t('dictionary.bandEditor.rules')}</p>
         {section.requireOpenEnded && (
           <p className="mt-1 text-amber-800">
-            ⚠️ 本分量物理上無上界，<b>末帶必須是開放帶</b>（上界留空）；末帶若為有限值，超界輸入會被引擎靜默夾取到末帶而不報錯。
+            <Trans i18nKey="dictionary.bandEditor.openEndedWarn" components={{ b: <b /> }} />
           </p>
         )}
         {section.groupField && (
-          <p className="mt-1">本表依「{cols.find(c => c.key === section.groupField)?.label}」分組，各組各自成一組遞增帶序。</p>
+          <p className="mt-1">
+            {t('dictionary.bandEditor.groupNote', {
+              field: t(`dictionary.field.${cols.find(c => c.key === section.groupField)?.labelKey ?? ''}`, { defaultValue: '' }),
+            })}
+          </p>
         )}
       </div>
 
@@ -92,8 +98,8 @@ export function BandEditor({ section, items, readOnly, onSave }: {
         <table className="w-full text-sm">
           <thead>
             <tr className="bg-slate-100 text-left">
-              {cols.map(c => <th key={c.key} className="p-2 font-medium">{c.label}</th>)}
-              {!readOnly && <th className="p-2 font-medium">操作</th>}
+              {cols.map(c => <th key={c.key} className="p-2 font-medium">{t(`dictionary.field.${c.labelKey}`)}</th>)}
+              {!readOnly && <th className="p-2 font-medium">{t('dictionary.bandEditor.actions')}</th>}
             </tr>
           </thead>
           <tbody>
@@ -111,8 +117,8 @@ export function BandEditor({ section, items, readOnly, onSave }: {
                         type={c.type === 'text' ? 'text' : 'number'}
                         step={c.type === 'float' ? 'any' : 1}
                         disabled={readOnly}
-                        aria-label={`${c.label} 第 ${i + 1} 列`}
-                        placeholder={c.nullable ? '（開放）' : ''}
+                        aria-label={t('dictionary.bandEditor.cellAria', { label: t(`dictionary.field.${c.labelKey}`), n: i + 1 })}
+                        placeholder={c.nullable ? t('dictionary.bandEditor.openPlaceholder') : ''}
                         className="w-28 border rounded px-2 py-1 text-sm disabled:bg-slate-100"
                         value={cellOf(row as OptionRow, c.key)}
                         onChange={e => setCell(i, c.key, e.target.value)}
@@ -123,32 +129,32 @@ export function BandEditor({ section, items, readOnly, onSave }: {
                 {!readOnly && (
                   <td className="p-1">
                     <button onClick={() => removeRow(i)} className="px-2 py-1 rounded border border-red-300 text-red-600 text-xs hover:bg-red-50">
-                      刪除
+                      {t('dictionary.bandEditor.delete')}
                     </button>
                   </td>
                 )}
               </tr>
             ))}
             {draft.length === 0 && (
-              <tr><td colSpan={cols.length + 1} className="p-4 text-slate-400">（無帶）</td></tr>
+              <tr><td colSpan={cols.length + 1} className="p-4 text-slate-400">{t('dictionary.bandEditor.empty')}</td></tr>
             )}
           </tbody>
         </table>
       </div>
 
       {err && <p className="rounded border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700 whitespace-pre-wrap">{err}</p>}
-      {ok && <p className="rounded border border-emerald-200 bg-emerald-50 px-3 py-2 text-sm text-emerald-800">帶已儲存</p>}
+      {ok && <p className="rounded border border-emerald-200 bg-emerald-50 px-3 py-2 text-sm text-emerald-800">{t('dictionary.bandEditor.saved')}</p>}
 
       {!readOnly && (
         <div className="flex items-center gap-2">
-          <button onClick={addRow} className="px-3 py-1 rounded border text-sm">+ 增加一帶</button>
+          <button onClick={addRow} className="px-3 py-1 rounded border text-sm">{t('dictionary.bandEditor.addBand')}</button>
           <button
             onClick={() => void save()} disabled={busy || !dirty}
             className="px-3 py-1 rounded bg-sky-600 text-white text-sm disabled:opacity-40"
           >
-            {busy ? '儲存中…' : '儲存帶'}
+            {busy ? t('dictionary.bandEditor.saving') : t('dictionary.bandEditor.save')}
           </button>
-          {dirty && <span className="text-xs text-amber-600">有未儲存的變更</span>}
+          {dirty && <span className="text-xs text-amber-600">{t('dictionary.bandEditor.dirty')}</span>}
         </div>
       )}
     </div>

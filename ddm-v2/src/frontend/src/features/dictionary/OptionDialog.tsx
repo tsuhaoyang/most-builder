@@ -1,4 +1,5 @@
 import { useState } from 'react'
+import { useTranslation } from 'react-i18next'
 import type { FieldSpec, SectionSpec } from './paramSchema'
 import type { OptionRow } from './api'
 
@@ -26,6 +27,7 @@ function Field({ spec, value, onChange, disabled }: {
   onChange: (v: unknown) => void
   disabled: boolean
 }) {
+  const { t } = useTranslation()
   const id = `fld-${spec.key}`
   const common = 'w-full border rounded px-2 py-1 text-sm disabled:bg-slate-100 disabled:text-slate-400'
 
@@ -48,7 +50,7 @@ function Field({ spec, value, onChange, disabled }: {
           onChange={e => onChange(e.target.value === '' ? null : e.target.value)}
         >
           {spec.choices?.map(c => (
-            <option key={String(c.value)} value={c.value === null ? '' : c.value}>{c.label}</option>
+            <option key={String(c.value)} value={c.value === null ? '' : c.value}>{t(`dictionary.choice.${c.labelKey}`)}</option>
           ))}
         </select>
       )
@@ -79,10 +81,10 @@ function Field({ spec, value, onChange, disabled }: {
 
   return (
     <div className="grid grid-cols-[7rem_1fr] items-center gap-3">
-      <label htmlFor={id} className="text-sm text-slate-600 text-right">{spec.label}</label>
+      <label htmlFor={id} className="text-sm text-slate-600 text-right">{t(`dictionary.field.${spec.labelKey}`)}</label>
       <div>
         {control()}
-        {spec.hint && <p className="text-xs text-slate-400 mt-0.5">{spec.hint}</p>}
+        {spec.hintKey && <p className="text-xs text-slate-400 mt-0.5">{t(`dictionary.hint.${spec.hintKey}`)}</p>}
       </div>
     </div>
   )
@@ -95,6 +97,7 @@ export function OptionDialog({ section, row, onCancel, onSubmit }: {
   onCancel: () => void
   onSubmit: (payload: Record<string, unknown>) => Promise<void>
 }) {
+  const { t } = useTranslation()
   const [form, setForm] = useState(() => initial(section, row))
   const [busy, setBusy] = useState(false)
   const [err, setErr] = useState<string | null>(null)
@@ -119,8 +122,8 @@ export function OptionDialog({ section, row, onCancel, onSubmit }: {
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/30 p-4" role="dialog" aria-modal="true">
       <div className="bg-white rounded-xl shadow-xl w-full max-w-lg max-h-full flex flex-col" data-testid="dict-option-dialog">
         <div className="flex items-center px-4 py-3 border-b">
-          <h3 className="font-medium">{isEdit ? '編輯字典選項' : '新增字典選項'}</h3>
-          <button onClick={onCancel} className="ml-auto text-slate-400 hover:text-slate-700" aria-label="關閉">✕</button>
+          <h3 className="font-medium">{isEdit ? t('dictionary.optionDialog.editTitle') : t('dictionary.optionDialog.createTitle')}</h3>
+          <button onClick={onCancel} className="ml-auto text-slate-400 hover:text-slate-700" aria-label={t('dictionary.optionDialog.closeAria')}>✕</button>
         </div>
 
         <div className="p-4 space-y-3 overflow-y-auto">
@@ -134,9 +137,9 @@ export function OptionDialog({ section, row, onCancel, onSubmit }: {
         </div>
 
         <div className="flex justify-end gap-2 px-4 py-3 border-t">
-          <button onClick={onCancel} disabled={busy} className="px-3 py-1 rounded border text-sm">取消</button>
+          <button onClick={onCancel} disabled={busy} className="px-3 py-1 rounded border text-sm">{t('dictionary.optionDialog.cancel')}</button>
           <button onClick={() => void submit()} disabled={busy} className="px-3 py-1 rounded bg-sky-600 text-white text-sm disabled:opacity-50">
-            {busy ? '儲存中…' : '儲存'}
+            {busy ? t('dictionary.optionDialog.saving') : t('dictionary.optionDialog.save')}
           </button>
         </div>
       </div>

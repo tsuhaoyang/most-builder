@@ -1,4 +1,6 @@
 import { useState } from 'react'
+import { Trans, useTranslation } from 'react-i18next'
+import type { TFunction } from 'i18next'
 import type { DiffChanged, DiffSection, RuleSetDiff } from './api'
 
 /**
@@ -24,33 +26,12 @@ import type { DiffChanged, DiffSection, RuleSetDiff } from './api'
  * 而乘數等比縮放該版本每一個 TMU。見 `VALUE_AFFECTING_HEADER_FIELDS`。
  */
 
-const SECTION_ZH: Record<string, string> = {
-  a_bands: 'A 距離（帶）',
-  b: 'B 身體動作',
-  g: 'G 取得控制',
-  p_bases: 'P 放置（基礎）',
-  p_addons: 'P 放置（附加）',
-  m_ladder: 'M 距離階梯',
-  m_foot: 'M 腳步',
-  m_verbs: 'M 動詞',
-  m_rotation: 'M 旋轉',
-  m_hand: 'M 手部角度',
-  x: 'X 製程時間',
-  i: 'I 對位/檢查',
-}
-
-const FIELD_ZH: Record<string, string> = {
-  name_zh: '版本名稱', multiplier: 'TMU 乘數',
-  base_tmu: 'TMU', delta_tmu: '增量 TMU', index_value: '指數', fixed_tmu: '固定 TMU',
-  tmu: 'TMU', index: '指數', fixed_seconds: '固定秒數',
-  max_value: '上界', max_cm: '上界(cm)', max_deg: '角度上界(°)', max_diameter_cm: '直徑上界(cm)',
-  revolutions: '圈數', label_zh: '顯示文字', label_en: '英文標籤',
-  sentence_text_zh: 'WI 句子', sort: '排序', sort_order: '排序', is_active: '啟用',
-  requires_modifier: '需修飾子', modifier_key: '修飾子', needs_precision: '需精度',
-  max_select: '最多可選', display_rule: '顯示規則', pricing_kind: '計價方式',
-  mode: '模式', category: '類別', direction_mode: '方向模式', vision_scope: '視覺範圍',
-  is_default: '預設值',
-}
+/**
+ * 區塊名與欄位名的顯示文字都在 `dictionary.diffSection.*` / `dictionary.field.*`
+ * （後者與 `paramSchema.ts` 的欄位標籤**共用同一份**——兩邊本來各抄一份同樣的
+ * 中文，改一邊忘另一邊就會出現「同一個欄位在編輯器叫 A、在差異頁叫 B」）。
+ * 後端若回一個對照表沒有的鍵，沿用原始鍵名（不隱形變空白）。
+ */
 
 /**
  * 直接決定 TMU 的欄位 —— 這些變了，線上工時就變。
@@ -74,27 +55,30 @@ const VALUE_FIELDS = new Set([
  */
 const VALUE_AFFECTING_HEADER_FIELDS = new Set(['multiplier'])
 
-const fieldLabel = (f: string) => FIELD_ZH[f] ?? f
+const fieldLabel = (t: TFunction, f: string) => t(`dictionary.field.${f}`, { defaultValue: f })
+const sectionLabel = (t: TFunction, s: string) => t(`dictionary.diffSection.${s}`, { defaultValue: s })
 
-function val(v: unknown) {
-  if (v === null || v === undefined) return <span className="text-slate-400">（無）</span>
-  if (typeof v === 'boolean') return v ? '是' : '否'
-  if (v === '') return <span className="text-slate-400">（空）</span>
-  return String(v)
+function Val({ v }: { v: unknown }) {
+  const { t } = useTranslation()
+  if (v === null || v === undefined) return <span className="text-slate-400">{t('dictionary.diff.none')}</span>
+  if (typeof v === 'boolean') return <>{v ? t('dictionary.diff.yes') : t('dictionary.diff.no')}</>
+  if (v === '') return <span className="text-slate-400">{t('dictionary.diff.empty')}</span>
+  return <>{String(v)}</>
 }
 
 /** 前 → 後。數值欄用較強的視覺權重。 */
 function Delta({ field, before, after }: { field: string; before: unknown; after: unknown }) {
+  const { t } = useTranslation()
   const strong = VALUE_FIELDS.has(field)
   return (
     <div className={`flex flex-wrap items-baseline gap-1 ${strong ? 'text-sm' : 'text-xs'}`}>
       <span className={strong ? 'font-medium text-slate-700' : 'text-slate-500'}>
-        {fieldLabel(field)}
+        {fieldLabel(t, field)}
       </span>
-      <span className={strong ? 'text-red-700 line-through' : 'text-slate-400 line-through'}>{val(before)}</span>
+      <span className={strong ? 'text-red-700 line-through' : 'text-slate-400 line-through'}><Val v={before} /></span>
       <span className="text-slate-400">→</span>
-      <span className={strong ? 'font-semibold text-emerald-700' : 'text-slate-600'}>{val(after)}</span>
-      {strong && <span className="text-[10px] text-amber-700 border border-amber-300 rounded px-1">影響工時</span>}
+      <span className={strong ? 'font-semibold text-emerald-700' : 'text-slate-600'}><Val v={after} /></span>
+      {strong && <span className="text-[10px] text-amber-700 border border-amber-300 rounded px-1">{t('dictionary.diff.affectsTime')}</span>}
     </div>
   )
 }
@@ -130,6 +114,7 @@ function SectionBlock({ name, sec, counts }: {
   sec: DiffSection
   counts?: { before: number; after: number }
 }) {
+  const { t } = useTranslation()
   const added = sec.added ?? []
   const removed = sec.removed ?? []
   const changed = sec.changed ?? []
@@ -137,13 +122,13 @@ function SectionBlock({ name, sec, counts }: {
   return (
     <details className="border rounded-lg" open={changed.some(c => Object.keys(c.fields).some(f => VALUE_FIELDS.has(f)))}>
       <summary className="px-3 py-2 text-sm cursor-pointer select-none flex flex-wrap items-center gap-2">
-        <span className="font-medium">{SECTION_ZH[name] ?? name}</span>
+        <span className="font-medium">{sectionLabel(t, name)}</span>
         {added.length > 0 && <span className="text-xs px-1.5 rounded bg-emerald-100 text-emerald-800">+{added.length}</span>}
         {removed.length > 0 && <span className="text-xs px-1.5 rounded bg-red-100 text-red-800">−{removed.length}</span>}
-        {changed.length > 0 && <span className="text-xs px-1.5 rounded bg-amber-100 text-amber-800">變更 {changed.length}</span>}
+        {changed.length > 0 && <span className="text-xs px-1.5 rounded bg-amber-100 text-amber-800">{t('dictionary.diff.changedCount', { n: changed.length })}</span>}
         {counts && (
           <span className={`text-xs ${bulk ? 'text-amber-700 font-medium' : 'text-slate-400'}`}>
-            列數 {counts.before} → {counts.after}
+            {t('dictionary.diff.rowCounts', { before: counts.before, after: counts.after })}
           </span>
         )}
       </summary>
@@ -153,14 +138,14 @@ function SectionBlock({ name, sec, counts }: {
         )}
         {added.length > 0 && (
           <div className="text-xs">
-            <span className="text-emerald-800 font-medium">新增：</span>
-            <span className="font-mono text-slate-600">{added.map(a => a.key).join('、')}</span>
+            <span className="text-emerald-800 font-medium">{t('dictionary.diff.addedLabel')}</span>
+            <span className="font-mono text-slate-600">{added.map(a => a.key).join(t('dictionary.listSeparator'))}</span>
           </div>
         )}
         {removed.length > 0 && (
           <div className="text-xs">
-            <span className="text-red-800 font-medium">刪除：</span>
-            <span className="font-mono text-slate-600">{removed.map(r => r.key).join('、')}</span>
+            <span className="text-red-800 font-medium">{t('dictionary.diff.removedLabel')}</span>
+            <span className="font-mono text-slate-600">{removed.map(r => r.key).join(t('dictionary.listSeparator'))}</span>
           </div>
         )}
       </div>
@@ -170,19 +155,20 @@ function SectionBlock({ name, sec, counts }: {
 
 /** 血緣揭露：base 不是本版的 clone 來源時，diff 混了既有落差與本次編輯。 */
 function Lineage({ d }: { d: RuleSetDiff }) {
+  const { t } = useTranslation()
   if (d.base_is_source === false) {
     return (
       <div className="rounded-lg border border-amber-300 bg-amber-50 px-3 py-2 text-xs text-amber-900" data-testid="diff-lineage-warning">
-        <p className="font-medium">⚠ 血緣提醒</p>
+        <p className="font-medium">{t('dictionary.diff.lineageTitle')}</p>
         {/* 後端已備 lineage_note，優先顯示它 */}
-        <p>{d.lineage_note ?? `比較基準是 ${d.base_code}，但本版是從 ${d.source_code} clone 出來的——下列差異不可全部視為本次改動。`}</p>
+        <p>{d.lineage_note ?? t('dictionary.diff.lineageFallback', { base: d.base_code, source: d.source_code })}</p>
       </div>
     )
   }
   if (d.source_code === null) {
     return (
       <div className="rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-xs text-slate-600" data-testid="diff-lineage-unknown">
-        無 clone 紀錄（例如匯入或認證版本），<b>無法判斷血緣</b>——不能假定本版就是從 {d.base_code} 來的。
+        <Trans i18nKey="dictionary.diff.lineageUnknown" values={{ base: d.base_code }} components={{ b: <b /> }} />
       </div>
     )
   }
@@ -196,18 +182,19 @@ export function DiffView({ data, isLoading, error, compact }: {
   /** 內嵌於確認框時用較緊湊的排版 */
   compact?: boolean
 }) {
+  const { t } = useTranslation()
   const [open, setOpen] = useState(!compact)
 
   if (isLoading) {
-    return <p className="text-sm text-slate-500" data-testid="diff-loading">載入差異…</p>
+    return <p className="text-sm text-slate-500" data-testid="diff-loading">{t('dictionary.diff.loading')}</p>
   }
   // 取不到差異＝未知，**不得**呈現為「無差異」
   if (error) {
     return (
       <div className="rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700" data-testid="diff-error">
-        <p className="font-medium">無法取得版本差異</p>
+        <p className="font-medium">{t('dictionary.diff.errorTitle')}</p>
         <p className="text-xs">{(error as Error).message}</p>
-        <p className="text-xs">未能確認這次會變動什麼，請排除問題後再覆核。</p>
+        <p className="text-xs">{t('dictionary.diff.errorHint')}</p>
       </div>
     )
   }
@@ -219,7 +206,7 @@ export function DiffView({ data, isLoading, error, compact }: {
   if (data.compared_with_self) {
     return (
       <div className="rounded-lg border bg-slate-50 px-3 py-2 text-sm text-slate-600" data-testid="diff-self">
-        本版就是目前啟用中的版本（{data.base_code}），<b>沒有可比較的基準</b>。
+        <Trans i18nKey="dictionary.diff.self" values={{ base: data.base_code }} components={{ b: <b /> }} />
       </div>
     )
   }
@@ -235,8 +222,8 @@ export function DiffView({ data, isLoading, error, compact }: {
   return (
     <div className="space-y-2" data-testid="diff-view">
       <div className="text-xs text-slate-600">
-        比較基準：<span className="font-mono">{data.base_code}</span>
-        <span className="text-slate-400">（目前啟用中）</span>
+        {t('dictionary.diff.baseLabel')}<span className="font-mono">{data.base_code}</span>
+        <span className="text-slate-400">{t('dictionary.diff.baseActive')}</span>
       </div>
 
       <Lineage d={data} />
@@ -244,7 +231,7 @@ export function DiffView({ data, isLoading, error, compact }: {
       {/* 邊界狀態二：確實逐欄相同 */}
       {summary.identical ? (
         <div className="rounded-lg border border-emerald-200 bg-emerald-50 px-3 py-2 text-sm text-emerald-800" data-testid="diff-identical">
-          與 <span className="font-mono">{data.base_code}</span> <b>逐欄比對完全相同</b>，發布後線上的值不會有任何改變。
+          <Trans i18nKey="dictionary.diff.identical" values={{ base: data.base_code }} components={{ b: <b />, code: <span className="font-mono" /> }} />
         </div>
       ) : (
         <>
@@ -256,14 +243,17 @@ export function DiffView({ data, isLoading, error, compact }: {
           {noSectionChanges && (
             headerValueFields.length === 0 ? (
               <div className="rounded-lg border border-emerald-200 bg-emerald-50 px-3 py-2 text-sm text-emerald-800" data-testid="diff-values-unchanged">
-                <b>值未變動</b>（僅版本名稱不同）——發布後線上的工時不會改變。
+                <Trans i18nKey="dictionary.diff.valuesUnchanged" components={{ b: <b /> }} />
               </div>
             ) : (
               <div className="rounded-lg border border-amber-400 bg-amber-50 px-3 py-2 text-sm text-amber-900" data-testid="diff-multiplier-warning">
-                <p className="font-medium">⚠ 區塊逐列未變，但版本表頭改了會影響計算的欄位</p>
+                <p className="font-medium">{t('dictionary.diff.headerWarnTitle')}</p>
                 <p>
-                  {headerValueFields.map(fieldLabel).join('、')} 改變會
-                  <b>等比影響本版所有工時</b>，不可因為「各區塊 0 筆變更」就視為沒有影響。
+                  <Trans
+                    i18nKey="dictionary.diff.headerWarnBody"
+                    values={{ fields: headerValueFields.map(f => fieldLabel(t, f)).join(t('dictionary.listSeparator')) }}
+                    components={{ b: <b /> }}
+                  />
                 </p>
               </div>
             )
@@ -271,18 +261,22 @@ export function DiffView({ data, isLoading, error, compact }: {
 
           <div className="rounded-lg border px-3 py-2 text-sm bg-white" data-testid="diff-summary">
             <div className="flex flex-wrap items-center gap-3">
-              <span className="text-emerald-800">新增 <b>{summary.added}</b></span>
-              <span className="text-red-800">刪除 <b>{summary.removed}</b></span>
-              <span className="text-amber-800">變更 <b>{summary.changed}</b></span>
+              <span className="text-emerald-800">{t('dictionary.diff.added')} <b>{summary.added}</b></span>
+              <span className="text-red-800">{t('dictionary.diff.removed')} <b>{summary.removed}</b></span>
+              <span className="text-amber-800">{t('dictionary.diff.changed')} <b>{summary.changed}</b></span>
             </div>
             {summary.changed_sections.length > 0 && (
               <p className="text-xs text-slate-600 mt-1">
-                受影響區塊：{summary.changed_sections.map(s => SECTION_ZH[s] ?? s).join('、')}
+                {t('dictionary.diff.affectedSections', {
+                  sections: summary.changed_sections.map(s => sectionLabel(t, s)).join(t('dictionary.listSeparator')),
+                })}
               </p>
             )}
             {summary.header_changed.length > 0 && (
               <p className="text-xs text-slate-600">
-                版本表頭：{summary.header_changed.map(fieldLabel).join('、')}
+                {t('dictionary.diff.headerChanged', {
+                  fields: summary.header_changed.map(f => fieldLabel(t, f)).join(t('dictionary.listSeparator')),
+                })}
               </p>
             )}
           </div>
@@ -292,14 +286,14 @@ export function DiffView({ data, isLoading, error, compact }: {
             className="text-xs text-sky-700 underline"
             data-testid="diff-toggle"
           >
-            {open ? '收合逐欄差異' : '展開逐欄差異'}
+            {open ? t('dictionary.diff.detailCollapse') : t('dictionary.diff.detailExpand')}
           </button>
 
           {open && (
             <div className="space-y-2 max-h-80 overflow-y-auto" data-testid="diff-detail">
               {headerEntries.length > 0 && (
                 <div className="border rounded-lg px-3 py-2">
-                  <p className="text-sm font-medium mb-1">版本表頭</p>
+                  <p className="text-sm font-medium mb-1">{t('dictionary.diff.headerBlock')}</p>
                   {sortFields(Object.fromEntries(headerEntries)).map(([f, d]) => (
                     <Delta key={f} field={f} before={d.before} after={d.after} />
                   ))}

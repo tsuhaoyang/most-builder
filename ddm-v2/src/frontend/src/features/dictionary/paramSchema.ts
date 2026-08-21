@@ -6,26 +6,34 @@
  *
  * **欄位名＝後端 schema 的 model_fields**（`schemas/v2/rule_set_options.py`）。
  * 這裡不得憑空新增後端沒有的欄位——表格取不到值時顯示「—」。
+ *
+ * ADR-032 Phase A：本檔只存 **i18n key**（`labelKey`／`hintKey`／`addLabelKey`），
+ * 字面值在 `shared/i18n/resources/*.ts` 的 `dictionary.*`。這是模組層級常數、
+ * 不在元件內，拿不到 `useTranslation()`；存 key 讓語言切換時整棵表跟著重繪，
+ * 而不是把某一次渲染時的字串釘死在模組載入的當下。
  */
 
 export type FieldType = 'text' | 'int' | 'float' | 'bool' | 'select'
 
 export interface FieldSpec {
   key: string
-  label: string
+  /** i18n key（`dictionary.field.*`）。 */
+  labelKey: string
   type: FieldType
-  /** select 的選項；`null` 值代表「未設定」。 */
-  choices?: { value: string | null; label: string }[]
+  /** select 的選項；`null` 值代表「未設定」。`labelKey` 屬 `dictionary.choice.*`。 */
+  choices?: { value: string | null; labelKey: string }[]
   /** 可為 null（送出時給 null 而非空字串）。 */
   nullable?: boolean
-  hint?: string
+  /** i18n key（`dictionary.hint.*`）。 */
+  hintKey?: string
   /** 建立後不可改（code 是 URL 定址鍵，改 code＝刪+建）。 */
   immutableOnEdit?: boolean
 }
 
 export interface SectionSpec {
   key: string
-  label: string
+  /** i18n key（`dictionary.section.*`）。 */
+  labelKey: string
   kind: 'options' | 'bands'
   fields: FieldSpec[]
   /** 選項型：表格「TMU」欄取哪個欄位（各子表命名不同）。null＝該表無 TMU 概念。 */
@@ -38,23 +46,24 @@ export interface SectionSpec {
   groupField?: string
   /** 帶型：末帶必須 open-ended（物理無上界；否則引擎會靜默夾取）。 */
   requireOpenEnded?: boolean
-  /** 新增按鈕文案（v3 addLabel 慣例）。 */
-  addLabel?: string
+  /** 新增按鈕文案的 i18n key（`dictionary.addLabel.*`；v3 addLabel 慣例）。 */
+  addLabelKey?: string
 }
 
 export interface ParamSpec {
   key: string
-  label: string
+  /** i18n key（`dictionary.param.*`）。 */
+  labelKey: string
   sections: SectionSpec[]
 }
 
 // ── 共用欄位 ────────────────────────────────────────────────────────
-const CODE: FieldSpec = { key: 'code', label: '代碼', type: 'text', immutableOnEdit: true, hint: '僅限英數與 _ . -' }
-const LABEL_ZH: FieldSpec = { key: 'label_zh', label: '顯示文字', type: 'text' }
-const LABEL_EN: FieldSpec = { key: 'label_en', label: '英文標籤', type: 'text', nullable: true }
-const SENTENCE: FieldSpec = { key: 'sentence_text_zh', label: 'WI 句子', type: 'text', nullable: true }
-const SORT: FieldSpec = { key: 'sort_order', label: '排序', type: 'int' }
-const ACTIVE: FieldSpec = { key: 'is_active', label: '啟用', type: 'bool' }
+const CODE: FieldSpec = { key: 'code', labelKey: 'code', type: 'text', immutableOnEdit: true, hintKey: 'code' }
+const LABEL_ZH: FieldSpec = { key: 'label_zh', labelKey: 'label_zh', type: 'text' }
+const LABEL_EN: FieldSpec = { key: 'label_en', labelKey: 'label_en', type: 'text', nullable: true }
+const SENTENCE: FieldSpec = { key: 'sentence_text_zh', labelKey: 'sentence_text_zh', type: 'text', nullable: true }
+const SORT: FieldSpec = { key: 'sort_order', labelKey: 'sort_order', type: 'int' }
+const ACTIVE: FieldSpec = { key: 'is_active', labelKey: 'is_active', type: 'bool' }
 
 const optionFields = (...extra: FieldSpec[]): FieldSpec[] => [
   CODE, LABEL_ZH, LABEL_EN, SENTENCE, ...extra, SORT, ACTIVE,
@@ -65,29 +74,29 @@ const bandTail: FieldSpec[] = [SORT, ACTIVE]
 
 const A_BAND = (component: string, openEnded: boolean): SectionSpec => ({
   key: component,
-  label: { reach: '伸手', twist: '手度', foot: '腳步' }[component]!,
+  labelKey: component,
   kind: 'bands',
   tmuField: null,
   boundField: 'max_value',
   valueField: 'index_value',
   requireOpenEnded: openEnded,
   fields: [
-    { key: 'max_value', label: '上界', type: 'float', nullable: true, hint: '留空＝開放帶（無上界）' },
-    { key: 'index_value', label: '指數', type: 'int' },
+    { key: 'max_value', labelKey: 'max_value', type: 'float', nullable: true, hintKey: 'maxValue' },
+    { key: 'index_value', labelKey: 'index_value', type: 'int' },
     ...bandTail,
   ],
 })
 
-const M_DIST_BAND = (key: string, label: string): SectionSpec => ({
+const M_DIST_BAND = (key: string): SectionSpec => ({
   key,
-  label,
+  labelKey: key,
   kind: 'bands',
   tmuField: null,
   boundField: 'max_cm',
   valueField: 'tmu',
   fields: [
-    { key: 'max_cm', label: '上界(cm)', type: 'float', nullable: true, hint: '留空＝開放帶' },
-    { key: 'tmu', label: 'TMU', type: 'int' },
+    { key: 'max_cm', labelKey: 'max_cm', type: 'float', nullable: true, hintKey: 'openBand' },
+    { key: 'tmu', labelKey: 'tmu', type: 'int' },
     ...bandTail,
   ],
 })
@@ -95,7 +104,7 @@ const M_DIST_BAND = (key: string, label: string): SectionSpec => ({
 export const PARAMS: ParamSpec[] = [
   {
     key: 'A',
-    label: 'A 距離',
+    labelKey: 'A',
     sections: [
       // reach/foot 物理無上界 → 末帶須開放（rule_set_data.py:63 會靜默夾取）
       A_BAND('reach', true),
@@ -105,52 +114,52 @@ export const PARAMS: ParamSpec[] = [
   },
   {
     key: 'B',
-    label: 'B 身體動作',
+    labelKey: 'B',
     sections: [{
-      key: 'default', label: '選項', kind: 'options', tmuField: 'index_value', addLabel: '新增身體動作',
+      key: 'default', labelKey: 'default', kind: 'options', tmuField: 'index_value', addLabelKey: 'body',
       fields: optionFields(
-        { key: 'index_value', label: '指數', type: 'int' },
-        { key: 'is_default', label: '預設值', type: 'bool' },
+        { key: 'index_value', labelKey: 'index_value', type: 'int' },
+        { key: 'is_default', labelKey: 'is_default', type: 'bool' },
       ),
     }],
   },
   {
     key: 'G',
-    label: 'G 取得控制',
+    labelKey: 'G',
     sections: [{
-      key: 'default', label: '選項', kind: 'options', tmuField: 'base_tmu', addLabel: '新增取得控制',
+      key: 'default', labelKey: 'default', kind: 'options', tmuField: 'base_tmu', addLabelKey: 'get',
       fields: optionFields(
-        { key: 'base_tmu', label: 'TMU', type: 'int' },
-        { key: 'modifier_key', label: '修飾子', type: 'text', nullable: true },
-        { key: 'requires_modifier', label: '需修飾子', type: 'bool' },
+        { key: 'base_tmu', labelKey: 'base_tmu', type: 'int' },
+        { key: 'modifier_key', labelKey: 'modifier_key', type: 'text', nullable: true },
+        { key: 'requires_modifier', labelKey: 'requires_modifier', type: 'bool' },
       ),
     }],
   },
   {
     key: 'P',
-    label: 'P 放置',
+    labelKey: 'P',
     sections: [
       {
-        key: 'base', label: '基礎', kind: 'options', tmuField: 'base_tmu', addLabel: '新增放置選項',
+        key: 'base', labelKey: 'base', kind: 'options', tmuField: 'base_tmu', addLabelKey: 'placeBase',
         fields: optionFields(
-          { key: 'base_tmu', label: 'TMU', type: 'int' },
-          { key: 'category', label: '類別', type: 'text', nullable: true },
-          { key: 'direction_mode', label: '方向模式', type: 'text', nullable: true },
+          { key: 'base_tmu', labelKey: 'base_tmu', type: 'int' },
+          { key: 'category', labelKey: 'category', type: 'text', nullable: true },
+          { key: 'direction_mode', labelKey: 'direction_mode', type: 'text', nullable: true },
         ),
       },
       {
-        key: 'addon', label: '附加', kind: 'options', tmuField: 'delta_tmu', addLabel: '新增附加選項',
+        key: 'addon', labelKey: 'addon', kind: 'options', tmuField: 'delta_tmu', addLabelKey: 'placeAddon',
         fields: optionFields(
-          { key: 'delta_tmu', label: '增量 TMU', type: 'int' },
-          { key: 'needs_precision', label: '需精度', type: 'bool' },
+          { key: 'delta_tmu', labelKey: 'delta_tmu', type: 'int' },
+          { key: 'needs_precision', labelKey: 'needs_precision', type: 'bool' },
           // 引擎取 min(max_select) 當 p_addon_max → 全表須一致，後端會跨列檢查
-          { key: 'max_select', label: '最多可選', type: 'int', hint: '全表必須一致（引擎取最小值當上限）' },
+          { key: 'max_select', labelKey: 'max_select', type: 'int', hintKey: 'maxSelect' },
           {
-            key: 'display_rule', label: '顯示規則', type: 'select',
+            key: 'display_rule', labelKey: 'display_rule', type: 'select',
             choices: [
-              { value: 'show_self', label: '顯示自身' },
-              { value: 'hidden', label: '隱藏' },
-              { value: 'prefix_visible_term', label: '前置可見詞' },
+              { value: 'show_self', labelKey: 'display_rule.show_self' },
+              { value: 'hidden', labelKey: 'display_rule.hidden' },
+              { value: 'prefix_visible_term', labelKey: 'display_rule.prefix_visible_term' },
             ],
           },
         ),
@@ -159,42 +168,42 @@ export const PARAMS: ParamSpec[] = [
   },
   {
     key: 'M',
-    label: 'M 控制移動',
+    labelKey: 'M',
     sections: [
       {
-        key: 'verb', label: '動詞', kind: 'options', tmuField: 'fixed_tmu', addLabel: '新增控制移動',
+        key: 'verb', labelKey: 'verb', kind: 'options', tmuField: 'fixed_tmu', addLabelKey: 'moveVerb',
         fields: optionFields(
           {
-            key: 'pricing_kind', label: '計價方式', type: 'select',
+            key: 'pricing_kind', labelKey: 'pricing_kind', type: 'select',
             choices: [
-              { value: 'fixed', label: '固定值' },
-              { value: 'ladder', label: '距離階梯' },
-              { value: 'foot', label: '腳步' },
-              { value: 'hand', label: '手部角度' },
-              { value: 'rotate', label: '旋轉' },
+              { value: 'fixed', labelKey: 'pricing_kind.fixed' },
+              { value: 'ladder', labelKey: 'pricing_kind.ladder' },
+              { value: 'foot', labelKey: 'pricing_kind.foot' },
+              { value: 'hand', labelKey: 'pricing_kind.hand' },
+              { value: 'rotate', labelKey: 'pricing_kind.rotate' },
             ],
           },
-          { key: 'fixed_tmu', label: '固定 TMU', type: 'int', nullable: true, hint: '計價方式為「固定值」時必填' },
+          { key: 'fixed_tmu', labelKey: 'fixed_tmu', type: 'int', nullable: true, hintKey: 'fixedTmu' },
         ),
       },
-      M_DIST_BAND('ladder', '距離階梯'),
-      M_DIST_BAND('foot', '腳步'),
+      M_DIST_BAND('ladder'),
+      M_DIST_BAND('foot'),
       {
-        key: 'rotation', label: '旋轉', kind: 'bands', tmuField: null,
+        key: 'rotation', labelKey: 'rotation', kind: 'bands', tmuField: null,
         boundField: 'max_diameter_cm', valueField: 'tmu', groupField: 'revolutions',
         fields: [
-          { key: 'max_diameter_cm', label: '直徑上界(cm)', type: 'float', nullable: true, hint: '留空＝開放帶' },
-          { key: 'revolutions', label: '圈數', type: 'int', hint: '1–3；各圈數自成一組帶序' },
-          { key: 'tmu', label: 'TMU', type: 'int' },
+          { key: 'max_diameter_cm', labelKey: 'max_diameter_cm', type: 'float', nullable: true, hintKey: 'openBand' },
+          { key: 'revolutions', labelKey: 'revolutions', type: 'int', hintKey: 'revolutions' },
+          { key: 'tmu', labelKey: 'tmu', type: 'int' },
           ...bandTail,
         ],
       },
       {
-        key: 'hand', label: '手部角度', kind: 'bands', tmuField: null,
+        key: 'hand', labelKey: 'hand', kind: 'bands', tmuField: null,
         boundField: 'max_deg', valueField: 'tmu',
         fields: [
-          { key: 'max_deg', label: '角度上界(°)', type: 'float', nullable: true, hint: '留空＝開放帶' },
-          { key: 'tmu', label: 'TMU', type: 'int' },
+          { key: 'max_deg', labelKey: 'max_deg', type: 'float', nullable: true, hintKey: 'openBand' },
+          { key: 'tmu', labelKey: 'tmu', type: 'int' },
           ...bandTail,
         ],
       },
@@ -202,36 +211,36 @@ export const PARAMS: ParamSpec[] = [
   },
   {
     key: 'X',
-    label: 'X 製程時間',
+    labelKey: 'X',
     sections: [{
       // X 是秒數制，無 TMU 欄 → 表格 TMU 欄顯示「—」
-      key: 'default', label: '選項', kind: 'options', tmuField: null, addLabel: '新增製程選項',
+      key: 'default', labelKey: 'default', kind: 'options', tmuField: null, addLabelKey: 'process',
       fields: optionFields(
         {
-          key: 'mode', label: '模式', type: 'select',
+          key: 'mode', labelKey: 'mode', type: 'select',
           choices: [
-            { value: 'zero', label: '零' },
-            { value: 'seconds', label: '使用者輸入秒數' },
-            { value: 'fixed', label: '固定秒數' },
+            { value: 'zero', labelKey: 'mode.zero' },
+            { value: 'seconds', labelKey: 'mode.seconds' },
+            { value: 'fixed', labelKey: 'mode.fixed' },
           ],
         },
-        { key: 'fixed_seconds', label: '固定秒數', type: 'float', nullable: true, hint: '模式為「固定秒數」時必填' },
+        { key: 'fixed_seconds', labelKey: 'fixed_seconds', type: 'float', nullable: true, hintKey: 'fixedSeconds' },
       ),
     }],
   },
   {
     key: 'I',
-    label: 'I 對位/檢查',
+    labelKey: 'I',
     sections: [{
-      key: 'default', label: '選項', kind: 'options', tmuField: 'index_value', addLabel: '新增對位/檢查',
+      key: 'default', labelKey: 'default', kind: 'options', tmuField: 'index_value', addLabelKey: 'align',
       fields: optionFields(
-        { key: 'index_value', label: '指數', type: 'int' },
+        { key: 'index_value', labelKey: 'index_value', type: 'int' },
         {
-          key: 'vision_scope', label: '視覺範圍', type: 'select', nullable: true,
+          key: 'vision_scope', labelKey: 'vision_scope', type: 'select', nullable: true,
           choices: [
-            { value: null, label: '（未設定）' },
-            { value: 'normal', label: '正常' },
-            { value: 'outside', label: '範圍外' },
+            { value: null, labelKey: 'vision_scope.unset' },
+            { value: 'normal', labelKey: 'vision_scope.normal' },
+            { value: 'outside', labelKey: 'vision_scope.outside' },
           ],
         },
       ),

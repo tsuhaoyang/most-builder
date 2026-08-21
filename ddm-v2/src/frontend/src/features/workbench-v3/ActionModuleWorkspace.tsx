@@ -3,6 +3,7 @@
 //          → 動作清單（category='action'，個別動作各自 TMU）
 //          → WI 大綱（category='wi-template'；勾動作建 WI；子列開 WiItemInspector）
 import { useEffect, useMemo, useRef, useState } from 'react'
+import { useTranslation } from 'react-i18next'
 import { useQueryClient } from '@tanstack/react-query'
 import { useRuleSetOptions, useVocab, useCalculate } from '../wi-workbench/api'
 import { useCreateVocab } from '../master-data/api'
@@ -11,13 +12,14 @@ import { defaultCycle, buildPayload, migrateSeqState, payloadToState, shortNarr,
 import { ActionCard } from '../wi-workbench/ActionCard'
 import type { AiCycleDraft, AiPlannedAction, ReviewBatchOut } from '../wi-workbench/aiTypes'
 import { TMU_SEC } from '../../shared/config'
+import i18n from '../../shared/i18n/i18n'
 import { useActiveRuleSet } from '../../shared/api/useActiveRuleSet'
 import { RuleSetUnavailable } from '../../shared/ui/RuleSetUnavailable'
 import { apiGet, apiPost } from '../../shared/api/client'
 import { useMe, canEdit } from '../../shared/auth/useMe'
 import { SlotBuilder, aIsFilled } from './SlotBuilder'
 import {
-  compatMatchesDraft, nlDraftPatch, nlDraftPatchFillEmpty, sourceBadge, NL_FIELD_LABELS,
+  compatMatchesDraft, nlDraftPatch, nlDraftPatchFillEmpty, sourceBadge,
   type NlDraftRes,
 } from './nlDraft'
 import { MiCompositionTable } from './MiCompositionTable'
@@ -38,7 +40,12 @@ import {
 import { WiOutlineSection } from './WiOutline'
 import { WiItemInspector } from './WiItemInspector'
 
-const HAND_NAME: Record<string, string> = { RH: '右手', LH: '左手', BH: '雙手' }
+const HAND_CODES = ['RH', 'LH', 'BH'] as const
+
+/** hand code → 顯示名（未知 code 原樣顯示，與其他清單一致） */
+function handName(code: string): string {
+  return (HAND_CODES as readonly string[]).includes(code) ? i18n.t(`workbench.hand.${code}`) : code
+}
 
 // ── 格位是否有內容（不含情境欄；存檔擋空與 NL 判斷共用） ───────────────────────
 function hasSlotContent(c: CycleState): boolean {
@@ -66,7 +73,7 @@ async function waitModuleVisible(id: string, minVersion = 0): Promise<void> {
     }
     await new Promise(r => setTimeout(r, 300))
   }
-  throw new Error(`模組建立/發布後仍不可見（後端 commit 延遲）：${id}`)
+  throw new Error(i18n.t('workbench.error.moduleNotVisible', { id }))
 }
 
 // ── Simple Toast ──────────────────────────────────────────────────────────────
@@ -85,6 +92,7 @@ function Toast({ toast }: { toast: ToastState | null }) {
 
 // ── ActionModuleWorkspace ─────────────────────────────────────────────────────
 export function ActionModuleWorkspace() {
+  const { t } = useTranslation()
   // ADR-014 值權威：工作台建模/發布一律用 V2（29 個搬遷動作即以 V2 字典發布，
   // 複本 rows 含 V2 選項碼；用 V1 發布會 422 X_UNKNOWN 等）
   const activeRs = useActiveRuleSet()
@@ -157,8 +165,8 @@ export function ActionModuleWorkspace() {
 
   // Debounce searchQ → debouncedQ (300ms), then let API do the filtering
   useEffect(() => {
-    const t = setTimeout(() => setDebouncedQ(searchQ.trim()), 300)
-    return () => clearTimeout(t)
+    const timer = setTimeout(() => setDebouncedQ(searchQ.trim()), 300)
+    return () => clearTimeout(timer)
   }, [searchQ])
 
   // ── 全部／我的 篩選（P1-B B-2；守則 §4「清單語意」） ─────────────────────────
@@ -247,7 +255,7 @@ export function ActionModuleWorkspace() {
     <div className="bg-white rounded-xl border p-6"><RuleSetUnavailable error={ruleSetErr} /></div>
   )
   if (!opts) return (
-    <div className="bg-white rounded-xl border p-6 text-slate-500">載入 rule-set…</div>
+    <div className="bg-white rounded-xl border p-6 text-slate-500">{t('workbench.loadingRuleSet')}</div>
   )
 
   // ── helpers ───────────────────────────────────────────────────────────────
@@ -292,11 +300,11 @@ export function ActionModuleWorkspace() {
       if (drafts.length > 1) {
         // §18.3：多 action 不得自動套用（相容 slots 只壓平首個 action，
         // 自動套用＝靜默丟棄其餘 action）→ 逐筆呈現、逐筆採用
-        showToast(`AI 解析出 ${drafts.length} 個動作草稿，請逐筆採用`, 'ok')
+        showToast(t('workbench.toast.multiDraft', { n: drafts.length }), 'ok')
       } else if (drafts.length === 1 && !compatMatchesDraft(res, drafts[0])) {
         // 相容欄位（永遠 rule_based）與權威草稿（可能 LLM）不一致：自動套用會把
         // 編輯器覆蓋成 rule 的猜測、卡片卻顯示另一結果 → 只出卡片（與多 action 同待遇）
-        showToast('AI 草稿與相容建議不一致，請由草稿卡採用', 'ok')
+        showToast(t('workbench.toast.draftMismatch'), 'ok')
       } else if (hasEditorContent(cur)) {
         setNlAskOpen(true)               // 編輯器有內容 → 詢問覆蓋/填空
       } else {
@@ -305,9 +313,9 @@ export function ActionModuleWorkspace() {
     } catch (err) {
       const e = err as Error
       if (e.message.startsWith('404') || e.message.startsWith('501')) {
-        showToast('NL 解析功能尚未啟用', 'err')
+        showToast(t('workbench.toast.nlDisabled'), 'err')
       } else {
-        showToast('NL 解析失敗：' + e.message, 'err')
+        showToast(t('workbench.toast.nlFailed', { message: e.message }), 'err')
       }
     } finally {
       setNlLoading(false)
@@ -319,9 +327,9 @@ export function ActionModuleWorkspace() {
     if (Object.keys(patch).length > 0) {
       set(patch)
       setSource('ai')
-      showToast(mode === 'overwrite' ? '已覆蓋填入 AI 建議' : '已填入空白欄位', 'ok')
+      showToast(mode === 'overwrite' ? t('workbench.toast.appliedOverwrite') : t('workbench.toast.appliedFillEmpty'), 'ok')
     } else {
-      showToast('無可套用的建議欄位', 'err')
+      showToast(t('workbench.toast.appliedNone'), 'err')
     }
     setNlAskOpen(false)
   }
@@ -332,9 +340,7 @@ export function ActionModuleWorkspace() {
     // 編輯器已有內容（如：採用草稿 1 後手調、或手動建模到一半）→ 覆蓋前確認。
     // 「填空」對整卡載入無意義（草稿是完整 cycle），一個覆蓋確認即可（與 NL 預填
     // 的覆蓋/填空 modal 語意對稱）。
-    if (hasEditorContent(cur) && !window.confirm(
-      '編輯器已有內容，採用此草稿將覆蓋現有格位（保留手別與情境詞彙）。確定覆蓋？',
-    )) return
+    if (hasEditorContent(cur) && !window.confirm(t('workbench.confirm.adoptOverwrite'))) return
     const next = payloadToState(draft.cycle)
     // 保留手別／語彙情境（與 wi-workbench onAdoptCycle 同款），其餘整組載入草稿
     setCur(c => ({ ...next, handCode: c.handCode || next.handCode, nv: { ...c.nv } }))
@@ -342,7 +348,7 @@ export function ActionModuleWorkspace() {
     setEditingModuleId(null)          // 草稿＝新動作；不得靜默覆寫編輯中的模組
     setSource('ai')
     setAdoptedDraftIds(prev => new Set(prev).add(draft.action_id))
-    showToast(`已採用動作草稿：${draft.narrative ?? draft.action_id}`, 'ok')
+    showToast(t('workbench.toast.draftAdopted', { name: draft.narrative ?? draft.action_id }), 'ok')
     // review event（學習迴圈）：採用已成功，記錄失敗不阻斷；但失敗不可靜默吞掉
     // （No error bypass）——console.warn＋面板灰字提示。viewer（level 0）送必 403，
     // 依角色直接略過（同 AiDraftPanel 的 canWriteReviews gating）。
@@ -353,9 +359,11 @@ export function ActionModuleWorkspace() {
         events: [{
           event_type: 'accept_plan',
           target: { action_id: draft.action_id },
+          // i18n-exempt: 送後端的 review 事件 payload 欄位，不是 UI 文案；跟著介面語言變會讓學習迴圈的紀錄依操作者語言分裂成兩群
           reason: '採用單一 draft 至編輯器',
         }],
       }).catch(err => {
+        // i18n-exempt: 開發者 console 訊息，不是使用者介面文字（面板上的提示走 setReviewWarn，那條有 i18n）
         console.warn('[nl-review] review 事件記錄失敗（非阻斷）：', err)
         setReviewWarn(apiErrorMessage(err))
       })
@@ -385,9 +393,9 @@ export function ActionModuleWorkspace() {
   async function handleSave() {
     // 全空擋下：無 WI 語句且格位全空 → 沒有可命名/可計算的內容（reviewer #3）
     if (!wiSentence.trim() && !hasSlotContent(cur)) {
-      showToast('請至少填一個格位或輸入 WI 語句', 'err'); return
+      showToast(t('workbench.toast.needSlotOrSentence'), 'err'); return
     }
-    if (!tmu || tmu <= 0) { showToast('TMU 必須 > 0，請確認格位設定', 'err'); return }
+    if (!tmu || tmu <= 0) { showToast(t('workbench.toast.needPositiveTmu'), 'err'); return }
     if (!opts) return
     // 自動命名：情境欄有值 → 系統句；情境欄全空 → tech line 壓縮尾綴（去 0 值格，
     // 如「GM A6 G6 A10 P6」），避免佔位符（［自］［物］…）進名稱（reviewer #3）
@@ -421,7 +429,7 @@ export function ActionModuleWorkspace() {
           id: editingModuleId,
           body: { rows: [row], rule_set_code: opts.code },
         })
-        showToast('已更新模組：' + name, 'ok')
+        showToast(t('workbench.toast.moduleUpdated', { name }), 'ok')
       } else {
         const created = await createModule.mutateAsync({
           name_zh: name,
@@ -434,14 +442,14 @@ export function ActionModuleWorkspace() {
           id: created.id,
           body: { rows: [row], rule_set_code: opts.code },
         })
-        showToast('已新增動作：' + name, 'ok')
+        showToast(t('workbench.toast.actionAdded', { name }), 'ok')
       }
       // 多 action 迴圈：還有「可採用」的未採用草稿 → 保留 NL 面板供採用下一筆（§18.3）。
       // 無 cycle 的草稿（如 composite_unknown）永遠採用不了，不能讓面板永不自動收。
       const keepNl = nlMulti && nlDrafts.some(d => d.cycle != null && !adoptedDraftIds.has(d.action_id))
       resetBuilder({ keepNl })
     } catch (err) {
-      showToast('儲存失敗：' + (err as Error).message, 'err')
+      showToast(t('workbench.toast.saveFailed', { message: (err as Error).message }), 'err')
     }
   }
 
@@ -452,7 +460,7 @@ export function ActionModuleWorkspace() {
       const detail = await apiGet<MotionModuleSummary>(`/api/v2/motion-modules/${mod.id}`)
       const row = detail.current_version_detail?.rows?.[0]
       if (!row) {
-        showToast('此模組尚無已發布版本', 'err')
+        showToast(t('workbench.toast.noPublishedVersion'), 'err')
         return
       }
       const next = payloadToState(row.cycle)
@@ -466,9 +474,11 @@ export function ActionModuleWorkspace() {
       setWiSentence(mod.name_zh)
       setEditingModuleId(mode === 'edit' ? mod.id : null)
       setSource(mode === 'rework' ? 'copied' : ((detail.source as 'manual' | 'ai' | 'copied') ?? 'manual'))
-      showToast(mode === 'rework' ? `已載入為新動作：${mod.name_zh}` : `已載入編輯：${mod.name_zh}`, 'ok')
+      showToast(mode === 'rework'
+        ? t('workbench.toast.loadedAsNew', { name: mod.name_zh })
+        : t('workbench.toast.loadedForEdit', { name: mod.name_zh }), 'ok')
     } catch (err) {
-      showToast('載入模組失敗：' + (err as Error).message, 'err')
+      showToast(t('workbench.toast.loadFailed', { message: (err as Error).message }), 'err')
     } finally {
       setLoadingModuleId(null)
     }
@@ -476,7 +486,7 @@ export function ActionModuleWorkspace() {
 
   // ── Delete module（確認後刪除，audit §1.9） ──────────────────────────────────
   async function handleDelete(id: string, name: string) {
-    if (!window.confirm(`確認刪除模組「${name}」？`)) return
+    if (!window.confirm(t('workbench.confirm.deleteModule', { name }))) return
     try {
       await deleteModule.mutateAsync(id)
       if (editingModuleId === id) resetBuilder()
@@ -488,9 +498,9 @@ export function ActionModuleWorkspace() {
         }
         return next
       })
-      showToast('已刪除：' + name, 'ok')
+      showToast(t('workbench.toast.deleted', { name }), 'ok')
     } catch (err) {
-      showToast('刪除失敗：' + (err as Error).message, 'err')
+      showToast(t('workbench.toast.deleteFailed', { message: (err as Error).message }), 'err')
     }
   }
 
@@ -498,9 +508,9 @@ export function ActionModuleWorkspace() {
   async function handleClone(id: string, name: string) {
     try {
       await cloneModule.mutateAsync(id)
-      showToast('已複製：' + name, 'ok')
+      showToast(t('workbench.toast.cloned', { name }), 'ok')
     } catch (err) {
-      showToast('複製失敗：' + (err as Error).message, 'err')
+      showToast(t('workbench.toast.cloneFailed', { message: (err as Error).message }), 'err')
     }
   }
 
@@ -540,7 +550,7 @@ export function ActionModuleWorkspace() {
       // 取目前已發布版本 rows[0] 原值回送，避免後端把未帶欄位當清空。
       const detail = await apiGet<MotionModuleSummary>(`/api/v2/motion-modules/${id}`)
       const src = detail.current_version_detail?.rows?.[0]
-      if (!src) throw new Error('此動作尚無已發布版本，無法調整頻率')
+      if (!src) throw new Error(t('workbench.error.freqNoPublishedVersion'))
       const ver = await updateModuleRow.mutateAsync({
         id,
         rowIndex: 0,                     // action＝單列模組（ADR-022）→ 恆 row_index=0
@@ -556,11 +566,11 @@ export function ActionModuleWorkspace() {
       // 後端權威落值（理論上＝next；以回應為準，不假設）
       freqRequested.current[id] = ver.rows[0]?.frequency ?? next
       setFreqDraft(d => { const n = { ...d }; delete n[id]; return n })  // 改讀後端權威
-      showToast(`已更新頻率並重算：${name} ×${next}`, 'ok')
+      showToast(t('workbench.toast.freqUpdated', { name, n: next }), 'ok')
     } catch (err) {
       delete freqRequested.current[id]   // 後端值未變 → 回落 list 快取
       setFreqDraft(d => { const n = { ...d }; delete n[id]; return n })  // 回復原值
-      showToast('頻率更新失敗：' + apiErrorMessage(err), 'err')
+      showToast(t('workbench.toast.freqFailed', { message: apiErrorMessage(err) }), 'err')
     } finally {
       setFreqSavingIds(s => { const n = new Set(s); n.delete(id); return n })
     }
@@ -654,7 +664,7 @@ export function ActionModuleWorkspace() {
   // ── 建立 WI（ADR-022 B-3）：勾選動作 → rows 快照複本（深拷貝含 vocab_refs）──────
   function autoWiName(selected: MotionModuleSummary[]): string {
     if (selected.length === 1) return selected[0].name_zh
-    return `${selected[0].name_zh} 等${selected.length}動作`
+    return t('workbench.createWi.autoNameMulti', { name: selected[0].name_zh, n: selected.length })
   }
 
   async function handleCreateWi() {
@@ -670,7 +680,7 @@ export function ActionModuleWorkspace() {
         selected.map(async mod => {
           const detail = await apiGet<MotionModuleSummary>(`/api/v2/motion-modules/${mod.id}`)
           const src = detail.current_version_detail?.rows?.[0]
-          if (!src) throw new Error(`動作「${mod.name_zh}」尚無已發布版本`)
+          if (!src) throw new Error(t('workbench.error.actionNoPublishedVersion', { name: mod.name_zh }))
           const clone = JSON.parse(JSON.stringify(src)) as MotionModuleRow  // 深拷貝（含 vocab_refs）
           const simoLeaderId = selectedSimoPairs[mod.id]
           return {
@@ -703,9 +713,9 @@ export function ActionModuleWorkspace() {
       setSelectedIds(new Set())
       setSelectedSimoPairs({})
       setWiName('')
-      showToast(`已建立 WI：${name}（${rows.length} 動作）`, 'ok')
+      showToast(t('workbench.toast.wiCreated', { name, count: rows.length }), 'ok')
     } catch (err) {
-      showToast('建立 WI 失敗：' + (err as Error).message, 'err')
+      showToast(t('workbench.toast.wiCreateFailed', { message: (err as Error).message }), 'err')
     } finally {
       setCreatingWi(false)
     }
@@ -726,7 +736,7 @@ export function ActionModuleWorkspace() {
   function getModuleHand(mod: MotionModuleSummary): string {
     const hand = mod.hand ?? mod.current_version_detail?.rows?.[0]?.hand
     if (!hand) return '—'
-    return HAND_NAME[hand] ?? hand
+    return handName(hand)
   }
 
   const isSaving = createModule.isPending || updateModule.isPending || publishModule.isPending
@@ -734,13 +744,13 @@ export function ActionModuleWorkspace() {
   // 摘要列九欄（v3 SequenceSummaryBar 對等）
   const summaryFields: Array<{ label: string; node: React.ReactNode; wide?: boolean }> = [
     {
-      label: '動作類型',
-      node: <span className="bg-blue-100 text-blue-700 rounded px-1.5 py-0.5 text-xs font-medium">{gm ? '一般移動' : '控制移動'}</span>,
+      label: t('workbench.summary.seq'),
+      node: <span className="bg-blue-100 text-blue-700 rounded px-1.5 py-0.5 text-xs font-medium">{gm ? t('workbench.seq.GM') : t('workbench.seq.CM')}</span>,
     },
-    { label: '使用手', node: <span>{HAND_NAME[cur.handCode] ?? cur.handCode}</span> },
-    { label: '基礎 TMU', node: <b className="text-base" style={{ color: '#1a73e8' }} data-testid="summary-base-tmu">{tmu ?? '—'}</b> },
+    { label: t('workbench.summary.hand'), node: <span>{handName(cur.handCode)}</span> },
+    { label: t('workbench.summary.baseTmu'), node: <b className="text-base" style={{ color: '#1a73e8' }} data-testid="summary-base-tmu">{tmu ?? '—'}</b> },
     {
-      label: '頻率',
+      label: t('workbench.summary.frequency'),
       node: (
         <input
           type="number" min={1}
@@ -750,18 +760,18 @@ export function ActionModuleWorkspace() {
         />
       ),
     },
-    { label: '有效 TMU', node: <b className="text-base text-red-600">{effTmu ?? '—'}</b> },
-    { label: 'CT (秒)', node: <span>{ctSec ?? '—'}</span> },
-    { label: 'SIMO', node: <span className={isSimo ? 'text-orange-600 font-bold' : ''}>{isSimo ? '是' : '否'}</span> },
+    { label: t('workbench.summary.effTmu'), node: <b className="text-base text-red-600">{effTmu ?? '—'}</b> },
+    { label: t('workbench.summary.ctSeconds'), node: <span>{ctSec ?? '—'}</span> },
+    { label: t('workbench.summary.simo'), node: <span className={isSimo ? 'text-orange-600 font-bold' : ''}>{isSimo ? t('workbench.summary.simoYes') : t('workbench.summary.simoNo')}</span> },
     {
-      label: '納入總時間',
+      label: t('workbench.summary.includedTotal'),
       node: effTmu == null
         ? <span>—</span>
         : isSimo
           ? <span className="line-through text-slate-400">0</span>
           : <span>{effTmu}</span>,
     },
-    { label: 'MI 語句', node: <span className="text-xs text-slate-600 truncate">{miSentence}</span>, wide: true },
+    { label: t('workbench.summary.miSentence'), node: <span className="text-xs text-slate-600 truncate">{miSentence}</span>, wide: true },
   ]
 
   return (
@@ -774,10 +784,10 @@ export function ActionModuleWorkspace() {
 
           {/* 1. AI 快速建模列 */}
           <div className="flex items-center gap-2">
-            <span className="shrink-0 text-xs font-semibold text-white bg-slate-600 rounded px-2 py-1">AI 快速建模</span>
+            <span className="shrink-0 text-xs font-semibold text-white bg-slate-600 rounded px-2 py-1">{t('workbench.builder.aiQuickModel')}</span>
             <input
               className="flex-1 min-w-0 border rounded px-2 py-1.5 text-sm"
-              placeholder="輸入動作描述，例：從料架上拿DIMM放至流水線"
+              placeholder={t('workbench.builder.nlPlaceholder')}
               value={nlText}
               onChange={e => setNlText(e.target.value)}
               onKeyDown={e => { if (e.key === 'Enter' && !nlLoading) runNlDraft() }}
@@ -787,7 +797,7 @@ export function ActionModuleWorkspace() {
               disabled={nlLoading || !nlText.trim()}
               className="shrink-0 px-3 py-1.5 bg-blue-600 text-white rounded text-sm disabled:opacity-40"
             >
-              {nlLoading ? '解析中…' : 'AI 預填'}
+              {nlLoading ? t('workbench.builder.nlRunning') : t('workbench.builder.nlRun')}
             </button>
           </div>
 
@@ -800,23 +810,27 @@ export function ActionModuleWorkspace() {
                     ? 'bg-emerald-100 text-emerald-700'
                     : 'bg-amber-100 text-amber-700'
                 }`}>
-                  信心 {Math.round((nlResult.overall_confidence ?? 0) * 100)}%
+                  {t('workbench.nl.confidence', { percent: Math.round((nlResult.overall_confidence ?? 0) * 100) })}
                 </span>
                 {!nlCompatHidden && nlResult.suggested_seq && (
                   <span className="bg-slate-200 text-slate-700 rounded px-1.5 py-0.5">
-                    建議：{nlResult.suggested_seq === 'GM' ? '一般移動 (GM)' : '控制移動 (CM)'}
+                    {t('workbench.nl.suggested', {
+                      seq: nlResult.suggested_seq === 'GM'
+                        ? t('workbench.nl.suggestedGm')
+                        : t('workbench.nl.suggestedCm'),
+                    })}
                   </span>
                 )}
                 {nlResult.ai && (
                   <span className="text-slate-500">
                     routing: {nlResult.ai.routing_status}
-                    {nlResult.ai.provenance?.fallback ? '（rule fallback）' : ''}
+                    {nlResult.ai.provenance?.fallback ? t('workbench.nl.ruleFallback') : ''}
                   </span>
                 )}
                 <button
                   onClick={() => setNlResult(null)}
                   className="ml-auto text-slate-400 hover:text-slate-600 leading-none"
-                  aria-label="關閉 NL 結果"
+                  aria-label={t('workbench.nl.closeAria')}
                 >✕</button>
               </div>
 
@@ -826,8 +840,7 @@ export function ActionModuleWorkspace() {
                   className="text-amber-800 bg-amber-50 border border-amber-200 rounded px-2 py-1"
                   data-testid="nl-multi-warning"
                 >
-                  AI 解析出 {nlDrafts.length} 個動作草稿 — 請逐筆採用，勿靜默只取第一筆。
-                  可依「採用 → 新增動作 → 採用下一筆」逐一入庫。
+                  {t('workbench.nl.multiWarning', { n: nlDrafts.length })}
                 </p>
               )}
 
@@ -838,15 +851,14 @@ export function ActionModuleWorkspace() {
                   className="text-amber-800 bg-amber-50 border border-amber-200 rounded px-2 py-1"
                   data-testid="nl-consistency-warning"
                 >
-                  AI 權威草稿與相容建議不一致（或草稿未完整編譯）— 未自動套用，
-                  請確認下方草稿卡內容後按「採用到編輯器」。
+                  {t('workbench.nl.mismatchWarning')}
                 </p>
               )}
 
               {/* review 事件失敗（非阻斷）：不吞錯，灰字提示學習迴圈缺了這筆 */}
               {reviewWarn && (
                 <p className="text-slate-400" data-testid="nl-review-warning">
-                  學習迴圈：review 事件記錄失敗（{reviewWarn}）；不影響已採用內容。
+                  {t('workbench.nl.reviewWarning', { message: reviewWarn })}
                 </p>
               )}
 
@@ -872,18 +884,18 @@ export function ActionModuleWorkspace() {
                 <div className="flex flex-wrap gap-x-4 gap-y-1">
                   {(nlResult.slots ?? []).map(s => (
                     <span key={s.field} className="inline-flex items-center gap-1">
-                      <span className="text-slate-500">{NL_FIELD_LABELS[s.field] ?? s.field}</span>
+                      <span className="text-slate-500">{t(`workbench.nl.field.${s.field}`, { defaultValue: s.field })}</span>
                       {s.chosen ? (
                         <>
                           <span className={`rounded border px-1 py-0.5 leading-none ${
-                            sourceBadge(s.chosen.source) === '明確' ? 'bg-blue-50 text-blue-600 border-blue-200'
-                            : sourceBadge(s.chosen.source) === '預設' ? 'bg-amber-50 text-amber-600 border-amber-200'
+                            sourceBadge(s.chosen.source) === 'exact' ? 'bg-blue-50 text-blue-600 border-blue-200'
+                            : sourceBadge(s.chosen.source) === 'default' ? 'bg-amber-50 text-amber-600 border-amber-200'
                             : 'bg-emerald-50 text-emerald-600 border-emerald-200'
-                          }`}>{sourceBadge(s.chosen.source)}</span>
+                          }`}>{t(`workbench.nl.badge.${sourceBadge(s.chosen.source)}`)}</span>
                           <span className="text-slate-700">{nlOptionLabel(s.field, s.chosen.option_code)}</span>
                         </>
                       ) : (
-                        <span className="rounded border px-1 py-0.5 leading-none bg-red-50 text-red-500 border-red-200">待確認</span>
+                        <span className="rounded border px-1 py-0.5 leading-none bg-red-50 text-red-500 border-red-200">{t('workbench.nl.badge.pending')}</span>
                       )}
                     </span>
                   ))}
@@ -898,10 +910,10 @@ export function ActionModuleWorkspace() {
               className="shrink-0 border rounded px-2 text-sm self-center py-1.5"
               value={cur.seq}
               onChange={e => setCur(c => migrateSeqState(c, e.target.value as 'GM' | 'CM'))}
-              aria-label="動作類型"
+              aria-label={t('workbench.builder.seqAriaLabel')}
             >
-              <option value="GM">一般移動</option>
-              <option value="CM">控制移動</option>
+              <option value="GM">{t('workbench.seq.GM')}</option>
+              <option value="CM">{t('workbench.seq.CM')}</option>
             </select>
             <div
               className="flex-1 flex flex-wrap items-center gap-x-5 gap-y-1 rounded-lg border px-4 py-2"
@@ -939,7 +951,7 @@ export function ActionModuleWorkspace() {
 
           {/* 4. WI 語句 + 新增動作/清空 */}
           <div className="flex items-center gap-2 pt-2 border-t">
-            <span className="shrink-0 text-xs font-semibold text-slate-600 border rounded px-2 py-1 bg-slate-50">WI 語句</span>
+            <span className="shrink-0 text-xs font-semibold text-slate-600 border rounded px-2 py-1 bg-slate-50">{t('workbench.builder.wiSentence')}</span>
             <input
               className="flex-1 min-w-0 border rounded px-2 py-1.5 text-sm"
               placeholder={miSentence}
@@ -948,7 +960,7 @@ export function ActionModuleWorkspace() {
             />
             {editingModuleId && (
               <span className="shrink-0 text-xs text-amber-700 bg-amber-50 border border-amber-300 rounded px-2 py-0.5">
-                編輯中
+                {t('workbench.builder.editingBadge')}
               </span>
             )}
             {editingModuleId && (
@@ -956,7 +968,7 @@ export function ActionModuleWorkspace() {
                 onClick={() => resetBuilder()}
                 className="shrink-0 px-2 py-1.5 border rounded text-slate-600 hover:bg-slate-50 text-sm"
               >
-                取消編輯
+                {t('workbench.builder.cancelEdit')}
               </button>
             )}
             <button
@@ -964,29 +976,29 @@ export function ActionModuleWorkspace() {
               onClick={handleSave}
               className="shrink-0 px-4 py-1.5 bg-emerald-600 text-white rounded-lg disabled:opacity-40 text-sm font-medium"
             >
-              {isSaving ? '儲存中…' : editingModuleId ? '更新模組' : '新增動作'}
+              {isSaving ? t('workbench.builder.saving') : editingModuleId ? t('workbench.builder.updateModule') : t('workbench.builder.addAction')}
             </button>
             <button
               onClick={() => resetBuilder()}
               className="shrink-0 px-3 py-1.5 border rounded-lg text-slate-600 hover:bg-slate-50 text-sm"
             >
-              清空
+              {t('workbench.builder.clear')}
             </button>
           </div>
 
           {(tmu == null || tmu <= 0) && !calcErrMsg && (
             <p className="text-xs text-amber-700" data-testid="save-block-reason">
-              尚未取得有效 TMU（需大於 0），請先完成必要格位並等待後端計算完成。
+              {t('workbench.builder.saveBlockReason')}
             </p>
           )}
           {calcErrMsg && (
             <p className="text-xs text-red-600" data-testid="calc-error-message">
-              TMU 計算失敗：{calcErrMsg}
+              {t('workbench.builder.calcError', { message: calcErrMsg })}
             </p>
           )}
 
           {source === 'ai' && (
-            <p className="text-xs text-violet-600">AI badge：此動作由 NL 草稿自動填入</p>
+            <p className="text-xs text-violet-600">{t('workbench.builder.aiSourceNote')}</p>
           )}
         </div>
 
@@ -996,15 +1008,15 @@ export function ActionModuleWorkspace() {
           <div className="flex items-center gap-3 flex-wrap">
             <input
               className="border rounded px-2 py-1 text-sm w-52"
-              placeholder="搜尋動作…"
+              placeholder={t('workbench.pool.searchPlaceholder')}
               value={searchQ}
               onChange={e => setSearchQ(e.target.value)}
             />
             {/* segmented：全部（預設）｜我的（scope=personal） */}
             <div className="inline-flex rounded-lg border overflow-hidden" data-testid="action-owner-filter">
               {([
-                { key: 'all' as const, label: '全部', count: allQuery.data?.length },
-                { key: 'mine' as const, label: '我的', count: mineQuery.data?.length },
+                { key: 'all' as const, label: t('workbench.pool.all'), count: allQuery.data?.length },
+                { key: 'mine' as const, label: t('workbench.pool.mine'), count: mineQuery.data?.length },
               ]).map(seg => (
                 <button
                   key={seg.key}
@@ -1021,9 +1033,9 @@ export function ActionModuleWorkspace() {
                 </button>
               ))}
             </div>
-            <span className="text-sm text-slate-500">共 {orderedModules.length} 筆</span>
+            <span className="text-sm text-slate-500">{t('workbench.pool.rowCount', { count: orderedModules.length })}</span>
             <span className="ml-auto text-sm text-slate-500">
-              合計：{poolTotalTmu != null
+              {t('workbench.pool.totalLabel')}{poolTotalTmu != null
                 ? <><b style={{ color: '#1a73e8' }}>{poolTotalTmu}</b> TMU / <b className="text-red-600">{(poolTotalTmu * TMU_SEC).toFixed(3)}</b>s</>
                 : '—'}
             </span>
@@ -1084,10 +1096,10 @@ export function ActionModuleWorkspace() {
           className="fixed bottom-6 left-1/2 -translate-x-1/2 z-40 flex items-center gap-3 bg-white border shadow-xl rounded-full px-5 py-2.5"
           data-testid="create-wi-bar"
         >
-          <span className="text-sm text-slate-600 whitespace-nowrap">已選 {selectedIds.size} 個動作</span>
+          <span className="text-sm text-slate-600 whitespace-nowrap">{t('workbench.createWi.selectedCount', { count: selectedIds.size })}</span>
           <input
             className="border rounded px-2 py-1 text-sm w-64"
-            placeholder="WI 名稱（空白＝自動命名）"
+            placeholder={t('workbench.createWi.namePlaceholder')}
             value={wiName}
             onChange={e => setWiName(e.target.value)}
           />
@@ -1096,13 +1108,13 @@ export function ActionModuleWorkspace() {
             disabled={creatingWi}
             className="px-4 py-1.5 bg-blue-600 text-white rounded-full text-sm font-medium disabled:opacity-40 hover:bg-blue-700"
           >
-            {creatingWi ? '建立中…' : '建立 WI'}
+            {creatingWi ? t('workbench.createWi.creating') : t('workbench.createWi.create')}
           </button>
           <button
             onClick={() => { setSelectedIds(new Set()); setSelectedSimoPairs({}); setWiName('') }}
             className="text-xs text-slate-400 hover:text-slate-600"
           >
-            清除
+            {t('workbench.createWi.clearSelection')}
           </button>
         </div>
       )}
@@ -1115,7 +1127,7 @@ export function ActionModuleWorkspace() {
           rowIndex={inspector.rowIndex}
           row={inspector.row}
           onClose={() => setInspector(null)}
-          onSaved={() => showToast('已重算並儲存（WI 發布新版本）', 'ok')}
+          onSaved={() => showToast(t('workbench.toast.rowSaved'), 'ok')}
         />
       )}
 
@@ -1129,26 +1141,26 @@ export function ActionModuleWorkspace() {
             className="bg-white rounded-xl border shadow-2xl p-5 max-w-sm w-full mx-4 space-y-4"
             onClick={e => e.stopPropagation()}
           >
-            <h3 className="font-semibold text-base">AI 預填</h3>
-            <p className="text-sm text-slate-600">目前編輯區已有內容，AI 預填將如何處理？</p>
+            <h3 className="font-semibold text-base">{t('workbench.nl.askTitle')}</h3>
+            <p className="text-sm text-slate-600">{t('workbench.nl.askMessage')}</p>
             <div className="flex flex-col gap-2">
               <button
                 onClick={() => applyNlDraft(nlResult, 'overwrite')}
                 className="px-4 py-2 bg-blue-600 text-white rounded-lg text-sm font-medium"
               >
-                覆蓋目前欄位
+                {t('workbench.nl.askOverwrite')}
               </button>
               <button
                 onClick={() => applyNlDraft(nlResult, 'fill-empty')}
                 className="px-4 py-2 border border-blue-300 text-blue-700 rounded-lg text-sm font-medium hover:bg-blue-50"
               >
-                只填空白欄位
+                {t('workbench.nl.askFillEmpty')}
               </button>
               <button
                 onClick={() => setNlAskOpen(false)}
                 className="px-4 py-1.5 text-slate-500 text-sm hover:text-slate-700"
               >
-                取消
+                {t('workbench.nl.askCancel')}
               </button>
             </div>
           </div>

@@ -77,7 +77,8 @@ export default function App() {
       {importOpen && <ImportModal onClose={() => setImportOpen(false)} />}
       {/* key={tab} remounts the boundary on tab switch → error state auto-clears.
           reset 目標與當前 tab 相同時 setTab 是 no-op → 改 full reload（review #4）。
-          WorksheetBar 已去全域化（ADR-021 Phase 3）：工序表情境只存在於分析案件的編輯情境。 */}
+          全域 WorksheetBar 已去全域化（ADR-021 Phase 3）：工序表情境只存在於分析案件的編輯情境。
+          該元件已刪除（見 features/cases/NewCaseModal.tsx）；此處保留名字只為說明現況的由來。 */}
       <ErrorBoundary
         key={tab}
         onReset={() => {

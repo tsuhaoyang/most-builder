@@ -1,8 +1,11 @@
 import { useMemo, useState, type ReactNode } from 'react'
+import { Trans, useTranslation } from 'react-i18next'
+import type { TFunction } from 'i18next'
 import { ConfirmDialog } from './ConfirmDialog'
 import { DiffView } from './DiffView'
 import { canEdit as canEditFn, canPublish as canPublishFn, useMe } from '../../shared/auth/useMe'
 import { describeInUse, exportRuleSet, useRuleSetDiff, useRuleSetVersions, useVersionMutations, type RuleSetSummary } from './api'
+import i18n from '../../shared/i18n/i18n'
 
 /**
  * L1：字典版本清單（對照 v3 DictionariesPage 版本區）。
@@ -11,17 +14,19 @@ import { describeInUse, exportRuleSet, useRuleSetDiff, useRuleSetVersions, useVe
  * × `is_active` 兩維（ADR-023 §3.2），故狀態欄顯示 status 徽章，active 另加綠色「啟用中」。
  */
 
-const STATUS_ZH: Record<string, string> = { draft: '草稿', published: '已發布', retired: '已封存' }
+const STATUS_CODES = ['draft', 'published', 'retired']
 const STATUS_STYLE: Record<string, string> = {
   draft: 'bg-amber-100 text-amber-800',
   published: 'bg-sky-100 text-sky-800',
   retired: 'bg-slate-200 text-slate-600',
 }
-const PROVENANCE_ZH: Record<string, string> = {
-  certified_import: '認證匯入',
-  manual: '手動建立',
-  cloned: '複製版本',
-}
+const PROVENANCE_CODES = ['certified_import', 'manual', 'cloned']
+
+/** 未知的 status／provenance 原樣顯示（後端新增列舉值時不會變成空白）。 */
+const statusLabel = (t: TFunction, v: string) =>
+  STATUS_CODES.includes(v) ? t(`dictionary.status.${v}`) : v
+const provenanceLabel = (t: TFunction, v: string | null | undefined) =>
+  v ? (PROVENANCE_CODES.includes(v) ? t(`dictionary.provenance.${v}`) : v) : '—'
 
 interface ConfirmState {
   label: string
@@ -37,17 +42,22 @@ interface ConfirmState {
   showDiffFor?: string
 }
 
+// 日期格式跟著 UI 語言走（ADR-032）：原本寫死 'zh-TW'，英文介面會出現
+// 「Created: 2026/8/4 下午2:50:58」這種半中文的日期。`i18n.language` 的值域就是
+// SUPPORTED_LOCALES（'zh-TW' | 'en'），兩者都是合法 BCP-47 標籤；中文下仍是
+// 'zh-TW'，所以中文的呈現逐字不變。
 const fmtDate = (iso: string | null) =>
-  iso ? new Date(iso).toLocaleString('zh-TW') : '—'
+  iso ? new Date(iso).toLocaleString(i18n.language) : '—'
 
 function StatusCell({ v }: { v: RuleSetSummary }) {
+  const { t } = useTranslation()
   return (
     <span className="flex flex-wrap items-center gap-1">
       <span className={`px-2 py-0.5 rounded text-xs ${STATUS_STYLE[v.status] ?? 'bg-slate-100'}`}>
-        {STATUS_ZH[v.status] ?? v.status}
+        {statusLabel(t, v.status)}
       </span>
       {v.is_active && (
-        <span className="px-2 py-0.5 rounded text-xs bg-emerald-100 text-emerald-800">啟用中</span>
+        <span className="px-2 py-0.5 rounded text-xs bg-emerald-100 text-emerald-800">{t('dictionary.active')}</span>
       )}
     </span>
   )
@@ -69,6 +79,7 @@ const Btn = ({ tone = 'plain', ...p }: { tone?: 'plain' | 'ok' | 'warn' | 'dange
 }
 
 export function VersionList({ onOpen }: { onOpen: (code: string) => void }) {
+  const { t } = useTranslation()
   const { data: versions = [], isLoading, error } = useRuleSetVersions()
   const { data: me } = useMe()
   const canEdit = canEditFn(me)
@@ -92,9 +103,9 @@ export function VersionList({ onOpen }: { onOpen: (code: string) => void }) {
   const run = async (label: string, fn: () => Promise<unknown>) => {
     try {
       await fn()
-      setMsg({ tone: 'ok', text: `${label}成功` })
+      setMsg({ tone: 'ok', text: t('dictionary.actionSucceeded', { action: label }) })
     } catch (e) {
-      setMsg({ tone: 'err', text: `${label}失敗：${(e as Error).message}` })
+      setMsg({ tone: 'err', text: t('dictionary.actionFailed', { action: label, message: (e as Error).message }) })
     }
   }
 
@@ -103,7 +114,7 @@ export function VersionList({ onOpen }: { onOpen: (code: string) => void }) {
     setBusy(true); setCErr(null)
     try {
       await confirm.run()
-      setMsg({ tone: 'ok', text: `${confirm.label}成功` })
+      setMsg({ tone: 'ok', text: t('dictionary.actionSucceeded', { action: confirm.label }) })
       setConfirm(null)
     } catch (e) {
       setCErr(confirm.describeError?.(e) ?? (e as Error).message)
@@ -121,16 +132,16 @@ export function VersionList({ onOpen }: { onOpen: (code: string) => void }) {
   const askPublish = (v: RuleSetSummary) => {
     setCErr(null)
     setConfirm({
-      label: '發布',
-      title: '發布此字典版本？',
+      label: t('dictionary.action.publish'),
+      title: t('dictionary.versionList.publishTitle'),
       tone: 'warn',
-      confirmLabel: '確認發布',
+      confirmLabel: t('dictionary.versionList.publishConfirm'),
       showDiffFor: v.code,
       run: () => publish.mutateAsync(v.code),
       body: (
         <>
-          <p>將把 <span className="font-mono">{v.code}</span> 由草稿改為「已發布」。</p>
-          <p className="text-xs text-slate-500">發布後內容即凍結（僅同義詞可再補），但尚不會被新建模採用——要採用需另外按「啟用」。</p>
+          <p><Trans i18nKey="dictionary.versionList.publishBody1" values={{ code: v.code }} components={{ code: <span className="font-mono" /> }} /></p>
+          <p className="text-xs text-slate-500">{t('dictionary.versionList.publishBody2')}</p>
         </>
       ),
     })
@@ -139,18 +150,23 @@ export function VersionList({ onOpen }: { onOpen: (code: string) => void }) {
   const askActivate = (v: RuleSetSummary) => {
     setCErr(null)
     setConfirm({
-      label: '啟用',
-      title: '啟用此字典版本？',
+      label: t('dictionary.action.activate'),
+      title: t('dictionary.versionList.activateTitle'),
       tone: 'warn',
-      confirmLabel: '確認啟用',
+      confirmLabel: t('dictionary.versionList.activateConfirm'),
       showDiffFor: v.code,
       run: () => activate.mutateAsync(v.code),
       body: (
         <>
-          <p>將把 <span className="font-mono">{v.code}</span> 設為唯一啟用版本{active ? <>，並停用目前的 <span className="font-mono">{active.code}</span></> : null}。</p>
+          <p>
+            <Trans
+              i18nKey={active ? 'dictionary.versionList.activateBody1WithActive' : 'dictionary.versionList.activateBody1'}
+              values={{ code: v.code, active: active?.code }}
+              components={{ code: <span className="font-mono" /> }}
+            />
+          </p>
           <p className="text-amber-800">
-            此後<b>新建模將以本版持久化計算值</b>；切回不會回溯修正已建立的資料——
-            期間內建立/發布的內容需人工找出並重發。
+            <Trans i18nKey="dictionary.versionList.activateBody2" components={{ b: <b /> }} />
           </p>
         </>
       ),
@@ -161,17 +177,17 @@ export function VersionList({ onOpen }: { onOpen: (code: string) => void }) {
   const askRetire = (v: RuleSetSummary) => {
     setCErr(null)
     setConfirm({
-      label: '封存',
-      title: '封存此字典版本？',
+      label: t('dictionary.action.retire'),
+      title: t('dictionary.versionList.retireTitle'),
       tone: 'warn',
-      confirmLabel: '確認封存',
+      confirmLabel: t('dictionary.versionList.retireConfirm'),
       run: () => retire.mutateAsync(v.code),
       body: (
         <>
-          <p>將把 <span className="font-mono">{v.code}</span> 標記為已封存，之後不再可被選用。</p>
-          <p>封存後<b>可再解除封存</b>回到「已發布」狀態。</p>
+          <p><Trans i18nKey="dictionary.versionList.retireBody1" values={{ code: v.code }} components={{ code: <span className="font-mono" /> }} /></p>
+          <p><Trans i18nKey="dictionary.versionList.retireBody2" components={{ b: <b /> }} /></p>
           <p className="text-xs text-slate-500">
-            （已引用本版的既有資料仍可正常載入重算，回放不受影響。）
+            {t('dictionary.versionList.retireBody3')}
           </p>
         </>
       ),
@@ -182,16 +198,16 @@ export function VersionList({ onOpen }: { onOpen: (code: string) => void }) {
   const askUnretire = (v: RuleSetSummary) => {
     setCErr(null)
     setConfirm({
-      label: '解除封存',
-      title: '解除封存此字典版本？',
+      label: t('dictionary.action.unretire'),
+      title: t('dictionary.versionList.unretireTitle'),
       tone: 'warn',
-      confirmLabel: '確認解除封存',
+      confirmLabel: t('dictionary.versionList.unretireConfirm'),
       run: () => unretire.mutateAsync(v.code),
       body: (
         <>
-          <p>將把 <span className="font-mono">{v.code}</span> 從「已封存」改回「已發布」。</p>
+          <p><Trans i18nKey="dictionary.versionList.unretireBody1" values={{ code: v.code }} components={{ code: <span className="font-mono" /> }} /></p>
           <p className="text-amber-800">
-            解除封存後<b>仍不是啟用中版本</b>；若要讓新建模改用本版，需另外按「啟用」。
+            <Trans i18nKey="dictionary.versionList.unretireBody2" components={{ b: <b /> }} />
           </p>
         </>
       ),
@@ -202,20 +218,20 @@ export function VersionList({ onOpen }: { onOpen: (code: string) => void }) {
   const askDelete = (v: RuleSetSummary) => {
     setCErr(null)
     setConfirm({
-      label: '刪除',
-      title: '刪除此草稿版本？',
+      label: t('dictionary.action.delete'),
+      title: t('dictionary.versionList.deleteTitle'),
       tone: 'danger',
-      confirmLabel: '確認刪除',
+      confirmLabel: t('dictionary.versionList.deleteConfirm'),
       requireText: v.code,
       run: () => remove.mutateAsync(v.code),
       // 被引用時後端回 RULE_SET_IN_USE，把各表引用筆數說成人話
       describeError: describeInUse,
       body: (
         <>
-          <p>將<b>永久刪除</b>草稿 <span className="font-mono">{v.code}</span> 及其所有規則資料。</p>
-          <p className="text-red-700"><b>此操作不可逆</b>，且無法復原已刪除的內容。</p>
+          <p><Trans i18nKey="dictionary.versionList.deleteBody1" values={{ code: v.code }} components={{ b: <b />, code: <span className="font-mono" /> }} /></p>
+          <p className="text-red-700"><Trans i18nKey="dictionary.versionList.deleteBody2" components={{ b: <b /> }} /></p>
           <p className="text-xs text-slate-500">
-            （若本草稿已被工時表或動作模組引用，系統會擋下刪除並告知引用筆數。）
+            {t('dictionary.versionList.deleteBody3')}
           </p>
         </>
       ),
@@ -233,18 +249,18 @@ export function VersionList({ onOpen }: { onOpen: (code: string) => void }) {
       a.download = `${code}.json`
       a.click()
       URL.revokeObjectURL(url)
-      setMsg({ tone: 'ok', text: `已匯出 ${code}.json` })
+      setMsg({ tone: 'ok', text: t('dictionary.versionList.exported', { file: `${code}.json` }) })
     } catch (e) {
-      setMsg({ tone: 'err', text: `匯出失敗：${(e as Error).message}` })
+      setMsg({ tone: 'err', text: t('dictionary.versionList.exportFailed', { message: (e as Error).message }) })
     }
   }
 
-  if (isLoading) return <div className="bg-white rounded-xl border p-6 text-slate-500">載入字典版本…</div>
-  if (error) return <div className="bg-white rounded-xl border p-6 text-red-600">載入失敗：{(error as Error).message}</div>
+  if (isLoading) return <div className="bg-white rounded-xl border p-6 text-slate-500">{t('dictionary.versionList.loading')}</div>
+  if (error) return <div className="bg-white rounded-xl border p-6 text-red-600">{t('dictionary.versionList.loadError', { message: (error as Error).message })}</div>
 
   return (
     <div className="space-y-4" data-testid="dict-version-list">
-      <h2 className="text-lg font-semibold">字典版本管理</h2>
+      <h2 className="text-lg font-semibold">{t('dictionary.versionList.heading')}</h2>
 
       {msg && (
         <div className={`rounded-lg border px-3 py-2 text-sm ${msg.tone === 'ok' ? 'border-emerald-200 bg-emerald-50 text-emerald-800' : 'border-red-200 bg-red-50 text-red-700'}`}>
@@ -256,18 +272,18 @@ export function VersionList({ onOpen }: { onOpen: (code: string) => void }) {
       {active && (
         <div className="bg-white rounded-xl border" data-testid="dict-active-card">
           <div className="flex flex-wrap items-center gap-2 px-4 py-3 border-b">
-            <span className="px-2 py-0.5 rounded text-xs bg-emerald-100 text-emerald-800">啟用中</span>
+            <span className="px-2 py-0.5 rounded text-xs bg-emerald-100 text-emerald-800">{t('dictionary.active')}</span>
             <span className="font-medium">{active.name_zh}</span>
             <span className="font-mono text-xs text-slate-400">{active.code}</span>
             <div className="ml-auto flex gap-2">
-              <Btn onClick={() => onOpen(active.code)}>編輯字典</Btn>
-              <Btn onClick={() => void doExport(active.code)}>匯出 JSON</Btn>
+              <Btn onClick={() => onOpen(active.code)}>{t('dictionary.versionList.editDict')}</Btn>
+              <Btn onClick={() => void doExport(active.code)}>{t('dictionary.versionList.exportJson')}</Btn>
             </div>
           </div>
           <div className="flex flex-wrap gap-x-6 gap-y-1 px-4 py-2 text-xs text-slate-500">
-            <span>來源：{active.provenance ? PROVENANCE_ZH[active.provenance] ?? active.provenance : '—'}</span>
-            <span>建立：{fmtDate(active.created_at)}</span>
-            <span>備註：{active.notes || '—'}</span>
+            <span>{t('dictionary.versionList.source', { value: provenanceLabel(t, active.provenance) })}</span>
+            <span>{t('dictionary.versionList.created', { value: fmtDate(active.created_at) })}</span>
+            <span>{t('dictionary.versionList.notes', { value: active.notes || '—' })}</span>
           </div>
         </div>
       )}
@@ -277,11 +293,11 @@ export function VersionList({ onOpen }: { onOpen: (code: string) => void }) {
         <table className="w-full text-sm">
           <thead>
             <tr className="bg-slate-100 text-left">
-              <th className="p-2 font-medium">版本名稱</th>
-              <th className="p-2 font-medium">狀態</th>
-              <th className="p-2 font-medium">來源</th>
-              <th className="p-2 font-medium">建立時間</th>
-              <th className="p-2 font-medium">操作</th>
+              <th className="p-2 font-medium">{t('dictionary.versionList.col.name')}</th>
+              <th className="p-2 font-medium">{t('dictionary.versionList.col.status')}</th>
+              <th className="p-2 font-medium">{t('dictionary.versionList.col.source')}</th>
+              <th className="p-2 font-medium">{t('dictionary.versionList.col.created')}</th>
+              <th className="p-2 font-medium">{t('dictionary.versionList.col.actions')}</th>
             </tr>
           </thead>
           <tbody>
@@ -293,15 +309,15 @@ export function VersionList({ onOpen }: { onOpen: (code: string) => void }) {
                 </td>
                 <td className="p-2"><StatusCell v={v} /></td>
                 <td className="p-2 text-slate-600">
-                  {v.provenance ? PROVENANCE_ZH[v.provenance] ?? v.provenance : '—'}
+                  {provenanceLabel(t, v.provenance)}
                 </td>
                 <td className="p-2 text-slate-600 whitespace-nowrap">{fmtDate(v.created_at)}</td>
                 <td className="p-2">
                   <div className="flex flex-wrap gap-1">
                     {v.status === 'retired' ? (
                       <>
-                        <Btn onClick={() => onOpen(v.code)}>檢視</Btn>
-                        <Btn tone="ok" disabled={!canPublish} onClick={() => askUnretire(v)}>解除封存</Btn>
+                        <Btn onClick={() => onOpen(v.code)}>{t('dictionary.versionList.view')}</Btn>
+                        <Btn tone="ok" disabled={!canPublish} onClick={() => askUnretire(v)}>{t('dictionary.versionList.unretire')}</Btn>
                       </>
                     ) : (
                       <Btn
@@ -309,53 +325,53 @@ export function VersionList({ onOpen }: { onOpen: (code: string) => void }) {
                         disabled={!canEdit}
                         title={
                           v.provenance === 'certified_import'
-                            ? '認證匯入版本不可直接編輯，將建立草稿'
+                            ? t('dictionary.versionList.editTitleCertified')
                             : v.status !== 'draft'
-                              ? '此版本已發布，編輯時會先建立草稿'
+                              ? t('dictionary.versionList.editTitlePublished')
                               : undefined
                         }
                       >
-                        編輯
+                        {t('dictionary.versionList.edit')}
                       </Btn>
                     )}
 
                     {v.status === 'draft' && (
                       <Btn tone="ok" disabled={!canPublish} onClick={() => askPublish(v)}>
-                        發布
+                        {t('dictionary.versionList.publish')}
                       </Btn>
                     )}
 
                     {v.status === 'published' && !v.is_active && (
                       <Btn tone="ok" disabled={!canPublish} onClick={() => askActivate(v)}>
-                        啟用
+                        {t('dictionary.versionList.activate')}
                       </Btn>
                     )}
 
                     {v.status === 'published' && !v.is_active && (
                       <Btn tone="warn" disabled={!canPublish} onClick={() => askRetire(v)}>
-                        封存
+                        {t('dictionary.versionList.retire')}
                       </Btn>
                     )}
 
                     {/* 僅 draft 可刪（D3b）；本頁唯一不可逆操作 → type-to-confirm */}
                     {v.status === 'draft' && (
                       <Btn tone="danger" disabled={!canEdit} onClick={() => askDelete(v)}>
-                        刪除
+                        {t('dictionary.versionList.delete')}
                       </Btn>
                     )}
 
                     {(v.status === 'draft' || v.status === 'published') && canEdit && (
-                      <Btn onClick={() => setDiffCode(v.code)}>檢視差異</Btn>
+                      <Btn onClick={() => setDiffCode(v.code)}>{t('dictionary.versionList.viewDiff')}</Btn>
                     )}
 
                     {/* 匯出為唯讀操作，viewer 亦可用 */}
-                    <Btn onClick={() => void doExport(v.code)}>匯出</Btn>
+                    <Btn onClick={() => void doExport(v.code)}>{t('dictionary.versionList.export')}</Btn>
                   </div>
                 </td>
               </tr>
             ))}
             {versions.length === 0 && (
-              <tr><td colSpan={5} className="p-4 text-slate-400">尚無字典版本</td></tr>
+              <tr><td colSpan={5} className="p-4 text-slate-400">{t('dictionary.versionList.empty')}</td></tr>
             )}
           </tbody>
         </table>
@@ -369,7 +385,7 @@ export function VersionList({ onOpen }: { onOpen: (code: string) => void }) {
               {confirm.body}
               {confirm.showDiffFor && (
                 <div className="pt-2 border-t mt-2">
-                  <p className="text-sm font-medium mb-1">這次會變動什麼</p>
+                  <p className="text-sm font-medium mb-1">{t('dictionary.versionList.whatChanges')}</p>
                   <DiffView
                     data={confirmDiff.data}
                     isLoading={confirmDiff.isLoading}
@@ -386,7 +402,7 @@ export function VersionList({ onOpen }: { onOpen: (code: string) => void }) {
           busy={busy}
           error={cErr}
           blockConfirm={diffBlocked}
-          blockReason={confirmDiff.isLoading ? '差異載入中，請稍候' : '未能取得版本差異，無法確認'}
+          blockReason={confirmDiff.isLoading ? t('dictionary.versionList.diffLoading') : t('dictionary.versionList.diffUnavailable')}
           onCancel={() => { setConfirm(null); setCErr(null) }}
           onConfirm={() => void runConfirmed()}
         />
@@ -396,15 +412,15 @@ export function VersionList({ onOpen }: { onOpen: (code: string) => void }) {
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/30 p-4" role="dialog" aria-modal="true">
           <div className="bg-white rounded-xl shadow-xl w-full max-w-2xl max-h-full flex flex-col" data-testid="dict-diff-panel">
             <div className="flex items-center px-4 py-3 border-b">
-              <h3 className="font-medium">版本差異</h3>
+              <h3 className="font-medium">{t('dictionary.versionList.diffPanelTitle')}</h3>
               <span className="ml-2 font-mono text-xs text-slate-400">{diffCode}</span>
-              <button onClick={() => setDiffCode(null)} className="ml-auto text-slate-400 hover:text-slate-700" aria-label="關閉">✕</button>
+              <button onClick={() => setDiffCode(null)} className="ml-auto text-slate-400 hover:text-slate-700" aria-label={t('dictionary.versionList.closeAria')}>✕</button>
             </div>
             <div className="p-4 overflow-y-auto">
               <DiffView data={panelDiff.data} isLoading={panelDiff.isLoading} error={panelDiff.error} />
             </div>
             <div className="flex justify-end px-4 py-3 border-t">
-              <button onClick={() => setDiffCode(null)} className="px-3 py-1 rounded border text-sm">關閉</button>
+              <button onClick={() => setDiffCode(null)} className="px-3 py-1 rounded border text-sm">{t('dictionary.versionList.close')}</button>
             </div>
           </div>
         </div>

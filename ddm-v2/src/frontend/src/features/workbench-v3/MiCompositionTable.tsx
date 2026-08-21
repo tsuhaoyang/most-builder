@@ -1,3 +1,4 @@
+import { useTranslation } from 'react-i18next'
 import { TMU_SEC } from '../../shared/config'
 import type { MotionModuleSummary } from './api'
 
@@ -60,13 +61,14 @@ export function MiCompositionTable({
   onCloneModule,
   onDeleteModule,
 }: MiCompositionTableProps) {
+  const { t } = useTranslation()
   return (
     <div className="overflow-x-auto">
       <div className="max-h-[42vh] overflow-y-auto">
         <table className="w-full text-sm">
           <thead>
             <tr className="bg-slate-100 text-left">
-              <th className="p-1.5 w-12 text-center">排序</th>
+              <th className="p-1.5 w-12 text-center">{t('workbench.table.order')}</th>
               <th className="p-1.5 w-7 text-center">
                 <input
                   type="checkbox"
@@ -75,24 +77,24 @@ export function MiCompositionTable({
                 />
               </th>
               <th className="p-1.5 w-8">#</th>
-              <th className="p-1.5 w-14">手</th>
-              <th className="p-1.5">WI / 動作描述</th>
-              <th className="p-1.5 w-14">類型</th>
-              <th className="p-1.5 w-20 text-right">Base TMU</th>
-              <th className="p-1.5 w-14 text-right">頻率</th>
-              <th className="p-1.5 w-36">SIMO</th>
-              <th className="p-1.5 w-20 text-right">Eff TMU</th>
-              <th className="p-1.5 w-20 text-right">CT(秒)</th>
-              <th className="p-1.5 w-36 text-center">操作</th>
+              <th className="p-1.5 w-14">{t('workbench.table.hand')}</th>
+              <th className="p-1.5">{t('workbench.table.description')}</th>
+              <th className="p-1.5 w-14">{t('workbench.table.seq')}</th>
+              <th className="p-1.5 w-20 text-right">{t('workbench.table.baseTmu')}</th>
+              <th className="p-1.5 w-14 text-right">{t('workbench.table.frequency')}</th>
+              <th className="p-1.5 w-36">{t('workbench.table.simo')}</th>
+              <th className="p-1.5 w-20 text-right">{t('workbench.table.effTmu')}</th>
+              <th className="p-1.5 w-20 text-right">{t('workbench.table.ct')}</th>
+              <th className="p-1.5 w-36 text-center">{t('workbench.table.actions')}</th>
             </tr>
           </thead>
           <tbody>
             {modulesLoading && (
-              <tr><td colSpan={12} className="p-3 text-slate-400 text-center">載入中…</td></tr>
+              <tr><td colSpan={12} className="p-3 text-slate-400 text-center">{t('workbench.table.loading')}</td></tr>
             )}
             {!modulesLoading && modules.length === 0 && (
               <tr><td colSpan={12} className="p-3 text-slate-400 text-center">
-                {searchQ ? '無相符動作' : '尚無動作，請在上方建立器新增。'}
+                {searchQ ? t('workbench.table.noMatch') : t('workbench.table.empty')}
               </td></tr>
             )}
             {modules.map((mod, i) => {
@@ -105,7 +107,7 @@ export function MiCompositionTable({
               const isMainRow = Object.values(selectedSimoPairs).includes(mod.id)
               const simoEnabled = Object.prototype.hasOwnProperty.call(selectedSimoPairs, mod.id)
               const simoPair = selectedSimoPairs[mod.id] ?? ''
-              const leaderName = simoPair ? modules.find(candidate => candidate.id === simoPair)?.name_zh ?? '已選主列' : ''
+              const leaderName = simoPair ? modules.find(candidate => candidate.id === simoPair)?.name_zh ?? t('workbench.table.simoSelectedLeader') : ''
               const simoCandidates = modules.filter(candidate =>
                 selectedIds.has(candidate.id)
                 && candidate.id !== mod.id
@@ -133,14 +135,14 @@ export function MiCompositionTable({
                       onClick={() => onShiftOrderedModule(mod.id, -1)}
                       disabled={i === 0}
                       className="text-slate-400 hover:text-slate-600 disabled:opacity-20 px-0.5"
-                      title="上移"
+                      title={t('workbench.table.moveUp')}
                       data-testid="action-row-move-up"
                     >↑</button>
                     <button
                       onClick={() => onShiftOrderedModule(mod.id, 1)}
                       disabled={i === modules.length - 1}
                       className="text-slate-400 hover:text-slate-600 disabled:opacity-20 px-0.5"
-                      title="下移"
+                      title={t('workbench.table.moveDown')}
                       data-testid="action-row-move-down"
                     >↓</button>
                     <button
@@ -151,7 +153,7 @@ export function MiCompositionTable({
                       }}
                       onDragEnd={onDragEnd}
                       className="cursor-grab text-slate-400 hover:text-slate-600 px-0.5"
-                      title="拖曳排序"
+                      title={t('workbench.table.dragHandle')}
                       data-testid="action-row-drag-handle"
                     >⋮⋮</button>
                   </td>
@@ -183,7 +185,7 @@ export function MiCompositionTable({
                         className="border rounded w-14 px-1 py-0.5 text-sm text-right"
                         value={freqDraft[mod.id] ?? String(rowFreq)}
                         onChange={e => onFreqInput(mod, e.target.value)}
-                        aria-label={`${mod.name_zh} 頻率`}
+                        aria-label={t('workbench.table.freqAria', { name: mod.name_zh })}
                         data-testid="action-row-freq"
                       />
                     )}
@@ -199,7 +201,7 @@ export function MiCompositionTable({
                             onChange={e => onToggleListSimo(mod.id, e.target.checked)}
                             data-testid="action-row-simo-checkbox"
                           />
-                          <span>{isMainRow ? 'SIMO 主列' : '設為 SIMO 從屬'}</span>
+                          <span>{isMainRow ? t('workbench.table.simoLeader') : t('workbench.table.simoMakeFollower')}</span>
                         </label>
                         <select
                           className="w-full rounded border px-2 py-1 text-xs disabled:bg-slate-100"
@@ -208,16 +210,16 @@ export function MiCompositionTable({
                           onChange={e => onSetListSimoPair(mod.id, e.target.value || null)}
                           data-testid="action-row-simo"
                         >
-                          <option value="">請選主列</option>
+                          <option value="">{t('workbench.table.simoPickLeader')}</option>
                           {simoCandidates.map(candidate => (
                             <option key={candidate.id} value={candidate.id}>
-                              同動於：{candidate.name_zh}
+                              {t('workbench.table.simoSameAs', { name: candidate.name_zh })}
                             </option>
                           ))}
                         </select>
-                        {isMainRow && <span className="text-[10px] text-sky-600">SIMO 主列</span>}
-                        {!isMainRow && leaderName && <span className="text-[10px] text-orange-600">從屬列 → {leaderName}</span>}
-                        {!isMainRow && simoEnabled && !leaderName && <span className="text-[10px] text-amber-600">請再選一個主列</span>}
+                        {isMainRow && <span className="text-[10px] text-sky-600">{t('workbench.table.simoLeader')}</span>}
+                        {!isMainRow && leaderName && <span className="text-[10px] text-orange-600">{t('workbench.table.simoFollowerOf', { name: leaderName })}</span>}
+                        {!isMainRow && simoEnabled && !leaderName && <span className="text-[10px] text-amber-600">{t('workbench.table.simoNeedLeader')}</span>}
                       </div>
                     ) : (
                       <span className="text-xs text-slate-300">—</span>
@@ -225,7 +227,7 @@ export function MiCompositionTable({
                   </td>
                   <td className="p-1.5 text-right">
                     {freqSaving
-                      ? <span className="text-xs text-slate-400">計算中…</span>
+                      ? <span className="text-xs text-slate-400">{t('workbench.table.computing')}</span>
                       : effTmuRow != null
                         ? <b style={{ color: '#1a73e8' }}>{effTmuRow}</b>
                         : '—'}
@@ -238,31 +240,31 @@ export function MiCompositionTable({
                       onClick={() => onLoadModule(mod)}
                       disabled={loadingModuleId !== null}
                       className="text-xs px-2 py-0.5 border rounded hover:bg-slate-50 disabled:opacity-40"
-                      title="載回建立器編輯"
+                      title={t('workbench.table.editTitle')}
                     >
-                      {loadingModuleId === mod.id ? '載入中…' : '✏️ 編輯'}
+                      {loadingModuleId === mod.id ? t('workbench.table.loadingRow') : t('workbench.table.edit')}
                     </button>
                     <button
                       onClick={() => onReworkModule(mod)}
                       disabled={loadingModuleId !== null}
                       className="text-xs px-2 py-0.5 border rounded hover:bg-slate-50 disabled:opacity-40 ml-1"
-                      title="載入為新動作"
+                      title={t('workbench.table.reworkTitle')}
                     >
-                      ↺ 再做一份
+                      {t('workbench.table.rework')}
                     </button>
                     <button
                       onClick={() => onCloneModule(mod.id, mod.name_zh)}
                       disabled={clonePending}
                       className="text-xs px-2 py-0.5 border rounded hover:bg-slate-50 disabled:opacity-40 ml-1"
                     >
-                      📋 複製
+                      {t('workbench.table.clone')}
                     </button>
                     <button
                       onClick={() => onDeleteModule(mod.id, mod.name_zh)}
                       disabled={deletePending}
                       className="text-xs px-2 py-0.5 border border-red-200 text-red-600 rounded hover:bg-red-50 disabled:opacity-40 ml-1"
                     >
-                      ✕ 刪除
+                      {t('workbench.table.delete')}
                     </button>
                   </td>
                 </tr>

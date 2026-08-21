@@ -5,6 +5,7 @@
 //   子列操作：點列開 WiItemInspector（父層）、上移/下移（reorder）、刪除（DELETE row）
 // 所有數字來自後端持久化 computed（ADR-022 A-1）；前端不算 TMU。
 import { useEffect, useMemo, useState } from 'react'
+import { useTranslation } from 'react-i18next'
 import { TMU_SEC } from '../../shared/config'
 import {
   useWiTemplates,
@@ -17,7 +18,7 @@ import {
   type MotionModuleRow,
 } from './api'
 
-const HAND_NAME: Record<string, string> = { RH: '右手', LH: '左手', BH: '雙手' }
+const HAND_CODES = ['RH', 'LH', 'BH'] as const
 
 export interface WiOutlineSectionProps {
   onInspect: (wi: MotionModuleSummary, rowIndex: number, row: MotionModuleRow) => void
@@ -27,6 +28,7 @@ export interface WiOutlineSectionProps {
 }
 
 export function WiOutlineSection({ onInspect, showToast, activeTarget }: WiOutlineSectionProps) {
+  const { t } = useTranslation()
   const { data: wis = [], isLoading } = useWiTemplates()
   const updateModule = useUpdateModule()
   const deleteWi = useDeleteWiTemplate()
@@ -64,18 +66,18 @@ export function WiOutlineSection({ onInspect, showToast, activeTarget }: WiOutli
   }
 
   async function handleDeleteWi(id: string, name: string) {
-    if (!window.confirm(`確認刪除 WI「${name}」？`)) return
+    if (!window.confirm(t('workbench.wiOutline.confirmDeleteWi', { name }))) return
     try {
       await deleteWi.mutateAsync(id)
-      showToast('已刪除 WI：' + name, 'ok')
+      showToast(t('workbench.wiOutline.toast.deleted', { name }), 'ok')
     } catch (err) {
-      showToast('刪除失敗：' + (err as Error).message, 'err')
+      showToast(t('workbench.wiOutline.toast.deleteFailed', { message: (err as Error).message }), 'err')
     }
   }
 
   function beginRename(wi: MotionModuleSummary) {
     if (wi.status !== 'draft') {
-      showToast('目前後端僅允許 draft WI 改名', 'err')
+      showToast(t('workbench.wiOutline.toast.renameOnlyDraft'), 'err')
       return
     }
     setRenamingId(wi.id)
@@ -90,7 +92,7 @@ export function WiOutlineSection({ onInspect, showToast, activeTarget }: WiOutli
   async function saveRename(wi: MotionModuleSummary) {
     const name = renameDraft.trim().slice(0, 200)
     if (!name) {
-      showToast('WI 名稱不可為空', 'err')
+      showToast(t('workbench.wiOutline.toast.renameEmpty'), 'err')
       return
     }
     if (name === wi.name_zh) {
@@ -99,10 +101,10 @@ export function WiOutlineSection({ onInspect, showToast, activeTarget }: WiOutli
     }
     try {
       await updateModule.mutateAsync({ id: wi.id, body: { name_zh: name } })
-      showToast(`已改名 WI：${name}`, 'ok')
+      showToast(t('workbench.wiOutline.toast.renamed', { name }), 'ok')
       cancelRename()
     } catch (err) {
-      showToast('改名失敗：' + (err as Error).message, 'err')
+      showToast(t('workbench.wiOutline.toast.renameFailed', { message: (err as Error).message }), 'err')
     }
   }
 
@@ -124,16 +126,16 @@ export function WiOutlineSection({ onInspect, showToast, activeTarget }: WiOutli
   return (
     <div className="bg-white rounded-xl border p-4 space-y-3" data-testid="wi-outline">
       <div className="flex items-baseline gap-2">
-        <h2 className="font-semibold text-base">WI 大綱</h2>
+        <h2 className="font-semibold text-base">{t('workbench.wiOutline.title')}</h2>
         <span className="text-xs text-slate-400">
-          {orderedWis.length} 筆 WI · {totalActions} 筆動作
+          {t('workbench.wiOutline.countsWi', { count: orderedWis.length })} · {t('workbench.wiOutline.countsActions', { count: totalActions })}
         </span>
       </div>
 
-      {isLoading && <p className="text-sm text-slate-400 text-center py-4">載入中…</p>}
+      {isLoading && <p className="text-sm text-slate-400 text-center py-4">{t('workbench.wiOutline.loading')}</p>}
       {!isLoading && orderedWis.length === 0 && (
         <p className="text-sm text-slate-400 text-center py-4">
-          尚無 WI，請在上方動作清單勾選動作後建立 WI。
+          {t('workbench.wiOutline.empty')}
         </p>
       )}
 
@@ -195,6 +197,7 @@ function WiOutlineCard({
   onStartRename, onRenameDraftChange, onRenameCancel, onRenameSave, renameBusy,
   deleteDisabled, onInspect, showToast, activeTarget,
 }: WiOutlineCardProps) {
+  const { t } = useTranslation()
   const { data: detail, isLoading } = useMotionModuleDetail(wi.id, expanded)
   const reorderRows = useReorderModuleRows()
   const deleteRow = useDeleteModuleRow()
@@ -213,20 +216,20 @@ function WiOutlineCard({
     ;[order[i], order[j]] = [order[j], order[i]]
     try {
       await reorderRows.mutateAsync({ id: wi.id, orderedIndexes: order })
-      showToast('已調整順序（發布新版本）', 'ok')
+      showToast(t('workbench.wiOutline.toast.reordered'), 'ok')
     } catch (err) {
-      showToast('調序失敗：' + (err as Error).message, 'err')
+      showToast(t('workbench.wiOutline.toast.reorderFailed', { message: (err as Error).message }), 'err')
     }
   }
 
   async function handleDeleteRow(i: number, label: string) {
-    if (!window.confirm(`確認刪除此 WI 的第 ${i + 1} 列「${label}」？`)) return
+    if (!window.confirm(t('workbench.wiOutline.confirmDeleteRow', { n: i + 1, label }))) return
     try {
       await deleteRow.mutateAsync({ id: wi.id, rowIndex: i })
-      showToast('已刪除子列（發布新版本）', 'ok')
+      showToast(t('workbench.wiOutline.toast.rowDeleted'), 'ok')
     } catch (err) {
       // 422：EMPTY_ROWS（刪到 0 列）/ SIMO_PAIR_INVALID（刪被指向的主列）
-      showToast('刪除失敗：' + (err as Error).message, 'err')
+      showToast(t('workbench.wiOutline.toast.rowDeleteFailed', { message: (err as Error).message }), 'err')
     }
   }
 
@@ -265,12 +268,14 @@ function WiOutlineCard({
             ? <><b style={{ color: '#1a73e8' }}>{totalTmu}</b> TMU · <b className="text-red-600">{totalSec}</b>s</>
             : '—'}
         </span>
-        <span className="text-xs text-slate-400 whitespace-nowrap">{wi.action_count ?? '—'} 動作</span>
+        <span className="text-xs text-slate-400 whitespace-nowrap">
+          {t('workbench.wiOutline.actionCount', { count: wi.action_count ?? '—' })}
+        </span>
         {modified && (
           <span
             className="text-[10px] px-1.5 py-0.5 rounded bg-amber-100 text-amber-700 border border-amber-200 whitespace-nowrap"
-            title="此 WI 已微調（發布過新版本），與原始動作快照不同"
-          >已微調</span>
+            title={t('workbench.wiOutline.modifiedTitle')}
+          >{t('workbench.wiOutline.modifiedBadge')}</span>
         )}
         <span className="flex items-center gap-0.5" onClick={e => e.stopPropagation()}>
           {renaming ? (
@@ -280,19 +285,19 @@ function WiOutlineCard({
                 disabled={renameBusy}
                 className="text-xs px-1.5 py-0.5 border rounded border-emerald-300 text-emerald-700 hover:bg-emerald-50 disabled:opacity-40"
                 data-testid="wi-outline-rename-save"
-              >存</button>
+              >{t('workbench.wiOutline.renameSave')}</button>
               <button
                 onClick={onRenameCancel}
                 disabled={renameBusy}
                 className="text-xs px-1.5 py-0.5 border rounded hover:bg-slate-50 disabled:opacity-40"
                 data-testid="wi-outline-rename-cancel"
-              >取消</button>
+              >{t('workbench.wiOutline.renameCancel')}</button>
             </>
           ) : (
             <button
               onClick={onStartRename}
               className="text-slate-400 hover:text-slate-600 px-0.5 disabled:opacity-30"
-              title={wi.status === 'draft' ? '重新命名 WI' : '僅 draft 可改名'}
+              title={wi.status === 'draft' ? t('workbench.wiOutline.renameTitle') : t('workbench.wiOutline.renameDisabledTitle')}
               disabled={wi.status !== 'draft'}
               data-testid="wi-outline-rename"
             >✎</button>
@@ -301,14 +306,14 @@ function WiOutlineCard({
             onClick={onMoveUp}
             disabled={index === 0 || renaming}
             className="text-slate-400 hover:text-slate-600 disabled:opacity-20 px-0.5"
-            title="上移 WI"
+            title={t('workbench.wiOutline.moveUp')}
             data-testid="wi-outline-move-up"
           >↑</button>
           <button
             onClick={onMoveDown}
             disabled={index === total - 1 || renaming}
             className="text-slate-400 hover:text-slate-600 disabled:opacity-20 px-0.5"
-            title="下移 WI"
+            title={t('workbench.wiOutline.moveDown')}
             data-testid="wi-outline-move-down"
           >↓</button>
         </span>
@@ -317,22 +322,22 @@ function WiOutlineCard({
           disabled={deleteDisabled}
           className="text-xs px-2 py-0.5 border border-red-200 text-red-600 rounded hover:bg-red-50 disabled:opacity-40"
         >
-          刪除
+          {t('workbench.wiOutline.delete')}
         </button>
       </div>
 
       {/* 展開：子列（每列權威 computed） */}
       {expanded && (
         <div className="border-t px-3 py-1.5">
-          {isLoading && <p className="text-xs text-slate-400 py-2">載入明細…</p>}
+          {isLoading && <p className="text-xs text-slate-400 py-2">{t('workbench.wiOutline.loadingDetail')}</p>}
           {!isLoading && rows.length === 0 && (
-            <p className="text-xs text-slate-400 py-2">（此 WI 尚無已發布版本）</p>
+            <p className="text-xs text-slate-400 py-2">{t('workbench.wiOutline.noVersion')}</p>
           )}
           {rows.map((row, i) => {
             const seq = row.cycle?.['seq'] as string | undefined
             const isSimo = row.simo_pair_index != null
             const isActive = activeTarget?.moduleId === wi.id && activeTarget?.rowIndex === i
-            const label = row.sub_activity ?? row.narrative_zh ?? `第 ${i + 1} 列`
+            const label = row.sub_activity ?? row.narrative_zh ?? t('workbench.wiOutline.rowFallbackLabel', { n: i + 1 })
             return (
               <div
                 key={i}
@@ -340,7 +345,7 @@ function WiOutlineCard({
                   isActive ? 'bg-blue-50 border border-blue-200' : 'hover:bg-sky-50'
                 }`}
                 onClick={() => onInspect(wi, i, row)}
-                title="點擊開啟右側檢視/微調"
+                title={t('workbench.wiOutline.rowOpenTitle')}
               >
                 <span className="text-slate-400 w-4 text-right shrink-0">{i + 1}.</span>
                 {seq && (
@@ -348,7 +353,9 @@ function WiOutlineCard({
                     seq === 'GM' ? 'bg-green-100 text-green-700' : 'bg-purple-100 text-purple-700'
                   }`}>{seq}</span>
                 )}
-                <span className="text-slate-500 shrink-0">{HAND_NAME[row.hand] ?? row.hand}</span>
+                <span className="text-slate-500 shrink-0">
+                  {(HAND_CODES as readonly string[]).includes(row.hand) ? t(`workbench.hand.${row.hand}`) : row.hand}
+                </span>
                 <span className="flex-1 min-w-0 truncate text-slate-700" title={row.narrative_zh ?? label}>
                   {row.narrative_zh ?? label}
                 </span>
@@ -360,8 +367,8 @@ function WiOutlineCard({
                   Eff <b className="text-red-600">{row.computed?.eff_tmu ?? '—'}</b>
                 </span>
                 {/* 納入（後端 contribution_tmu 權威）：SIMO 從屬列＝0 且劃線（ADR-020） */}
-                <span className="shrink-0" title="納入 WI 合計的時間（SIMO 從屬列為 0）">
-                  納入{' '}
+                <span className="shrink-0" title={t('workbench.wiOutline.includedTitle')}>
+                  {t('workbench.wiOutline.included')}{' '}
                   {row.computed
                     ? (row.computed.contribution_tmu === 0
                         ? <b className="line-through text-slate-400">0</b>
@@ -370,33 +377,33 @@ function WiOutlineCard({
                 </span>
                 {isSimo && (
                   <span className="px-1 py-0.5 rounded bg-orange-100 text-orange-700 shrink-0"
-                    title={`SIMO 從屬（主列 #${(row.simo_pair_index ?? 0) + 1}），貢獻 0`}>SIMO</span>
+                    title={t('workbench.wiOutline.simoTitle', { n: (row.simo_pair_index ?? 0) + 1 })}>SIMO</span>
                 )}
                 <span className="flex items-center gap-0.5 shrink-0" onClick={e => e.stopPropagation()}>
                   <button
                     onClick={() => onInspect(wi, i, row)}
                     disabled={rowOpsPending}
                     className="text-sky-500 hover:text-sky-700 disabled:opacity-20 px-0.5"
-                    title="調整此列（含 SIMO / 次數）"
+                    title={t('workbench.wiOutline.rowEditTitle')}
                     data-testid="wi-outline-open-inspector"
                   >✎</button>
                   <button
                     onClick={() => move(i, -1)}
                     disabled={i === 0 || rowOpsPending}
                     className="text-slate-400 hover:text-slate-600 disabled:opacity-20 px-0.5"
-                    title="上移（發布新版本）"
+                    title={t('workbench.wiOutline.rowMoveUpTitle')}
                   >↑</button>
                   <button
                     onClick={() => move(i, 1)}
                     disabled={i === rows.length - 1 || rowOpsPending}
                     className="text-slate-400 hover:text-slate-600 disabled:opacity-20 px-0.5"
-                    title="下移（發布新版本）"
+                    title={t('workbench.wiOutline.rowMoveDownTitle')}
                   >↓</button>
                   <button
                     onClick={() => handleDeleteRow(i, label)}
                     disabled={rowOpsPending}
                     className="text-red-400 hover:text-red-600 disabled:opacity-20 px-0.5"
-                    title="刪除此列（發布新版本）"
+                    title={t('workbench.wiOutline.rowDeleteTitle')}
                   >✕</button>
                 </span>
               </div>

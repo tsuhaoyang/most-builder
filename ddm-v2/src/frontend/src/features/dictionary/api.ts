@@ -1,5 +1,6 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { ApiError, apiDelete, apiDeleteJson, apiGet, apiPatch, apiPost, apiPut } from '../../shared/api/client'
+import i18n from '../../shared/i18n/i18n'
 
 /**
  * MOST 字典（資料層稱 rule-set；ADR-023 §3.1 明記兩者同物）API。
@@ -108,7 +109,8 @@ export function useVersionMutations() {
 }
 
 /**
- * 各引用表的中文名（`RULE_SET_IN_USE` 的 `detail.references` 鍵）。
+ * 各引用表的顯示名（`RULE_SET_IN_USE` 的 `detail.references` 鍵）。
+ * 字面值在 `shared/i18n/resources/*.ts` 的 `dictionary.inUse.referrer.*`。
  *
  * ⚠️ 這份對照表必須與後端 `src/ddm_v2/services/v2/rule_set_service.py` 的
  * `_RESTRICT_REFERRERS` 保持同步。後端新增一張指向 rule_sets 的 RESTRICT FK 時，
@@ -122,13 +124,13 @@ export function useVersionMutations() {
  * 命名原則：用 IE 使用者看得懂的業務名詞（不是表名直譯），讓人一眼知道
  * 「這個規則版本被什麼東西用著、所以不能刪」。
  */
-const REFERRER_ZH: Record<string, string> = {
-  most_cycles: '動作循環',
-  most_worksheets: '工時表',
-  motion_module_versions: '動作模組版本',
-  ai_parse_runs: '語句解析紀錄',      // v2_0026：一次語句解析的執行紀錄（互動式／匯入逐列共用）
-  ai_parse_jobs: '批次解析作業',      // v2_0028：Excel 匯入的批次解析作業
-}
+const REFERRER_TABLES = [
+  'most_cycles',
+  'most_worksheets',
+  'motion_module_versions',
+  'ai_parse_runs',      // v2_0026：一次語句解析的執行紀錄（互動式／匯入逐列共用）
+  'ai_parse_jobs',      // v2_0028：Excel 匯入的批次解析作業
+]
 
 /**
  * 把 `RULE_SET_IN_USE` 的引用筆數轉成人話。
@@ -140,9 +142,14 @@ export function describeInUse(err: unknown): string | null {
   if (!refs) return err.humanMessage
   const parts = Object.entries(refs)
     .filter(([, n]) => n > 0)
-    .map(([table, n]) => `${n} 筆${REFERRER_ZH[table] ?? table}`)
+    .map(([table, n]) => i18n.t('dictionary.inUse.count', {
+      n,
+      name: REFERRER_TABLES.includes(table)
+        ? i18n.t(`dictionary.inUse.referrer.${table}`)
+        : table,
+    }))
   if (parts.length === 0) return err.humanMessage
-  return `此草稿已被 ${parts.join('、')}引用，無法刪除。`
+  return i18n.t('dictionary.inUse.message', { parts: parts.join(i18n.t('dictionary.listSeparator')) })
 }
 
 // ── 差異（D7 / H-1）─────────────────────────────────────────────────

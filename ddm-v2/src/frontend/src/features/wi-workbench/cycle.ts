@@ -1,4 +1,9 @@
 // 精確編輯的 cycle 狀態 + 轉 CycleIn payload + 敘述（移植 html_con 的 payload()/shortNarr）
+//
+// 本檔的顯示字串走 i18next 單例（`workbench.aBand.*` / `workbench.narrPreview.*`）：
+// 這些是模組層級的純函式、拿不到 `useTranslation()`，但呼叫端都是元件的 render
+// 路徑，語言切換時會跟著重繪。
+import i18n from '../../shared/i18n/i18n'
 export interface ASlot { reach: number; twist: number; foot: number }
 export type CycleSeq = 'GM' | 'CM'
 
@@ -62,12 +67,13 @@ export function migrateSeqState(current: CycleState, nextSeq: CycleSeq): CycleSt
 
 export interface ABand { max_value: number | null; index: number }
 export function aBandOpts(bands: ABand[], comp: 'reach' | 'twist' | 'foot') {
-  const unit = comp === 'twist' ? '度' : '公分'
-  const lead = comp === 'reach' ? '伸手' : comp === 'twist' ? '手度' : '腳步'
-  const out = [{ v: 0, l: `${lead}：無` }]
+  const deg = comp === 'twist'
+  const none = comp === 'reach' ? 'noneReach' : deg ? 'noneTwist' : 'noneFoot'
+  const out = [{ v: 0, l: i18n.t(`workbench.aBand.${none}`) }]
   for (const b of bands) {
     const v = b.max_value == null ? 999 : b.max_value
-    out.push({ v, l: `≤${b.max_value == null ? '更大' : b.max_value}${unit}(A${b.index})` })
+    const key = b.max_value == null ? (deg ? 'openDeg' : 'openCm') : (deg ? 'deg' : 'cm')
+    out.push({ v, l: i18n.t(`workbench.aBand.${key}`, { value: b.max_value, index: b.index }) })
   }
   return out
 }
@@ -115,16 +121,30 @@ export function payloadToState(p: Record<string, any>): CycleState { // eslint-d
   return s
 }
 
-const HAND_NAME: Record<string, string> = { RH: '右手', LH: '左手', BH: '雙手' }
+const HAND_CODES = ['RH', 'LH', 'BH']
 // showHand=false 時省略使用手（「顯示於MI」checkbox 未勾）；component/where 為空時輸出與舊版完全一致
+//
+// 這是**簡化版預覽句**，權威敘事在後端 `most_engine/narrative.py`／`narrative_en.py`。
+// 英文樣板刻意對齊後端的工業 METHOD 慣例（祈使句＋手別代碼前綴 `RH:`，ADR-032 D7.3），
+// 不用 "The right hand grasps…" 那種主謂句——否則同一個動作在預覽與正式敘事會給
+// 使用者兩種印象。手別在英文因此顯示成代碼（`workbench.handShort`），與後端一致。
 export function shortNarr(c: CycleState, label: (kind: string, code: string) => string, vname: (kind: string, id: string) => string, showHand = true): string {
-  const hand = showHand ? (HAND_NAME[c.handCode] || '') : ''
-  const g = label('g', c.g) || '［取得］'
-  const act2 = c.seq === 'GM' ? (label('p_base', c.p_base) || '［放置］') : (label('m_verb', c.m.verb) || '［動作］')
+  const t = (k: string, v?: Record<string, unknown>) => i18n.t(`workbench.narrPreview.${k}`, v ?? {})
+  const hand = showHand && HAND_CODES.includes(c.handCode) ? i18n.t(`workbench.handShort.${c.handCode}`) : ''
+  const g = label('g', c.g) || t('get')
+  const act2 = c.seq === 'GM' ? (label('p_base', c.p_base) || t('place')) : (label('m_verb', c.m.verb) || t('move'))
   const comp = vname('component', c.nv.component || '')
-  const obj = vname('object', c.nv.obj) || '［物］'
-  const objPart = comp ? `${obj}的${comp}` : obj
-  const base = `${hand ? hand + ' ' : ''}從${vname('from', c.nv.from) || '［自］'} ${g}「${objPart}」 ${act2} 至${vname('to', c.nv.to) || '［至］'}`
+  const obj = vname('object', c.nv.obj) || t('object')
+  const objPart = comp ? t('objOfComponent', { obj, component: comp }) : obj
+  const fields = {
+    hand,
+    from: vname('from', c.nv.from) || t('from'),
+    g,
+    obj: objPart,
+    act: act2,
+    to: vname('to', c.nv.to) || t('to'),
+  }
+  const base = hand ? t('base', fields) : t('baseNoHand', fields)
   const where = c.seq === 'CM' ? vname('to', c.nv.where || '') : ''
-  return where ? `${base}（於${where}）` : base
+  return where ? t('withWhere', { base, where }) : base
 }

@@ -1,4 +1,5 @@
 import { useRef, useState } from 'react'
+import { Trans, useTranslation } from 'react-i18next'
 import { OptionEditor } from './OptionEditor'
 import { VersionList } from './VersionList'
 import { useRuleSetVersions, useVersionMutations } from './api'
@@ -16,6 +17,7 @@ type CloneAsk = {
 }
 
 export function DictionaryPage() {
+  const { t } = useTranslation()
   const [openCode, setOpenCode] = useState<string | null>(null)
   const [ask, setAsk] = useState<CloneAsk | null>(null)
   /** clone 成功後的「已建立」階段：**不自動切換版本**，由使用者決定何時前往。 */
@@ -93,26 +95,30 @@ export function DictionaryPage() {
       {ask && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/30 p-4" role="dialog" aria-modal="true">
           <div className="bg-white rounded-xl shadow-xl w-full max-w-md" data-testid="dict-clone-dialog">
-            <div className="px-4 py-3 border-b font-medium">建立草稿版本</div>
+            <div className="px-4 py-3 border-b font-medium">{t('dictionary.clone.title')}</div>
             <div className="px-4 py-4 space-y-2 text-sm">
               <p>
-                目前版本為<b>{isCertified ? '認證匯入版本' : '已發布'}</b>，是否建立草稿版本後編輯？
+                <Trans
+                  i18nKey="dictionary.clone.ask"
+                  values={{ kind: isCertified ? t('dictionary.clone.kindCertified') : t('dictionary.clone.kindPublished') }}
+                  components={{ b: <b /> }}
+                />
               </p>
               {isCertified && (
                 <p className="text-xs text-violet-700">
-                  認證匯入版本不可直接編輯（ADR-014），將以其內容建立新草稿供編輯。
+                  {t('dictionary.clone.certifiedNote')}
                 </p>
               )}
               <p className="text-xs text-amber-700">
-                注意：草稿會以本版<b>目前已儲存的內容</b>建立，你在畫面上尚未儲存的修改<b>不會</b>被帶過去。
+                <Trans i18nKey="dictionary.clone.warn" components={{ b: <b /> }} />
               </p>
-              <p className="text-xs text-slate-500">草稿版本代碼由系統自動命名。</p>
+              <p className="text-xs text-slate-500">{t('dictionary.clone.autoName')}</p>
               {err && <p className="text-sm text-red-600">{err}</p>}
             </div>
             <div className="flex justify-end gap-2 px-4 py-3 border-t">
-              <button onClick={cancel} disabled={busy} className="px-3 py-1 rounded border text-sm">取消</button>
+              <button onClick={cancel} disabled={busy} className="px-3 py-1 rounded border text-sm">{t('dictionary.clone.cancel')}</button>
               <button onClick={() => void confirmClone()} disabled={busy} className="px-3 py-1 rounded bg-sky-600 text-white text-sm disabled:opacity-50">
-                {busy ? '建立中…' : '建立草稿版本'}
+                {busy ? t('dictionary.clone.creating') : t('dictionary.clone.create')}
               </button>
             </div>
           </div>
@@ -123,20 +129,26 @@ export function DictionaryPage() {
       {created && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/30 p-4" role="dialog" aria-modal="true">
           <div className="bg-white rounded-xl shadow-xl w-full max-w-md" data-testid="dict-clone-created">
-            <div className="px-4 py-3 border-b font-medium">草稿版本已建立</div>
+            <div className="px-4 py-3 border-b font-medium">{t('dictionary.clone.createdTitle')}</div>
             <div className="px-4 py-4 space-y-2 text-sm">
-              <p>草稿 <span className="font-mono text-xs">{created}</span> 已建立。</p>
+              <p>
+                <Trans
+                  i18nKey="dictionary.clone.createdBody"
+                  values={{ code: created }}
+                  components={{ code: <span className="font-mono text-xs" /> }}
+                />
+              </p>
               <p className="text-amber-800">
-                剛才的修改<b>未</b>套用到草稿，請進入草稿後重做。
+                <Trans i18nKey="dictionary.clone.createdWarn" components={{ b: <b /> }} />
               </p>
             </div>
             <div className="flex justify-end gap-2 px-4 py-3 border-t">
-              <button onClick={() => setCreated(null)} className="px-3 py-1 rounded border text-sm">留在此頁</button>
+              <button onClick={() => setCreated(null)} className="px-3 py-1 rounded border text-sm">{t('dictionary.clone.stay')}</button>
               <button
                 onClick={() => { setOpenCode(created); setCreated(null) }}
                 className="px-3 py-1 rounded bg-sky-600 text-white text-sm"
               >
-                前往草稿
+                {t('dictionary.clone.goto')}
               </button>
             </div>
           </div>

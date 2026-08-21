@@ -148,7 +148,7 @@ jobs:
         run: pytest tests/integration -q
 
   frontend:
-    name: 前端（typecheck + build）
+    name: 前端（typecheck + build + i18n 守衛）
     runs-on: ubuntu-latest
     defaults:
       run:
@@ -164,6 +164,11 @@ jobs:
       # 不跑這條的話那些檔案的型別錯只有 playwright 實跑才會炸（tsconfig.e2e.json）。
       - run: npm run typecheck:e2e
       - run: npm run build
+      # ADR-032 R4 守衛：全樹掃「註解以外的中文字面值」＋寫死語系的日期格式化。
+      # 它是純 node 掃描（不開瀏覽器、不打後端，globalSetup 連不到後端會自行降級），
+      # 所以放在這個最快的 job，讓硬編中文在幾十秒內就紅，而不是等 e2e job 起完 DB。
+      # e2e job 跑全套時會再收進去一次，那邊不必另外加。
+      - run: npx playwright test e2e/i18n-hardcoded-zh.spec.ts --reporter=line
 
   e2e:
     name: 端對端（瀏覽器 smoke，含真實 DB）
