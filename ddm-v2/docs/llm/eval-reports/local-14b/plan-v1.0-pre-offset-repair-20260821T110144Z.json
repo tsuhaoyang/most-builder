@@ -1,0 +1,3197 @@
+{
+  "report_kind": "wi-gold-eval",
+  "report_schema_version": "wi-gold-report-v5",
+  "gold_schema_version": "wi-gold-v1",
+  "generated_at": "2026-08-21T11:01:44.563613+00:00",
+  "gold_dir": "/home/howard/workspace/most-builder/ddm-v2/tests/gold/wi_plans",
+  "dataset_note": "n=55；seed 3 筆；IE 核准 52 筆，已達 docs/architecture/wi-ai-parser-system-spec.md §19 P0 的 50 筆前置；其中 ie_modified≠true 的預標註 46 筆（原樣核准，不計 planner 段證據力——見 self_referential_excluded）",
+  "gold_load_errors": [],
+  "unapproved_cases": [],
+  "summary": {
+    "total": 55,
+    "passed": 55,
+    "failed": 0
+  },
+  "cases": [
+    {
+      "case_id": "g01_acquire_dimm",
+      "ok": true,
+      "action_count": 1,
+      "routing_status": "review",
+      "routing_reasons": [
+        "next_operation"
+      ],
+      "cycle_checks": [
+        {
+          "action_id": "a1",
+          "ok": true,
+          "errors": []
+        }
+      ],
+      "errors": [],
+      "metrics": {
+        "action_count": 1,
+        "complete_drafts": 1,
+        "engine_ok": 1,
+        "routing_status": "review",
+        "boundary": "acquire_only_no_invented_steps"
+      }
+    },
+    {
+      "case_id": "g02_screwdriver_screw_x2",
+      "ok": true,
+      "action_count": 2,
+      "routing_status": "review",
+      "routing_reasons": [
+        "next_operation",
+        "quantity_policy_review"
+      ],
+      "cycle_checks": [
+        {
+          "action_id": "a1",
+          "ok": true,
+          "errors": []
+        },
+        {
+          "action_id": "a2",
+          "ok": true,
+          "errors": []
+        }
+      ],
+      "errors": [],
+      "metrics": {
+        "action_count": 2,
+        "complete_drafts": 2,
+        "engine_ok": 2,
+        "routing_status": "review",
+        "boundary": "multi_action_gm_cm"
+      }
+    },
+    {
+      "case_id": "g05_composite_unknown",
+      "ok": true,
+      "action_count": 1,
+      "routing_status": "abstain",
+      "routing_reasons": [
+        "composite_unknown"
+      ],
+      "cycle_checks": [
+        {
+          "action_id": "a1",
+          "ok": true,
+          "errors": []
+        }
+      ],
+      "errors": [],
+      "metrics": {
+        "action_count": 1,
+        "complete_drafts": 0,
+        "engine_ok": 0,
+        "routing_status": "abstain",
+        "boundary": "composite_unknown_abstain"
+      }
+    },
+    {
+      "case_id": "g06_board_to_press_fixture",
+      "ok": true,
+      "action_count": 1,
+      "routing_status": "review",
+      "routing_reasons": [],
+      "cycle_checks": [
+        {
+          "action_id": "a1",
+          "ok": true,
+          "errors": []
+        }
+      ],
+      "errors": [],
+      "metrics": {
+        "action_count": 1,
+        "complete_drafts": 1,
+        "engine_ok": 1,
+        "routing_status": "review"
+      }
+    },
+    {
+      "case_id": "g07_dimm_latch_press_x16",
+      "ok": true,
+      "action_count": 1,
+      "routing_status": "review",
+      "routing_reasons": [],
+      "cycle_checks": [
+        {
+          "action_id": "a1",
+          "ok": true,
+          "errors": []
+        }
+      ],
+      "errors": [],
+      "metrics": {
+        "action_count": 1,
+        "complete_drafts": 1,
+        "engine_ok": 1,
+        "routing_status": "review"
+      }
+    },
+    {
+      "case_id": "g08_hold_driver_to_chassis",
+      "ok": true,
+      "action_count": 1,
+      "routing_status": "review",
+      "routing_reasons": [],
+      "cycle_checks": [
+        {
+          "action_id": "a1",
+          "ok": true,
+          "errors": []
+        }
+      ],
+      "errors": [],
+      "metrics": {
+        "action_count": 1,
+        "complete_drafts": 1,
+        "engine_ok": 1,
+        "routing_status": "review"
+      }
+    },
+    {
+      "case_id": "g09_hold_board_to_line",
+      "ok": true,
+      "action_count": 1,
+      "routing_status": "review",
+      "routing_reasons": [],
+      "cycle_checks": [
+        {
+          "action_id": "a1",
+          "ok": true,
+          "errors": []
+        }
+      ],
+      "errors": [],
+      "metrics": {
+        "action_count": 1,
+        "complete_drafts": 1,
+        "engine_ok": 1,
+        "routing_status": "review"
+      }
+    },
+    {
+      "case_id": "g10_push_press_fixture",
+      "ok": true,
+      "action_count": 1,
+      "routing_status": "review",
+      "routing_reasons": [],
+      "cycle_checks": [
+        {
+          "action_id": "a1",
+          "ok": true,
+          "errors": []
+        }
+      ],
+      "errors": [],
+      "metrics": {
+        "action_count": 1,
+        "complete_drafts": 1,
+        "engine_ok": 1,
+        "routing_status": "review"
+      }
+    },
+    {
+      "case_id": "g11_pull_press_fixture",
+      "ok": true,
+      "action_count": 1,
+      "routing_status": "review",
+      "routing_reasons": [],
+      "cycle_checks": [
+        {
+          "action_id": "a1",
+          "ok": true,
+          "errors": []
+        }
+      ],
+      "errors": [],
+      "metrics": {
+        "action_count": 1,
+        "complete_drafts": 1,
+        "engine_ok": 1,
+        "routing_status": "review"
+      }
+    },
+    {
+      "case_id": "g12_push_dimm_latches_confirm",
+      "ok": true,
+      "action_count": 1,
+      "routing_status": "review",
+      "routing_reasons": [],
+      "cycle_checks": [
+        {
+          "action_id": "a1",
+          "ok": true,
+          "errors": []
+        }
+      ],
+      "errors": [],
+      "metrics": {
+        "action_count": 1,
+        "complete_drafts": 1,
+        "engine_ok": 1,
+        "routing_status": "review"
+      }
+    },
+    {
+      "case_id": "g13_airgun_clean_slot",
+      "ok": true,
+      "action_count": 1,
+      "routing_status": "review",
+      "routing_reasons": [],
+      "cycle_checks": [
+        {
+          "action_id": "a1",
+          "ok": true,
+          "errors": []
+        }
+      ],
+      "errors": [],
+      "metrics": {
+        "action_count": 1,
+        "complete_drafts": 1,
+        "engine_ok": 1,
+        "routing_status": "review"
+      }
+    },
+    {
+      "case_id": "g14_dimm_latch_press_confirm",
+      "ok": true,
+      "action_count": 1,
+      "routing_status": "review",
+      "routing_reasons": [],
+      "cycle_checks": [
+        {
+          "action_id": "a1",
+          "ok": true,
+          "errors": []
+        }
+      ],
+      "errors": [],
+      "metrics": {
+        "action_count": 1,
+        "complete_drafts": 1,
+        "engine_ok": 1,
+        "routing_status": "review"
+      }
+    },
+    {
+      "case_id": "g15_airgun_clean_dimm",
+      "ok": true,
+      "action_count": 1,
+      "routing_status": "review",
+      "routing_reasons": [],
+      "cycle_checks": [
+        {
+          "action_id": "a1",
+          "ok": true,
+          "errors": []
+        }
+      ],
+      "errors": [],
+      "metrics": {
+        "action_count": 1,
+        "complete_drafts": 1,
+        "engine_ok": 1,
+        "routing_status": "review"
+      }
+    },
+    {
+      "case_id": "g16_regrasp_board_to_bench",
+      "ok": true,
+      "action_count": 1,
+      "routing_status": "review",
+      "routing_reasons": [],
+      "cycle_checks": [
+        {
+          "action_id": "a1",
+          "ok": true,
+          "errors": []
+        }
+      ],
+      "errors": [],
+      "metrics": {
+        "action_count": 1,
+        "complete_drafts": 1,
+        "engine_ok": 1,
+        "routing_status": "review"
+      }
+    },
+    {
+      "case_id": "g17_remove_board_bag",
+      "ok": true,
+      "action_count": 1,
+      "routing_status": "review",
+      "routing_reasons": [],
+      "cycle_checks": [
+        {
+          "action_id": "a1",
+          "ok": true,
+          "errors": []
+        }
+      ],
+      "errors": [],
+      "metrics": {
+        "action_count": 1,
+        "complete_drafts": 1,
+        "engine_ok": 1,
+        "routing_status": "review"
+      }
+    },
+    {
+      "case_id": "g18_hold_airgun_to_position",
+      "ok": true,
+      "action_count": 1,
+      "routing_status": "review",
+      "routing_reasons": [],
+      "cycle_checks": [
+        {
+          "action_id": "a1",
+          "ok": true,
+          "errors": []
+        }
+      ],
+      "errors": [],
+      "metrics": {
+        "action_count": 1,
+        "complete_drafts": 1,
+        "engine_ok": 1,
+        "routing_status": "review"
+      }
+    },
+    {
+      "case_id": "g19_fixture_handle_to_point",
+      "ok": true,
+      "action_count": 1,
+      "routing_status": "review",
+      "routing_reasons": [],
+      "cycle_checks": [
+        {
+          "action_id": "a1",
+          "ok": true,
+          "errors": []
+        }
+      ],
+      "errors": [],
+      "metrics": {
+        "action_count": 1,
+        "complete_drafts": 1,
+        "engine_ok": 1,
+        "routing_status": "review"
+      }
+    },
+    {
+      "case_id": "g20_attach_label_to_board",
+      "ok": true,
+      "action_count": 1,
+      "routing_status": "review",
+      "routing_reasons": [],
+      "cycle_checks": [
+        {
+          "action_id": "a1",
+          "ok": true,
+          "errors": []
+        }
+      ],
+      "errors": [],
+      "metrics": {
+        "action_count": 1,
+        "complete_drafts": 1,
+        "engine_ok": 1,
+        "routing_status": "review"
+      }
+    },
+    {
+      "case_id": "g21_pull_fixture_base",
+      "ok": true,
+      "action_count": 1,
+      "routing_status": "review",
+      "routing_reasons": [],
+      "cycle_checks": [
+        {
+          "action_id": "a1",
+          "ok": true,
+          "errors": []
+        }
+      ],
+      "errors": [],
+      "metrics": {
+        "action_count": 1,
+        "complete_drafts": 1,
+        "engine_ok": 1,
+        "routing_status": "review"
+      }
+    },
+    {
+      "case_id": "g22_hold_dimm_box",
+      "ok": true,
+      "action_count": 1,
+      "routing_status": "review",
+      "routing_reasons": [],
+      "cycle_checks": [
+        {
+          "action_id": "a1",
+          "ok": true,
+          "errors": []
+        }
+      ],
+      "errors": [],
+      "metrics": {
+        "action_count": 1,
+        "complete_drafts": 1,
+        "engine_ok": 1,
+        "routing_status": "review"
+      }
+    },
+    {
+      "case_id": "g23_tear_dummy_dimm_bag",
+      "ok": true,
+      "action_count": 1,
+      "routing_status": "review",
+      "routing_reasons": [],
+      "cycle_checks": [
+        {
+          "action_id": "a1",
+          "ok": true,
+          "errors": []
+        }
+      ],
+      "errors": [],
+      "metrics": {
+        "action_count": 1,
+        "complete_drafts": 1,
+        "engine_ok": 1,
+        "routing_status": "review"
+      }
+    },
+    {
+      "case_id": "g24_board_bag_to_rack",
+      "ok": true,
+      "action_count": 1,
+      "routing_status": "review",
+      "routing_reasons": [],
+      "cycle_checks": [
+        {
+          "action_id": "a1",
+          "ok": true,
+          "errors": []
+        }
+      ],
+      "errors": [],
+      "metrics": {
+        "action_count": 1,
+        "complete_drafts": 1,
+        "engine_ok": 1,
+        "routing_status": "review"
+      }
+    },
+    {
+      "case_id": "g25_toss_dimm_bag",
+      "ok": true,
+      "action_count": 1,
+      "routing_status": "review",
+      "routing_reasons": [],
+      "cycle_checks": [
+        {
+          "action_id": "a1",
+          "ok": true,
+          "errors": []
+        }
+      ],
+      "errors": [],
+      "metrics": {
+        "action_count": 1,
+        "complete_drafts": 1,
+        "engine_ok": 1,
+        "routing_status": "review"
+      }
+    },
+    {
+      "case_id": "g26_dimm_box_to_position",
+      "ok": true,
+      "action_count": 1,
+      "routing_status": "review",
+      "routing_reasons": [],
+      "cycle_checks": [
+        {
+          "action_id": "a1",
+          "ok": true,
+          "errors": []
+        }
+      ],
+      "errors": [],
+      "metrics": {
+        "action_count": 1,
+        "complete_drafts": 1,
+        "engine_ok": 1,
+        "routing_status": "review"
+      }
+    },
+    {
+      "case_id": "g27_pick_dimm_box_to_bench",
+      "ok": true,
+      "action_count": 1,
+      "routing_status": "review",
+      "routing_reasons": [],
+      "cycle_checks": [
+        {
+          "action_id": "a1",
+          "ok": true,
+          "errors": []
+        }
+      ],
+      "errors": [],
+      "metrics": {
+        "action_count": 1,
+        "complete_drafts": 1,
+        "engine_ok": 1,
+        "routing_status": "review"
+      }
+    },
+    {
+      "case_id": "g28_pick_board_hold",
+      "ok": true,
+      "action_count": 1,
+      "routing_status": "review",
+      "routing_reasons": [],
+      "cycle_checks": [
+        {
+          "action_id": "a1",
+          "ok": true,
+          "errors": []
+        }
+      ],
+      "errors": [],
+      "metrics": {
+        "action_count": 1,
+        "complete_drafts": 1,
+        "engine_ok": 1,
+        "routing_status": "review"
+      }
+    },
+    {
+      "case_id": "g29_pick_dummy_dimm_hold_to_line",
+      "ok": true,
+      "action_count": 1,
+      "routing_status": "review",
+      "routing_reasons": [],
+      "cycle_checks": [
+        {
+          "action_id": "a1",
+          "ok": true,
+          "errors": []
+        }
+      ],
+      "errors": [],
+      "metrics": {
+        "action_count": 1,
+        "complete_drafts": 1,
+        "engine_ok": 1,
+        "routing_status": "review"
+      }
+    },
+    {
+      "case_id": "g30_pick_dummy_dimm_debag",
+      "ok": true,
+      "action_count": 2,
+      "routing_status": "review",
+      "routing_reasons": [
+        "next_operation"
+      ],
+      "cycle_checks": [
+        {
+          "action_id": "a1",
+          "ok": true,
+          "errors": []
+        },
+        {
+          "action_id": "a2",
+          "ok": true,
+          "errors": []
+        }
+      ],
+      "errors": [],
+      "metrics": {
+        "action_count": 2,
+        "complete_drafts": 2,
+        "engine_ok": 2,
+        "routing_status": "review"
+      }
+    },
+    {
+      "case_id": "g31_confirm_points_press_handle",
+      "ok": true,
+      "action_count": 2,
+      "routing_status": "review",
+      "routing_reasons": [],
+      "cycle_checks": [
+        {
+          "action_id": "a1",
+          "ok": true,
+          "errors": []
+        },
+        {
+          "action_id": "a2",
+          "ok": true,
+          "errors": []
+        }
+      ],
+      "errors": [],
+      "metrics": {
+        "action_count": 2,
+        "complete_drafts": 2,
+        "engine_ok": 2,
+        "routing_status": "review"
+      }
+    },
+    {
+      "case_id": "g32_pick_board_debag_place_bench",
+      "ok": true,
+      "action_count": 3,
+      "routing_status": "review",
+      "routing_reasons": [
+        "next_operation"
+      ],
+      "cycle_checks": [
+        {
+          "action_id": "a1",
+          "ok": true,
+          "errors": []
+        },
+        {
+          "action_id": "a2",
+          "ok": true,
+          "errors": []
+        },
+        {
+          "action_id": "a3",
+          "ok": true,
+          "errors": []
+        }
+      ],
+      "errors": [],
+      "metrics": {
+        "action_count": 3,
+        "complete_drafts": 3,
+        "engine_ok": 3,
+        "routing_status": "review"
+      }
+    },
+    {
+      "case_id": "g33_take_board_place_press_fixture",
+      "ok": true,
+      "action_count": 1,
+      "routing_status": "review",
+      "routing_reasons": [],
+      "cycle_checks": [
+        {
+          "action_id": "a1",
+          "ok": true,
+          "errors": []
+        }
+      ],
+      "errors": [],
+      "metrics": {
+        "action_count": 1,
+        "complete_drafts": 1,
+        "engine_ok": 1,
+        "routing_status": "review"
+      }
+    },
+    {
+      "case_id": "g34_dimm_x16_insert_to_board",
+      "ok": true,
+      "action_count": 1,
+      "routing_status": "review",
+      "routing_reasons": [],
+      "cycle_checks": [
+        {
+          "action_id": "a1",
+          "ok": true,
+          "errors": []
+        }
+      ],
+      "errors": [],
+      "metrics": {
+        "action_count": 1,
+        "complete_drafts": 1,
+        "engine_ok": 1,
+        "routing_status": "review"
+      }
+    },
+    {
+      "case_id": "g35_dimm_from_box_to_board",
+      "ok": true,
+      "action_count": 1,
+      "routing_status": "review",
+      "routing_reasons": [],
+      "cycle_checks": [
+        {
+          "action_id": "a1",
+          "ok": true,
+          "errors": []
+        }
+      ],
+      "errors": [],
+      "metrics": {
+        "action_count": 1,
+        "complete_drafts": 1,
+        "engine_ok": 1,
+        "routing_status": "review"
+      }
+    },
+    {
+      "case_id": "g36_dimm_to_dimm_slot",
+      "ok": true,
+      "action_count": 1,
+      "routing_status": "review",
+      "routing_reasons": [],
+      "cycle_checks": [
+        {
+          "action_id": "a1",
+          "ok": true,
+          "errors": []
+        }
+      ],
+      "errors": [],
+      "metrics": {
+        "action_count": 1,
+        "complete_drafts": 1,
+        "engine_ok": 1,
+        "routing_status": "review"
+      }
+    },
+    {
+      "case_id": "g37_board_to_chassis",
+      "ok": true,
+      "action_count": 1,
+      "routing_status": "review",
+      "routing_reasons": [],
+      "cycle_checks": [
+        {
+          "action_id": "a1",
+          "ok": true,
+          "errors": []
+        }
+      ],
+      "errors": [],
+      "metrics": {
+        "action_count": 1,
+        "complete_drafts": 1,
+        "engine_ok": 1,
+        "routing_status": "review"
+      }
+    },
+    {
+      "case_id": "g38_dummy_dimm_to_dimm_slot",
+      "ok": true,
+      "action_count": 1,
+      "routing_status": "review",
+      "routing_reasons": [],
+      "cycle_checks": [
+        {
+          "action_id": "a1",
+          "ok": true,
+          "errors": []
+        }
+      ],
+      "errors": [],
+      "metrics": {
+        "action_count": 1,
+        "complete_drafts": 1,
+        "engine_ok": 1,
+        "routing_status": "review"
+      }
+    },
+    {
+      "case_id": "g39_dummy_dimm_x16_insert_to_slot",
+      "ok": true,
+      "action_count": 1,
+      "routing_status": "review",
+      "routing_reasons": [],
+      "cycle_checks": [
+        {
+          "action_id": "a1",
+          "ok": true,
+          "errors": []
+        }
+      ],
+      "errors": [],
+      "metrics": {
+        "action_count": 1,
+        "complete_drafts": 1,
+        "engine_ok": 1,
+        "routing_status": "review"
+      }
+    },
+    {
+      "case_id": "g40_dummy_dimm_to_slot_r",
+      "ok": true,
+      "action_count": 1,
+      "routing_status": "review",
+      "routing_reasons": [],
+      "cycle_checks": [
+        {
+          "action_id": "a1",
+          "ok": true,
+          "errors": []
+        }
+      ],
+      "errors": [],
+      "metrics": {
+        "action_count": 1,
+        "complete_drafts": 1,
+        "engine_ok": 1,
+        "routing_status": "review"
+      }
+    },
+    {
+      "case_id": "g41_confirm_dimm_points",
+      "ok": true,
+      "action_count": 1,
+      "routing_status": "review",
+      "routing_reasons": [
+        "no_candidate_m",
+        "m_zero_pure_inspection_assumed"
+      ],
+      "cycle_checks": [
+        {
+          "action_id": "a1",
+          "ok": true,
+          "errors": []
+        }
+      ],
+      "errors": [],
+      "metrics": {
+        "action_count": 1,
+        "complete_drafts": 1,
+        "engine_ok": 1,
+        "routing_status": "review"
+      }
+    },
+    {
+      "case_id": "g42_screw_cpu_heatsink_x4",
+      "ok": true,
+      "action_count": 1,
+      "routing_status": "review",
+      "routing_reasons": [
+        "no_candidate_m",
+        "missing_core_m"
+      ],
+      "cycle_checks": [
+        {
+          "action_id": "a1",
+          "ok": true,
+          "errors": []
+        }
+      ],
+      "errors": [],
+      "metrics": {
+        "action_count": 1,
+        "complete_drafts": 0,
+        "engine_ok": 0,
+        "routing_status": "review"
+      }
+    },
+    {
+      "case_id": "g43_screw_board_fix_x6",
+      "ok": true,
+      "action_count": 1,
+      "routing_status": "review",
+      "routing_reasons": [
+        "no_candidate_m",
+        "missing_core_m"
+      ],
+      "cycle_checks": [
+        {
+          "action_id": "a1",
+          "ok": true,
+          "errors": []
+        }
+      ],
+      "errors": [],
+      "metrics": {
+        "action_count": 1,
+        "complete_drafts": 0,
+        "engine_ok": 0,
+        "routing_status": "review"
+      }
+    },
+    {
+      "case_id": "g44_screw_fix_single",
+      "ok": true,
+      "action_count": 1,
+      "routing_status": "review",
+      "routing_reasons": [
+        "no_candidate_m",
+        "missing_core_m"
+      ],
+      "cycle_checks": [
+        {
+          "action_id": "a1",
+          "ok": true,
+          "errors": []
+        }
+      ],
+      "errors": [],
+      "metrics": {
+        "action_count": 1,
+        "complete_drafts": 0,
+        "engine_ok": 0,
+        "routing_status": "review"
+      }
+    },
+    {
+      "case_id": "g45_pick_airgun_clean_slot",
+      "ok": true,
+      "action_count": 1,
+      "routing_status": "review",
+      "routing_reasons": [
+        "no_candidate_m",
+        "missing_core_m"
+      ],
+      "cycle_checks": [
+        {
+          "action_id": "a1",
+          "ok": true,
+          "errors": []
+        }
+      ],
+      "errors": [],
+      "metrics": {
+        "action_count": 1,
+        "complete_drafts": 0,
+        "engine_ok": 0,
+        "routing_status": "review"
+      }
+    },
+    {
+      "case_id": "g46_rh_screw_fix_confirm",
+      "ok": true,
+      "action_count": 1,
+      "routing_status": "review",
+      "routing_reasons": [
+        "no_candidate_m",
+        "missing_core_m"
+      ],
+      "cycle_checks": [
+        {
+          "action_id": "a1",
+          "ok": true,
+          "errors": []
+        }
+      ],
+      "errors": [],
+      "metrics": {
+        "action_count": 1,
+        "complete_drafts": 0,
+        "engine_ok": 0,
+        "routing_status": "review"
+      }
+    },
+    {
+      "case_id": "g47_screw_fix_confirm",
+      "ok": true,
+      "action_count": 1,
+      "routing_status": "review",
+      "routing_reasons": [
+        "no_candidate_m",
+        "missing_core_m"
+      ],
+      "cycle_checks": [
+        {
+          "action_id": "a1",
+          "ok": true,
+          "errors": []
+        }
+      ],
+      "errors": [],
+      "metrics": {
+        "action_count": 1,
+        "complete_drafts": 0,
+        "engine_ok": 0,
+        "routing_status": "review"
+      }
+    },
+    {
+      "case_id": "g48_screw_fix_multi",
+      "ok": true,
+      "action_count": 1,
+      "routing_status": "review",
+      "routing_reasons": [
+        "no_candidate_m",
+        "missing_core_m"
+      ],
+      "cycle_checks": [
+        {
+          "action_id": "a1",
+          "ok": true,
+          "errors": []
+        }
+      ],
+      "errors": [],
+      "metrics": {
+        "action_count": 1,
+        "complete_drafts": 0,
+        "engine_ok": 0,
+        "routing_status": "review"
+      }
+    },
+    {
+      "case_id": "g49_dimm_latch_push_x16_confirm",
+      "ok": true,
+      "action_count": 1,
+      "routing_status": "review",
+      "routing_reasons": [
+        "no_candidate_m",
+        "missing_core_m"
+      ],
+      "cycle_checks": [
+        {
+          "action_id": "a1",
+          "ok": true,
+          "errors": []
+        }
+      ],
+      "errors": [],
+      "metrics": {
+        "action_count": 1,
+        "complete_drafts": 0,
+        "engine_ok": 0,
+        "routing_status": "review"
+      }
+    },
+    {
+      "case_id": "g50_press_function_test_fixture",
+      "ok": true,
+      "action_count": 1,
+      "routing_status": "review",
+      "routing_reasons": [],
+      "cycle_checks": [
+        {
+          "action_id": "a1",
+          "ok": true,
+          "errors": []
+        }
+      ],
+      "errors": [],
+      "metrics": {
+        "action_count": 1,
+        "complete_drafts": 1,
+        "engine_ok": 1,
+        "routing_status": "review"
+      }
+    },
+    {
+      "case_id": "g51_press_dimm_latch_to_position",
+      "ok": true,
+      "action_count": 1,
+      "routing_status": "review",
+      "routing_reasons": [],
+      "cycle_checks": [
+        {
+          "action_id": "a1",
+          "ok": true,
+          "errors": []
+        }
+      ],
+      "errors": [],
+      "metrics": {
+        "action_count": 1,
+        "complete_drafts": 1,
+        "engine_ok": 1,
+        "routing_status": "review"
+      }
+    },
+    {
+      "case_id": "g52_press_button_template",
+      "ok": true,
+      "action_count": 1,
+      "routing_status": "review",
+      "routing_reasons": [],
+      "cycle_checks": [
+        {
+          "action_id": "a1",
+          "ok": true,
+          "errors": []
+        }
+      ],
+      "errors": [],
+      "metrics": {
+        "action_count": 1,
+        "complete_drafts": 1,
+        "engine_ok": 1,
+        "routing_status": "review"
+      }
+    },
+    {
+      "case_id": "g53_attach_label_to_board_position",
+      "ok": true,
+      "action_count": 1,
+      "routing_status": "review",
+      "routing_reasons": [],
+      "cycle_checks": [
+        {
+          "action_id": "a1",
+          "ok": true,
+          "errors": []
+        }
+      ],
+      "errors": [],
+      "metrics": {
+        "action_count": 1,
+        "complete_drafts": 1,
+        "engine_ok": 1,
+        "routing_status": "review"
+      }
+    },
+    {
+      "case_id": "g54_tear_screen_film",
+      "ok": true,
+      "action_count": 1,
+      "routing_status": "review",
+      "routing_reasons": [],
+      "cycle_checks": [
+        {
+          "action_id": "a1",
+          "ok": true,
+          "errors": []
+        }
+      ],
+      "errors": [],
+      "metrics": {
+        "action_count": 1,
+        "complete_drafts": 1,
+        "engine_ok": 1,
+        "routing_status": "review"
+      }
+    },
+    {
+      "case_id": "g55_pick_screw_x1",
+      "ok": true,
+      "action_count": 1,
+      "routing_status": "review",
+      "routing_reasons": [
+        "next_operation"
+      ],
+      "cycle_checks": [
+        {
+          "action_id": "a1",
+          "ok": true,
+          "errors": []
+        }
+      ],
+      "errors": [],
+      "metrics": {
+        "action_count": 1,
+        "complete_drafts": 1,
+        "engine_ok": 1,
+        "routing_status": "review"
+      }
+    },
+    {
+      "case_id": "g56_place_heatsink_on_cpu",
+      "ok": true,
+      "action_count": 1,
+      "routing_status": "review",
+      "routing_reasons": [],
+      "cycle_checks": [
+        {
+          "action_id": "a1",
+          "ok": true,
+          "errors": []
+        }
+      ],
+      "errors": [],
+      "metrics": {
+        "action_count": 1,
+        "complete_drafts": 1,
+        "engine_ok": 1,
+        "routing_status": "review"
+      }
+    },
+    {
+      "case_id": "g57_lh_pick_screw_from_box",
+      "ok": true,
+      "action_count": 1,
+      "routing_status": "review",
+      "routing_reasons": [
+        "next_operation"
+      ],
+      "cycle_checks": [
+        {
+          "action_id": "a1",
+          "ok": true,
+          "errors": []
+        }
+      ],
+      "errors": [],
+      "metrics": {
+        "action_count": 1,
+        "complete_drafts": 1,
+        "engine_ok": 1,
+        "routing_status": "review"
+      }
+    }
+  ],
+  "compile_eval_note": "頂層 summary/cases 為 compile 段（gold plan → link/compile/engine），planner 段見 planner_eval",
+  "planner_eval": {
+    "db_required": false,
+    "summary": {
+      "planner": "llm",
+      "n": 55,
+      "plan_metrics_n": 55,
+      "planner_failures": {
+        "count": 49,
+        "rate": 0.8909090909090909,
+        "cases": [
+          "g02_screwdriver_screw_x2",
+          "g05_composite_unknown",
+          "g06_board_to_press_fixture",
+          "g07_dimm_latch_press_x16",
+          "g08_hold_driver_to_chassis",
+          "g09_hold_board_to_line",
+          "g10_push_press_fixture",
+          "g11_pull_press_fixture",
+          "g12_push_dimm_latches_confirm",
+          "g13_airgun_clean_slot",
+          "g14_dimm_latch_press_confirm",
+          "g15_airgun_clean_dimm",
+          "g16_regrasp_board_to_bench",
+          "g18_hold_airgun_to_position",
+          "g19_fixture_handle_to_point",
+          "g20_attach_label_to_board",
+          "g21_pull_fixture_base",
+          "g22_hold_dimm_box",
+          "g23_tear_dummy_dimm_bag",
+          "g24_board_bag_to_rack",
+          "g25_toss_dimm_bag",
+          "g26_dimm_box_to_position",
+          "g27_pick_dimm_box_to_bench",
+          "g28_pick_board_hold",
+          "g29_pick_dummy_dimm_hold_to_line",
+          "g30_pick_dummy_dimm_debag",
+          "g31_confirm_points_press_handle",
+          "g32_pick_board_debag_place_bench",
+          "g33_take_board_place_press_fixture",
+          "g34_dimm_x16_insert_to_board",
+          "g35_dimm_from_box_to_board",
+          "g36_dimm_to_dimm_slot",
+          "g37_board_to_chassis",
+          "g38_dummy_dimm_to_dimm_slot",
+          "g39_dummy_dimm_x16_insert_to_slot",
+          "g40_dummy_dimm_to_slot_r",
+          "g41_confirm_dimm_points",
+          "g42_screw_cpu_heatsink_x4",
+          "g43_screw_board_fix_x6",
+          "g45_pick_airgun_clean_slot",
+          "g46_rh_screw_fix_confirm",
+          "g47_screw_fix_confirm",
+          "g48_screw_fix_multi",
+          "g49_dimm_latch_push_x16_confirm",
+          "g51_press_dimm_latch_to_position",
+          "g53_attach_label_to_board_position",
+          "g55_pick_screw_x1",
+          "g56_place_heatsink_on_cpu",
+          "g57_lh_pick_screw_from_box"
+        ],
+        "error_codes": {
+          "evidence_text_mismatch": 40,
+          "evidence_offset_oor": 31,
+          "unknown_role_key": 19,
+          "explicit_without_evidence": 13,
+          "inferred_without_ref": 8
+        }
+      },
+      "planner_latency_ms": {
+        "total": 2255927.52,
+        "mean": 41016.86,
+        "median": 38548.69,
+        "max": 75823.07
+      },
+      "self_referential_excluded": {
+        "count": 0,
+        "cases": [],
+        "reason": "這些案例的 gold plan 即受測 planner 的預標註輸出（plan_origin=<planner>_preannotation）且 IE 未修改內容（ie_modified≠true）：拿 planner 自己的輸出當標準答案評 planner＝自我指涉，對 Plan 層指標零證據力，故排除。IE 實際改過（ie_modified=true）的案例是真實 ground truth，照常計入；compile 段不受影響（驗 compiler+engine，非 planner）。"
+      },
+      "action_count_accuracy": 0.10909090909090909,
+      "action_count_matches": 6,
+      "boundary_span": {
+        "annotated_cases": 55,
+        "scored_cases": 55,
+        "unannotated_cases": [],
+        "trivially_empty_cases": [],
+        "micro": {
+          "tp": 6,
+          "fp": 0,
+          "fn": 54,
+          "precision": 1.0,
+          "recall": 0.1,
+          "f1": 0.18181818181818182
+        }
+      },
+      "dependency_f1": null,
+      "dependency_f1_note": "未實作（docs/architecture/wi-ai-parser-system-spec.md §14.4 門檻列原文為「boundary/dependency F1」合為一項，boundary_span_f1 只涵蓋前半）。未實作原因：(1) action counts 不齊時 pred↔gold 的 action 對齊無定義，dependency 端點無從對應；(2) rule_based_v1 永遠回空 dependencies（gold g02 有 tool_held_for，真的算恆為 0）。實作並定義對齊規則前，不得以 boundary_span_f1 單獨宣告 §14.4 該列達標。",
+      "degenerate_planner_note": null,
+      "spec_targets": {
+        "action_count_exact_match": 0.95,
+        "boundary_span_f1": 0.9
+      }
+    },
+    "cases": [
+      {
+        "case_id": "g01_acquire_dimm",
+        "ok": true,
+        "gold_action_count": 1,
+        "pred_action_count": 1,
+        "action_count_match": true,
+        "boundary_annotated": true,
+        "boundary_comparable": true,
+        "boundary_trivially_empty": false,
+        "boundary_tp": 1,
+        "boundary_fp": 0,
+        "boundary_fn": 0,
+        "boundary_span_f1": 1.0,
+        "plan_origin": null,
+        "ie_modified": null,
+        "planner_failed": false,
+        "planner_error": null,
+        "planner_error_codes": [],
+        "planner_elapsed_ms": 8848.51,
+        "gold_spans": [
+          [
+            0,
+            6
+          ]
+        ],
+        "pred_spans": [
+          [
+            0,
+            6
+          ]
+        ],
+        "errors": []
+      },
+      {
+        "case_id": "g02_screwdriver_screw_x2",
+        "ok": true,
+        "gold_action_count": 2,
+        "pred_action_count": 0,
+        "action_count_match": false,
+        "boundary_annotated": true,
+        "boundary_comparable": false,
+        "boundary_trivially_empty": false,
+        "boundary_tp": 0,
+        "boundary_fp": 0,
+        "boundary_fn": 2,
+        "boundary_span_f1": 0.0,
+        "plan_origin": null,
+        "ie_modified": null,
+        "planner_failed": true,
+        "planner_error": "PlannerError:planner_schema_invalid:['evidence_offset_oor:a2']",
+        "planner_error_codes": [
+          "evidence_offset_oor"
+        ],
+        "planner_elapsed_ms": 57420.14,
+        "gold_spans": [
+          [
+            0,
+            6
+          ],
+          [
+            10,
+            16
+          ]
+        ],
+        "pred_spans": [],
+        "errors": [
+          "planner_failed:PlannerError:planner_schema_invalid:['evidence_offset_oor:a2']"
+        ]
+      },
+      {
+        "case_id": "g05_composite_unknown",
+        "ok": true,
+        "gold_action_count": 1,
+        "pred_action_count": 0,
+        "action_count_match": false,
+        "boundary_annotated": true,
+        "boundary_comparable": false,
+        "boundary_trivially_empty": false,
+        "boundary_tp": 0,
+        "boundary_fp": 0,
+        "boundary_fn": 1,
+        "boundary_span_f1": 0.0,
+        "plan_origin": null,
+        "ie_modified": null,
+        "planner_failed": true,
+        "planner_error": "PlannerError:planner_schema_invalid:['evidence_text_mismatch:a1']",
+        "planner_error_codes": [
+          "evidence_text_mismatch"
+        ],
+        "planner_elapsed_ms": 23588.77,
+        "gold_spans": [
+          [
+            0,
+            11
+          ]
+        ],
+        "pred_spans": [],
+        "errors": [
+          "planner_failed:PlannerError:planner_schema_invalid:['evidence_text_mismatch:a1']"
+        ]
+      },
+      {
+        "case_id": "g06_board_to_press_fixture",
+        "ok": true,
+        "gold_action_count": 1,
+        "pred_action_count": 0,
+        "action_count_match": false,
+        "boundary_annotated": true,
+        "boundary_comparable": false,
+        "boundary_trivially_empty": false,
+        "boundary_tp": 0,
+        "boundary_fp": 0,
+        "boundary_fn": 1,
+        "boundary_span_f1": 0.0,
+        "plan_origin": "rule_based_v1_preannotation",
+        "ie_modified": false,
+        "planner_failed": true,
+        "planner_error": "PlannerError:planner_schema_invalid:['evidence_text_mismatch:a1', 'explicit_without_evidence:a1:object', 'explicit_without_evidence:a1:hand']",
+        "planner_error_codes": [
+          "evidence_text_mismatch",
+          "explicit_without_evidence",
+          "explicit_without_evidence"
+        ],
+        "planner_elapsed_ms": 28910.14,
+        "gold_spans": [
+          [
+            0,
+            17
+          ]
+        ],
+        "pred_spans": [],
+        "errors": [
+          "planner_failed:PlannerError:planner_schema_invalid:['evidence_text_mismatch:a1', 'explicit_without_evidence:a1:object', 'explicit_without_evidence:a1:hand']"
+        ]
+      },
+      {
+        "case_id": "g07_dimm_latch_press_x16",
+        "ok": true,
+        "gold_action_count": 1,
+        "pred_action_count": 0,
+        "action_count_match": false,
+        "boundary_annotated": true,
+        "boundary_comparable": false,
+        "boundary_trivially_empty": false,
+        "boundary_tp": 0,
+        "boundary_fp": 0,
+        "boundary_fn": 1,
+        "boundary_span_f1": 0.0,
+        "plan_origin": "rule_based_v1_preannotation",
+        "ie_modified": false,
+        "planner_failed": true,
+        "planner_error": "PlannerError:planner_schema_invalid:['unknown_role_key:a2:object_ref', 'evidence_offset_oor:a2']",
+        "planner_error_codes": [
+          "unknown_role_key",
+          "evidence_offset_oor"
+        ],
+        "planner_elapsed_ms": 75823.07,
+        "gold_spans": [
+          [
+            0,
+            34
+          ]
+        ],
+        "pred_spans": [],
+        "errors": [
+          "planner_failed:PlannerError:planner_schema_invalid:['unknown_role_key:a2:object_ref', 'evidence_offset_oor:a2']"
+        ]
+      },
+      {
+        "case_id": "g08_hold_driver_to_chassis",
+        "ok": true,
+        "gold_action_count": 1,
+        "pred_action_count": 0,
+        "action_count_match": false,
+        "boundary_annotated": true,
+        "boundary_comparable": false,
+        "boundary_trivially_empty": false,
+        "boundary_tp": 0,
+        "boundary_fp": 0,
+        "boundary_fn": 1,
+        "boundary_span_f1": 0.0,
+        "plan_origin": "rule_based_v1_preannotation",
+        "ie_modified": false,
+        "planner_failed": true,
+        "planner_error": "PlannerError:planner_schema_invalid:['evidence_text_mismatch:a1', 'evidence_offset_oor:a2']",
+        "planner_error_codes": [
+          "evidence_text_mismatch",
+          "evidence_offset_oor"
+        ],
+        "planner_elapsed_ms": 50950.16,
+        "gold_spans": [
+          [
+            0,
+            14
+          ]
+        ],
+        "pred_spans": [],
+        "errors": [
+          "planner_failed:PlannerError:planner_schema_invalid:['evidence_text_mismatch:a1', 'evidence_offset_oor:a2']"
+        ]
+      },
+      {
+        "case_id": "g09_hold_board_to_line",
+        "ok": true,
+        "gold_action_count": 1,
+        "pred_action_count": 0,
+        "action_count_match": false,
+        "boundary_annotated": true,
+        "boundary_comparable": false,
+        "boundary_trivially_empty": false,
+        "boundary_tp": 0,
+        "boundary_fp": 0,
+        "boundary_fn": 1,
+        "boundary_span_f1": 0.0,
+        "plan_origin": "rule_based_v1_preannotation",
+        "ie_modified": false,
+        "planner_failed": true,
+        "planner_error": "PlannerError:planner_schema_invalid:['evidence_offset_oor:a1']",
+        "planner_error_codes": [
+          "evidence_offset_oor"
+        ],
+        "planner_elapsed_ms": 28838.77,
+        "gold_spans": [
+          [
+            0,
+            14
+          ]
+        ],
+        "pred_spans": [],
+        "errors": [
+          "planner_failed:PlannerError:planner_schema_invalid:['evidence_offset_oor:a1']"
+        ]
+      },
+      {
+        "case_id": "g10_push_press_fixture",
+        "ok": true,
+        "gold_action_count": 1,
+        "pred_action_count": 0,
+        "action_count_match": false,
+        "boundary_annotated": true,
+        "boundary_comparable": false,
+        "boundary_trivially_empty": false,
+        "boundary_tp": 0,
+        "boundary_fp": 0,
+        "boundary_fn": 1,
+        "boundary_span_f1": 0.0,
+        "plan_origin": "rule_based_v1_preannotation",
+        "ie_modified": false,
+        "planner_failed": true,
+        "planner_error": "PlannerError:planner_schema_invalid:['evidence_offset_oor:a1']",
+        "planner_error_codes": [
+          "evidence_offset_oor"
+        ],
+        "planner_elapsed_ms": 29635.75,
+        "gold_spans": [
+          [
+            0,
+            18
+          ]
+        ],
+        "pred_spans": [],
+        "errors": [
+          "planner_failed:PlannerError:planner_schema_invalid:['evidence_offset_oor:a1']"
+        ]
+      },
+      {
+        "case_id": "g11_pull_press_fixture",
+        "ok": true,
+        "gold_action_count": 1,
+        "pred_action_count": 0,
+        "action_count_match": false,
+        "boundary_annotated": true,
+        "boundary_comparable": false,
+        "boundary_trivially_empty": false,
+        "boundary_tp": 0,
+        "boundary_fp": 0,
+        "boundary_fn": 1,
+        "boundary_span_f1": 0.0,
+        "plan_origin": "rule_based_v1_preannotation",
+        "ie_modified": false,
+        "planner_failed": true,
+        "planner_error": "PlannerError:planner_schema_invalid:['evidence_offset_oor:a1']",
+        "planner_error_codes": [
+          "evidence_offset_oor"
+        ],
+        "planner_elapsed_ms": 29460.69,
+        "gold_spans": [
+          [
+            0,
+            18
+          ]
+        ],
+        "pred_spans": [],
+        "errors": [
+          "planner_failed:PlannerError:planner_schema_invalid:['evidence_offset_oor:a1']"
+        ]
+      },
+      {
+        "case_id": "g12_push_dimm_latches_confirm",
+        "ok": true,
+        "gold_action_count": 1,
+        "pred_action_count": 0,
+        "action_count_match": false,
+        "boundary_annotated": true,
+        "boundary_comparable": false,
+        "boundary_trivially_empty": false,
+        "boundary_tp": 0,
+        "boundary_fp": 0,
+        "boundary_fn": 1,
+        "boundary_span_f1": 0.0,
+        "plan_origin": "rule_based_v1_preannotation",
+        "ie_modified": false,
+        "planner_failed": true,
+        "planner_error": "PlannerError:planner_schema_invalid:['unknown_role_key:a2:object_ref', 'evidence_offset_oor:a2']",
+        "planner_error_codes": [
+          "unknown_role_key",
+          "evidence_offset_oor"
+        ],
+        "planner_elapsed_ms": 54922.33,
+        "gold_spans": [
+          [
+            0,
+            26
+          ]
+        ],
+        "pred_spans": [],
+        "errors": [
+          "planner_failed:PlannerError:planner_schema_invalid:['unknown_role_key:a2:object_ref', 'evidence_offset_oor:a2']"
+        ]
+      },
+      {
+        "case_id": "g13_airgun_clean_slot",
+        "ok": true,
+        "gold_action_count": 1,
+        "pred_action_count": 0,
+        "action_count_match": false,
+        "boundary_annotated": true,
+        "boundary_comparable": false,
+        "boundary_trivially_empty": false,
+        "boundary_tp": 0,
+        "boundary_fp": 0,
+        "boundary_fn": 1,
+        "boundary_span_f1": 0.0,
+        "plan_origin": "rule_based_v1_preannotation",
+        "ie_modified": false,
+        "planner_failed": true,
+        "planner_error": "PlannerError:planner_schema_invalid:['evidence_text_mismatch:a1', 'evidence_offset_oor:a2', 'explicit_without_evidence:a2:hand']",
+        "planner_error_codes": [
+          "evidence_text_mismatch",
+          "evidence_offset_oor",
+          "explicit_without_evidence"
+        ],
+        "planner_elapsed_ms": 64516.53,
+        "gold_spans": [
+          [
+            0,
+            21
+          ]
+        ],
+        "pred_spans": [],
+        "errors": [
+          "planner_failed:PlannerError:planner_schema_invalid:['evidence_text_mismatch:a1', 'evidence_offset_oor:a2', 'explicit_without_evidence:a2:hand']"
+        ]
+      },
+      {
+        "case_id": "g14_dimm_latch_press_confirm",
+        "ok": true,
+        "gold_action_count": 1,
+        "pred_action_count": 0,
+        "action_count_match": false,
+        "boundary_annotated": true,
+        "boundary_comparable": false,
+        "boundary_trivially_empty": false,
+        "boundary_tp": 0,
+        "boundary_fp": 0,
+        "boundary_fn": 1,
+        "boundary_span_f1": 0.0,
+        "plan_origin": "rule_based_v1_preannotation",
+        "ie_modified": false,
+        "planner_failed": true,
+        "planner_error": "PlannerError:planner_schema_invalid:['evidence_text_mismatch:a1', 'unknown_role_key:a2:object_ref', 'evidence_offset_oor:a2']",
+        "planner_error_codes": [
+          "evidence_text_mismatch",
+          "unknown_role_key",
+          "evidence_offset_oor"
+        ],
+        "planner_elapsed_ms": 53783.65,
+        "gold_spans": [
+          [
+            0,
+            28
+          ]
+        ],
+        "pred_spans": [],
+        "errors": [
+          "planner_failed:PlannerError:planner_schema_invalid:['evidence_text_mismatch:a1', 'unknown_role_key:a2:object_ref', 'evidence_offset_oor:a2']"
+        ]
+      },
+      {
+        "case_id": "g15_airgun_clean_dimm",
+        "ok": true,
+        "gold_action_count": 1,
+        "pred_action_count": 0,
+        "action_count_match": false,
+        "boundary_annotated": true,
+        "boundary_comparable": false,
+        "boundary_trivially_empty": false,
+        "boundary_tp": 0,
+        "boundary_fp": 0,
+        "boundary_fn": 1,
+        "boundary_span_f1": 0.0,
+        "plan_origin": "rule_based_v1_preannotation",
+        "ie_modified": false,
+        "planner_failed": true,
+        "planner_error": "PlannerError:planner_schema_invalid:['evidence_text_mismatch:a1', 'explicit_without_evidence:a1:hand', 'evidence_offset_oor:a2', 'explicit_without_evidence:a2:hand']",
+        "planner_error_codes": [
+          "evidence_text_mismatch",
+          "explicit_without_evidence",
+          "evidence_offset_oor",
+          "explicit_without_evidence"
+        ],
+        "planner_elapsed_ms": 58341.73,
+        "gold_spans": [
+          [
+            0,
+            19
+          ]
+        ],
+        "pred_spans": [],
+        "errors": [
+          "planner_failed:PlannerError:planner_schema_invalid:['evidence_text_mismatch:a1', 'explicit_without_evidence:a1:hand', 'evidence_offset_oor:a2', 'explicit_without_evidence:a2:hand']"
+        ]
+      },
+      {
+        "case_id": "g16_regrasp_board_to_bench",
+        "ok": true,
+        "gold_action_count": 1,
+        "pred_action_count": 0,
+        "action_count_match": false,
+        "boundary_annotated": true,
+        "boundary_comparable": false,
+        "boundary_trivially_empty": false,
+        "boundary_tp": 0,
+        "boundary_fp": 0,
+        "boundary_fn": 1,
+        "boundary_span_f1": 0.0,
+        "plan_origin": "rule_based_v1_preannotation",
+        "ie_modified": false,
+        "planner_failed": true,
+        "planner_error": "PlannerError:planner_schema_invalid:['evidence_offset_oor:a1']",
+        "planner_error_codes": [
+          "evidence_offset_oor"
+        ],
+        "planner_elapsed_ms": 38548.69,
+        "gold_spans": [
+          [
+            0,
+            18
+          ]
+        ],
+        "pred_spans": [],
+        "errors": [
+          "planner_failed:PlannerError:planner_schema_invalid:['evidence_offset_oor:a1']"
+        ]
+      },
+      {
+        "case_id": "g17_remove_board_bag",
+        "ok": true,
+        "gold_action_count": 1,
+        "pred_action_count": 1,
+        "action_count_match": true,
+        "boundary_annotated": true,
+        "boundary_comparable": true,
+        "boundary_trivially_empty": false,
+        "boundary_tp": 1,
+        "boundary_fp": 0,
+        "boundary_fn": 0,
+        "boundary_span_f1": 1.0,
+        "plan_origin": "rule_based_v1_preannotation",
+        "ie_modified": false,
+        "planner_failed": false,
+        "planner_error": null,
+        "planner_error_codes": [],
+        "planner_elapsed_ms": 12737.68,
+        "gold_spans": [
+          [
+            0,
+            13
+          ]
+        ],
+        "pred_spans": [
+          [
+            0,
+            13
+          ]
+        ],
+        "errors": []
+      },
+      {
+        "case_id": "g18_hold_airgun_to_position",
+        "ok": true,
+        "gold_action_count": 1,
+        "pred_action_count": 0,
+        "action_count_match": false,
+        "boundary_annotated": true,
+        "boundary_comparable": false,
+        "boundary_trivially_empty": false,
+        "boundary_tp": 0,
+        "boundary_fp": 0,
+        "boundary_fn": 1,
+        "boundary_span_f1": 0.0,
+        "plan_origin": "rule_based_v1_preannotation",
+        "ie_modified": false,
+        "planner_failed": true,
+        "planner_error": "PlannerError:planner_schema_invalid:['evidence_text_mismatch:a1', 'explicit_without_evidence:a1:hand', 'evidence_offset_oor:a2', 'explicit_without_evidence:a2:hand']",
+        "planner_error_codes": [
+          "evidence_text_mismatch",
+          "explicit_without_evidence",
+          "evidence_offset_oor",
+          "explicit_without_evidence"
+        ],
+        "planner_elapsed_ms": 52964.46,
+        "gold_spans": [
+          [
+            0,
+            15
+          ]
+        ],
+        "pred_spans": [],
+        "errors": [
+          "planner_failed:PlannerError:planner_schema_invalid:['evidence_text_mismatch:a1', 'explicit_without_evidence:a1:hand', 'evidence_offset_oor:a2', 'explicit_without_evidence:a2:hand']"
+        ]
+      },
+      {
+        "case_id": "g19_fixture_handle_to_point",
+        "ok": true,
+        "gold_action_count": 1,
+        "pred_action_count": 0,
+        "action_count_match": false,
+        "boundary_annotated": true,
+        "boundary_comparable": false,
+        "boundary_trivially_empty": false,
+        "boundary_tp": 0,
+        "boundary_fp": 0,
+        "boundary_fn": 1,
+        "boundary_span_f1": 0.0,
+        "plan_origin": "rule_based_v1_preannotation",
+        "ie_modified": false,
+        "planner_failed": true,
+        "planner_error": "PlannerError:planner_schema_invalid:['evidence_text_mismatch:a1']",
+        "planner_error_codes": [
+          "evidence_text_mismatch"
+        ],
+        "planner_elapsed_ms": 42164.12,
+        "gold_spans": [
+          [
+            0,
+            22
+          ]
+        ],
+        "pred_spans": [],
+        "errors": [
+          "planner_failed:PlannerError:planner_schema_invalid:['evidence_text_mismatch:a1']"
+        ]
+      },
+      {
+        "case_id": "g20_attach_label_to_board",
+        "ok": true,
+        "gold_action_count": 1,
+        "pred_action_count": 0,
+        "action_count_match": false,
+        "boundary_annotated": true,
+        "boundary_comparable": false,
+        "boundary_trivially_empty": false,
+        "boundary_tp": 0,
+        "boundary_fp": 0,
+        "boundary_fn": 1,
+        "boundary_span_f1": 0.0,
+        "plan_origin": "rule_based_v1_preannotation",
+        "ie_modified": false,
+        "planner_failed": true,
+        "planner_error": "PlannerError:planner_schema_invalid:['evidence_text_mismatch:a1', 'explicit_without_evidence:a1:hand', 'unknown_role_key:a2:hand_ref', 'evidence_text_mismatch:a2']",
+        "planner_error_codes": [
+          "evidence_text_mismatch",
+          "explicit_without_evidence",
+          "unknown_role_key",
+          "evidence_text_mismatch"
+        ],
+        "planner_elapsed_ms": 53729.26,
+        "gold_spans": [
+          [
+            0,
+            23
+          ]
+        ],
+        "pred_spans": [],
+        "errors": [
+          "planner_failed:PlannerError:planner_schema_invalid:['evidence_text_mismatch:a1', 'explicit_without_evidence:a1:hand', 'unknown_role_key:a2:hand_ref', 'evidence_text_mismatch:a2']"
+        ]
+      },
+      {
+        "case_id": "g21_pull_fixture_base",
+        "ok": true,
+        "gold_action_count": 1,
+        "pred_action_count": 0,
+        "action_count_match": false,
+        "boundary_annotated": true,
+        "boundary_comparable": false,
+        "boundary_trivially_empty": false,
+        "boundary_tp": 0,
+        "boundary_fp": 0,
+        "boundary_fn": 1,
+        "boundary_span_f1": 0.0,
+        "plan_origin": "rule_based_v1_preannotation",
+        "ie_modified": false,
+        "planner_failed": true,
+        "planner_error": "PlannerError:planner_schema_invalid:['evidence_offset_oor:a1']",
+        "planner_error_codes": [
+          "evidence_offset_oor"
+        ],
+        "planner_elapsed_ms": 34707.8,
+        "gold_spans": [
+          [
+            0,
+            22
+          ]
+        ],
+        "pred_spans": [],
+        "errors": [
+          "planner_failed:PlannerError:planner_schema_invalid:['evidence_offset_oor:a1']"
+        ]
+      },
+      {
+        "case_id": "g22_hold_dimm_box",
+        "ok": true,
+        "gold_action_count": 1,
+        "pred_action_count": 0,
+        "action_count_match": false,
+        "boundary_annotated": true,
+        "boundary_comparable": false,
+        "boundary_trivially_empty": false,
+        "boundary_tp": 0,
+        "boundary_fp": 0,
+        "boundary_fn": 1,
+        "boundary_span_f1": 0.0,
+        "plan_origin": "rule_based_v1_preannotation",
+        "ie_modified": false,
+        "planner_failed": true,
+        "planner_error": "PlannerError:planner_schema_invalid:['evidence_text_mismatch:a1']",
+        "planner_error_codes": [
+          "evidence_text_mismatch"
+        ],
+        "planner_elapsed_ms": 24823.26,
+        "gold_spans": [
+          [
+            0,
+            14
+          ]
+        ],
+        "pred_spans": [],
+        "errors": [
+          "planner_failed:PlannerError:planner_schema_invalid:['evidence_text_mismatch:a1']"
+        ]
+      },
+      {
+        "case_id": "g23_tear_dummy_dimm_bag",
+        "ok": true,
+        "gold_action_count": 1,
+        "pred_action_count": 0,
+        "action_count_match": false,
+        "boundary_annotated": true,
+        "boundary_comparable": false,
+        "boundary_trivially_empty": false,
+        "boundary_tp": 0,
+        "boundary_fp": 0,
+        "boundary_fn": 1,
+        "boundary_span_f1": 0.0,
+        "plan_origin": "rule_based_v1_preannotation",
+        "ie_modified": false,
+        "planner_failed": true,
+        "planner_error": "PlannerError:planner_schema_invalid:['evidence_text_mismatch:a1']",
+        "planner_error_codes": [
+          "evidence_text_mismatch"
+        ],
+        "planner_elapsed_ms": 30112.45,
+        "gold_spans": [
+          [
+            0,
+            15
+          ]
+        ],
+        "pred_spans": [],
+        "errors": [
+          "planner_failed:PlannerError:planner_schema_invalid:['evidence_text_mismatch:a1']"
+        ]
+      },
+      {
+        "case_id": "g24_board_bag_to_rack",
+        "ok": true,
+        "gold_action_count": 1,
+        "pred_action_count": 0,
+        "action_count_match": false,
+        "boundary_annotated": true,
+        "boundary_comparable": false,
+        "boundary_trivially_empty": false,
+        "boundary_tp": 0,
+        "boundary_fp": 0,
+        "boundary_fn": 1,
+        "boundary_span_f1": 0.0,
+        "plan_origin": "rule_based_v1_preannotation",
+        "ie_modified": false,
+        "planner_failed": true,
+        "planner_error": "PlannerError:planner_schema_invalid:['evidence_offset_oor:a1']",
+        "planner_error_codes": [
+          "evidence_offset_oor"
+        ],
+        "planner_elapsed_ms": 38086.51,
+        "gold_spans": [
+          [
+            0,
+            17
+          ]
+        ],
+        "pred_spans": [],
+        "errors": [
+          "planner_failed:PlannerError:planner_schema_invalid:['evidence_offset_oor:a1']"
+        ]
+      },
+      {
+        "case_id": "g25_toss_dimm_bag",
+        "ok": true,
+        "gold_action_count": 1,
+        "pred_action_count": 0,
+        "action_count_match": false,
+        "boundary_annotated": true,
+        "boundary_comparable": false,
+        "boundary_trivially_empty": false,
+        "boundary_tp": 0,
+        "boundary_fp": 0,
+        "boundary_fn": 1,
+        "boundary_span_f1": 0.0,
+        "plan_origin": "rule_based_v1_preannotation",
+        "ie_modified": false,
+        "planner_failed": true,
+        "planner_error": "PlannerError:planner_schema_invalid:['evidence_text_mismatch:a1']",
+        "planner_error_codes": [
+          "evidence_text_mismatch"
+        ],
+        "planner_elapsed_ms": 36148.69,
+        "gold_spans": [
+          [
+            0,
+            18
+          ]
+        ],
+        "pred_spans": [],
+        "errors": [
+          "planner_failed:PlannerError:planner_schema_invalid:['evidence_text_mismatch:a1']"
+        ]
+      },
+      {
+        "case_id": "g26_dimm_box_to_position",
+        "ok": true,
+        "gold_action_count": 1,
+        "pred_action_count": 0,
+        "action_count_match": false,
+        "boundary_annotated": true,
+        "boundary_comparable": false,
+        "boundary_trivially_empty": false,
+        "boundary_tp": 0,
+        "boundary_fp": 0,
+        "boundary_fn": 1,
+        "boundary_span_f1": 0.0,
+        "plan_origin": "rule_based_v1_preannotation",
+        "ie_modified": false,
+        "planner_failed": true,
+        "planner_error": "PlannerError:planner_schema_invalid:['evidence_text_mismatch:a1']",
+        "planner_error_codes": [
+          "evidence_text_mismatch"
+        ],
+        "planner_elapsed_ms": 31326.71,
+        "gold_spans": [
+          [
+            0,
+            18
+          ]
+        ],
+        "pred_spans": [],
+        "errors": [
+          "planner_failed:PlannerError:planner_schema_invalid:['evidence_text_mismatch:a1']"
+        ]
+      },
+      {
+        "case_id": "g27_pick_dimm_box_to_bench",
+        "ok": true,
+        "gold_action_count": 1,
+        "pred_action_count": 0,
+        "action_count_match": false,
+        "boundary_annotated": true,
+        "boundary_comparable": false,
+        "boundary_trivially_empty": false,
+        "boundary_tp": 0,
+        "boundary_fp": 0,
+        "boundary_fn": 1,
+        "boundary_span_f1": 0.0,
+        "plan_origin": "rule_based_v1_preannotation",
+        "ie_modified": false,
+        "planner_failed": true,
+        "planner_error": "PlannerError:planner_schema_invalid:['evidence_text_mismatch:a1', 'inferred_without_ref:a1:quantity', 'unknown_role_key:a2:object_ref', 'evidence_offset_oor:a2']",
+        "planner_error_codes": [
+          "evidence_text_mismatch",
+          "inferred_without_ref",
+          "unknown_role_key",
+          "evidence_offset_oor"
+        ],
+        "planner_elapsed_ms": 42670.35,
+        "gold_spans": [
+          [
+            0,
+            23
+          ]
+        ],
+        "pred_spans": [],
+        "errors": [
+          "planner_failed:PlannerError:planner_schema_invalid:['evidence_text_mismatch:a1', 'inferred_without_ref:a1:quantity', 'unknown_role_key:a2:object_ref', 'evidence_offset_oor:a2']"
+        ]
+      },
+      {
+        "case_id": "g28_pick_board_hold",
+        "ok": true,
+        "gold_action_count": 1,
+        "pred_action_count": 0,
+        "action_count_match": false,
+        "boundary_annotated": true,
+        "boundary_comparable": false,
+        "boundary_trivially_empty": false,
+        "boundary_tp": 0,
+        "boundary_fp": 0,
+        "boundary_fn": 1,
+        "boundary_span_f1": 0.0,
+        "plan_origin": "rule_based_v1_preannotation",
+        "ie_modified": false,
+        "planner_failed": true,
+        "planner_error": "PlannerError:planner_schema_invalid:['evidence_text_mismatch:a1', 'explicit_without_evidence:a1:hand']",
+        "planner_error_codes": [
+          "evidence_text_mismatch",
+          "explicit_without_evidence"
+        ],
+        "planner_elapsed_ms": 29744.18,
+        "gold_spans": [
+          [
+            0,
+            13
+          ]
+        ],
+        "pred_spans": [],
+        "errors": [
+          "planner_failed:PlannerError:planner_schema_invalid:['evidence_text_mismatch:a1', 'explicit_without_evidence:a1:hand']"
+        ]
+      },
+      {
+        "case_id": "g29_pick_dummy_dimm_hold_to_line",
+        "ok": true,
+        "gold_action_count": 1,
+        "pred_action_count": 0,
+        "action_count_match": false,
+        "boundary_annotated": true,
+        "boundary_comparable": false,
+        "boundary_trivially_empty": false,
+        "boundary_tp": 0,
+        "boundary_fp": 0,
+        "boundary_fn": 1,
+        "boundary_span_f1": 0.0,
+        "plan_origin": "rule_based_v1_preannotation",
+        "ie_modified": false,
+        "planner_failed": true,
+        "planner_error": "PlannerError:planner_schema_invalid:['evidence_text_mismatch:a1', 'explicit_without_evidence:a1:hand', 'unknown_role_key:a2:hand_ref', 'unknown_role_key:a2:object_ref', 'evidence_offset_oor:a2']",
+        "planner_error_codes": [
+          "evidence_text_mismatch",
+          "explicit_without_evidence",
+          "unknown_role_key",
+          "unknown_role_key",
+          "evidence_offset_oor"
+        ],
+        "planner_elapsed_ms": 63025.14,
+        "gold_spans": [
+          [
+            0,
+            19
+          ]
+        ],
+        "pred_spans": [],
+        "errors": [
+          "planner_failed:PlannerError:planner_schema_invalid:['evidence_text_mismatch:a1', 'explicit_without_evidence:a1:hand', 'unknown_role_key:a2:hand_ref', 'unknown_role_key:a2:object_ref', 'evidence_offset_oor:a2']"
+        ]
+      },
+      {
+        "case_id": "g30_pick_dummy_dimm_debag",
+        "ok": true,
+        "gold_action_count": 2,
+        "pred_action_count": 0,
+        "action_count_match": false,
+        "boundary_annotated": true,
+        "boundary_comparable": false,
+        "boundary_trivially_empty": false,
+        "boundary_tp": 0,
+        "boundary_fp": 0,
+        "boundary_fn": 2,
+        "boundary_span_f1": 0.0,
+        "plan_origin": "rule_based_v1_preannotation",
+        "ie_modified": true,
+        "planner_failed": true,
+        "planner_error": "PlannerError:planner_schema_invalid:['evidence_text_mismatch:a1', 'unknown_role_key:a2:object_ref', 'evidence_offset_oor:a2']",
+        "planner_error_codes": [
+          "evidence_text_mismatch",
+          "unknown_role_key",
+          "evidence_offset_oor"
+        ],
+        "planner_elapsed_ms": 48444.19,
+        "gold_spans": [
+          [
+            0,
+            11
+          ],
+          [
+            12,
+            18
+          ]
+        ],
+        "pred_spans": [],
+        "errors": [
+          "planner_failed:PlannerError:planner_schema_invalid:['evidence_text_mismatch:a1', 'unknown_role_key:a2:object_ref', 'evidence_offset_oor:a2']"
+        ]
+      },
+      {
+        "case_id": "g31_confirm_points_press_handle",
+        "ok": true,
+        "gold_action_count": 2,
+        "pred_action_count": 0,
+        "action_count_match": false,
+        "boundary_annotated": true,
+        "boundary_comparable": false,
+        "boundary_trivially_empty": false,
+        "boundary_tp": 0,
+        "boundary_fp": 0,
+        "boundary_fn": 2,
+        "boundary_span_f1": 0.0,
+        "plan_origin": "rule_based_v1_preannotation",
+        "ie_modified": true,
+        "planner_failed": true,
+        "planner_error": "PlannerError:planner_schema_invalid:['evidence_text_mismatch:a1', 'evidence_text_mismatch:a2']",
+        "planner_error_codes": [
+          "evidence_text_mismatch",
+          "evidence_text_mismatch"
+        ],
+        "planner_elapsed_ms": 50202.87,
+        "gold_spans": [
+          [
+            0,
+            8
+          ],
+          [
+            9,
+            40
+          ]
+        ],
+        "pred_spans": [],
+        "errors": [
+          "planner_failed:PlannerError:planner_schema_invalid:['evidence_text_mismatch:a1', 'evidence_text_mismatch:a2']"
+        ]
+      },
+      {
+        "case_id": "g32_pick_board_debag_place_bench",
+        "ok": true,
+        "gold_action_count": 3,
+        "pred_action_count": 0,
+        "action_count_match": false,
+        "boundary_annotated": true,
+        "boundary_comparable": false,
+        "boundary_trivially_empty": false,
+        "boundary_tp": 0,
+        "boundary_fp": 0,
+        "boundary_fn": 3,
+        "boundary_span_f1": 0.0,
+        "plan_origin": "rule_based_v1_preannotation",
+        "ie_modified": true,
+        "planner_failed": true,
+        "planner_error": "PlannerError:planner_schema_invalid:['evidence_text_mismatch:a1', 'unknown_role_key:a2:object_ref', 'evidence_text_mismatch:a2', 'unknown_role_key:a3:object_ref', 'evidence_offset_oor:a3']",
+        "planner_error_codes": [
+          "evidence_text_mismatch",
+          "unknown_role_key",
+          "evidence_text_mismatch",
+          "unknown_role_key",
+          "evidence_offset_oor"
+        ],
+        "planner_elapsed_ms": 73018.45,
+        "gold_spans": [
+          [
+            0,
+            5
+          ],
+          [
+            6,
+            11
+          ],
+          [
+            12,
+            21
+          ]
+        ],
+        "pred_spans": [],
+        "errors": [
+          "planner_failed:PlannerError:planner_schema_invalid:['evidence_text_mismatch:a1', 'unknown_role_key:a2:object_ref', 'evidence_text_mismatch:a2', 'unknown_role_key:a3:object_ref', 'evidence_offset_oor:a3']"
+        ]
+      },
+      {
+        "case_id": "g33_take_board_place_press_fixture",
+        "ok": true,
+        "gold_action_count": 1,
+        "pred_action_count": 0,
+        "action_count_match": false,
+        "boundary_annotated": true,
+        "boundary_comparable": false,
+        "boundary_trivially_empty": false,
+        "boundary_tp": 0,
+        "boundary_fp": 0,
+        "boundary_fn": 1,
+        "boundary_span_f1": 0.0,
+        "plan_origin": "rule_based_v1_preannotation",
+        "ie_modified": false,
+        "planner_failed": true,
+        "planner_error": "PlannerError:planner_schema_invalid:['evidence_text_mismatch:a1', 'unknown_role_key:a2:object_ref', 'evidence_offset_oor:a2']",
+        "planner_error_codes": [
+          "evidence_text_mismatch",
+          "unknown_role_key",
+          "evidence_offset_oor"
+        ],
+        "planner_elapsed_ms": 43859.23,
+        "gold_spans": [
+          [
+            0,
+            16
+          ]
+        ],
+        "pred_spans": [],
+        "errors": [
+          "planner_failed:PlannerError:planner_schema_invalid:['evidence_text_mismatch:a1', 'unknown_role_key:a2:object_ref', 'evidence_offset_oor:a2']"
+        ]
+      },
+      {
+        "case_id": "g34_dimm_x16_insert_to_board",
+        "ok": true,
+        "gold_action_count": 1,
+        "pred_action_count": 0,
+        "action_count_match": false,
+        "boundary_annotated": true,
+        "boundary_comparable": false,
+        "boundary_trivially_empty": false,
+        "boundary_tp": 0,
+        "boundary_fp": 0,
+        "boundary_fn": 1,
+        "boundary_span_f1": 0.0,
+        "plan_origin": "rule_based_v1_preannotation",
+        "ie_modified": false,
+        "planner_failed": true,
+        "planner_error": "PlannerError:planner_schema_invalid:['evidence_text_mismatch:a1', 'explicit_without_evidence:a1:object', 'unknown_role_key:a2:object_ref', 'evidence_offset_oor:a2']",
+        "planner_error_codes": [
+          "evidence_text_mismatch",
+          "explicit_without_evidence",
+          "unknown_role_key",
+          "evidence_offset_oor"
+        ],
+        "planner_elapsed_ms": 58685.64,
+        "gold_spans": [
+          [
+            0,
+            28
+          ]
+        ],
+        "pred_spans": [],
+        "errors": [
+          "planner_failed:PlannerError:planner_schema_invalid:['evidence_text_mismatch:a1', 'explicit_without_evidence:a1:object', 'unknown_role_key:a2:object_ref', 'evidence_offset_oor:a2']"
+        ]
+      },
+      {
+        "case_id": "g35_dimm_from_box_to_board",
+        "ok": true,
+        "gold_action_count": 1,
+        "pred_action_count": 0,
+        "action_count_match": false,
+        "boundary_annotated": true,
+        "boundary_comparable": false,
+        "boundary_trivially_empty": false,
+        "boundary_tp": 0,
+        "boundary_fp": 0,
+        "boundary_fn": 1,
+        "boundary_span_f1": 0.0,
+        "plan_origin": "rule_based_v1_preannotation",
+        "ie_modified": false,
+        "planner_failed": true,
+        "planner_error": "PlannerError:planner_schema_invalid:['evidence_text_mismatch:a1', 'unknown_role_key:a2:object_ref', 'evidence_offset_oor:a2']",
+        "planner_error_codes": [
+          "evidence_text_mismatch",
+          "unknown_role_key",
+          "evidence_offset_oor"
+        ],
+        "planner_elapsed_ms": 51403.8,
+        "gold_spans": [
+          [
+            0,
+            21
+          ]
+        ],
+        "pred_spans": [],
+        "errors": [
+          "planner_failed:PlannerError:planner_schema_invalid:['evidence_text_mismatch:a1', 'unknown_role_key:a2:object_ref', 'evidence_offset_oor:a2']"
+        ]
+      },
+      {
+        "case_id": "g36_dimm_to_dimm_slot",
+        "ok": true,
+        "gold_action_count": 1,
+        "pred_action_count": 0,
+        "action_count_match": false,
+        "boundary_annotated": true,
+        "boundary_comparable": false,
+        "boundary_trivially_empty": false,
+        "boundary_tp": 0,
+        "boundary_fp": 0,
+        "boundary_fn": 1,
+        "boundary_span_f1": 0.0,
+        "plan_origin": "rule_based_v1_preannotation",
+        "ie_modified": false,
+        "planner_failed": true,
+        "planner_error": "PlannerError:planner_schema_invalid:['evidence_text_mismatch:a1']",
+        "planner_error_codes": [
+          "evidence_text_mismatch"
+        ],
+        "planner_elapsed_ms": 38005.26,
+        "gold_spans": [
+          [
+            0,
+            33
+          ]
+        ],
+        "pred_spans": [],
+        "errors": [
+          "planner_failed:PlannerError:planner_schema_invalid:['evidence_text_mismatch:a1']"
+        ]
+      },
+      {
+        "case_id": "g37_board_to_chassis",
+        "ok": true,
+        "gold_action_count": 1,
+        "pred_action_count": 0,
+        "action_count_match": false,
+        "boundary_annotated": true,
+        "boundary_comparable": false,
+        "boundary_trivially_empty": false,
+        "boundary_tp": 0,
+        "boundary_fp": 0,
+        "boundary_fn": 1,
+        "boundary_span_f1": 0.0,
+        "plan_origin": "rule_based_v1_preannotation",
+        "ie_modified": false,
+        "planner_failed": true,
+        "planner_error": "PlannerError:planner_schema_invalid:['evidence_offset_oor:a1']",
+        "planner_error_codes": [
+          "evidence_offset_oor"
+        ],
+        "planner_elapsed_ms": 31904.96,
+        "gold_spans": [
+          [
+            0,
+            11
+          ]
+        ],
+        "pred_spans": [],
+        "errors": [
+          "planner_failed:PlannerError:planner_schema_invalid:['evidence_offset_oor:a1']"
+        ]
+      },
+      {
+        "case_id": "g38_dummy_dimm_to_dimm_slot",
+        "ok": true,
+        "gold_action_count": 1,
+        "pred_action_count": 0,
+        "action_count_match": false,
+        "boundary_annotated": true,
+        "boundary_comparable": false,
+        "boundary_trivially_empty": false,
+        "boundary_tp": 0,
+        "boundary_fp": 0,
+        "boundary_fn": 1,
+        "boundary_span_f1": 0.0,
+        "plan_origin": "rule_based_v1_preannotation",
+        "ie_modified": false,
+        "planner_failed": true,
+        "planner_error": "PlannerError:planner_schema_invalid:['evidence_text_mismatch:a1', 'inferred_without_ref:a1:quantity']",
+        "planner_error_codes": [
+          "evidence_text_mismatch",
+          "inferred_without_ref"
+        ],
+        "planner_elapsed_ms": 32076.75,
+        "gold_spans": [
+          [
+            0,
+            33
+          ]
+        ],
+        "pred_spans": [],
+        "errors": [
+          "planner_failed:PlannerError:planner_schema_invalid:['evidence_text_mismatch:a1', 'inferred_without_ref:a1:quantity']"
+        ]
+      },
+      {
+        "case_id": "g39_dummy_dimm_x16_insert_to_slot",
+        "ok": true,
+        "gold_action_count": 1,
+        "pred_action_count": 0,
+        "action_count_match": false,
+        "boundary_annotated": true,
+        "boundary_comparable": false,
+        "boundary_trivially_empty": false,
+        "boundary_tp": 0,
+        "boundary_fp": 0,
+        "boundary_fn": 1,
+        "boundary_span_f1": 0.0,
+        "plan_origin": "rule_based_v1_preannotation",
+        "ie_modified": false,
+        "planner_failed": true,
+        "planner_error": "PlannerError:planner_schema_invalid:['evidence_text_mismatch:a1', 'unknown_role_key:a2:object_ref', 'evidence_offset_oor:a2']",
+        "planner_error_codes": [
+          "evidence_text_mismatch",
+          "unknown_role_key",
+          "evidence_offset_oor"
+        ],
+        "planner_elapsed_ms": 65685.05,
+        "gold_spans": [
+          [
+            0,
+            24
+          ]
+        ],
+        "pred_spans": [],
+        "errors": [
+          "planner_failed:PlannerError:planner_schema_invalid:['evidence_text_mismatch:a1', 'unknown_role_key:a2:object_ref', 'evidence_offset_oor:a2']"
+        ]
+      },
+      {
+        "case_id": "g40_dummy_dimm_to_slot_r",
+        "ok": true,
+        "gold_action_count": 1,
+        "pred_action_count": 0,
+        "action_count_match": false,
+        "boundary_annotated": true,
+        "boundary_comparable": false,
+        "boundary_trivially_empty": false,
+        "boundary_tp": 0,
+        "boundary_fp": 0,
+        "boundary_fn": 1,
+        "boundary_span_f1": 0.0,
+        "plan_origin": "rule_based_v1_preannotation",
+        "ie_modified": false,
+        "planner_failed": true,
+        "planner_error": "PlannerError:planner_schema_invalid:['evidence_text_mismatch:a1', 'unknown_role_key:a2:hand_ref', 'unknown_role_key:a2:object_ref', 'evidence_offset_oor:a2']",
+        "planner_error_codes": [
+          "evidence_text_mismatch",
+          "unknown_role_key",
+          "unknown_role_key",
+          "evidence_offset_oor"
+        ],
+        "planner_elapsed_ms": 55224.32,
+        "gold_spans": [
+          [
+            0,
+            17
+          ]
+        ],
+        "pred_spans": [],
+        "errors": [
+          "planner_failed:PlannerError:planner_schema_invalid:['evidence_text_mismatch:a1', 'unknown_role_key:a2:hand_ref', 'unknown_role_key:a2:object_ref', 'evidence_offset_oor:a2']"
+        ]
+      },
+      {
+        "case_id": "g41_confirm_dimm_points",
+        "ok": true,
+        "gold_action_count": 1,
+        "pred_action_count": 0,
+        "action_count_match": false,
+        "boundary_annotated": true,
+        "boundary_comparable": false,
+        "boundary_trivially_empty": false,
+        "boundary_tp": 0,
+        "boundary_fp": 0,
+        "boundary_fn": 1,
+        "boundary_span_f1": 0.0,
+        "plan_origin": "rule_based_v1_preannotation",
+        "ie_modified": false,
+        "planner_failed": true,
+        "planner_error": "PlannerError:planner_schema_invalid:['evidence_text_mismatch:a1']",
+        "planner_error_codes": [
+          "evidence_text_mismatch"
+        ],
+        "planner_elapsed_ms": 23582.39,
+        "gold_spans": [
+          [
+            0,
+            9
+          ]
+        ],
+        "pred_spans": [],
+        "errors": [
+          "planner_failed:PlannerError:planner_schema_invalid:['evidence_text_mismatch:a1']"
+        ]
+      },
+      {
+        "case_id": "g42_screw_cpu_heatsink_x4",
+        "ok": true,
+        "gold_action_count": 1,
+        "pred_action_count": 0,
+        "action_count_match": false,
+        "boundary_annotated": true,
+        "boundary_comparable": false,
+        "boundary_trivially_empty": false,
+        "boundary_tp": 0,
+        "boundary_fp": 0,
+        "boundary_fn": 1,
+        "boundary_span_f1": 0.0,
+        "plan_origin": "rule_based_v1_preannotation",
+        "ie_modified": false,
+        "planner_failed": true,
+        "planner_error": "PlannerError:planner_schema_invalid:['evidence_text_mismatch:a1', 'evidence_offset_oor:a2']",
+        "planner_error_codes": [
+          "evidence_text_mismatch",
+          "evidence_offset_oor"
+        ],
+        "planner_elapsed_ms": 59700.17,
+        "gold_spans": [
+          [
+            0,
+            19
+          ]
+        ],
+        "pred_spans": [],
+        "errors": [
+          "planner_failed:PlannerError:planner_schema_invalid:['evidence_text_mismatch:a1', 'evidence_offset_oor:a2']"
+        ]
+      },
+      {
+        "case_id": "g43_screw_board_fix_x6",
+        "ok": true,
+        "gold_action_count": 1,
+        "pred_action_count": 0,
+        "action_count_match": false,
+        "boundary_annotated": true,
+        "boundary_comparable": false,
+        "boundary_trivially_empty": false,
+        "boundary_tp": 0,
+        "boundary_fp": 0,
+        "boundary_fn": 1,
+        "boundary_span_f1": 0.0,
+        "plan_origin": "rule_based_v1_preannotation",
+        "ie_modified": false,
+        "planner_failed": true,
+        "planner_error": "PlannerError:planner_schema_invalid:['evidence_offset_oor:a1']",
+        "planner_error_codes": [
+          "evidence_offset_oor"
+        ],
+        "planner_elapsed_ms": 52326.76,
+        "gold_spans": [
+          [
+            0,
+            12
+          ]
+        ],
+        "pred_spans": [],
+        "errors": [
+          "planner_failed:PlannerError:planner_schema_invalid:['evidence_offset_oor:a1']"
+        ]
+      },
+      {
+        "case_id": "g44_screw_fix_single",
+        "ok": true,
+        "gold_action_count": 1,
+        "pred_action_count": 1,
+        "action_count_match": true,
+        "boundary_annotated": true,
+        "boundary_comparable": true,
+        "boundary_trivially_empty": false,
+        "boundary_tp": 1,
+        "boundary_fp": 0,
+        "boundary_fn": 0,
+        "boundary_span_f1": 1.0,
+        "plan_origin": "rule_based_v1_preannotation",
+        "ie_modified": false,
+        "planner_failed": false,
+        "planner_error": null,
+        "planner_error_codes": [],
+        "planner_elapsed_ms": 10873.16,
+        "gold_spans": [
+          [
+            0,
+            4
+          ]
+        ],
+        "pred_spans": [
+          [
+            0,
+            4
+          ]
+        ],
+        "errors": []
+      },
+      {
+        "case_id": "g45_pick_airgun_clean_slot",
+        "ok": true,
+        "gold_action_count": 1,
+        "pred_action_count": 0,
+        "action_count_match": false,
+        "boundary_annotated": true,
+        "boundary_comparable": false,
+        "boundary_trivially_empty": false,
+        "boundary_tp": 0,
+        "boundary_fp": 0,
+        "boundary_fn": 1,
+        "boundary_span_f1": 0.0,
+        "plan_origin": "rule_based_v1_preannotation",
+        "ie_modified": false,
+        "planner_failed": true,
+        "planner_error": "PlannerError:planner_schema_invalid:['evidence_text_mismatch:a1', 'evidence_offset_oor:a2']",
+        "planner_error_codes": [
+          "evidence_text_mismatch",
+          "evidence_offset_oor"
+        ],
+        "planner_elapsed_ms": 57301.16,
+        "gold_spans": [
+          [
+            0,
+            12
+          ]
+        ],
+        "pred_spans": [],
+        "errors": [
+          "planner_failed:PlannerError:planner_schema_invalid:['evidence_text_mismatch:a1', 'evidence_offset_oor:a2']"
+        ]
+      },
+      {
+        "case_id": "g46_rh_screw_fix_confirm",
+        "ok": true,
+        "gold_action_count": 1,
+        "pred_action_count": 0,
+        "action_count_match": false,
+        "boundary_annotated": true,
+        "boundary_comparable": false,
+        "boundary_trivially_empty": false,
+        "boundary_tp": 0,
+        "boundary_fp": 0,
+        "boundary_fn": 1,
+        "boundary_span_f1": 0.0,
+        "plan_origin": "rule_based_v1_preannotation",
+        "ie_modified": false,
+        "planner_failed": true,
+        "planner_error": "PlannerError:planner_schema_invalid:['evidence_text_mismatch:a1', 'inferred_without_ref:a1:tool_ref', 'inferred_without_ref:a1:object', 'unknown_role_key:a2:object_ref', 'evidence_offset_oor:a2']",
+        "planner_error_codes": [
+          "evidence_text_mismatch",
+          "inferred_without_ref",
+          "inferred_without_ref",
+          "unknown_role_key",
+          "evidence_offset_oor"
+        ],
+        "planner_elapsed_ms": 62721.35,
+        "gold_spans": [
+          [
+            0,
+            14
+          ]
+        ],
+        "pred_spans": [],
+        "errors": [
+          "planner_failed:PlannerError:planner_schema_invalid:['evidence_text_mismatch:a1', 'inferred_without_ref:a1:tool_ref', 'inferred_without_ref:a1:object', 'unknown_role_key:a2:object_ref', 'evidence_offset_oor:a2']"
+        ]
+      },
+      {
+        "case_id": "g47_screw_fix_confirm",
+        "ok": true,
+        "gold_action_count": 1,
+        "pred_action_count": 0,
+        "action_count_match": false,
+        "boundary_annotated": true,
+        "boundary_comparable": false,
+        "boundary_trivially_empty": false,
+        "boundary_tp": 0,
+        "boundary_fp": 0,
+        "boundary_fn": 1,
+        "boundary_span_f1": 0.0,
+        "plan_origin": "rule_based_v1_preannotation",
+        "ie_modified": false,
+        "planner_failed": true,
+        "planner_error": "PlannerError:planner_schema_invalid:['evidence_text_mismatch:a1', 'inferred_without_ref:a1:destination', 'unknown_role_key:a2:object_ref', 'evidence_offset_oor:a2']",
+        "planner_error_codes": [
+          "evidence_text_mismatch",
+          "inferred_without_ref",
+          "unknown_role_key",
+          "evidence_offset_oor"
+        ],
+        "planner_elapsed_ms": 51507.22,
+        "gold_spans": [
+          [
+            0,
+            12
+          ]
+        ],
+        "pred_spans": [],
+        "errors": [
+          "planner_failed:PlannerError:planner_schema_invalid:['evidence_text_mismatch:a1', 'inferred_without_ref:a1:destination', 'unknown_role_key:a2:object_ref', 'evidence_offset_oor:a2']"
+        ]
+      },
+      {
+        "case_id": "g48_screw_fix_multi",
+        "ok": true,
+        "gold_action_count": 1,
+        "pred_action_count": 0,
+        "action_count_match": false,
+        "boundary_annotated": true,
+        "boundary_comparable": false,
+        "boundary_trivially_empty": false,
+        "boundary_tp": 0,
+        "boundary_fp": 0,
+        "boundary_fn": 1,
+        "boundary_span_f1": 0.0,
+        "plan_origin": "rule_based_v1_preannotation",
+        "ie_modified": false,
+        "planner_failed": true,
+        "planner_error": "PlannerError:planner_schema_invalid:['evidence_text_mismatch:a1', 'inferred_without_ref:a1:object']",
+        "planner_error_codes": [
+          "evidence_text_mismatch",
+          "inferred_without_ref"
+        ],
+        "planner_elapsed_ms": 36891.05,
+        "gold_spans": [
+          [
+            0,
+            8
+          ]
+        ],
+        "pred_spans": [],
+        "errors": [
+          "planner_failed:PlannerError:planner_schema_invalid:['evidence_text_mismatch:a1', 'inferred_without_ref:a1:object']"
+        ]
+      },
+      {
+        "case_id": "g49_dimm_latch_push_x16_confirm",
+        "ok": true,
+        "gold_action_count": 1,
+        "pred_action_count": 0,
+        "action_count_match": false,
+        "boundary_annotated": true,
+        "boundary_comparable": false,
+        "boundary_trivially_empty": false,
+        "boundary_tp": 0,
+        "boundary_fp": 0,
+        "boundary_fn": 1,
+        "boundary_span_f1": 0.0,
+        "plan_origin": "rule_based_v1_preannotation",
+        "ie_modified": false,
+        "planner_failed": true,
+        "planner_error": "PlannerError:planner_schema_invalid:['evidence_text_mismatch:a1', 'explicit_without_evidence:a1:hand', 'unknown_role_key:a2:object_ref', 'evidence_offset_oor:a2']",
+        "planner_error_codes": [
+          "evidence_text_mismatch",
+          "explicit_without_evidence",
+          "unknown_role_key",
+          "evidence_offset_oor"
+        ],
+        "planner_elapsed_ms": 58465.84,
+        "gold_spans": [
+          [
+            0,
+            29
+          ]
+        ],
+        "pred_spans": [],
+        "errors": [
+          "planner_failed:PlannerError:planner_schema_invalid:['evidence_text_mismatch:a1', 'explicit_without_evidence:a1:hand', 'unknown_role_key:a2:object_ref', 'evidence_offset_oor:a2']"
+        ]
+      },
+      {
+        "case_id": "g50_press_function_test_fixture",
+        "ok": true,
+        "gold_action_count": 1,
+        "pred_action_count": 1,
+        "action_count_match": true,
+        "boundary_annotated": true,
+        "boundary_comparable": true,
+        "boundary_trivially_empty": false,
+        "boundary_tp": 1,
+        "boundary_fp": 0,
+        "boundary_fn": 0,
+        "boundary_span_f1": 1.0,
+        "plan_origin": "rule_based_v1_preannotation",
+        "ie_modified": false,
+        "planner_failed": false,
+        "planner_error": null,
+        "planner_error_codes": [],
+        "planner_elapsed_ms": 22993.95,
+        "gold_spans": [
+          [
+            0,
+            8
+          ]
+        ],
+        "pred_spans": [
+          [
+            0,
+            8
+          ]
+        ],
+        "errors": []
+      },
+      {
+        "case_id": "g51_press_dimm_latch_to_position",
+        "ok": true,
+        "gold_action_count": 1,
+        "pred_action_count": 0,
+        "action_count_match": false,
+        "boundary_annotated": true,
+        "boundary_comparable": false,
+        "boundary_trivially_empty": false,
+        "boundary_tp": 0,
+        "boundary_fp": 0,
+        "boundary_fn": 1,
+        "boundary_span_f1": 0.0,
+        "plan_origin": "rule_based_v1_preannotation",
+        "ie_modified": false,
+        "planner_failed": true,
+        "planner_error": "PlannerError:planner_schema_invalid:['evidence_text_mismatch:a1']",
+        "planner_error_codes": [
+          "evidence_text_mismatch"
+        ],
+        "planner_elapsed_ms": 25482.52,
+        "gold_spans": [
+          [
+            0,
+            13
+          ]
+        ],
+        "pred_spans": [],
+        "errors": [
+          "planner_failed:PlannerError:planner_schema_invalid:['evidence_text_mismatch:a1']"
+        ]
+      },
+      {
+        "case_id": "g52_press_button_template",
+        "ok": true,
+        "gold_action_count": 1,
+        "pred_action_count": 1,
+        "action_count_match": true,
+        "boundary_annotated": true,
+        "boundary_comparable": true,
+        "boundary_trivially_empty": false,
+        "boundary_tp": 1,
+        "boundary_fp": 0,
+        "boundary_fn": 0,
+        "boundary_span_f1": 1.0,
+        "plan_origin": "rule_based_v1_preannotation",
+        "ie_modified": false,
+        "planner_failed": false,
+        "planner_error": null,
+        "planner_error_codes": [],
+        "planner_elapsed_ms": 11329.08,
+        "gold_spans": [
+          [
+            0,
+            5
+          ]
+        ],
+        "pred_spans": [
+          [
+            0,
+            5
+          ]
+        ],
+        "errors": []
+      },
+      {
+        "case_id": "g53_attach_label_to_board_position",
+        "ok": true,
+        "gold_action_count": 1,
+        "pred_action_count": 0,
+        "action_count_match": false,
+        "boundary_annotated": true,
+        "boundary_comparable": false,
+        "boundary_trivially_empty": false,
+        "boundary_tp": 0,
+        "boundary_fp": 0,
+        "boundary_fn": 1,
+        "boundary_span_f1": 0.0,
+        "plan_origin": "rule_based_v1_preannotation",
+        "ie_modified": false,
+        "planner_failed": true,
+        "planner_error": "PlannerError:planner_schema_invalid:['evidence_text_mismatch:a1', 'inferred_without_ref:a1:tool_ref']",
+        "planner_error_codes": [
+          "evidence_text_mismatch",
+          "inferred_without_ref"
+        ],
+        "planner_elapsed_ms": 39495.92,
+        "gold_spans": [
+          [
+            0,
+            16
+          ]
+        ],
+        "pred_spans": [],
+        "errors": [
+          "planner_failed:PlannerError:planner_schema_invalid:['evidence_text_mismatch:a1', 'inferred_without_ref:a1:tool_ref']"
+        ]
+      },
+      {
+        "case_id": "g54_tear_screen_film",
+        "ok": true,
+        "gold_action_count": 1,
+        "pred_action_count": 1,
+        "action_count_match": true,
+        "boundary_annotated": true,
+        "boundary_comparable": true,
+        "boundary_trivially_empty": false,
+        "boundary_tp": 1,
+        "boundary_fp": 0,
+        "boundary_fn": 0,
+        "boundary_span_f1": 1.0,
+        "plan_origin": "rule_based_v1_preannotation",
+        "ie_modified": false,
+        "planner_failed": false,
+        "planner_error": null,
+        "planner_error_codes": [],
+        "planner_elapsed_ms": 21149.79,
+        "gold_spans": [
+          [
+            0,
+            7
+          ]
+        ],
+        "pred_spans": [
+          [
+            0,
+            7
+          ]
+        ],
+        "errors": []
+      },
+      {
+        "case_id": "g55_pick_screw_x1",
+        "ok": true,
+        "gold_action_count": 1,
+        "pred_action_count": 0,
+        "action_count_match": false,
+        "boundary_annotated": true,
+        "boundary_comparable": false,
+        "boundary_trivially_empty": false,
+        "boundary_tp": 0,
+        "boundary_fp": 0,
+        "boundary_fn": 1,
+        "boundary_span_f1": 0.0,
+        "plan_origin": "rule_based_v1_preannotation",
+        "ie_modified": true,
+        "planner_failed": true,
+        "planner_error": "PlannerError:planner_schema_invalid:['evidence_text_mismatch:a1']",
+        "planner_error_codes": [
+          "evidence_text_mismatch"
+        ],
+        "planner_elapsed_ms": 24517.36,
+        "gold_spans": [
+          [
+            0,
+            7
+          ]
+        ],
+        "pred_spans": [],
+        "errors": [
+          "planner_failed:PlannerError:planner_schema_invalid:['evidence_text_mismatch:a1']"
+        ]
+      },
+      {
+        "case_id": "g56_place_heatsink_on_cpu",
+        "ok": true,
+        "gold_action_count": 1,
+        "pred_action_count": 0,
+        "action_count_match": false,
+        "boundary_annotated": true,
+        "boundary_comparable": false,
+        "boundary_trivially_empty": false,
+        "boundary_tp": 0,
+        "boundary_fp": 0,
+        "boundary_fn": 1,
+        "boundary_span_f1": 0.0,
+        "plan_origin": "rule_based_v1_preannotation",
+        "ie_modified": true,
+        "planner_failed": true,
+        "planner_error": "PlannerError:planner_schema_invalid:['evidence_text_mismatch:a1']",
+        "planner_error_codes": [
+          "evidence_text_mismatch"
+        ],
+        "planner_elapsed_ms": 21074.42,
+        "gold_spans": [
+          [
+            0,
+            12
+          ]
+        ],
+        "pred_spans": [],
+        "errors": [
+          "planner_failed:PlannerError:planner_schema_invalid:['evidence_text_mismatch:a1']"
+        ]
+      },
+      {
+        "case_id": "g57_lh_pick_screw_from_box",
+        "ok": true,
+        "gold_action_count": 1,
+        "pred_action_count": 0,
+        "action_count_match": false,
+        "boundary_annotated": true,
+        "boundary_comparable": false,
+        "boundary_trivially_empty": false,
+        "boundary_tp": 0,
+        "boundary_fp": 0,
+        "boundary_fn": 1,
+        "boundary_span_f1": 0.0,
+        "plan_origin": "rule_based_v1_preannotation",
+        "ie_modified": true,
+        "planner_failed": true,
+        "planner_error": "PlannerError:planner_schema_invalid:['evidence_offset_oor:a1', 'explicit_without_evidence:a1:hand', 'inferred_without_ref:a1:quantity']",
+        "planner_error_codes": [
+          "evidence_offset_oor",
+          "explicit_without_evidence",
+          "inferred_without_ref"
+        ],
+        "planner_elapsed_ms": 32175.32,
+        "gold_spans": [
+          [
+            0,
+            11
+          ]
+        ],
+        "pred_spans": [],
+        "errors": [
+          "planner_failed:PlannerError:planner_schema_invalid:['evidence_offset_oor:a1', 'explicit_without_evidence:a1:hand', 'inferred_without_ref:a1:quantity']"
+        ]
+      }
+    ]
+  }
+}

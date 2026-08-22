@@ -50,6 +50,7 @@
 | [WI AI Parser 實作規格](llm/wi-ai-parser-implementation-spec.md) | 實作層：契約、模組、DB、prompt、測試與 L0–L4 分期 | 🔄 |
 | [WI AI Parser 交付追蹤](llm/wi-ai-parser-worklog.md) | Phase 狀態、卡點、D3 決策、checkpoint 與驗收紀錄 | 🔄 交付期間持續更新 |
 | [WI AI Eval Reports](llm/eval-reports/README.md) | gold plan 評測輸出（`wi_ai_eval.py`） | 🔄 L3+ |
+| [本機 14B planner 量測報告](llm/eval-reports/local-14b/README.md) | 非設定模型（qwen2.5:14b）的 prompt 迭代原始報告；**不得對 §14.4 門檻** | 🔄 數字與結論見 worklog §8 |
 | [WI Gold Set 擴充覆核工作流](llm/gold-review/README.md) | 預標註草稿的 IE 覆核／轉正流程、自我指涉排除、split 原則（`gold_harvest.py`） | 🔄 P0 覆核中 |
 | [i18n（雙語 UI）交付追蹤](llm/i18n-worklog.md) | ADR-032 Phase A／B／C 交付紀錄、複審修復、**§11 交接：做完了什麼／沒做什麼** | ✅ 三個 Phase 皆完成（2026-08-21）；剩餘缺口見 §11 |
 

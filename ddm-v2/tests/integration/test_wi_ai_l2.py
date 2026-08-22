@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import json
 import os
+import uuid
 from pathlib import Path
 
 import pytest
@@ -63,7 +64,7 @@ async def test_engine_gate_illegal_code_compile_error():
 @pytest.mark.asyncio
 async def test_multi_action_fixture_via_service_path(db_session, monkeypatch):
     """mock LLM 固定 fixture plan → drafts 2 筆、multi_action 語意、TMU 鎖定。"""
-    from ddm_v2.nlp.contracts import PlannerOutput, WorkInstructionPlan
+    from ddm_v2.nlp.contracts import ParseContext, PlannerOutput, WorkInstructionPlan
     from ddm_v2.nlp.planner_ports import LLMRawResponse
     from ddm_v2.services.v2 import synonym_service as syn_svc
     from ddm_v2.services.v2 import wi_ai_service
@@ -118,12 +119,26 @@ async def test_multi_action_fixture_via_service_path(db_session, monkeypatch):
 
         monkeypatch.setattr(wi_ai_service, "_try_llm_plan", _fake_llm)
 
+        # 每次跑用獨一無二的 context：`parse_interactive` 的 input_hash 含
+        # context_hash，不加這個就會命中**共享 DB 裡別人留下的** ai_parse_runs
+        # ——本測試的文字正好是 prompt few-shot 的句子，preview_server 上有人打過
+        # 一次（run a2538133…，fallback=true）之後，這裡就永遠讀到那筆 rule 快取、
+        # 假 LLM 根本不會被呼叫（CI_GATES 硬性規則 7：測試不得依賴共享 DB 可變狀態）。
+        # station_hint 不影響 plan/link/compile，只用來讓 hash 唯一。
+        ctx = ParseContext(
+            rule_set_code=rs_code, station_hint=f"test-{uuid.uuid4().hex[:8]}"
+        )
         result, legacy = await wi_ai_service.parse_interactive(
             db_session,
             text=data["source_text"],
             rule_set_code=rs_code,
             created_by="TEST",
+            context=ctx,
         )
+        # 先確認假 LLM 真的被用上——否則下面的斷言會以「1 != 2」的形式失敗，
+        # 看起來像 compile 迴歸，其實是 planner 根本沒跑（快取命中／設定沒生效）。
+        assert result.provenance["planner"] == "llm", result.provenance
+        assert result.provenance["fallback"] is False, result.provenance
         assert len(result.plan.actions) == 2
         assert len(result.drafts) == 2
         assert result.drafts[0].engine_result["total_tmu"] == 6.0

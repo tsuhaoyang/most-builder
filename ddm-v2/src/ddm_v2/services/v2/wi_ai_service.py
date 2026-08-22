@@ -44,8 +44,10 @@ from ddm_v2.nlp.prompts import plan_v1
 from ddm_v2.nlp.routing import compute_routing
 from ddm_v2.nlp.rule_based import RuleBasedParser
 from ddm_v2.nlp.rule_plan_adapter import (
+    LEGACY_SLOTS_PARSER,
     legacy_from_parse_run,
     legacy_from_run_snapshot,
+    legacy_provenance,
     plan_from_rule_result,
 )
 from ddm_v2.services.v2 import synonym_service as syn_svc
@@ -118,7 +120,12 @@ def _result_from_run(run: AiParseRun, *, cached: bool, bundle_code: str) -> Pars
         "deployment_bundle_code": bundle_code,
         "planner": planner,
         "model": llm.get("model"),
-        "prompt_version": None if run.fallback else plan_v1.PROMPT_VERSION,
+        # 讀當初那一趟寫下的版本，**不是**當下的模組常數：`ai_parse_runs` 沒有
+        # prompt_version 欄（有那欄的是 `ai_deployment_bundles`），所以它跟 model／
+        # usage 一樣存在 `llm_raw_response` 裡。常數升版（如 plan-v1 → plan-v1.3）時，
+        # 讀常數會讓 DB 裡每一筆既有 run 都謊報成新版本。
+        # 舊資料列沒有這個鍵 → None。誠實的「不知道」勝過自信的錯答，不得回退成常數。
+        "prompt_version": llm.get("prompt_version"),
         "fallback": bool(run.fallback),
         "cached": cached,
         "latency_ms": run.latency or {},
@@ -439,6 +446,10 @@ async def parse_interactive(
                 "model": llm_raw.model,
                 "usage": llm_raw.usage,
                 "response_format_mode": llm_raw.response_format_mode,
+                # 快取重播唯一的版本來源（`_result_from_run`）：run 表沒有這一欄，
+                # 不存這裡就只剩「當下的模組常數」可讀，等於升版後全體既有 run 謊報。
+                # fallback 時 prompt_version 是 None（那趟沒有成功的 LLM plan）。
+                "prompt_version": prompt_version,
             }
             if llm_raw is not None
             else None
@@ -488,14 +499,26 @@ async def parse_interactive(
             ),
         },
     )
-    # 相容：仍回 rule_based 的 GM-shaped slots（舊前端）；ai.drafts 是權威草稿
+    # 相容：仍回 rule_based 的 GM-shaped slots（舊前端）；ai.drafts 是權威草稿。
+    # provenance 走 legacy_provenance()：slots 出處記在 slots_parser，parser 說的是
+    # 這一趟實際跑的 planner（直接傳 rule_result.provenance 會讓 parser 永遠是
+    # rule_based_v1——那個欄位曾兩度誤導實機驗證）。
     legacy = legacy_from_parse_run(
         raw_text=rule_result.raw_text,
         normalized_text=rule_result.normalized_text,
         slots=rule_result.slots,
         suggested_seq=rule_result.suggested_seq,
         overall_confidence=rule_result.overall_confidence,
-        provenance=rule_result.provenance,
+        provenance=legacy_provenance(
+            rule_provenance=rule_result.provenance,
+            planner=planner_name,
+            model=model_name,
+            prompt_version=prompt_version,
+            fallback=used_fallback,
+            # 這條路徑的 legacy slots 就是上面 `slots=rule_result.slots` 那批，
+            # 出自 RuleBasedParser，與 planner 無關（重播路徑不同，見 legacy_provenance）。
+            slots_parser=LEGACY_SLOTS_PARSER,
+        ),
     )
     return result, legacy
 

@@ -245,8 +245,9 @@ def repair_evidence_offsets(
 ) -> list[EvidenceSpan]:
     """offset 對不上時，以 `text` 在 normalized_text 的**唯一**出現處重算。
 
-    模型很會抄原文、很不會數字元位置（`prompts/plan_v1.py` 的 few-shot 本身就有
-    3/4 個 span offset 算錯，其中 2 個還越界——等於在 in-context 教模型數錯）。
+    模型很會抄原文、很不會數字元位置（`prompts/plan_v1.py` 的 few-shot 一度自己就
+    有 3 個 span offset 算錯、其中 2 個越界——等於在 in-context 教模型數錯；已修，
+    守衛見 `tests/unit/test_prompt_few_shots.py`）。
     `text` 是可驗證的資料、offset 是可推導的座標，能推就不要信它算的。
 
     三分支（fail-closed，不猜）：

@@ -175,10 +175,10 @@ def test_tool_state_downgrades_bad_ref():
 
 # ── evidence offset 修復（fail-closed）─────────────────────────────────────
 #
-# 模型會抄對原文、算錯位置（prompts/plan_v1.py 的 few-shot 自己就有 3/4 個
-# span offset 是錯的、其中 2 個越界）。`text` 可唯一定位時 offset 是可推導的，
-# 推得出來就不該讓整筆計畫失敗；推不出來（找不到／多處）就維持原樣讓
-# validate 拒絕——不猜。
+# 模型會抄對原文、算錯位置（`prompts/plan_v1.py` 的 few-shot 一度自己就有 3 個
+# span offset 是錯的、其中 2 個越界——已修，並由 `test_prompt_few_shots.py` 守住）。
+# `text` 可唯一定位時 offset 是可推導的，推得出來就不該讓整筆計畫失敗；
+# 推不出來（找不到／多處）就維持原樣讓 validate 拒絕——不猜。
 
 
 def _one_action(evidence: list[EvidenceSpan], **kw) -> PlannerOutput:

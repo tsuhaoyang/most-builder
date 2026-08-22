@@ -149,6 +149,62 @@ def _legacy_field_to_cycle_field(field: str) -> str:
     }.get(field, field)
 
 
+# fresh 路徑（`wi_ai_service.parse_interactive`）的 legacy `slots` 出處：那條路徑的
+# slots 直接取自 `RuleBasedParser` 的 `NLDraftResult.slots`，與 planner 無關。
+# ⚠️ 這不是全域真理——快取重播路徑的 slots 是另一批東西（見 legacy_provenance），
+#    所以這個常數只給 fresh 路徑用，不要當成 slots_parser 的預設值。
+LEGACY_SLOTS_PARSER = "rule_based_v1"
+
+
+def legacy_provenance(
+    *,
+    rule_provenance: dict | None,
+    planner: str,
+    model: str | None,
+    prompt_version: str | None,
+    fallback: bool,
+    slots_parser: str,
+    extra: dict | None = None,
+) -> dict:
+    """legacy `provenance` 的**單一**組裝點：`parser` 必須是實際跑的 planner。
+
+    為什麼要這支：`parser` 原本在兩個地方各自寫死 `"rule_based_v1"`，而
+    `api/routes/v2/nl_draft.py` 直接把整個 legacy dict 展開進回應——於是不管實際
+    用了 LLM 還是 rule，對外的 `provenance.parser` 永遠是 `rule_based_v1`。
+    實機驗證時它兩度讓人誤判「LLM 沒被呼叫」（真正的權威訊號在
+    `ai_parse_runs.fallback` 與 `llm_raw_response`）。誤導性的觀測欄位比沒有更糟。
+
+    `slots_parser` 另外記 legacy `slots` 的出處。它**必須由呼叫端傳**，因為兩條路徑
+    回的根本不是同一批 slots：
+
+    - fresh（`wi_ai_service.parse_interactive`）：legacy slots 直接取自
+      `rule_result.slots`，即 `RuleBasedParser` 的產物，與 planner 無關
+      → 傳 `LEGACY_SLOTS_PARSER`（LLM 路徑的權威草稿另在 `ai.drafts`）。
+    - 快取重播（`legacy_from_run_snapshot`）：legacy slots 是從 run 存下來的
+      `ParseRunResult.slot_candidates` 還原的，而那批 candidates 出自
+      `SlotLinker.link(plan)`——planner 是 LLM 時 link 的就是 **LLM plan**，
+      跟 rule parser 沒有關係 → 傳 `slot_linker:{planner}`。
+
+    這個欄位原本是寫死的模組常數，於是同一輸入第一次回 rule slots、第二次回 LLM plan
+    衍生的 slots，卻對兩者都說 `rule_based_v1`——它犯的正是自己要治的那個病（謊報來源）。
+
+    `parser` 與 `slots_parser` 講的是兩件事，把它們合成一個就一定有一邊在說謊。
+    """
+    prov = dict(rule_provenance or {})
+    prov.update(
+        {
+            "parser": planner,
+            "model": model,
+            "prompt_version": prompt_version,
+            "fallback": fallback,
+            "slots_parser": slots_parser,
+        }
+    )
+    if extra:
+        prov.update(extra)
+    return prov
+
+
 def legacy_from_parse_run(
     *,
     raw_text: str,
@@ -158,7 +214,11 @@ def legacy_from_parse_run(
     overall_confidence: float,
     provenance: dict,
 ) -> dict:
-    """組舊 NLDraftResult 形狀 dict（供 /nl-draft 相容回應）。"""
+    """組舊 NLDraftResult 形狀 dict（供 /nl-draft 相容回應）。
+
+    `provenance` 請用 `legacy_provenance()` 組，不要直接把 rule parser 的
+    provenance 傳進來——那會讓 `parser` 說謊（見該函式 docstring）。
+    """
     return {
         "raw_text": raw_text,
         "normalized_text": normalized_text,
@@ -271,14 +331,28 @@ def legacy_from_run_snapshot(
             }
         )
 
-    provenance = {
-        "parser": "rule_based_v1",
-        "rule_set_code": "",
-        "elapsed_ms": (result.provenance.get("latency_ms") or {}).get("plan", 0),
-        "from_cached_run": True,
-    }
-    if provenance_extra:
-        provenance.update(provenance_extra)
+    # 快取命中時實際 planner 記在 run 上，由 `_result_from_run` 還原進
+    # `result.provenance`——照抄它，不要另立一套（否則重播的回應會與當初不符）。
+    src = result.provenance or {}
+    planner = str(src.get("planner") or "rule_based_v1")
+    provenance = legacy_provenance(
+        rule_provenance={
+            "rule_set_code": "",
+            "elapsed_ms": (src.get("latency_ms") or {}).get("plan", 0),
+            "from_cached_run": True,
+        },
+        planner=planner,
+        model=src.get("model"),
+        prompt_version=src.get("prompt_version"),
+        fallback=bool(src.get("fallback", True)),
+        # 上面那批 slots_out 是從 `result.slot_candidates` 還原的，而那批 candidates
+        # 出自 `SlotLinker.link()` 對「當初那個 planner 的 plan」做的 link——planner 是
+        # LLM 時它們就是 LLM plan 的衍生物，寫 `rule_based_v1` 是謊報。
+        # （planner=rule 時 orchestrator 可能改用 rule adapter 的 candidates；兩者都源自
+        #  同一次 rule parse，run 上沒有留下區分兩者的訊號，故一律以 planner 標示出處。）
+        slots_parser=f"slot_linker:{planner}",
+        extra=provenance_extra,
+    )
 
     return {
         "raw_text": raw_text,
