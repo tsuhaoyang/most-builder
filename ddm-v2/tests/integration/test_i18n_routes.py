@@ -8,8 +8,9 @@ import uuid
 
 import pytest
 import pytest_asyncio
-from sqlalchemy import func, select, update
+from sqlalchemy import delete, func, select, update
 
+from ddm_v2.models.v2.i18n import I18nReviewState
 from ddm_v2.models.v2.rule_set import RuleSet
 
 pytestmark = pytest.mark.integration
@@ -37,7 +38,23 @@ async def _seeded(db_session) -> bool:
         select(RuleSet.id).where(RuleSet.code == CERTIFIED))).first() is not None
 
 
+async def _reset_human_review_state(db_session) -> None:
+    """清掉「已由人覆核」的側表列，讓灌值腳本重建 machine／legacy_seed 的基準線。
+
+    本檔多條測試的前提是「這批翻譯還沒有人覆核過」（`reviewed == 0`、
+    `status == 'unreviewed'`、待審清單長度＝全部候選列）。那個前提是**共用開發庫
+    當下的可變狀態**：任何人在 D6 英文覆核介面按一次「標記已覆核」，
+    `i18n_review_state` 就多一列 `source='human'`，而灌值腳本明文「側表已有列就
+    不重覆寫入（尊重既有覆核狀態）」——重跑種子也還原不回來，這些測試從此常紅。
+    照 CI_GATES 硬性規則 7，前提由測試自己 arrange。刪除走 savepoint 隔離連線，
+    測試結束隨外層 transaction rollback，共用開發庫零殘留。
+    """
+    await db_session.execute(delete(I18nReviewState).where(I18nReviewState.source == "human"))
+    await db_session.flush()
+
+
 async def _seed_labels(db_session) -> None:
+    await _reset_human_review_state(db_session)
     await SEED.seed_i18n_labels(db_session)
     await db_session.commit()
 

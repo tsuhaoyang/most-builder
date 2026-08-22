@@ -23,8 +23,9 @@ import uuid
 
 import pytest
 import pytest_asyncio
-from sqlalchemy import select, text
+from sqlalchemy import delete, select, text
 
+from ddm_v2.models.v2.i18n import I18nReviewState
 from ddm_v2.models.v2.rule_set import RuleSet
 
 pytestmark = pytest.mark.integration
@@ -52,11 +53,27 @@ async def _seeded(db_session) -> bool:
         select(RuleSet.id).where(RuleSet.code == CERTIFIED))).first() is not None
 
 
+async def _reset_human_review_state(db_session) -> None:
+    """清掉「已由人覆核」的側表列，讓灌值腳本重建 machine／legacy_seed 的基準線。
+
+    本檔多條測試的前提是「這批翻譯還沒有人覆核過」（`reviewed == 0`、
+    `status == 'unreviewed'`、待審清單長度＝全部候選列）。那個前提是**共用開發庫
+    當下的可變狀態**：任何人在 D6 英文覆核介面按一次「標記已覆核」，
+    `i18n_review_state` 就多一列 `source='human'`，而灌值腳本明文「側表已有列就
+    不重覆寫入（尊重既有覆核狀態）」——重跑種子也還原不回來，這些測試從此常紅。
+    照 CI_GATES 硬性規則 7，前提由測試自己 arrange。刪除走 savepoint 隔離連線，
+    測試結束隨外層 transaction rollback，共用開發庫零殘留。
+    """
+    await db_session.execute(delete(I18nReviewState).where(I18nReviewState.source == "human"))
+    await db_session.flush()
+
+
 @pytest_asyncio.fixture
 async def seeded(db_session):
-    """前置：active 版有選項、且英文已灌值（覆核的對象必須先存在）。"""
+    """前置：active 版有選項、英文已灌值、且尚無人工覆核（覆核的對象必須先存在且待審）。"""
     if not await _seeded(db_session):
         pytest.skip("rule-set 未種（DB 資料前置條件不足）")
+    await _reset_human_review_state(db_session)
     await SEED.seed_i18n_labels(db_session)
     await db_session.commit()
 
@@ -571,12 +588,19 @@ async def test_mark_reviewed_on_a_draft_only_code_requires_explicit_rule_set_cod
 
 
 async def test_mark_reviewed_works_for_master_data(client, db_session, seeded):
-    """主數據（ADR-024）：詞彙庫的 `name_en` 也走同一組端點，覆核狀態同一張側表。"""
+    """主數據（ADR-024）：詞彙庫的 `name_en` 也走同一組端點，覆核狀態同一張側表。
+
+    覆核對象由測試自己建（CI_GATES 硬性規則 7：不得撈「第一列」）——原本是
+    `select(WorkVocabItem).limit(1)`，那既沒有 ORDER BY（撈到哪一列不確定），
+    又會在共用開發庫的既有詞彙上寫 `name_en`，而且庫裡沒詞彙時整條測試靜默 skip。
+    """
     from ddm_v2.models.v2.vocab import WorkVocabItem
 
-    item = (await db_session.execute(select(WorkVocabItem).limit(1))).scalars().first()
-    if item is None:
-        pytest.skip("DB 無詞彙資料")
+    item = WorkVocabItem(
+        id=uuid.uuid4(), kind="object", name_zh=f"UT 覆核詞彙-{uuid.uuid4().hex[:6]}",
+    )
+    db_session.add(item)
+    await db_session.flush()
 
     new_en = f"UT vocab {uuid.uuid4().hex[:6]}"
     r = await client.post(

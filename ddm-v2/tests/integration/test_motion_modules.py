@@ -17,11 +17,16 @@ pytestmark = pytest.mark.integration
 
 
 async def _get_rule_set_id(client) -> str | None:
-    """取第一個可用的 rule_set id（供 publish 用）。"""
-    r = await client.get("/api/v2/rule-sets")
-    if r.status_code != 200 or not r.json():
+    """**active** 版的 id——不是清單第一筆（CI_GATES 硬性規則 7 第一則）。
+
+    `GET /rule-sets` 是 `ORDER BY created_at`，而 V1／V2 的 `created_at` 實測完全
+    相同（見 CI_GATES 雙語敘事那一列），`[0]` 撈到哪一版不確定；本檔的黃金列
+    註明是 V2（active 認證版）的值，撈到 V1 就是另一套值表。
+    """
+    r = await client.get("/api/v2/rule-sets/active")
+    if r.status_code != 200:
         return None
-    return r.json()[0]["id"]
+    return r.json()["id"]
 
 
 # ── 正常流程 ─────────────────────────────────────────────────────────
@@ -1061,11 +1066,11 @@ async def test_promote_analyst_returns_403(client):
 
 async def test_publish_with_rule_set_code(client):
     """publish 以 rule_set_code 指定規則版本 → service 解析成 id。"""
-    rs = await client.get("/api/v2/rule-sets")
-    if rs.status_code != 200 or not rs.json():
-        pytest.skip("DB 無 rule_set，略過")
-    rs_code = rs.json()[0]["code"]
-    rs_id = rs.json()[0]["id"]
+    rs = await client.get("/api/v2/rule-sets/active")  # 不撈清單第一筆（硬性規則 7 第一則）
+    if rs.status_code != 200:
+        pytest.skip("DB 無 active rule_set，略過")
+    rs_code = rs.json()["code"]
+    rs_id = rs.json()["id"]
 
     r = await client.post("/api/v2/motion-modules", json={
         "name_zh": "UT-Pub-ByCode",

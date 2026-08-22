@@ -9,28 +9,82 @@ import pytest
 pytestmark = pytest.mark.integration
 
 
-async def test_me_returns_identity(client):
+async def _set_stored_locale(db_session, value: str | None) -> None:
+    """把測試使用者的 `app_users.locale` 原始值 arrange 成指定狀態（None = 未設定）。
+
+    走 conftest 的 savepoint 隔離連線，測試結束隨外層 transaction rollback；
+    共用開發庫零殘留。
+    """
+    from sqlalchemy import update as sa_update
+
+    from ddm_v2.models.v2.auth import AppUser
+
+    await db_session.execute(
+        sa_update(AppUser).where(AppUser.employee_no == "IEC141289").values(locale=value)
+    )
+    await db_session.flush()
+
+
+async def _stored_locale(db_session) -> str | None:
+    """讀 `app_users.locale` 的**原始值**（可能 NULL）——用來區分「未設定」與「顯式 zh-TW」。"""
+    from sqlalchemy import select as sa_select
+
+    from ddm_v2.models.v2.auth import AppUser
+
+    return (
+        await db_session.execute(
+            sa_select(AppUser.locale).where(AppUser.employee_no == "IEC141289")
+        )
+    ).scalar_one()
+
+
+async def test_me_returns_identity(client, db_session):
+    """身分欄位，含 ADR-032 D3.1：locale 未設定（NULL）→ 回傳解析後的系統預設。
+
+    「未設定」這個前提由測試自己 arrange，不依賴共用開發庫該列的當下值
+    （CI_GATES 硬性規則 7：不得依賴環境既存資料）——實機在 UI 切一次語言就會
+    把該列寫成 'en'，靠既存狀態的版本會無故變紅。
+    """
+    await _set_stored_locale(db_session, None)
+    assert await _stored_locale(db_session) is None, "arrange 失敗：欄位不是「未設定」"
+
     r = await client.get("/api/v2/me")
     assert r.status_code == 200
     body = r.json()
     assert body["employee_no"] == "IEC141289"
     assert body["level"] >= 1
-    # ADR-032 D3.1：未設定 locale 的既有測試使用者 → 回傳解析後的系統預設，不是 null。
-    assert body["locale"] == "zh-TW"
+    assert body["locale"] == "zh-TW"  # DEFAULT_LOCALE；解析在讀取端，欄位仍是 NULL
+    assert await _stored_locale(db_session) is None, "讀取端解析不得回寫欄位"
 
 
-async def test_patch_my_locale_self_service(client):
+async def test_me_locale_reflects_explicitly_stored_value(client, db_session):
+    """對照組：欄位存了非預設值 → /me 回那個值。
+
+    與上一條合起來，才證得到「zh-TW 是解析出來的預設」而不是端點寫死的常數。
+    """
+    await _set_stored_locale(db_session, "en")
+    body = (await client.get("/api/v2/me")).json()
+    assert body["locale"] == "en"
+
+
+async def test_patch_my_locale_self_service(client, db_session):
     """ADR-032 D3.1：PATCH /me/locale 本人自助、無需 admin，且立即反映在 /me。"""
+    await _set_stored_locale(db_session, None)
+
     r = await client.patch("/api/v2/me/locale", json={"locale": "en"})
     assert r.status_code == 200
     assert r.json()["locale"] == "en"
 
     r = await client.get("/api/v2/me")
     assert r.json()["locale"] == "en"
+    assert await _stored_locale(db_session) == "en"
 
-    # 改回 zh-TW（避免污染同 fixture 下的其他測試）
+    # 改回 zh-TW：欄位存的是**顯式** 'zh-TW'，不是回到「未設定」——兩者在 /me 回應上
+    # 長得一樣，只有查原始欄位才分得出來（表態過的使用者不隨系統預設改變而漂移）。
     r = await client.patch("/api/v2/me/locale", json={"locale": "zh-TW"})
     assert r.status_code == 200 and r.json()["locale"] == "zh-TW"
+    assert await _stored_locale(db_session) == "zh-TW"
+    # 本測試的寫入全在 savepoint 內，teardown 一併 rollback，不需要（也不能靠）手動清理。
 
 
 async def test_patch_my_locale_rejects_unknown_value(client):

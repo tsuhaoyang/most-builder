@@ -14,7 +14,7 @@ import uuid
 
 import pytest
 import pytest_asyncio
-from sqlalchemy import func, select, text, update
+from sqlalchemy import delete, func, select, text, update
 from sqlalchemy.exc import IntegrityError
 
 from ddm_v2.models.v2.i18n import I18nReviewState
@@ -59,6 +59,22 @@ async def draft_rs(db_session) -> str:
     await rsvc.clone_draft(db_session, CERTIFIED, code, "i18n 灌值測試草稿")
     await db_session.commit()
     return code
+
+
+async def _reset_human_review_state(db_session) -> None:
+    """清掉「已由人覆核」的側表列，讓灌值腳本重建 machine／legacy_seed 的基準線。
+
+    下面幾條測試的前提是「這批翻譯還沒有人覆核過」（`summary()['reviewed'] == 0`、
+    `status == 'unreviewed'`、`source == 'legacy_seed'`）。那個前提是**共用開發庫
+    當下的可變狀態**：任何人在 D6 英文覆核介面按一次「標記已覆核」，
+    `i18n_review_state` 就多一列 `source='human'`，而灌值腳本明文「側表已有列就
+    不重覆寫入（尊重既有覆核狀態）」——重跑種子也還原不回來，這些測試從此常紅。
+    照 CI_GATES 硬性規則 7，前提由測試自己 arrange（同檔 `test_seed_fills_both_
+    label_and_sentence_en_for_every_g_option` 早就用同一招清 `g:%` 的側表列）。
+    刪除走 savepoint 隔離連線，測試結束隨外層 transaction rollback。
+    """
+    await db_session.execute(delete(I18nReviewState).where(I18nReviewState.source == "human"))
+    await db_session.flush()
 
 
 async def _reset_rule_option_en_labels_for_in_scope_rule_sets(db_session) -> None:
@@ -476,6 +492,7 @@ async def test_seed_registers_legacy_seed_without_overwriting_existing_value(db_
         pytest.skip("motion_templates 未種（缺 dev_seed_templates.py 的資料）")
     before = {str(r.id): r.name_en for r in rows}
 
+    await _reset_human_review_state(db_session)
     await SEED.seed_i18n_labels(db_session)
     await db_session.flush()
 
@@ -586,6 +603,7 @@ async def test_source_changed_distinguishes_fresh_machine_translation_from_stale
     """
     from ddm_v2.services.v2 import rule_option_service as opsvc
 
+    await _reset_human_review_state(db_session)
     await _reset_rule_option_en_labels_for_in_scope_rule_sets(db_session)  # M1
     await SEED.seed_i18n_labels(db_session)  # g:g_grasp 現在兩邊都是 machine／unreviewed
     await db_session.flush()
@@ -714,6 +732,7 @@ async def _rule_option_row_count(db_session) -> int:
 async def test_summary_and_pending_rows_reflect_seeded_state(db_session):
     if not await _seeded(db_session):
         pytest.skip("rule-set 未種")
+    await _reset_human_review_state(db_session)
     await SEED.seed_i18n_labels(db_session)
     await db_session.flush()
 
@@ -736,6 +755,7 @@ async def test_summary_and_pending_rows_reflect_seeded_state_with_draft_present(
     `pending_rows()`（不去重，總數隨版本數增加）在有 draft 時的行為都符合設計，
     不是巧合地綠。
     """
+    await _reset_human_review_state(db_session)
     await _reset_rule_option_en_labels_for_in_scope_rule_sets(db_session)  # M1
     await SEED.seed_i18n_labels(db_session)
     await db_session.flush()

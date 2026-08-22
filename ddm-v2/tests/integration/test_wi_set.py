@@ -16,10 +16,16 @@ pytestmark = pytest.mark.integration
 
 
 async def _get_rule_set_id(client) -> str | None:
-    r = await client.get("/api/v2/rule-sets")
-    if r.status_code != 200 or not r.json():
+    """**active** 版的 id——不是清單第一筆（CI_GATES 硬性規則 7 第一則）。
+
+    `GET /rule-sets` 是 `ORDER BY created_at`，而 V1／V2 的 `created_at` 實測完全
+    相同（見 CI_GATES 雙語敘事那一列），`[0]` 撈到哪一版不確定；本檔的黃金列
+    註明是 V2（active 認證版）的值，撈到 V1 就是另一套值表。
+    """
+    r = await client.get("/api/v2/rule-sets/active")
+    if r.status_code != 200:
         return None
-    return r.json()[0]["id"]
+    return r.json()["id"]
 
 
 async def _make_project(client) -> str:
