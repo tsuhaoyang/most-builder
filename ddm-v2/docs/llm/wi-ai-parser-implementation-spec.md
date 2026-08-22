@@ -743,8 +743,104 @@ review   ⇐ 其他一切
 
 `routing_reasons` 封閉字串集合（v1）：`missing_<role>`、`no_candidate_<param>`、
 `engines_disagree`、`baseline_disagreement`、`quantity_policy_review`、
-`planner_invented_action`、`tool_state_violation`、`engine_reject_<code>`、
-`fallback_rule_based`、`composite_unknown`。前端依這些 key 顯示中文文案。
+`distance_unevidenced_review`、`quantity_unevidenced_review`、
+`non_finite_value_rejected`、`planner_invented_action`、`tool_state_violation`、`engine_reject_<code>`、
+`fallback_rule_based`、`composite_unknown`。
+
+⚠️ **兩處先前的敘述不實，2026-08-22 更正**：
+
+1. 「前端依這些 key 顯示中文文案」**是假的**。實測：`AiDraftPanel.tsx:182-185` 把
+   `routing_reasons` 原樣 `.slice(0, 3).join(', ')`（其餘要停留看 `title`）、
+   `ActionCard.tsx:56-58` 把 `draft.issues` 原樣 join 進一個 i18n 樣板——**樣板是
+   翻譯的，key 本身不是**；`shared/i18n/` 裡 per-key 文案**零筆**。覆核者看到的字面
+   就是 `distance_unevidenced_review`。ADR-032 雙語 UI 已交付的前提下，這是個真實
+   （雖小）的缺口，記票。
+2. `nlp/routing.ROUTING_REASONS` **不是「權威集合」**：它定義之後全 repo **生產端
+   零引用**（資安 S-5），`compute_routing` 無條件 `reasons.extend(plan.unresolved)`，
+   不經任何過濾。真正有執行力的只有 `_eligible_auto` 的 `blocked` 子集。
+   新增 reason 時**兩處都要加**，但只有 `blocked` 那份會改變行為。
+
+`distance_unevidenced_review` / `quantity_unevidenced_review`（資安 S-2）：
+數值角色（distance→A 參數／M 分量、quantity→frequency 乘數）**直接決定 TMU 檔位**，
+但 `validate_planner_output` 的證據綁定擋不住它們（只驗帶 `text` 的 explicit 角色）。
+compiler 因此自驗一次——該數值必須能定位到**該 action 自己的** evidence
+（`policies.numeric_claim_is_evidenced`），否則掛旗標並擋 auto。
+**值照常採用、不靜默改寫**：改成 0cm／frequency=1 同樣是憑空的數字，且會改變既有
+案例的 TMU＝改計算語意（IE 裁決範圍）。要改成拒收需另行裁決。
+
+`non_finite_value_rejected`：**唯一的例外**——`NaN`／`±Infinity` 不是「沒出處的量」
+而是「不是量」，在 compiler 邊界一律拒收（當作沒有值）並留旗標。放行的後果是
+fail-open 而非 fail-closed：NaN 的每個比較都是 False，引擎的檔位查表會落到溢位帶＝
+**最大** A 檔位（實測 `reach_cm=nan` → A24），秒數則算出非合規 JSON 的 nan，
+`quantity` 更會在 `int(n)` 丟例外（拋出點在 `compile_plan`，在 LLM 的 try/except
+之外 → HTTP 500）。`json.loads` 接受 `NaN` 字面量，Pydantic 的 `float` 也接受，
+所以這是 LLM 輸出可直接觸發的路徑。
+
+⚠️ **這個守門只涵蓋 distance 與 quantity 兩條路，同一類別的第三條路仍開著**
+（code review 2026-08-22 指出，記票 S-8）：
+
+```python
+# compile.py（CM 分支）
+x_seconds = 0.0
+pk = action.roles.get("process_kind")
+if pk and pk.unit in {"s", "sec", "秒"} and pk.value is not None:
+    x_seconds = float(pk.value)          # ← 模型主張的數字，未經任何證據檢查
+# → most_engine/calculate.py：seconds = slot.get("x_seconds", 0)
+#                             return rs.seconds_to_tmu(seconds) * rep
+```
+
+與 S-2 的病灶**逐字同構**：`role.value` → TMU，不讀 `status`、無證據檢查、無 review
+旗標，而且就在被修的那段程式下面十行。D3-025 加的 `x_seconds_required` 只處理
+「**沒有**秒數來源」，對「模型**捏造**了秒數」無感。
+
+**本輪未涵蓋的理由**：`nlp/quantities.py` 沒有秒數抽取器，要讓
+`numeric_claim_is_evidenced` 支援 `kind="seconds"` 是真工作量，不是一行。
+**所以請不要把本節讀成「模型主張的數字進 TMU 已經有守門了」**——distance 與
+quantity 有，seconds 沒有。
+
+**判準的演進與現況**（2026-08-22 兩輪收緊後）：`numeric_claim_is_evidenced` 現在是
+**三段式**——(1) 抽取器在該 action 的 evidence 窗內抽到同一數量且 span 重疊 → 有憑據；
+(2) **矛盾檢查**：窗內抽到了**同 kind** 的量卻沒有一個對得上 → 直接判無憑據，
+**不再往退路走**；(3) 退路：數字**＋緊跟相稱單位／量詞**（單位表 kind 分離）。
+
+第一版曾有的四個弱點**已修，逐條實測確認**（先前這裡把它們列為「已知弱點」，
+在修掉之後未同步更新，2026-08-22 複審抓到）：路徑 (3) 現在認 `kind` 且要求數字是
+獨立的量（`十字起子`／`一體成型`／`二次確認` 不再背書、件數不替距離背書、反向亦然），
+`_count_hit_value` 修好了中文數字截斷（`十六` 曾只拆出 {10,6}，造成**雙向**錯誤——
+合法 count=16 誤掛旗標、而錯值 6 反被背書）。矛盾檢查則擋住了 mm↔cm 這類 10 倍錯誤
+（`推動治具450mm至定位` ＋ 主張 `450 unit="cm"`）。
+
+**仍然開著的殘留**（這一格才是真的）：
+
+1. **同窗兩個距離可互相背書**——A0／A3 對調不會被抓。兩個數都是原文裡的真值，
+   不是幻覺，屬**已揭露**限制。
+2. **捏造值恰好等於窗內同 kind 的真實量**時仍會通過。
+3. **單位表外的寫法會保守誤掛旗標**（不動 TMU，方向安全）。
+
+⚠️ **不要把這個判準描述成「無憑據數值一律 fail-closed」**——它的實際語意是
+「該 action 的 evidence 窗內找不到相同的量才掛旗標」。
+
+**一般性質（複審 2026-08-22 歸納，讀程式看不出來）：矛盾檢查會繼承抽取器的 bug，
+而且沒有逃生口。** 只要 `nlp/quantities.py` 的 `extract_*` 在窗內把某個數字讀錯，
+正確的主張就會被硬性判定為矛盾——因為第 (2) 段一旦成立就**不再往退路走**，
+而退路正是第一版用來救回這類情形的機制。已知兩個實例：
+
+- `十六顆` 曾被 `_COUNT_RE` 讀成 6（中文分支只吃單字元）→ 已在**判讀側**修
+  （`policies._count_hit_value` 把完整中文數字 token 補回來），未動抽取器語意。
+- `螺絲2.5次` 被讀成 5.0（`_COUNT_RE` 的數字分支是 `\d+`，無小數）→ **未修**：
+  正確的 `quantity=2.5` 會誤掛 `quantity_unevidenced_review`。嚴重度低——非整數
+  quantity 走 `resolve_frequency` 的 `n == int(n)` 為 False 分支，frequency 恆為 1.0，
+  **TMU 不受影響**，只是多一個覆核旗標。修法與中文數字對稱（判讀側補一個小數修回），
+  同樣不必動 `quantities.py`。
+
+**一格新版比舊版寬鬆的行為**（複審量化，記錄用）：`distance=+Inf` 在修改前是引擎
+硬拒（`M_DISTANCE_RANGE` → `status=invalid`），現在是「拒收值 → 代 0 → 引擎算得出
+6.0」（`status=review` ＋ `non_finite_value_rejected`）。兩者都不可能 auto 落地，
+但若要方向一致，`_resolve_distance_cm` 拒收後可讓該 draft 直接 incomplete 而非代 0。
+
+**曝險上限被檔位飽和壓住**：A reach 帶最大 index 24，M ladder 無 overflow 帶
+（>75cm → `M_DISTANCE_RANGE` fail-closed），所以荒謬的借用值不會靜默通過，
+單步最多錯約 24 TMU。
 
 provenance 欄位（進 run 與 response）：
 

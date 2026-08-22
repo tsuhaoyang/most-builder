@@ -17,9 +17,12 @@ from ddm_v2.most_compiler.intermediate import (
 )
 from ddm_v2.most_compiler.policies import (
     CORE_PARAM_BY_ACTION,
+    DISTANCE_UNEVIDENCED_REVIEW,
     SEQ_BY_ACTION,
+    finite_or_reject,
     holding_inferred_reason,
     is_tool_held,
+    numeric_claim_is_evidenced,
     resolve_frequency,
 )
 from ddm_v2.nlp.contracts import CycleDraft, PlannedAction, SlotCandidateSet, WorkInstructionPlan
@@ -105,6 +108,50 @@ def _evidence_distance_cm(action: PlannedAction, plan: WorkInstructionPlan) -> f
     return None
 
 
+def _resolve_distance_cm(
+    action: PlannedAction,
+    plan: WorkInstructionPlan,
+    *,
+    role_key: str,
+    text_fallback: bool,
+) -> tuple[float, list[str]]:
+    """回傳 (cm, issues)——距離進 TMU 檔位的**唯一**入口（S-2）。
+
+    A 參數（`StrictASlot.reach_cm`）與 M 分量（`StrictMComponent.distance_cm`）
+    就是 TMU 檔位，所以「這個 cm 從哪來」必須是可回答的問題：
+
+    - role 帶值（`_role_distance_cm`）→ 那是**模型的主張**，須能定位到本 action
+      的文字證據（`numeric_claim_is_evidenced`），否則掛
+      `distance_unevidenced_review`。
+    - role 無值 → 退回句面抽取（`_evidence_distance_cm`）。它的 fallback 分支會
+      在**沒有任何 evidence 重疊**時回「全句第一個距離」——那是把別的 action 的
+      距離掛到這個 action 上（多 action 計畫實測可重現），同樣要掛旗標。
+
+    兩條路都**照常回傳該值**（不靜默改成 0）：本票治的是靜默，不是數字本身
+    （取捨理由見 `policies.DISTANCE_UNEVIDENCED_REVIEW`）。旗標擋 auto
+    （`routing._eligible_auto`），覆核者一定看得到。
+
+    **例外是非有限值**（`NaN`／`±Inf`）：那不是「沒出處的量」而是「不是量」，
+    在這裡就拒收（`finite_or_reject`），改走句面抽取／0——放行的話 `band_index`
+    的每個 `<=` 比較都是 False，直接落到溢位帶＝**最大** A 檔位。攔在這裡而不是
+    `_role_distance_cm`：那支只回「多少 cm」，回不了「有個值被丟掉了」，而拒收
+    必須留痕。
+    """
+    issues: list[str] = []
+    role_cm = finite_or_reject(_role_distance_cm(action, role_key), issues)
+    # 沿用既有語意：role 值為 0／None 都往句面抽取那條路走
+    cm = role_cm if role_cm else (_evidence_distance_cm(action, plan) if text_fallback else None)
+    # 句面抽取來自 regex，恆為有限；這道是 fail-closed，不倚賴那個性質
+    cm = finite_or_reject(cm, issues)
+    if not cm:
+        return 0.0, issues
+    if numeric_claim_is_evidenced(action, plan, value=cm, kind="distance"):
+        return float(cm), issues
+    if DISTANCE_UNEVIDENCED_REVIEW not in issues:
+        issues.append(DISTANCE_UNEVIDENCED_REVIEW)
+    return float(cm), issues
+
+
 def _core_complete(action: PlannedAction, candidates: list[SlotCandidateSet]) -> tuple[bool, str | None]:
     if action.action_type == "composite_unknown":
         return False, "composite_unknown"
@@ -146,7 +193,7 @@ def compile_plan(
             continue
 
         complete, miss_reason = _core_complete(action, candidate_sets)
-        freq, freq_reasons = resolve_frequency(action)
+        freq, freq_reasons = resolve_frequency(action, plan)
         issues: list[str] = []
         if miss_reason:
             issues.append(miss_reason)
@@ -192,14 +239,21 @@ def compile_plan(
 
         cycle_dict: dict[str, Any]
         if seq == "GM":
-            a0_cm = _role_distance_cm(action, "from_location") or (
-                _evidence_distance_cm(action, plan) if action.action_type == "acquire" else None
+            a0_cm, a0_issues = _resolve_distance_cm(
+                action,
+                plan,
+                role_key="from_location",
+                text_fallback=action.action_type == "acquire",
             )
-            a3_cm = _role_distance_cm(action, "distance") or (
-                _evidence_distance_cm(action, plan)
-                if action.action_type in {"move_place", "release_return"}
-                else None
+            a3_cm, a3_issues = _resolve_distance_cm(
+                action,
+                plan,
+                role_key="distance",
+                text_fallback=action.action_type in {"move_place", "release_return"},
             )
+            for issue in a0_issues + a3_issues:
+                if issue not in issues:
+                    issues.append(issue)
             gm = StrictGmDraft(
                 a0=StrictASlot(reach_cm=float(a0_cm or 0)),
                 b1=StrictBSlot(b_code=b_code),
@@ -210,7 +264,12 @@ def compile_plan(
             )
             cycle_dict = gm.model_dump()
         else:
-            dist = _role_distance_cm(action, "distance") or _evidence_distance_cm(action, plan)
+            dist, dist_issues = _resolve_distance_cm(
+                action, plan, role_key="distance", text_fallback=True
+            )
+            for issue in dist_issues:
+                if issue not in issues:
+                    issues.append(issue)
             m_comps: list[StrictMComponent] = []
             if m_code or (dist and action.action_type == "controlled_move"):
                 m_comps.append(
@@ -222,7 +281,12 @@ def compile_plan(
             x_seconds = 0.0
             pk = action.roles.get("process_kind")
             if pk and pk.unit in {"s", "sec", "秒"} and pk.value is not None:
-                x_seconds = float(pk.value)
+                # 同一道有限值關卡（S-2 複審）：nan 秒數會讓引擎算出 nan 的
+                # TMU 總計（非合規 JSON、零旗標），inf 讓 `Decimal` 丟
+                # `InvalidOperation`——而 engine_gate 只接 `SequenceError`，
+                # 那個例外會一路衝出去變 500
+                secs = finite_or_reject(float(pk.value), issues)
+                x_seconds = float(secs) if secs is not None else 0.0
             # ── E 型完整性窄豁免（D3-026；IE 裁決 2026-08-17/18，見 worklog）──
             # 純 I 句：該 action 的面命中集合**恰為 {I}**（無 X、無 M、無 G、
             # 無任何其他 slot 面）、I 已掛值、且無任何 M 分量（句面也無距離）

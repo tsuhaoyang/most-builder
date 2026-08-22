@@ -171,3 +171,84 @@ def test_auto_when_flag_on_and_exact():
     ]
     status, _ = compute_routing(_plan("acquire"), [cand], drafts, auto_enabled=True)
     assert status == "auto"
+
+
+def _draft_with(issue: str, cycle: dict) -> CycleDraft:
+    return CycleDraft(
+        action_id="a1",
+        cycle=cycle,
+        complete=True,
+        engine_result={"total_tmu": 6},
+        issues=[issue],
+    )
+
+
+def _exact_cand(parameter: str, field: str, code: str) -> SlotCandidateSet:
+    return SlotCandidateSet(
+        action_id="a1",
+        parameter=parameter,
+        field=field,
+        chosen=OptionCandidate(
+            parameter=parameter, option_code=code, score=0.95, source="synonym_exact", rank=1
+        ),
+        top_k=[],
+        needs_review=False,
+    )
+
+
+def test_auto_blocked_by_distance_unevidenced_review():
+    """S-2：距離無法定位到該 action 的文字證據 → 該值仍進 M 分量／A 參數（＝TMU
+    檔位），所以**絕不可**自動落地。這裡是「其他條件全綠」的形狀（候選全
+    synonym_exact、draft complete 且引擎收），唯一擋住 auto 的就是旗標本身。
+    mutation：把旗標拆出 `_eligible_auto` 的 blocked 集 → status 變 auto → 本測紅。"""
+    drafts = [_draft_with("distance_unevidenced_review", {"seq": "CM"})]
+    status, reasons = compute_routing(
+        _plan("controlled_move"),
+        [_exact_cand("M", "m3.verb_code", "m_push")],
+        drafts,
+        auto_enabled=True,
+    )
+    assert status == "review", "無憑據的距離不得自動變成工時標準"
+    assert "distance_unevidenced_review" in reasons
+
+
+def test_auto_blocked_by_quantity_unevidenced_review():
+    """同上，quantity 這一路：`qty.value` 是 frequency（TMU 乘數）。
+    `quantity_policy_review` 是另一個主張（N 該不該當 frequency），不能拿它
+    代替——真實形狀兩個旗標會同時掛，這裡單掛以證明本旗標**自己**擋得住。"""
+    drafts = [_draft_with("quantity_unevidenced_review", {"seq": "CM", "frequency": 16})]
+    status, reasons = compute_routing(
+        _plan("process"),
+        [_exact_cand("X", "x4.x_code", "x_screw_fix")],
+        drafts,
+        auto_enabled=True,
+    )
+    assert status == "review"
+    assert "quantity_unevidenced_review" in reasons
+
+
+def test_new_unevidenced_reasons_are_declared_in_routing_reasons():
+    """兩個新旗標要進 `ROUTING_REASONS`（前端依 key 顯示中文文案的封閉集合）。
+    ⚠️ 這個常數目前全 repo 零引用（資安 S-5），所以它**不會**自動擋住漏登記——
+    真正的擋 auto 保證在上面兩支測試。"""
+    from ddm_v2.nlp.routing import ROUTING_REASONS
+
+    assert {
+        "distance_unevidenced_review",
+        "quantity_unevidenced_review",
+        "non_finite_value_rejected",
+    } <= ROUTING_REASONS
+
+
+def test_auto_blocked_by_non_finite_value_rejected():
+    """送進 NaN／Inf 的計畫是壞掉的模型輸出：值已被 compiler 拒收，但那筆計畫
+    不得自動落地。mutation：旗標拆出 blocked → status 變 auto → 本測紅。"""
+    drafts = [_draft_with("non_finite_value_rejected", {"seq": "GM"})]
+    status, reasons = compute_routing(
+        _plan("acquire"),
+        [_exact_cand("G", "g2.g_code", "g_grasp")],
+        drafts,
+        auto_enabled=True,
+    )
+    assert status == "review"
+    assert "non_finite_value_rejected" in reasons

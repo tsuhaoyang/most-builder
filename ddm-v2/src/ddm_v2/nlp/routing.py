@@ -9,6 +9,13 @@ ROUTING_REASONS = frozenset(
         "engines_disagree",
         "baseline_disagreement",
         "quantity_policy_review",
+        # S-2：數值主張無法定位到該 action 的文字證據（distance→A/M 檔位、
+        # quantity→frequency 乘數）。值照樣採用，但覆核者必須看得到「沒有出處」
+        "distance_unevidenced_review",
+        "quantity_unevidenced_review",
+        # 非有限值（NaN／±Inf）被 compiler 拒收——放行會落到最大 A 檔位／算出
+        # nan TMU／丟 Decimal 例外（見 policies.NON_FINITE_VALUE_REJECTED）
+        "non_finite_value_rejected",
         "planner_invented_action",
         "tool_state_violation",
         "fallback_rule_based",
@@ -104,6 +111,11 @@ def _eligible_auto(
         "engines_disagree",
         "baseline_disagreement",
         "quantity_policy_review",
+        # S-2：無憑據的數值（模型主張、文字定位不到）不得自動落地成工時標準
+        "distance_unevidenced_review",
+        "quantity_unevidenced_review",
+        # 送進來 NaN／Inf 的計畫是壞掉的模型輸出，一律人工覆核
+        "non_finite_value_rejected",
         "template_hint",
         "i_range_assumed",
         # D3-027（D3-026 複審 H1）：E 型豁免的假設旗標顯式擋 auto——先前擋

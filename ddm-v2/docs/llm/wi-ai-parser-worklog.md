@@ -208,6 +208,8 @@
 | 2026-08-17 | D3-028/029 複審 | code-reviewer agent | **B1（阻擋）**同義詞守門測試在乾淨 DB 上必紅——CI seed 鏈不寫 `rule_option_synonyms`（拋棄式庫實測 3 failed）；**B2（高）**8 筆裁決日 2026-08-18 比系統時鐘晚一天；**M1（中）**「假改判」判準看的是「不是每一欄都相同」，只改日期的假軌跡被收下；隨批 M2（ADR 守門範圍讀起來像全覆蓋）、L1（守門邊界的例子避重就輕）、L2/L3（筆數記錯）；L4/L5 記票 | B1/B2/M1/M2/L1/L2/L3 全修（D3-030：`scripts/dev_seed_synonyms.py`＋CI 補一步、81 處日期訂正＋`date_shape_error` 不得晚於今天、判準改看裁決欄、ADR 範圍聲明與誠實邊界）；L4（allowlist 鍵不含 rule_set_code）、L5（g56 P 方向無結構化面向可 stale）記票不實作。乾淨拋棄式 DB 實證補 seed 前 3 failed → 後 8 passed；mutation 逐條紅→綠 |
 | 2026-08-22 | plan-v1.3 prompt 迭代 | checkpoint 三席（code-reviewer＋security-reviewer＋test-engineer） | **P1-1** legacy `provenance.slots_parser` 在快取重播路徑上說謊——重播的 slots 是由 `SlotLinker.link(stored plan)` 重建（planner 是 LLM 時與 rule parser 無關），新欄位卻對兩條路徑都宣稱 `rule_based_v1`，**新欄位犯的正是它要治的病**，且新測試把假宣稱釘成斷言；**P1-2** 重播的 `prompt_version` 報「當下的模組常數」（`ai_parse_runs` 無此欄），本批把常數 v1→v1.3 使 DB 內既有每一筆 LLM run 開始謊報（probe 實證 written `plan-v1.3` → replayed `plan-v9.9-NEVER-RAN`）；**測試汙染** 新 integration 測試漏 `finally: get_settings.cache_clear()`，probe 實證後續測試**真的對 127.0.0.1:11434 發出 HTTP**（本機 ollama 回 404 被 fallback 靜默接住）；**守衛可繞過** 切分守衛的 `_link_between` 三個訊號可被「move_place 省略 object」同時規避（正是 fp 15→36 的形狀），實測補一則正確示範後壞示範完全隱形；**零 unit 覆蓋** `legacy_provenance()` 只有整檔 skip 的 integration 摸得到；**文件四處不實**（規則編號位移、規則 12 立論為假、「補上值域即可」與資料矛盾、g13/g46 歸因錯）；資安 2 High／3 Medium／2 Low **全為既有**，其中 High 2 被本批 few-shot 放大 | P1-1／P1-2／測試汙染／守衛繞過／unit 覆蓋／文件四處**全修**（見 §9 與 spec §7.2、§10.3）。**複審 mutation 逐條紅→綠**：讀常數→3 紅、`slots_parser` 改回常數→1 紅（**unit 層免 DB**）、2c 繞過形狀（含 `status: missing` 變體）→紅（且在「有正確示範共存」條件下仍紅）、stale 豁免→紅、無 DB 環境 `parser` 謊報→5 failed（上一輪同一 mutation 是 1252 全綠）。**結論 APPROVE_WITH_NITS**。驗收：unit **1266**／integration **589**＋1 skip／golden 88·26·60 全綠／ruff 綠／mypy 改動檔零錯。既有資安 High／Medium、P2-5、P2-7 與 6 項 P3 **記票不實作**，理由見 §9 |
 
+| 2026-08-22 | 資安 S-2 修復 | checkpoint 三席（code-reviewer＋security-reviewer＋**ddm-validator**） | **S-2 本體**：`most_compiler` 完全不讀 `RoleValue.status`，無憑據數值直達 TMU 且 distance 路徑無 review 旗標；**NaN fail-open**（資安席）：新守衛的比對式 `abs(measured-value) > tol` 對 NaN 恆 False → 直接放行 → `band_index` 落到 overflow 帶＝**最大 A 檔位 24 TMU、零旗標**；同根因另有 `int(nan)`／`int(inf)` → **HTTP 500**、以及第三個實例 `x_seconds=nan` → **`total_tmu: nan`（非合規 JSON）**；**F3**（validator）：mm↔cm **10 倍**單位混淆零阻力通過——路徑 (1) 已抽到矛盾的真值卻被路徑 (2) 救回去；**路徑 (2) 可被本行詞彙誤觸**（`十字起子` 含「十」→ 捏造 `10cm` 靜默通過）＋**跨 kind 背書**＋**零測試覆蓋**（整段換 `return False` 時 39 支全過）；`十六顆` 被 `_COUNT_RE` 讀成 6 造成**雙向**錯誤；**量級盲單位**（code-review）：`公尺`／`米`／`尺`／`公厘` 在路徑 (2) 表內但抽取器不認得 → 100 倍錯誤靜默通過，且反向會讓正確換算被誤掛旗標；**守衛倚賴外部不變量**（資安席）：掃模型給的 `ev.text` 而非推導切片；**spec 兩處不實敘述**＋**一段「已知弱點」在修好後未同步**（皆為協調者所寫） | 全部修復。**判準演進成三段式**（路徑 1 → 矛盾檢查 → 帶單位退路），非有限值改為**拒收＋留痕**（與主體「照用＋掛旗標」方向相反，理由：非有限值不是『沒出處的量』是『不是量』）。**三席獨立交叉驗證零 TMU 變動**：code-review 的 2688 例合成矩陣（worktree 對 `973e49a` byte-identical）、validator 的 `git archive` 對照樹三組 A/B（gold 55 逐案＋20 探針＋rule planner 全鏈路皆 0 差異）、security 的三條繞過實跑**含正向對照組**（強制 auto flag 確認合法案例真的走到 `auto`）。**mutation 逐條紅→綠**：矛盾檢查拆除→1 紅、退路退回裸數字→2 紅、`finite_or_reject` 變恆等→**9 紅**、中文數字修復拆除→4 紅、旗標移出 blocked→1 紅。**結論**：code-review `APPROVE_WITH_NITS`／validator `PASS`／security 無阻擋項。驗收：unit **1312**（1266→1312，+46 支）／integration **589**＋1 skip／golden 88·26·60（GM=28 CM=29）／eval compile 55/55（gold 三個新旗標出現次數皆 0）／ruff＋mypy 綠。**既有期望 TMU 零變動、無 migration**。S-8／S-11 與 3 個殘留偽陽性記票不實作，理由見 §9 |
+
 
 ## 6. 驗收紀錄（spec §0.1）
 
@@ -283,10 +285,16 @@ F1 幾乎不動、成功數 ±2——**v1.3 的水準不是抽樣運氣**，可�
 | S-1 | High | `build_user_message` 對 `normalized_text` 與 `context` 無分隔符逃逸，使用者輸入可直接寫 `</wi_text>` 關閉資料區並附加指令；`normalize()` 的 NFKC＋lower **反而**把全形／大寫混淆變體還原成可用分隔符。實測逸出成功。影響邊界：`DDM_WI_AI_AUTO_ENABLED` 預設 false 且 `_eligible_auto` 另要求全部候選 `synonym_exact`，所以無法直接寫入 slot_inputs；實質風險是「被引導的草稿送去人工覆核」，在批次匯入（提交者≠覆核者）才是資料完整性問題 | 既有缺陷，修法（nonce 標籤或分隔符中和）動的是 prompt 組裝與 context 契約，屬獨立切片 |
 | S-2 | High | 無憑據的角色值可通過 `validate_planner_output` 並直達 TMU：證據綁定只在 `status=="explicit"` **且** `role.text is not None` 才跑，且 `_role_covered_by_evidence` 是**雙向**子字串比對；而 `most_compiler` **完全不讀 `RoleValue.status`**（grep 為空），`_role_distance_cm` 直接吃 `role.value`／`role.unit` → distance_cm → TMU，**且 distance 這一路沒有任何 review 旗標**（對比 quantity 會掛 `quantity_policy_review` 並擋 auto）。三條實測可用的繞過：value-only 的 explicit、role.text 為 evidence 超集、`inferred`＋合法 `action_ref`。**本批新增的 few-shot #2 示範了 `{"status":"inferred","action_ref":"a1"}` 這個「無 text、不需證據」的角色形狀（對 object 無害且是拿分關鍵），等於教會模型該形狀可存在——套到 distance 上就是零憑據數字直達 TMU：這是風險放大，不是新漏洞** | 修法要動 `most_compiler`（觸發黃金值關卡與 ddm-validator 派工），且三種修法（compiler 拒收非 explicit 數值角色／`elif`→`if`／移除雙向比對的一半）各有取捨。**建議下一輪優先做「compiler 對非 explicit 的數值角色拒收或掛 review reason」**——成本最低且直接切斷唯一會產出錯誤工時標準的路徑 |
 | S-3 | Medium | `NLDraftContextIn` 的 `station_hint`／`previous_row_summary`／`available_tools`／`available_locations` 無 `max_length`／`max_items`，而 `text` 有 2000 字元上限。三重後果：繞過長度上限的注入面、LLM 請求 input token 無上限（`max_tokens` 只管輸出）、`context_snapshot` JSONB 儲存放大 | 需與 `MAX_PARSE_TEXT_CHARS` 的權威計算一起定義，屬契約層改動 |
-| S-4 | Medium | `POST /api/v2/worksheets/nl-draft` 只有 `Depends(current_user)`，而姊妹端點 `POST /nl-drafts/{run_id}/reviews` 是 `require_role("analyst")`。`current_user` 對首次出現的員編會 JIT 建立 roles=[] 的 viewer → 任何通過 gateway 的員編可無限驅動地端 LLM 推論並寫入 `ai_parse_runs`。**這也是「模型名／prompt 版本對低權角色可見」的真正修法** | RBAC 改動需確認不打斷既有前端流程，屬獨立切片 |
+| S-4 | Medium ⭐**資安席建議往前拉** | `POST /api/v2/worksheets/nl-draft` 只有 `Depends(current_user)`，而姊妹端點 `POST /nl-drafts/{run_id}/reviews` 是 `require_role("analyst")`。`current_user` 對首次出現的員編會 JIT 建立 roles=[] 的 viewer → 任何通過 gateway 的員編可無限驅動地端 LLM 推論並寫入 `ai_parse_runs`。**這也是「模型名／prompt 版本對低權角色可見」的真正修法** | RBAC 改動需確認不打斷既有前端流程，屬獨立切片。⭐ **S-2 修好之後這條的份量變重**：S-2 的防護完全依賴覆核者看到旗標，而本條表示未授權的 viewer 可無限產生 run。修法是 1 行（`require_role("analyst")`）、無評測重跑成本，資安席評為單位工時風險削減最高的一項 |
 | S-5 | Medium | `routing.ROUTING_REASONS` frozenset 定義後全 repo **零引用**；`compute_routing` 無條件 `reasons.extend(plan.unresolved)`，模型可控字串直接成為 `routing_reasons` 並持久化。方向保守（unresolved 非空必擋 auto），不構成權限提升，但宣告了卻不執行的白名單會誤導讀者 | 要嘛落地過濾、要嘛刪掉常數；屬清理，非阻擋 |
 | S-6 | Low | 評測報告含本機絕對路徑 `gold_dir: /home/howard/...`（含 OS 使用者名）。**既有輸出行為**——上層正式報告 `wi-gold-latest.json` 同樣有 | 修 `wi_ai_eval.py` 輸出相對路徑即可，與 T-1 一起做 |
 | S-7 | Low | `wi_ai_service.py:351-364` 的 except tuple 同時包住 LLM 呼叫、`_plan_from_planner_output` 與 baseline 比對三段，後兩段的真實程式錯誤會被歸類成「LLM planner failed」並降級到 rule parser。**不違反 No error bypass**（有 `logger.warning` ＋ `fallback_rule_based` 進 routing_reasons，是可觀測的宣告式降級），但錯誤歸因不正確 | 拆 try 區塊即可，非阻擋 |
+| S-8 | **High（證據判準未關閉；非有限值已關閉）** | **`x_seconds` 是 S-2 同一種病的第三條路**：`compile.py` 的 CM 分支讀 `process_kind.value`（unit 為 s/sec/秒）→ `x_seconds` → `most_engine/calculate.py` 的 `seconds_to_tmu(seconds) * rep`。**兩半要分清楚**：⑴ **非有限值**（`nan` 秒數會算出 `total_tmu: nan`＝送給前端的不是合規 JSON；`inf` 丟 `InvalidOperation` → HTTP 500）——**2026-08-22 已修**，加了有限值關卡並掛旗標；⑵ **證據判準**——`process_kind.value` 的秒數**完全不經過** `numeric_claim_is_evidenced`，無 status、無證據檢查、無 review 旗標，模型捏造的秒數直達 TMU。**這一半仍開著**。D3-025 的 `x_seconds_required` 只處理「**沒有**秒數來源」，對「捏造」無感 | ⑵ 未做的理由：`nlp/quantities.py` 沒有秒數抽取器，讓 `numeric_claim_is_evidenced` 支援 `kind="seconds"` 是真工作量不是一行。**已在 spec §10.3 與 `policies.py` 註解明寫為已知未關閉**，避免下一個讀者以為整類都有守門了。建議與 **S-11** 一起做（同一族：數值進 TMU 前缺檢查）|
+| S-9 | Low | **旗標不跟著資料走**：`distance_unevidenced_review` 等活在 `CycleDraft.issues` 與 `routing_reasons`，IE 一旦接受草稿寫進 `most_cycles.slot_inputs`，沒有任何欄位記下「這個 cycle 曾含無憑據數字」。保護完全等於「覆核者當下有看到」 | 與設計意圖一致（auto 已擋、必須有人看），但事後無法稽核哪些已接受的 cycle 當初帶過旗標。要補得動 schema |
+| S-10 | Low | **routing reason 沒有中文文案**：前端 `AiDraftPanel.tsx:182-185` 原樣 `.slice(0,3).join()`、`ActionCard.tsx:56-58` 原樣 join 進 i18n 樣板（樣板翻譯、key 不翻），`shared/i18n/` 裡 per-key 文案零筆。覆核者看到的字面是 `distance_unevidenced_review`。spec 先前宣稱「前端依這些 key 顯示中文文案」為不實敘述，已更正 | ADR-032 已交付的前提下是真實但小的缺口；屬 i18n 獨立切片 |
+
+| S-11 | **Low–Medium（非 LLM 入口；持久化被 DB 附帶擋住）** | **`POST /api/v2/minimost/calculate` 吃得下 NaN**：`schemas/v2/most.py:27` 的 `reach_cm: float = 0` 無有限值約束；`CycleIn.model_validate` 接受 → `compute_cycle` 回 **A0 index 24／total 30.0**。傳輸層實測**真的收**（TestClient 送裸 `NaN` 字面量 → 200，Starlette 走 `json.loads`）；瀏覽器路徑打不到（`JSON.stringify` 對 NaN 產生 `null` → 422）。**但污染不了資料**（資安席驗到底）：`MostCycle.slot_inputs`／`computed` 是 **JSONB**，PostgreSQL 的 jsonb **拒絕** NaN／Infinity，而 `slot_inputs` 與 `total_tmu` 在同一個 INSERT → 整筆 rollback。所以最壞後果是「呼叫者自己拿到一個錯的 30 TMU 回應」，**不會寫進 `most_cycles`、不會流向 LineBalance** | **延後（三席一致同意）**。⚠️ 但兩件事要記住：⑴ 失敗模式是**未處理的 DB 例外 → 500**，不是乾淨的 422；⑵ **這道保護是附帶的**——來自 JSONB 的型別語意而非刻意的守衛，而 `total_tmu` 是 `Numeric` **吃得下 NaN**。哪天 `slot_inputs` 改存法、或出現只寫 `total_tmu` 的路徑，保護就沒了。治本是在 `CycleIn` 加 `allow_inf_nan=False`（Pydantic 一個 model_config），但 `schemas/v2/most.py` 是 CLAUDE.md 明列的**黃金值關卡觸發檔**＋對外 API 契約，不與 compiler 邊界綁在同一次驗證裡（真出事會分不清哪一邊）。建議與 **S-8** 一起做 |
+
 
 ### 測試與評測基礎設施
 
@@ -299,6 +307,9 @@ F1 幾乎不動、成功數 ±2——**v1.3 的水準不是抽樣運氣**，可�
 | T-5 | 慣例動詞表的下界斷言是 `>=`：只擋詞表流失（拿掉「抓握」會紅），**不擋 gold 新增使用表外詞彙的案例**（checked 仍 10 → 綠，該案靜默不受檢）。few-shot 側零下界（實測 checked 數 shot#1=0、#2=1、#3=0、#4=0——檢查 (1) 只覆蓋 4 則中的 1 則，**英文示範完全沒有切分覆蓋**，詞表純中文） | docstring 已誠實標註；補英文詞表與 few-shot 側下界屬獨立改善 |
 | T-6 | settings 洩漏偵測器只涵蓋**同檔前面的測試**（docstring 有誠實寫）。通則解是 `tests/conftest.py` 放 autouse fixture 每個測試後 `cache_clear()` | 全域 fixture 影響面大，需單獨評估 |
 | T-7 | **spec §7.2 的 prompt 區塊與 `plan_v1.SYSTEM_PROMPT` byte-identical 這個性質沒有任何測試在守**——目前靠人工比對（本次由 code-reviewer 手動確認）。同理 `test_system_prompt_enumerates_every_dependency_type` 驗的是 `SYSTEM_PROMPT` 常數，**不是模型實際收到的組裝訊息**（常數＋schema＋few-shots） | 兩者都是「加一支測試」等級，但需決定文件與常數誰是權威 |
+| T-8 | **gold 語料承載不了任何 roles-based 判準（結構性限制，同一模式已出現兩次）**：gold plan 是 rule parser 預標註，60 個 action 只有 3 個有 roles、全集 1 條 dependency，**且 55 案的 `expected_cycles` 距離值全是 `0.0`**（整個 gold 只有 `g02` 一個 quantity 數值角色）。後果：(a) 切分守衛的檢查 (2) 在 gold 上空跑（見 T-3）；(b) **「gold 55 案零新旗標」不能當 S-2 距離判準的證據**——那同樣是空轉，實質結論來自 validator 另建的 20 個探針。⚠️ 這不是某一支測試的問題，是**語料本身的表達力上限**：任何依賴 roles／dependency／數值角色的守衛，都無法用現有 gold 取得背書 | 要解得補 gold 的 roles（IE 親筆或從已核准 LLM plan 回填），而回填又會觸發 T-3 的前瞻誤報。**動 gold 回填流程時必須把 T-3 與本條一起考慮** |
+| T-9 | **`AiDraftPanel.tsx:184` 只顯示 `routing_reasons.slice(0, 3)`**（其餘在 `title` tooltip）。一張同時帶 `next_operation`／`quantity_policy_review`／`missing_core_*` 的 draft 會把 S-2 的新旗標擠出可見文字之外。旗標仍在 payload、仍擋 auto，但 spec 與程式註解說的「覆核者一定看得到」比 UI 實際做到的強 | 與 S-10（reason 無中文文案）同屬覆核 UI 的可見性，建議一起做 |
+
 
 ### 設計取捨（已決定，記錄理由）
 
@@ -308,3 +319,43 @@ F1 幾乎不動、成功數 ±2——**v1.3 的水準不是抽樣運氣**，可�
 | D2-B | `slot_linker:{planner}` 前綴在 `used_fallback and rule_candidates and not linked` 那一支上**過度宣稱**（該批 candidates 出自 rule adapter 而非 `SlotLinker`；run 上沒有可區分兩者的訊號）。`planner` 成分無條件為真，呼叫端註解已誠實記載。要無條件精確可改 `run_slot_candidates:{planner}` |
 | D2-C | `test_extra_is_merged_last` 把「`extra` 覆蓋得掉 `parser`／`fallback`」釘成斷言（docstring 說明是**記錄既有行為**而非鼓勵）。未來若要硬化（禁止 `extra` 蓋掉受管欄位），需同時改這條測試 |
 | D2-D | **retention 會抹掉來源資訊**：`llm_raw_response` 被清成 NULL 後 `prompt_version` 與 `model` 都回 `None`（誠實但不可回溯）；更嚴重的是 `planner = "rule_based_v1" if run.fallback or not llm else "llm"` 會讓 `fallback=False` 的 LLM run 重播成 `rule_based_v1`——**與本批修掉的謊報同類，觸發源是 retention**。耐久的權威訊號是 `fallback` 欄。（`scripts/prune_ai_runs.py` 目前不存在，實作前必須先處理這條）|
+
+## 10. 下一輪工作佇列（2026-08-22 排定）
+
+> 排這張表的目的是讓「下一輪要做什麼」不必再從報告裡重推一次。每項都寫明**進場條件**
+> （做之前必須先成立的事）與**完成證據**（做完要拿什麼出來證明）。
+> 優先序由使用者裁定：S-2 先修（進行中），其餘依序。
+
+### Q-1 · few-shot #1 的 `a1.quantity` 憑空 explicit（＝§9 的 T-2 / 複審 P2-7）
+
+| 項目 | 內容 |
+|---|---|
+| 問題 | `prompts/plan_v1.py` few-shot #1 的 `a1.quantity = {"value":1,"status":"explicit","unit":"count"}`，而該 action 的切片是 `拿取電動起子`——原文沒有任何數量。這正是 v1.3 規則 4 明文禁止的「禁止猜測／不得用佔位字」。同則的 `a2.destination.text="圖示位置"` 亦為改寫（原文 `依圖示`）|
+| 為什麼守衛抓不到 | `validate_planner_output` 只驗**帶 `text`** 的角色，對 `explicit_unresolved` 完全不驗——這是與 §9 S-2 同源的契約盲點 |
+| 為什麼重要（不是理論 nit）| 評測報告顯示數值型角色正是模型最會出錯之處：`inferred_without_ref:aN:quantity`（g34）、`action_ref_unknown:a1:distance`（g49）。教材在示範「數值可以沒有出處」 |
+| 進場條件 | 無（可隨時做）。但**必須與評測重跑綁在同一次**，不可只改教材不量 |
+| 完成證據 | 拿掉該角色後**重跑 55 案評測**（`--planner llm`，qwen2.5:14b，約 25 分鐘），與 `plan-v1.3-run1/run2` 對照：成功數與 F1 落在 48–50 / 0.733–0.735 的變異帶內即為無退步。**升 `PROMPT_VERSION`**（本檔硬規定：內容有動就升版）|
+| 風險 | 改教材可能連帶影響其他案例的切分——單輪數字不足以判斷，必要時跑兩輪 |
+
+### Q-2 · 持續失敗 4 案（`g13`／`g46`／`g47`／`g48`）
+
+兩輪交叉比對確認為持續失敗（非抖動）。**三種不同性質，不要當成一個問題處理**：
+
+| 案例 | 敗因 | 性質與下一步 |
+|---|---|---|
+| `g46`／`g47` | `action_ref_unknown:a1:object`（`g46` run2 為 a1＋a2 各一次）| **規則寫了但模型不遵守**：v1.3 規則 4 已明文「第一個 action 前面沒有任何 action 可指，它的角色不得是 inferred」。加規則已達邊際效益遞減。⚠️ 注意 schema 層拒絕**已經在做**（`llm_client` 附了 JSON Schema），所以下一步不是「改成 schema 層」——而是**帶著具體錯誤訊息 retry**，或接受它作為 fallback 案例 |
+| `g13` | run1＝自創 `same_hand`（`json_or_schema`）／run2＝`explicit_without_evidence:a1:hand` | **同一案兩輪敗因不同**，代表它在多個判準邊緣。`same_hand` 那次證明「白話列出 enum」沒有蓋過 schema 已提供的 enum。先觀察，不要為單一案例加規則 |
+| `g48` | `quantity.value` 收到字串「多顆」→ Pydantic float 解析失敗 | **不是 prompt 可解**。屬 §7 待決 #1（quantity 展開 policy），需 IE 裁決「多顆／數個」這類非數值量詞如何表示。裁決前不要試圖用 prompt 繞過 |
+
+| 項目 | 內容 |
+|---|---|
+| 進場條件 | `g48` 需 IE 對 §7 待決 #1 裁決後才動；`g46`／`g47`／`g13` 無前置條件 |
+| 完成證據 | 任何改動都要**兩輪**評測對照（單輪落在 ±2 案的變異帶內，不足以宣告修好）。抖動尾巴 `g24`／`g34`／`g49`／`g35` 同理——**不要用單輪結果判斷這幾案是否修好** |
+
+### Q-3 · 承接自 §9 的技術債（依成本排序，皆為獨立小切片）
+
+1. **T-1**：`wi_ai_eval.py` 把 `DDM_LLM_MODEL` 與 `plan_v1.PROMPT_VERSION` 寫進報告（兩行），順帶修 S-6 的絕對路徑。**做完 T-1 之後，Q-1 的評測報告才有自我佐證的版本歸屬**，不必再靠人工檔名——建議排在 Q-1 之前。
+2. **S-7**：拆開 `wi_ai_service.py:351-364` 過寬的 except tuple，讓自家 bug 不再被歸類成「LLM planner failed」。
+3. **S-5**：`ROUTING_REASONS` 白名單落地或刪除（宣告了卻不執行比沒有更糟）。
+4. **T-6**：`tests/conftest.py` 加 autouse fixture 每測試後 `get_settings.cache_clear()`（通則解，取代目前只涵蓋同檔的偵測器）。
+5. **T-7**：把「spec §7.2 的 prompt 區塊 ＝ `SYSTEM_PROMPT` 常數」變成測試（目前靠人工比對）。
