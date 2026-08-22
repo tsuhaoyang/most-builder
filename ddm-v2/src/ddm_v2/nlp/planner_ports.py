@@ -36,8 +36,19 @@ class PlanParserPort(Protocol):
 
 
 class PlannerError(Exception):
-    """LLM/schema 失敗，呼叫端應 fallback。"""
+    """LLM/schema 失敗，呼叫端應 fallback。
 
-    def __init__(self, message: str, *, raw: LLMRawResponse | None = None) -> None:
+    `errors` 帶 `validate_planner_output()` 的具名錯誤（例 ``evidence_offset_oor:a2``），
+    讓評測端不必字串剖析訊息就能統計失敗形態（`planner_eval._planner_error_codes`）。
+    """
+
+    def __init__(
+        self,
+        message: str,
+        *,
+        raw: LLMRawResponse | None = None,
+        errors: list[str] | None = None,
+    ) -> None:
         super().__init__(message)
         self.raw = raw
+        self.errors = list(errors or [])

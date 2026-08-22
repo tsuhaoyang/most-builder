@@ -21,10 +21,20 @@
 
 退出碼（區分「eval 跑完發現問題」與「gold 輸入根本不可用」）：
   0 ＝ compile 全過、planner 段完整執行（n>0、無 gold 標註缺損）、無載入錯誤；
-  1 ＝ eval 跑完但有失敗（compile fail 或 gold 標註缺損，如 offset 越界）；
+  1 ＝ eval 跑完但有失敗（compile fail 或 gold 標註缺損，如 offset 越界；
+       或 planner 對**所有**案例都失敗＝管道壞掉，見下）；
   2 ＝ gold 輸入不可用（malformed JSON／缺 `plan`／plan schema 不合＝
        `gold_case_invalid`，或 n=0 沒量到任何案例）。有載入錯誤時仍會評測
        其餘有效案例並產出報告（`gold_load_errors` 區塊），但退出碼以 2 為準。
+
+planner 個案失敗與退出碼（v5 起）：planner 對單一案例拋例外（schema retry 用盡、
+timeout、連線失敗…）**不再讓整批 traceback 中止**，而是逐案記成 `planner_failed`
+並繼續（否則失敗形態的分布量不到，連報告都產不出來）。這類失敗**不改變退出碼**——
+planner 品質是本腳本量測的對象，不是工具故障；分數低同理不影響退出碼。失敗筆數、
+案例名單與錯誤碼分布顯著呈現於 stdout 與報告的 `planner_eval.summary.planner_failures`，
+且失敗案例在 Plan 層指標中**記為漏**（不是排除——排除會讓「難的案例崩潰」變成分數上升）。
+例外：n>0 且**全部**案例都失敗時視為管道壞掉（endpoint 連不上、模型名打錯…）而非
+量測結果，退出碼 1——這承接原本「planner 例外不捕捉」所守的「管道存在但恆空」防線。
 
 報告檔名守門：gold_dir 含任何**未核准**案例（approved_by 空、或 review_status
 非 approved）時，報告寫成 `wi-draft-latest.json`／`wi-draft-<stamp>.json`，
@@ -33,6 +43,10 @@
 Plan 層自我指涉排除：gold 檔標 `plan_origin=<planner>_preannotation` 且
 `ie_modified` 非 true 者，排除出 planner 段 Plan 層指標（planner 不得給自己
 打分；見 `nlp/planner_eval.py` 的 SELF_REFERENTIAL_EXCLUSION_REASON）。
+
+sanitize 觀測（v6 起）：報告的 `planner_eval.sanitize_reasons` 記
+`contracts.sanitize_planner_output()` 的 reasons（含 evidence offset 修復次數）。
+純觀測，不影響分數與退出碼；rule planner 不經 sanitize，恆為空。
 """
 from __future__ import annotations
 
@@ -40,6 +54,7 @@ import argparse
 import asyncio
 import json
 import sys
+from collections import Counter
 from datetime import datetime, timezone
 from pathlib import Path
 
@@ -59,20 +74,69 @@ from ddm_v2.nlp.planner_eval import (  # noqa: E402
     evaluate_planner_case,
     is_self_referential,
     load_gold_cases_checked,
+    planner_pipeline_broken,
     rule_based_plan,
     summarize_planner_results,
 )
 
-REPORT_SCHEMA_VERSION = "wi-gold-report-v4"
+REPORT_SCHEMA_VERSION = "wi-gold-report-v6"
 
 EXIT_CODE_HELP = (
     "exit codes: 0 = all green; "
-    "1 = eval ran but found failures (compile fail / gold annotation defect); "
-    "2 = gold input unusable (gold_case_invalid load errors, or n=0)"
+    "1 = eval ran but found failures (compile fail / gold annotation defect / "
+    "every planner case failed); "
+    "2 = gold input unusable (gold_case_invalid load errors, or n=0). "
+    "per-case planner failures alone do NOT change the exit code (they are the "
+    "measurement target); see planner_eval.summary.planner_failures"
 )
 
 
-def _build_llm_plan_fn(timeout_s: float) -> PlannerFn:
+SANITIZE_REASONS_NOTE = (
+    "sanitize_planner_output() 的 reasons（`nlp/contracts.py`）——觀測用，"
+    "不影響分數與退出碼。`evidence_offset_repaired` 的次數＝模型算錯 evidence "
+    "offset 但 `text` 可唯一定位、已被自動修正的次數；`evidence_text_not_found`／"
+    "`evidence_text_ambiguous` 是修不了而被 validate 照常拒絕的（fail-closed）。"
+    "phase=initial 是第一次呼叫、retry 是帶驗證錯誤重試的那次。"
+    "rule planner 不經過 sanitize，恆為空。"
+)
+
+
+class SanitizeLog:
+    """把 planner 的 sanitize reasons 收成可統計量（逐案 + 全案）。
+
+    reasons 走 `LLMPlannerAdapter(on_sanitize=...)` callback 進來，callback 本身
+    不知道 case id，所以由 `_plan()` 在呼叫 planner 前 `bind()`——評測迴圈是
+    嚴格循序的（`wi_ai_eval` 逐案 await），不會有交錯。
+    """
+
+    def __init__(self) -> None:
+        self.by_code: Counter = Counter()
+        self.by_phase: Counter = Counter()
+        self.by_case: dict[str, list[str]] = {}
+        self._case_id: str | None = None
+
+    def bind(self, case_id: str) -> None:
+        self._case_id = case_id
+
+    def observe(self, phase: str, reasons: list[str]) -> None:
+        self.by_phase[phase] += len(reasons)
+        for r in reasons:
+            self.by_code[str(r).split(":", 1)[0]] += 1
+        if self._case_id is not None and reasons:
+            self.by_case.setdefault(self._case_id, []).extend(
+                f"{phase}:{r}" for r in reasons
+            )
+
+    def to_dict(self) -> dict:
+        return {
+            "note": SANITIZE_REASONS_NOTE,
+            "by_code": dict(self.by_code.most_common()),
+            "by_phase": dict(self.by_phase.most_common()),
+            "by_case": {k: v for k, v in sorted(self.by_case.items())},
+        }
+
+
+def _build_llm_plan_fn(timeout_s: float, sanitize_log: SanitizeLog) -> PlannerFn:
     """顯式 --planner llm 才建構；需要已設定的 LLM endpoint。"""
     from ddm_v2.nlp.contracts import ParseContext, SourceRef, WorkInstructionPlan
     from ddm_v2.nlp.llm_client import OpenAICompatClient
@@ -90,9 +154,10 @@ def _build_llm_plan_fn(timeout_s: float) -> PlannerFn:
         api_key=settings.llm_api_key,
         response_format_mode="json_object",
     )
-    adapter = LLMPlannerAdapter(client, timeout_s=timeout_s)
+    adapter = LLMPlannerAdapter(client, timeout_s=timeout_s, on_sanitize=sanitize_log.observe)
 
     async def _plan(data: dict) -> WorkInstructionPlan:
+        sanitize_log.bind(str(data.get("id") or "unknown"))
         text = gold_source_text(data)
         norm = normalize(text)
         ctx = ParseContext(rule_set_code=str(data.get("rule_set_code") or "MINIMOST_FACTORY_V2"))
@@ -202,8 +267,9 @@ def main() -> int:
 
     plan_fn: PlannerFn = rule_based_plan
     planner_name = RULE_PLANNER_NAME
+    sanitize_log = SanitizeLog()
     if args.planner == "llm":
-        plan_fn = _build_llm_plan_fn(args.llm_timeout_s)
+        plan_fn = _build_llm_plan_fn(args.llm_timeout_s, sanitize_log)
         planner_name = "llm"
 
     # 載入層先把「檔案壞掉」轉成具名 gold_case_invalid（點名檔案、進報告、exit 2），
@@ -232,6 +298,13 @@ def main() -> int:
         # trivially_empty_cases）、spec_targets.boundary_f1 → boundary_span_f1、
         # 新增 dependency_f1(=null)+note、gold_load_errors、動態 dataset_note；
         # cases 的 boundary_f1 → boundary_span_f1、新增 boundary_trivially_empty。
+        # v6：新增 planner_eval.sanitize_reasons（by_code/by_phase/by_case）——
+        # sanitize_planner_output 的 reasons 原本被丟棄，evidence offset 修復次數
+        # 無處可量。純觀測欄位，不影響分數與退出碼；rule planner 恆為空。
+        # v5：planner 個案失敗隔離——planner_eval.cases 新增 planner_failed/
+        # planner_error/planner_error_codes/planner_elapsed_ms、summary 新增
+        # planner_failures（count/rate/cases/error_codes）＋planner_latency_ms；
+        # 個案失敗計入 Plan 層指標記為漏，且不改變退出碼（全案失敗除外）。
         # v4：Plan 層指標語意變更——自我指涉案例（plan_origin=planner 預標註且
         # ie_modified≠true）排除出 action_count_accuracy／boundary_span 聚合；
         # planner_eval.summary 新增 plan_metrics_n＋self_referential_excluded、
@@ -257,6 +330,7 @@ def main() -> int:
         "planner_eval": {
             "db_required": False,
             "summary": planner_summary,
+            "sanitize_reasons": sanitize_log.to_dict(),
             "cases": [r.to_dict() for r in planner_results],
         },
     }
@@ -306,8 +380,32 @@ def main() -> int:
             f"           excluded (self-referential, plan_origin=planner 且 ie_modified≠true): "
             f"{', '.join(excluded['cases'][:8])}{'…' if excluded['count'] > 8 else ''}"
         )
+    failures = planner_summary["planner_failures"]
+    if failures["count"]:
+        rate = failures["rate"]
+        codes = ", ".join(f"{k}={v}" for k, v in failures["error_codes"].items())
+        print(
+            f"           planner_failed={failures['count']}/{planner_summary['n']}"
+            f" ({'n/a' if rate is None else f'{rate:.1%}'})"
+            f"  error_codes: {codes or 'n/a'}"
+            "  ← 個案失敗記為漏（Plan 層指標已含），不影響退出碼"
+        )
+    lat = planner_summary["planner_latency_ms"]
+    print(
+        f"           latency_ms total={lat['total']} mean={lat['mean']} "
+        f"median={lat['median']} max={lat['max']}"
+    )
+    if sanitize_log.by_code:
+        codes = ", ".join(f"{k}={v}" for k, v in sanitize_log.by_code.most_common())
+        phases = ", ".join(f"{k}={v}" for k, v in sanitize_log.by_phase.most_common())
+        print(
+            f"           sanitize_reasons: {codes}  (phase: {phases})"
+            "  ← 觀測量，不影響分數／退出碼"
+        )
     for r in planner_results:
         mark = "OK" if r.ok else "GOLD-ERR"
+        if r.planner_failed:
+            mark = "PLANNER-FAIL"
         f1 = "n/a" if r.boundary_span_f1 is None else round(r.boundary_span_f1, 4)
         # 被自我指涉排除的案例逐案標 [SELF-REF]——只在 summary 列名單的話，
         # 逐案表會讓人以為它們有計入 Plan 層指標
@@ -328,7 +426,14 @@ def main() -> int:
         print("[planner]  ERROR: no gold cases evaluated (n=0) — exit 2")
         return 2
     planner_ok = all(r.ok for r in planner_results)
-    return 0 if (failed == 0 and planner_ok) else 1
+    # 全案失敗＝管道壞掉（endpoint/模型設定問題），不是「planner 表現差」的量測結果
+    pipeline_broken = planner_pipeline_broken(planner_results)
+    if pipeline_broken:
+        print(
+            f"[planner]  ERROR: 全部 {len(planner_results)} 案 planner 皆失敗"
+            "——視為管道壞掉（非量測結果），exit 1"
+        )
+    return 0 if (failed == 0 and planner_ok and not pipeline_broken) else 1
 
 
 if __name__ == "__main__":

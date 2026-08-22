@@ -54,6 +54,20 @@ boundary 標註可用性規則（缺就點名，不硬湊）：
   否則「全部 abstain、不給 evidence」的 planner 會在這類案例拿滿分
   （指標獎勵棄權，可被 game）。
 
+Planner 個案失敗隔離（`planner_failed`）：
+
+- planner 對單一案例拋例外（LLM schema retry 用盡的 `PlannerError`、timeout、連線失敗…）
+  **不再中止整批**：該案記 `planner_failed=True`、`planner_error`（原文訊息）與
+  `planner_error_codes`（`PlannerError.errors` 的錯誤碼前綴，例
+  `evidence_offset_oor`），繼續評測其餘案例——否則「失敗形態的分布」量不到。
+- 失敗案例**計入 Plan 層指標且記為漏**（`pred_action_count=0`、
+  `action_count_match` 僅在 gold 也是 0 個 action 時為真、gold span 全記 FN、
+  無 FP），不是排除。排除會讓「難的案例失敗、簡單的案例得分」變成分數上升，
+  指標就獎勵了崩潰。
+- `ok` 仍只反映 **gold 標註**是否可用（planner 失敗不是 gold 的問題），因此
+  `wi_ai_eval.py` 的退出碼契約維持原義；但「全部案例都失敗」＝管道壞掉而非量測結果，
+  由 CLI 另行判為失敗（見該檔 docstring）。
+
 DB 依賴：rule_based 路徑**不需要 DB** —— planner 只需 gold 檔內 `synthetic_synonyms`
 （`RuleBasedParser` 的 GM/CM 判型關鍵字是程式常數；讀 motion_templates/synonyms 的
 `SlotLinker` 屬 compile 段，不在 text→plan 路徑上）。LLM 路徑僅供顯式 flag 使用，
@@ -62,16 +76,19 @@ CI 與預設一律 rule_based。
 from __future__ import annotations
 
 import json
+import time
 from collections import Counter
 from collections.abc import Awaitable, Callable
 from dataclasses import asdict, dataclass, field
 from pathlib import Path
+from statistics import median
 from typing import Any
 
 from pydantic import ValidationError
 
 from ddm_v2.nlp.contracts import SourceRef, WorkInstructionPlan
 from ddm_v2.nlp.gold_eval import default_gold_dir, load_gold_cases
+from ddm_v2.nlp.planner_ports import PlannerError
 from ddm_v2.nlp.rule_based import RuleBasedParser
 from ddm_v2.nlp.rule_plan_adapter import plan_from_rule_result
 
@@ -234,6 +251,11 @@ class PlannerCaseResult:
     # gold plan 出處（自我指涉排除依據；見 SELF_REFERENTIAL_EXCLUSION_REASON）
     plan_origin: str | None = None
     ie_modified: bool | None = None  # 僅認 JSON bool；缺欄或非 bool 一律 None（保守＝排除）
+    # planner 個案失敗（例外被隔離）：計入 Plan 層指標且記為漏，不排除
+    planner_failed: bool = False
+    planner_error: str | None = None
+    planner_error_codes: list[str] = field(default_factory=list)
+    planner_elapsed_ms: float = 0.0
     gold_spans: list[list[int]] = field(default_factory=list)
     pred_spans: list[list[int]] = field(default_factory=list)
     errors: list[str] = field(default_factory=list)
@@ -306,6 +328,24 @@ def _f1(tp: int, fp: int, fn: int) -> float | None:
     return (2 * tp) / (2 * tp + fp + fn)
 
 
+def _planner_error_codes(exc: BaseException) -> list[str]:
+    """把 planner 例外壓成可統計的錯誤碼（失敗形態分布用）。
+
+    `PlannerError.errors` 是 `validate_planner_output` 的具名錯誤
+    （例 ``evidence_offset_oor:a2``）；取冒號前的前綴當碼，讓「模型錯在哪一類」
+    可以聚合。非 PlannerError（timeout、連線失敗…）以例外類名為碼。
+    """
+    if isinstance(exc, PlannerError) and exc.errors:
+        codes: list[str] = []
+        for e in exc.errors:
+            code = str(e).split(":", 1)[0]
+            if code:
+                codes.append(code)
+        if codes:
+            return codes
+    return [type(exc).__name__]
+
+
 def _case_provenance(data: dict) -> tuple[str | None, bool | None]:
     """gold 檔的 (plan_origin, ie_modified)；ie_modified 僅認 JSON bool，其餘視為未宣告。"""
     origin = data.get("plan_origin")
@@ -344,23 +384,44 @@ async def evaluate_planner_case(data: dict, plan_fn: PlannerFn) -> PlannerCaseRe
             errors=[f"gold_case_invalid:{exc}"],
         )
 
-    # planner 例外不捕捉：崩潰要讓上層炸掉（防「管道存在但恆空」）
-    pred_plan = await plan_fn(data)
-
-    action_count_match = len(pred_plan.actions) == len(gold_actions)
+    # planner 個案例外被隔離成「該案失敗」（不中止整批），但**不靜默**：
+    # 訊息與錯誤碼進 errors／planner_error(_codes)，並在 Plan 層記為漏。
+    # 「管道存在但恆空」的防線改由 CLI 的「全案失敗＝管道壞掉」判定承接。
+    pred_plan: WorkInstructionPlan | None = None
+    planner_error: str | None = None
+    planner_error_codes: list[str] = []
+    t0 = time.perf_counter()
+    try:
+        pred_plan = await plan_fn(data)
+    except Exception as exc:  # noqa: BLE001 — 個案失敗是被量測的對象，逐案記錄後續評
+        planner_error = f"{type(exc).__name__}:{exc}"
+        planner_error_codes = _planner_error_codes(exc)
+        errors.append(f"planner_failed:{planner_error}")
+    elapsed_ms = round((time.perf_counter() - t0) * 1000, 2)
 
     gold_spans, annotated = _spans_of(gold_actions, gold_norm, errors)
-    pred_spans = _pred_spans_of(pred_plan)
 
-    comparable = pred_plan.normalized_text == gold_norm
-    if not comparable:
-        errors.append(
-            f"normalized_text_mismatch: pred={pred_plan.normalized_text!r} gold={gold_norm!r}"
-        )
+    if pred_plan is None:
+        # 沒有 plan＝什麼都沒預測：gold span 全記 FN、無 FP；action count 只在
+        # gold 也是 0 個 action 時算命中。comparable 對「無 pred」無意義，記 False
+        # 但不報 normalized_text_mismatch（那是 planner 品質問題，不是這裡的情形）。
+        pred_action_count = 0
+        action_count_match = len(gold_actions) == 0
+        pred_spans = Counter()
+        comparable = False
+    else:
+        pred_action_count = len(pred_plan.actions)
+        action_count_match = pred_action_count == len(gold_actions)
+        pred_spans = _pred_spans_of(pred_plan)
+        comparable = pred_plan.normalized_text == gold_norm
+        if not comparable:
+            errors.append(
+                f"normalized_text_mismatch: pred={pred_plan.normalized_text!r} gold={gold_norm!r}"
+            )
 
     trivially_empty = False
     if annotated:
-        if comparable:
+        if comparable or pred_plan is None:
             tp = sum((gold_spans & pred_spans).values())
             fp = sum(pred_spans.values()) - tp
             fn = sum(gold_spans.values()) - tp
@@ -388,7 +449,7 @@ async def evaluate_planner_case(data: dict, plan_fn: PlannerFn) -> PlannerCaseRe
         case_id=case_id,
         ok=ok,
         gold_action_count=len(gold_actions),
-        pred_action_count=len(pred_plan.actions),
+        pred_action_count=pred_action_count,
         action_count_match=action_count_match,
         boundary_annotated=annotated,
         boundary_comparable=comparable,
@@ -399,10 +460,24 @@ async def evaluate_planner_case(data: dict, plan_fn: PlannerFn) -> PlannerCaseRe
         boundary_span_f1=f1,
         plan_origin=plan_origin,
         ie_modified=ie_modified,
+        planner_failed=pred_plan is None,
+        planner_error=planner_error,
+        planner_error_codes=planner_error_codes,
+        planner_elapsed_ms=elapsed_ms,
         gold_spans=sorted([list(k) for k in gold_spans.elements()]),
         pred_spans=sorted([list(k) for k in pred_spans.elements()]),
         errors=errors,
     )
+
+
+def planner_pipeline_broken(results: list[PlannerCaseResult]) -> bool:
+    """n>0 且**每一案**都 planner 失敗＝管道壞掉，不是量測結果。
+
+    個案失敗是被量測的對象（記為漏、不影響退出碼）；但「全滅」通常代表 endpoint
+    連不上／模型名打錯／prompt 全毀，此時報告裡的 0 分不具意義。這條承接原本
+    「planner 例外不捕捉」所守的「管道存在但恆空」防線，由 CLI 判為失敗（exit 1）。
+    """
+    return bool(results) and all(r.planner_failed for r in results)
 
 
 def is_self_referential(result: PlannerCaseResult, planner: str) -> bool:
@@ -433,10 +508,30 @@ def summarize_planner_results(
     fn = sum(r.boundary_fn for r in scored)
     precision = tp / (tp + fp) if (tp + fp) else None
     recall = tp / (tp + fn) if (tp + fn) else None
+    failed = [r for r in results if r.planner_failed]
+    code_counts: Counter = Counter()
+    for r in failed:
+        for code in r.planner_error_codes or ["unknown"]:
+            code_counts[code] += 1
+    elapsed = [r.planner_elapsed_ms for r in results]
     return {
         "planner": planner,
         "n": n,
         "plan_metrics_n": len(plan_scored),
+        # 個案失敗＝被量測的對象（不是工具故障）：計入 Plan 層指標記為漏，
+        # 名單／錯誤碼分布在此顯著呈現。分母是全部 n（含自我指涉排除的案例）。
+        "planner_failures": {
+            "count": len(failed),
+            "rate": (len(failed) / n) if n else None,
+            "cases": [r.case_id for r in failed],
+            "error_codes": dict(code_counts.most_common()),
+        },
+        "planner_latency_ms": {
+            "total": round(sum(elapsed), 2),
+            "mean": round(sum(elapsed) / n, 2) if n else None,
+            "median": round(median(elapsed), 2) if elapsed else None,
+            "max": round(max(elapsed), 2) if elapsed else None,
+        },
         "self_referential_excluded": {
             "count": len(excluded),
             "cases": [r.case_id for r in excluded],

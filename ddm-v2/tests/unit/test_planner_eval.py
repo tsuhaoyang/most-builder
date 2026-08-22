@@ -27,10 +27,12 @@ from ddm_v2.nlp.planner_eval import (
     evaluate_planner_all,
     evaluate_planner_case,
     load_gold_cases_checked,
+    planner_pipeline_broken,
     planner_preannotation_origin,
     rule_based_plan,
     summarize_planner_results,
 )
+from ddm_v2.nlp.planner_ports import PlannerError
 
 ROOT = Path(__file__).resolve().parents[2]
 GOLD_DIR = ROOT / "tests" / "gold" / "wi_plans"
@@ -529,11 +531,135 @@ async def test_non_rule_planner_has_no_degenerate_note():
     assert summary["degenerate_planner_note"] is None
 
 
+# ── planner 個案失敗隔離（v5）──────────────────────────────────────────────
+
+
+def _plan_fn_raising(exc: BaseException):
+    async def fn(_data: dict):
+        raise exc
+
+    return fn
+
+
+async def test_planner_case_failure_is_isolated_not_fatal():
+    """單案 planner 失敗 → 記成該案的錯誤並回傳結果，不讓整批 traceback。"""
+    norm = "拿取電動起子,依圖示鎖附兩顆螺絲"
+    gold = _gold_case(
+        "syn_fail",
+        "拿取電動起子，依圖示鎖附兩顆螺絲",
+        norm,
+        [
+            _action("a1", "acquire", 1, [(0, 6)], norm),
+            _action("a2", "process", 2, [(7, 16)], norm),
+        ],
+    )
+    exc = PlannerError(
+        "planner_schema_invalid:['evidence_offset_oor:a2']",
+        errors=["evidence_offset_oor:a2"],
+    )
+    result = await evaluate_planner_case(gold, _plan_fn_raising(exc))
+
+    assert result.planner_failed is True
+    # gold 沒有缺損 → ok 維持 True（退出碼契約不因 planner 品質而變）
+    assert result.ok is True
+    assert result.planner_error is not None
+    assert "evidence_offset_oor" in result.planner_error
+    assert result.planner_error_codes == ["evidence_offset_oor"]
+    # 錯誤訊息必須進逐案 errors（報告與 stdout 都看得到，不是靜默吸收）
+    assert any(e.startswith("planner_failed:") for e in result.errors)
+
+
+async def test_planner_case_failure_scored_as_miss_not_excluded():
+    """失敗案例記為漏：pred 0 個 action、gold span 全 FN、F1=0——不是排除。
+
+    mutation 證據：若改成排除（不計入分母或給 None），本測試轉紅。排除會讓
+    「難的案例崩潰」表現為分數上升。
+    """
+    norm = "拿取電動起子,依圖示鎖附兩顆螺絲"
+    gold = _gold_case(
+        "syn_fail_score",
+        "拿取電動起子，依圖示鎖附兩顆螺絲",
+        norm,
+        [
+            _action("a1", "acquire", 1, [(0, 6)], norm),
+            _action("a2", "process", 2, [(7, 16)], norm),
+        ],
+    )
+    result = await evaluate_planner_case(gold, _plan_fn_raising(RuntimeError("boom")))
+
+    assert result.pred_action_count == 0
+    assert result.action_count_match is False
+    assert (result.boundary_tp, result.boundary_fp, result.boundary_fn) == (0, 0, 2)
+    assert result.boundary_span_f1 == 0.0
+    assert result.boundary_trivially_empty is False
+    assert result.planner_error_codes == ["RuntimeError"]
+
+    summary = summarize_planner_results([result], planner="llm")
+    assert summary["plan_metrics_n"] == 1  # 仍在分母
+    assert summary["action_count_accuracy"] == 0.0
+    assert summary["boundary_span"]["scored_cases"] == 1
+    assert summary["boundary_span"]["micro"]["f1"] == 0.0
+
+
+async def test_planner_failures_are_summarized_with_error_codes():
+    """失敗形態要能統計：count/rate/cases/error_codes 進 summary。"""
+    norm = "拿起dimm"
+    gold_ok = _gold_case("syn_ok", "拿起DIMM", norm, [_action("a1", "acquire", 1, [(0, 6)], norm)])
+    gold_bad = _gold_case("syn_bad", "拿起DIMM", norm, [_action("a1", "acquire", 1, [(0, 6)], norm)])
+
+    ok_result = await evaluate_planner_case(gold_ok, _plan_fn_returning(gold_ok["plan"]))
+    bad_result = await evaluate_planner_case(
+        gold_bad,
+        _plan_fn_raising(
+            PlannerError(
+                "planner_schema_invalid:['evidence_offset_oor:a2', 'evidence_text_mismatch:a1']",
+                errors=["evidence_offset_oor:a2", "evidence_text_mismatch:a1"],
+            )
+        ),
+    )
+    summary = summarize_planner_results([ok_result, bad_result], planner="llm")
+
+    failures = summary["planner_failures"]
+    assert failures["count"] == 1
+    assert failures["rate"] == 0.5
+    assert failures["cases"] == ["syn_bad"]
+    assert failures["error_codes"] == {"evidence_offset_oor": 1, "evidence_text_mismatch": 1}
+    assert summary["planner_latency_ms"]["total"] >= 0
+
+
+def test_planner_pipeline_broken_only_when_all_cases_fail():
+    """全滅＝管道壞掉（CLI exit 1）；部分失敗是量測結果（不影響退出碼）。"""
+    from ddm_v2.nlp.planner_eval import PlannerCaseResult
+
+    def _r(failed: bool) -> PlannerCaseResult:
+        return PlannerCaseResult(
+            case_id="x",
+            ok=True,
+            gold_action_count=1,
+            pred_action_count=0 if failed else 1,
+            action_count_match=not failed,
+            boundary_annotated=True,
+            boundary_comparable=not failed,
+            boundary_trivially_empty=False,
+            boundary_tp=0,
+            boundary_fp=0,
+            boundary_fn=1,
+            boundary_span_f1=0.0,
+            planner_failed=failed,
+        )
+
+    assert planner_pipeline_broken([]) is False
+    assert planner_pipeline_broken([_r(True), _r(True)]) is True
+    assert planner_pipeline_broken([_r(True), _r(False)]) is False
+
+
 # ── CLI：兩段並列輸出；退出碼守門（0/1/2）────────────────────────────────────
 
 
-def _run_cli(*extra: str, out_dir: Path) -> subprocess.CompletedProcess:
-    env = {**os.environ, "PYTHONPATH": str(ROOT / "src")}
+def _run_cli(
+    *extra: str, out_dir: Path, env_extra: dict[str, str] | None = None
+) -> subprocess.CompletedProcess:
+    env = {**os.environ, "PYTHONPATH": str(ROOT / "src"), **(env_extra or {})}
     return subprocess.run(
         [sys.executable, str(ROOT / "scripts" / "wi_ai_eval.py"), "--out", str(out_dir), *extra],
         cwd=ROOT,
@@ -561,7 +687,7 @@ def test_cli_report_contains_both_segments(tmp_path: Path):
     assert latest.exists()
     report = json.loads(latest.read_text(encoding="utf-8"))
 
-    assert report["report_schema_version"] == "wi-gold-report-v4"
+    assert report["report_schema_version"] == "wi-gold-report-v6"
     assert report["unapproved_cases"] == []
     # 向後相容：頂層 summary/cases（compile 段）維持 v1 形狀
     assert report["summary"] == {"total": GOLD_TOTAL_N, "passed": GOLD_TOTAL_N, "failed": 0}
@@ -586,6 +712,17 @@ def test_cli_report_contains_both_segments(tmp_path: Path):
     assert planner["summary"]["dependency_f1"] is None
     assert "未實作" in planner["summary"]["dependency_f1_note"]
     assert "退化" in planner["summary"]["degenerate_planner_note"]
+    # v5：個案失敗隔離的觀測欄位必須恆在（rule planner 正常時應為 0 筆）
+    assert planner["summary"]["planner_failures"]["count"] == 0
+    assert planner["summary"]["planner_failures"]["error_codes"] == {}
+    assert planner["summary"]["planner_latency_ms"]["total"] >= 0
+    assert all(c["planner_failed"] is False for c in planner["cases"])
+    # v6：sanitize 觀測區塊恆在；rule planner 不經 sanitize → 三個統計都空
+    sanitize = planner["sanitize_reasons"]
+    assert sanitize["by_code"] == {}
+    assert sanitize["by_phase"] == {}
+    assert sanitize["by_case"] == {}
+    assert "evidence_offset_repaired" in sanitize["note"]
 
     # dataset_note 動態生成（不寫死「未達 50 筆」字串）；轉正後頭條句必須
     # 自帶「原樣核准不計 planner 段證據力」的但書（R4）。
@@ -611,6 +748,39 @@ def test_cli_fails_on_empty_gold_dir(tmp_path: Path):
     proc = _run_cli("--gold-dir", str(empty), out_dir=tmp_path / "out")
     assert proc.returncode == 2, proc.stdout + proc.stderr
     assert "n=0" in proc.stdout
+
+
+def test_cli_all_planner_cases_failed_exits_1(tmp_path: Path):
+    """全案 planner 失敗＝管道壞掉（非量測結果）→ exit 1，且**不得 traceback**。
+
+    以連不上的 LLM endpoint（127.0.0.1:1）製造全滅。mutation 證據：拆掉
+    `planner_pipeline_broken` 判定會轉紅——那等於讓「endpoint 全程連不上」
+    也回報 exit 0。同時證明逐案隔離生效（有報告、有逐案錯誤碼可看）。
+    """
+    gold = tmp_path / "gold"
+    _write_gold(gold, "g01.json", _load_g01())
+    out = tmp_path / "out"
+
+    proc = _run_cli(
+        "--gold-dir",
+        str(gold),
+        "--planner",
+        "llm",
+        "--llm-timeout-s",
+        "2",
+        out_dir=out,
+        env_extra={"DDM_LLM_BASE_URL": "http://127.0.0.1:1"},
+    )
+    assert proc.returncode == 1, proc.stdout + proc.stderr
+    assert "Traceback" not in proc.stderr, proc.stderr
+    assert "管道壞掉" in proc.stdout
+    assert "[PLANNER-FAIL]" in proc.stdout
+
+    report = json.loads((out / "wi-gold-latest.json").read_text(encoding="utf-8"))
+    failures = report["planner_eval"]["summary"]["planner_failures"]
+    assert failures["count"] == 1
+    assert failures["cases"] == ["g01_acquire_dimm"]
+    assert sum(failures["error_codes"].values()) >= 1
 
 
 def test_cli_gold_annotation_defect_exits_1(tmp_path: Path):

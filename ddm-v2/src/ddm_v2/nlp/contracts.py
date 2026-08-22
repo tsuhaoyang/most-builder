@@ -223,14 +223,97 @@ def validate_planner_output(
     return errors
 
 
-def sanitize_planner_output(output: PlannerOutput) -> tuple[PlannerOutput, list[str]]:
-    """§7.5：invented action 剔除；非法 tool_ref 降為 missing。回傳 (sanitized, reasons)。"""
+def _evidence_offset_ok(ev: EvidenceSpan, normalized_text: str) -> bool:
+    """與 ``validate_planner_output`` 的兩道 evidence 檢查同義（範圍內且 slice 相符）。"""
+    if not (0 <= ev.start < ev.end <= len(normalized_text)):
+        return False
+    return normalized_text[ev.start:ev.end] == ev.text
+
+
+def _find_all(haystack: str, needle: str) -> list[int]:
+    """所有出現位置（**含重疊**）；`str.count` 只算非重疊，會低估歧義。"""
+    starts: list[int] = []
+    pos = haystack.find(needle)
+    while pos != -1:
+        starts.append(pos)
+        pos = haystack.find(needle, pos + 1)
+    return starts
+
+
+def repair_evidence_offsets(
+    action: PlannedAction, normalized_text: str, reasons: list[str]
+) -> list[EvidenceSpan]:
+    """offset 對不上時，以 `text` 在 normalized_text 的**唯一**出現處重算。
+
+    模型很會抄原文、很不會數字元位置（`prompts/plan_v1.py` 的 few-shot 本身就有
+    3/4 個 span offset 算錯，其中 2 個還越界——等於在 in-context 教模型數錯）。
+    `text` 是可驗證的資料、offset 是可推導的座標，能推就不要信它算的。
+
+    三分支（fail-closed，不猜）：
+
+    - offset 已正確（範圍內且 slice == text）→ **原樣不動**。即使 text 在原文
+      出現多次，模型指的那一處也已自證正確，不得「修」成別處。
+    - text 在 normalized_text 恰好出現一次 → 重算 start/end，記
+      ``evidence_offset_repaired``。
+    - text 找不到（模型改寫/幻覺）或出現多次（無從判斷指哪一處）→ **維持原
+      offset**，記 ``evidence_text_not_found`` / ``evidence_text_ambiguous``，
+      交由 ``validate_planner_output`` 照常拒絕。猜一個「看起來合理」的 span
+      會把幻覺洗成合法證據，比失敗更糟。
+
+    reasons 是可觀測量：`evidence_offset_repaired` 的次數＝「模型多常數錯」，
+    是之後決定要不要讓模型根本別輸出 offset 的依據。
+    """
+    repaired: list[EvidenceSpan] = []
+    for ev in action.evidence:
+        if _evidence_offset_ok(ev, normalized_text):
+            repaired.append(ev)
+            continue
+        if not ev.text:
+            # 空 text 無從定位；留給 validate 拒絕（不得靜默放行）
+            reasons.append(f"evidence_empty_text:{action.action_id}")
+            repaired.append(ev)
+            continue
+        starts = _find_all(normalized_text, ev.text)
+        if len(starts) == 1:
+            start = starts[0]
+            end = start + len(ev.text)
+            reasons.append(
+                f"evidence_offset_repaired:{action.action_id}:"
+                f"[{ev.start},{ev.end})->[{start},{end})"
+            )
+            repaired.append(ev.model_copy(update={"start": start, "end": end}))
+        elif not starts:
+            reasons.append(f"evidence_text_not_found:{action.action_id}")
+            repaired.append(ev)
+        else:
+            reasons.append(f"evidence_text_ambiguous:{action.action_id}:{len(starts)}")
+            repaired.append(ev)
+    return repaired
+
+
+def sanitize_planner_output(
+    output: PlannerOutput, *, normalized_text: str
+) -> tuple[PlannerOutput, list[str]]:
+    """§7.5：invented action 剔除；非法 tool_ref 降為 missing；evidence offset 修復。
+
+    回傳 (sanitized, reasons)。reasons 分兩類，**只有語意類會併進 unresolved**：
+
+    - 語意防線（`planner_invented_action` / `tool_state_violation`）：代表計畫
+      本身有缺口，沿用既有行為併入 `unresolved`（會擋 auto routing）。
+    - evidence offset 診斷（`evidence_offset_repaired` 等，見
+      ``repair_evidence_offsets``）：**不併入** `unresolved`——修好的座標不是
+      未解的語意缺口，把它塞進 unresolved 會讓每一筆被修過的計畫都被踢去人工
+      覆核（`routing._eligible_auto` 見 unresolved 非空即拒 auto）。
+    """
     reasons: list[str] = []
+    # offset 診斷與語意防線分開累積：只有 reasons 會併進 unresolved（見 docstring）
+    repair_reasons: list[str] = []
     kept: list[PlannedAction] = []
     for action in output.actions:
         if action.action_type != "composite_unknown" and not action.evidence:
             reasons.append(f"planner_invented_action:{action.action_id}")
             continue
+        evidence = repair_evidence_offsets(action, normalized_text, repair_reasons)
         roles = dict(action.roles)
         tool_ref = roles.get("tool_ref")
         if tool_ref is not None and tool_ref.action_ref:
@@ -243,7 +326,7 @@ def sanitize_planner_output(output: PlannerOutput) -> tuple[PlannerOutput, list[
             if not ok:
                 reasons.append(f"tool_state_violation:{action.action_id}")
                 roles["tool_ref"] = RoleValue(status="missing")
-        kept.append(action.model_copy(update={"roles": roles}))
+        kept.append(action.model_copy(update={"roles": roles, "evidence": evidence}))
 
     # resequence after drops
     renumbered: list[PlannedAction] = []
@@ -287,7 +370,7 @@ def sanitize_planner_output(output: PlannerOutput) -> tuple[PlannerOutput, list[
         dependencies=deps,
         unresolved=unresolved,
     )
-    return sanitized, reasons
+    return sanitized, reasons + repair_reasons
 
 
 def _role_covered_by_evidence(text: str, evidence: list[EvidenceSpan]) -> bool:

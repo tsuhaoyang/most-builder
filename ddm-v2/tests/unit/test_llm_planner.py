@@ -110,3 +110,85 @@ async def test_prompt_injection_stays_in_user_message():
     assert "<wi_text>" in client.calls[0]["user"]
     assert "忽略以上指示" in client.calls[0]["user"]
     assert "total_tmu" not in client.calls[0]["system"]
+
+
+# ── evidence offset 修復在 adapter 這一層的效果 ───────────────────────────
+
+
+def _offset_off_by_two_json(norm: str) -> str:
+    """text 抄對、end 多算 2（越界）——qwen2.5:14b 在 gold 集上最常見的失敗形態。"""
+    return json.dumps(
+        {
+            "language": "zh",
+            "actions": [
+                {
+                    "action_id": "a1",
+                    "action_type": "acquire",
+                    "sequence_order": 1,
+                    "roles": {"object": {"text": "dimm", "status": "explicit"}},
+                    "evidence": [{"start": 0, "end": len(norm) + 2, "text": norm}],
+                }
+            ],
+            "dependencies": [],
+            "unresolved": [],
+        },
+        ensure_ascii=False,
+    )
+
+
+@pytest.mark.asyncio
+async def test_repairable_offset_does_not_trigger_retry():
+    """offset 可修 → 第一次呼叫就過，不再多打一次模型（重試是最貴的成本項）。"""
+    norm = normalize("拿起DIMM")
+    client = FakeLLMClient([_offset_off_by_two_json(norm)])
+    planner = LLMPlannerAdapter(client)
+    out, _raw = await planner.plan(norm, ParseContext(rule_set_code="X"))
+    assert len(client.calls) == 1
+    ev = out.actions[0].evidence[0]
+    assert (ev.start, ev.end) == (0, len(norm))
+
+
+@pytest.mark.asyncio
+async def test_on_sanitize_observer_receives_repair_reasons():
+    norm = normalize("拿起DIMM")
+    seen: list[tuple[str, list[str]]] = []
+    client = FakeLLMClient([_offset_off_by_two_json(norm)])
+    planner = LLMPlannerAdapter(client, on_sanitize=lambda phase, rs: seen.append((phase, rs)))
+    await planner.plan(norm, ParseContext(rule_set_code="X"))
+    assert [p for p, _ in seen] == ["initial"]
+    assert any(r.startswith("evidence_offset_repaired:a1") for _, rs in seen for r in rs)
+
+
+@pytest.mark.asyncio
+async def test_unrepairable_text_still_fails_closed():
+    """text 在原文找不到 → 不猜位置；重試用盡後照樣 PlannerError（不得被洗成合法證據）。"""
+    norm = normalize("拿起DIMM")
+    bogus = json.dumps(
+        {
+            "language": "zh",
+            "actions": [
+                {
+                    "action_id": "a1",
+                    "action_type": "acquire",
+                    "sequence_order": 1,
+                    "roles": {},
+                    # 範圍內但指到別的內容：對應 gold 集上「只有 text_mismatch」那 12 案
+                    "evidence": [{"start": 0, "end": 6, "text": "拿起記憶體模組"}],
+                }
+            ],
+            "dependencies": [],
+            "unresolved": [],
+        },
+        ensure_ascii=False,
+    )
+    seen: list[tuple[str, list[str]]] = []
+    client = FakeLLMClient([bogus, bogus])
+    planner = LLMPlannerAdapter(client, on_sanitize=lambda phase, rs: seen.append((phase, rs)))
+    with pytest.raises(PlannerError) as exc:
+        await planner.plan(norm, ParseContext(rule_set_code="X"))
+    assert len(client.calls) == 2
+    assert any(e.startswith("evidence_text_mismatch") for e in exc.value.errors)
+    assert [p for p, _ in seen] == ["initial", "retry"]
+    assert all(
+        any(r.startswith("evidence_text_not_found") for r in rs) for _, rs in seen
+    )
