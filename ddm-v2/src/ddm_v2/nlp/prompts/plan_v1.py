@@ -19,11 +19,23 @@ import json
 # 塞進 action_ref：`"action_ref": "from_location"`，`action_ref_unknown` 0→4）、
 # 規則 4 禁止佔位字（`destination: {"text": "未指定"}`）、規則 12 列出合法的
 # dependency type（模型自創 `same_hand`，整筆 json_or_schema 失敗）。
+# plan-v1.4（2026-08-23）：修掉 few-shot #1 自己違反規則 4 的兩處——教材正在示範
+# 一件規則明文禁止的事。(a) a1（evidence 切片＝`拿取電動起子`）的
+# `quantity: {"value": 1, "unit": "count"}` 是憑空捏造：那段原文沒有任何數量，
+# 規則 4 的「禁止猜測」正是在禁這個——整個角色移除（原文沒有就不該有這個鍵，
+# 不是改成別的值）。(b) a2 的 `destination.text` 由 `圖示位置` 改成原文字面
+# `依圖示`：status 是 explicit_unresolved，規則 4 對它的定義是「原文有提但內容在
+# 外部，不得展開其內容」，`圖示位置` 已經是展開。（a2 的 `quantity: 2 顆` 有原文
+# 「兩顆」背書，不動。）
+# ⚠️ 為什麼守衛沒抓到，要記著：`validate_planner_output` 只驗**帶 text 的 explicit
+#    角色**（`explicit_without_evidence`），對 explicit_unresolved 完全不驗，對
+#    只帶 value 的 explicit（(a) 那種 quantity）也只確認「有值」、不問有無依據——
+#    契約盲點，兩處都落在盲點裡。
 # 內容有動就要升版（本檔 docstring 與實作 spec §7.2 的硬規定）。
 # ⚠️ 升版**不會**讓既有 ai_parse_runs 快取失效——`input_hash` 綁的是 bundle.code
 #    而非 prompt version（見 wi_ai_service 的 D3 註解）。要讓既有輸入用新 prompt
 #    重跑，得另發一個 deployment bundle（`DDM_WI_AI_BUNDLE_CODE`）。
-PROMPT_VERSION = "plan-v1.3"
+PROMPT_VERSION = "plan-v1.4"
 
 SYSTEM_PROMPT = """你是製造業 IE（工業工程）的作業拆解引擎。任務：把一段工序描述拆解成「原子動作計畫」。
 你只做語意拆解，不做 MOST 編碼、不估算任何時間值。
@@ -123,7 +135,6 @@ FEW_SHOTS: list[tuple[str, str]] = [
                         "sequence_order": 1,
                         "roles": {
                             "tool": {"text": "電動起子", "status": "explicit"},
-                            "quantity": {"value": 1, "status": "explicit", "unit": "count"},
                         },
                         "evidence": [{"start": 0, "end": 6, "text": "拿取電動起子"}],
                     },
@@ -136,7 +147,7 @@ FEW_SHOTS: list[tuple[str, str]] = [
                             "object": {"text": "螺絲", "status": "explicit"},
                             "quantity": {"value": 2, "status": "explicit", "unit": "顆"},
                             "destination": {
-                                "text": "圖示位置",
+                                "text": "依圖示",
                                 "status": "explicit_unresolved",
                             },
                             "process_kind": {"text": "鎖附", "status": "explicit"},

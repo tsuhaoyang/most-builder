@@ -383,7 +383,7 @@ class LLMClientPort(Protocol):
 **外部雲端 LLM 是否允許屬 R0 未決事項**（上游 spec §20.6）——實作預設指向地端 URL，
 不得在程式碼寫死任何雲端網域。
 
-### 7.2 System prompt v1（`prompts/plan_v1.py`，`PROMPT_VERSION = "plan-v1.3"`）
+### 7.2 System prompt v1（`prompts/plan_v1.py`，`PROMPT_VERSION = "plan-v1.4"`）
 
 ```text
 你是製造業 IE（工業工程）的作業拆解引擎。任務：把一段工序描述拆解成「原子動作計畫」。
@@ -498,7 +498,9 @@ User message 組裝（順序固定，便於 cache）：
 Few-shots（4 則，放 system 之後、user 之前，assistant 角色給標準 JSON）：
 
 1. 「拿取電動起子，依圖示鎖附兩顆螺絲」→ 2 actions（acquire + process）、
-   `tool_held_for` dependency、destination=`explicit_unresolved`、quantity=2。
+   `tool_held_for` dependency、destination=`explicit_unresolved`（text=`依圖示`，
+   原文字面、不展開）、a2 quantity=2（原文「兩顆」）。a1 **沒有** quantity——
+   `拿取電動起子` 那段沒有數量，補一個就是規則 4 禁止的猜測（plan-v1.4 修）。
 2. 「拿取治具蓋板放置於工作臺，再以電動起子鎖附固定」→ 2 actions
    （move_place + process）。一則同時教三件事：第一段「拿取 Y 放置於 Z」是
    **一個** move_place（規則 2 的正面示範）；要拆的是性質不同的第二段；第二步的
@@ -510,6 +512,16 @@ Few-shots（4 則，放 system 之後、user 之前，assistant 角色給標準 
 
 Few-shots 是 `FEW_SHOTS: list[tuple[str, str]]` 常數；新增/修改必須升 `PROMPT_VERSION`
 並跑 gold regression（L3 之後）。
+
+few-shot #1 兩處捏造的由來（plan-v1.4，2026-08-23）：#1 原本在 a1 標
+`quantity: {"value": 1, "unit": "count"}`（原文只有「拿取電動起子」，沒有數量），
+並把 a2 的 `destination` 寫成 `{"text": "圖示位置"}`（原文是「依圖示」）——
+前者是規則 4 禁止的猜測，後者是 explicit_unresolved 明文禁止的「展開其內容」。
+**教材在示範一件自己的規則禁止的事**，而且撐過了 plan-v1.1~v1.3 三次改版。
+守衛看不見的原因是契約盲點：`validate_planner_output` 只對**帶 `text` 的 explicit**
+角色要求 evidence 覆蓋，`explicit_unresolved` 完全不驗、只帶 `value` 的 explicit
+也只檢查「有值」——兩處剛好都落在盲點裡（與 §9 S-2 同源）。已移除 a1 的 quantity、
+把 destination 改回 `依圖示`；a2 的 `quantity: 2 顆` 有原文背書，保留。
 
 **示範本身必須合法**：每一則 few-shot 的 assistant JSON 都要能通過
 `contracts.validate_planner_output()` 對它自己的 user message 驗證，且 user 端文字
