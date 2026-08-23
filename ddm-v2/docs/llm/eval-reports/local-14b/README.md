@@ -37,13 +37,25 @@ gold n=55、`--llm-timeout-s 300`、地端 ollama、`DDM_LLM_MODEL=qwen2.5:14b`�
 數字對照表與結論見 `docs/llm/wi-ai-parser-worklog.md` §8——**本目錄只放原始報告，
 不重複寫結論**（兩邊各寫一份必然漂移）。
 
-重跑方式：
+重跑方式（**兩步**：腳本產的是 `wi-gold-<stamp>.json`，本目錄的檔名是人工改的）：
 
 ```bash
 cd ddm-v2
 DDM_LLM_MODEL=qwen2.5:14b PYTHONPATH=src .venv/bin/python scripts/wi_ai_eval.py \
   --planner llm --llm-timeout-s 300 --out <輸出目錄>
+
+# 腳本不會照本目錄的慣例命名——改名這一步是人工的：
+mv <輸出目錄>/wi-gold-<stamp>.json docs/llm/eval-reports/local-14b/plan-<版本>-<stamp>.json
 ```
+
+⚠️ 腳本另會寫一份 `wi-gold-latest.json`（同內容），本目錄不收——留著會與上層正式
+報告的 `latest` 混淆。
+
+**改名只為目錄可讀性，不再是版本歸屬的依據**：`wi-gold-report-v7`
+（2026-08-22）起報告自帶 `planner_run.model_requested`／`model_served`
+（後者是伺服器回報值，證據力較強）與 `planner_run.prompt_version`，
+版本歸屬以**報告內容**為準。⚠️ 本目錄現存七份是 v7 之前跑的，**內容不記模型與
+prompt 版本**（`grep -c qwen` 全為 0）——那七份的版本歸屬仍只有檔名與下表可依。
 
 rule planner 的對照組（`--planner rule`）不收在這裡：它不需要 LLM、幾秒可重現，
 且其基線已釘成測試常數（`PLAN_ACCURACY=5/9`、`BOUNDARY_F1=10/23`）。

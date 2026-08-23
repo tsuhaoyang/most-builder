@@ -47,12 +47,25 @@ Plan 層自我指涉排除：gold 檔標 `plan_origin=<planner>_preannotation` �
 sanitize 觀測（v6 起）：報告的 `planner_eval.sanitize_reasons` 記
 `contracts.sanitize_planner_output()` 的 reasons（含 evidence offset 修復次數）。
 純觀測，不影響分數與退出碼；rule planner 不經 sanitize，恆為空。
+
+執行來源自述（v7 起）：報告頂層 `planner_run` 記這趟是**哪個 planner、哪顆模型、
+哪一版 prompt** 跑出來的——在此之前報告對自己的來源無法佐證，版本歸屬只能靠
+人工命名的檔名（`docs/llm/eval-reports/local-14b/` 那批即是事後手改名）。
+模型記兩個：`model_requested`（送出去的）與 `model_served`（伺服器回報的，證據力
+較強）。rule planner 不碰 LLM，這些欄位恆為 null／空。
+**不記** `llm_base_url` 與 `llm_api_key`：報告要入版控，base_url 有夾帶憑證的可能。
+「報告不含 endpoint」是**整份**的性質，不只 `planner_run`——另一個入口是例外訊息
+（httpx 的 `HTTPStatusError` 會把完整 URL 連同 userinfo 寫進訊息），由
+`planner_eval._redact_urls()` 在寫進 `planner_error` 前遮成 `<redacted-url>`。
+同版起 `gold_dir` 改記相對於 `ddm-v2/` 的路徑（絕對路徑會寫進本機路徑與 OS 使用者名）。
 """
 from __future__ import annotations
 
 import argparse
 import asyncio
 import json
+import os
+import re
 import sys
 from collections import Counter
 from datetime import datetime, timezone
@@ -79,7 +92,7 @@ from ddm_v2.nlp.planner_eval import (  # noqa: E402
     summarize_planner_results,
 )
 
-REPORT_SCHEMA_VERSION = "wi-gold-report-v6"
+REPORT_SCHEMA_VERSION = "wi-gold-report-v7"
 
 EXIT_CODE_HELP = (
     "exit codes: 0 = all green; "
@@ -99,6 +112,112 @@ SANITIZE_REASONS_NOTE = (
     "phase=initial 是第一次呼叫、retry 是帶驗證錯誤重試的那次。"
     "rule planner 不經過 sanitize，恆為空。"
 )
+
+
+# C0（含 ESC/CR/LF）與 C1 控制字元；不含任何可見字元，剝掉不會動到合法模型名
+_CONTROL_CHARS_RE = re.compile(r"[\x00-\x1f\x7f-\x9f]")
+
+# 合法 tag 遠短於此（`qwen2.5:14b-instruct-q4_K_M` 是 26 字元）
+MODEL_NAME_MAX_LEN = 200
+
+
+def _sanitize_model_name(model: str) -> str:
+    """`model_served` 是**遠端可控字串**（LLM 伺服器回應的 `model` 欄）——先剝控制
+    字元再截斷。
+
+    兩個 sink，一個修法：
+
+    - **終端機**（本檔的 `print`，未經逸出）：回應若含 ESC 序列
+      （``gpt-4\x1b[2J\x1b]0;pwned\x07``）可以清屏、改視窗標題，並**覆寫先前印出的
+      內容——包括這次評測的其他數字**。這是本功能新增的 sink，比 JSON 那邊嚴重。
+    - **報告 JSON**：`json.dumps` 會把 ESC 逸出成 `\u001b`（安全），但長度無界
+      （`llm_client` 只做 `str(model)`，httpx 未設 response size limit），一個回應
+      就能把 100KB 塞進要入版控的報告。
+
+    **不用字元白名單**：合法 tag 本來就含 `:` `/` `.` `-`，未來也可能有非 ASCII；
+    白名單會誤殺真值，而誤殺的後果是「報告說不出自己跑了哪顆模型」——正好摧毀這個
+    欄位存在的目的。這裡只剝「不可見且能操控終端機」的那一類，其餘原樣保留。
+
+    截斷**留痕**：截過的值帶 `…[truncated from N chars]`，不會看起來像完整值
+    （自述欄位長成完整值的樣子就是另一種說謊）。
+    """
+    cleaned = _CONTROL_CHARS_RE.sub("", model)
+    if len(cleaned) > MODEL_NAME_MAX_LEN:
+        return f"{cleaned[:MODEL_NAME_MAX_LEN]}…[truncated from {len(cleaned)} chars]"
+    return cleaned
+
+
+PLANNER_RUN_NOTE = (
+    "本報告的執行來源自述：這趟是哪個 planner、哪顆模型、哪一版 prompt 跑的。"
+    "`model_requested`＝送出去的模型名（settings 的 DDM_LLM_MODEL）；"
+    "`model_served`＝**伺服器回報**的模型名，證據力較強（ollama 的 tag 解析、"
+    "伺服器端別名或 endpoint 被指到別顆模型時，兩者會分岔）——同一個問題，"
+    "`wi_ai_service` 用的也是伺服器回報值（`llm_raw_response.model`）。"
+    "⚠️ 伺服器若沒回 model 欄，`llm_client` 會退回請求值，此時 served 等於 "
+    "requested 並非真的被證實。`model_served` 僅在**成功呼叫且回報值一致**時為"
+    "單一字串；全案失敗（沒有任何成功呼叫）時為 null——此時 requested 仍是有用的"
+    "資訊，不會一起消失；回報值分岐時 served 為 null 且 `model_served_variants` "
+    "列出全部（不靜默挑一個）。"
+    "⚠️ served 是**遠端可控字串**：寫入前已剝除控制字元並截斷至 "
+    f"{MODEL_NAME_MAX_LEN} 字元，截過的值帶 `…[truncated from N chars]`。"
+    "以上四欄與 `llm_timeout_s` 僅 --planner llm 有值；rule planner 不碰 LLM，恆為 "
+    "null／空。"
+    "刻意**不記** llm_base_url 與 llm_api_key——報告要入版控，base_url 有夾帶憑證的"
+    "可能；重現指令見 docs/llm/eval-reports/local-14b/README.md。"
+    "同一理由，`planner_eval.cases[*].planner_error` 的例外訊息會先把 URL 遮成 "
+    "`<redacted-url>`（httpx 的 HTTP 錯誤訊息內嵌完整 endpoint 連同 userinfo），"
+    "所以「不含 endpoint」是整份報告的性質，不只本區塊。"
+)
+
+
+class RunIdentity:
+    """報告 `planner_run` 的來源欄；與 `SanitizeLog` 同樣是「跑的過程中收集」的觀測物。
+
+    `model_served` 只有**呼叫成功**才知道（在 `LLMRawResponse.model` 裡），所以不能
+    在建構 planner 時就定案——由 `_plan()` 每案 `observe_served()`，跑完再 `to_dict()`
+    快照。全案失敗時 served 為 null 而 requested 仍在（失敗時「送出去的是哪顆」正是
+    要查的資訊，不該一起消失）。
+    """
+
+    def __init__(
+        self,
+        planner: str,
+        *,
+        model_requested: str | None = None,
+        prompt_version: str | None = None,
+        llm_timeout_s: float | None = None,
+    ) -> None:
+        self.planner = planner
+        self.model_requested = model_requested
+        self.prompt_version = prompt_version
+        self.llm_timeout_s = llm_timeout_s
+        self.served: Counter = Counter()
+
+    def observe_served(self, model: str | None) -> None:
+        if model:
+            self.served[_sanitize_model_name(model)] += 1
+
+    def to_dict(self) -> dict:
+        variants = sorted(self.served)
+        return {
+            "planner": self.planner,
+            "model_requested": self.model_requested,
+            # 恰好一種回報值才給單一字串；0 種（全案失敗）或 >1 種（分岐）皆為 null，
+            # 由 variants 顯示實況——挑一個代表會讓分岐消失於無形
+            "model_served": variants[0] if len(variants) == 1 else None,
+            "model_served_variants": variants,
+            "prompt_version": self.prompt_version,
+            "llm_timeout_s": self.llm_timeout_s,
+            "note": PLANNER_RUN_NOTE,
+        }
+
+
+def _repo_relative(path: Path) -> str:
+    """報告用的 gold_dir：以 `ddm-v2/` 為基準的相對路徑。
+
+    絕對路徑會把本機路徑與 OS 使用者名寫進要入版控的報告（worklog §9 S-6）。
+    """
+    return Path(os.path.relpath(path.resolve(), ROOT)).as_posix()
 
 
 class SanitizeLog:
@@ -136,13 +255,24 @@ class SanitizeLog:
         }
 
 
-def _build_llm_plan_fn(timeout_s: float, sanitize_log: SanitizeLog) -> PlannerFn:
-    """顯式 --planner llm 才建構；需要已設定的 LLM endpoint。"""
+def _build_llm_plan_fn(
+    timeout_s: float, sanitize_log: SanitizeLog
+) -> tuple[PlannerFn, RunIdentity]:
+    """顯式 --planner llm 才建構；需要已設定的 LLM endpoint。
+
+    一併回傳這趟的 `RunIdentity` 給報告的 `planner_run`。`model_requested` 與建構
+    client 用的是**同一次** `get_settings()`——不是因為再讀一次會拿到別的值
+    （`get_settings` 有 lru_cache，同一次執行內必然同一個物件），而是為了讓
+    「報告寫的」與「實際送出去的」在結構上同源：日後若有人把取值改成直接讀 env、
+    或在 `cache_clear()` 之後另建 Settings，兩者才不會各走各的。
+    `model_served`（伺服器回報值）由 `_plan()` 逐案 `observe_served()` 收。
+    """
     from ddm_v2.nlp.contracts import ParseContext, SourceRef, WorkInstructionPlan
     from ddm_v2.nlp.llm_client import OpenAICompatClient
     from ddm_v2.nlp.llm_planner import LLMPlannerAdapter
     from ddm_v2.nlp.normalization import normalize
     from ddm_v2.nlp.planner_eval import gold_source_text
+    from ddm_v2.nlp.prompts import plan_v1
     from ddm_v2.settings import get_settings
 
     settings = get_settings()
@@ -155,13 +285,20 @@ def _build_llm_plan_fn(timeout_s: float, sanitize_log: SanitizeLog) -> PlannerFn
         response_format_mode="json_object",
     )
     adapter = LLMPlannerAdapter(client, timeout_s=timeout_s, on_sanitize=sanitize_log.observe)
+    identity = RunIdentity(
+        "llm",
+        model_requested=settings.llm_model,
+        prompt_version=plan_v1.PROMPT_VERSION,
+        llm_timeout_s=timeout_s,
+    )
 
     async def _plan(data: dict) -> WorkInstructionPlan:
         sanitize_log.bind(str(data.get("id") or "unknown"))
         text = gold_source_text(data)
         norm = normalize(text)
         ctx = ParseContext(rule_set_code=str(data.get("rule_set_code") or "MINIMOST_FACTORY_V2"))
-        output, _raw = await adapter.plan(norm, ctx)
+        output, raw = await adapter.plan(norm, ctx)
+        identity.observe_served(raw.model if raw is not None else None)
         return WorkInstructionPlan(
             source_text=text,
             normalized_text=norm,
@@ -172,7 +309,8 @@ def _build_llm_plan_fn(timeout_s: float, sanitize_log: SanitizeLog) -> PlannerFn
             unresolved=list(output.unresolved),
         )
 
-    return _plan
+    # base_url／api_key 不進報告（報告入版控，base_url 有夾帶憑證的可能）
+    return _plan, identity
 
 
 def _case_is_approved(data: dict) -> bool:
@@ -266,11 +404,16 @@ def main() -> int:
     args = parser.parse_args()
 
     plan_fn: PlannerFn = rule_based_plan
-    planner_name = RULE_PLANNER_NAME
     sanitize_log = SanitizeLog()
+    # rule planner 不碰 LLM：來源欄恆 null／空。精確的性質是「**rule 分支在 runtime
+    # 不呼叫 get_settings()**」——不是「完全不讀 settings」：`ddm_v2.settings` 在
+    # module scope 就呼叫了六次 get_settings()（ROOT_DIR/SECRET_KEY/APP_NAME…），
+    # 本腳本的 import 鏈一定會走到。零操作影響（每個欄位都有預設值），真正要保住的
+    # 是 **`--planner rule` 不需要 LLM 設定就能跑**（有測試守）。
+    run_identity = RunIdentity(RULE_PLANNER_NAME)
     if args.planner == "llm":
-        plan_fn = _build_llm_plan_fn(args.llm_timeout_s, sanitize_log)
-        planner_name = "llm"
+        plan_fn, run_identity = _build_llm_plan_fn(args.llm_timeout_s, sanitize_log)
+    planner_name = run_identity.planner
 
     # 載入層先把「檔案壞掉」轉成具名 gold_case_invalid（點名檔案、進報告、exit 2），
     # 其餘有效案例照常評測——不讓 JSONDecodeError/KeyError traceback 且無報告可看。
@@ -294,6 +437,14 @@ def main() -> int:
 
     report = {
         "report_kind": "wi-gold-eval",
+        # v7：新增頂層 `planner_run`（planner/model_requested/model_served/
+        # model_served_variants/prompt_version/llm_timeout_s＋note）——報告原本不記
+        # 自己是哪顆模型、哪一版 prompt 跑的，版本歸屬只能靠人工命名的檔名。
+        # model 記**兩個**：requested（送出去的）與 served（伺服器回報的，證據力較
+        # 強，與 wi_ai_service 的 llm_raw_response.model 同源）。同版 `gold_dir` 改
+        # 記相對於 ddm-v2/ 的路徑（原本是含 OS 使用者名的本機絕對路徑）、
+        # `planner_eval.cases[*].planner_error` 的 URL 遮成 <redacted-url>。
+        # 純加法＋兩個既有欄位的值域收斂，其餘形狀不變。
         # v3：planner_eval.summary 的 boundary → boundary_span（含 scored_cases/
         # trivially_empty_cases）、spec_targets.boundary_f1 → boundary_span_f1、
         # 新增 dependency_f1(=null)+note、gold_load_errors、動態 dataset_note；
@@ -313,7 +464,9 @@ def main() -> int:
         "report_schema_version": REPORT_SCHEMA_VERSION,
         "gold_schema_version": GOLD_SCHEMA_VERSION,
         "generated_at": now.isoformat(),
-        "gold_dir": str(args.gold_dir),
+        # 相對於 ddm-v2/（不得寫入本機絕對路徑：報告要入版控）
+        "gold_dir": _repo_relative(args.gold_dir),
+        "planner_run": run_identity.to_dict(),
         "dataset_note": _dataset_note(cases),
         "gold_load_errors": [e.to_dict() for e in load_errors],
         "unapproved_cases": unapproved_cases,
@@ -344,6 +497,17 @@ def main() -> int:
     latest.write_text(text, encoding="utf-8")
 
     print(f"gold eval → {out_path}")
+    run_block = report["planner_run"]
+    served = run_block["model_served"] or (
+        f"分岐{run_block['model_served_variants']}" if run_block["model_served_variants"] else "n/a"
+    )
+    print(
+        f"[run]      planner={planner_name}"
+        f"  model_requested={run_block['model_requested'] or 'n/a'}"
+        f"  model_served={served}"
+        f"  prompt_version={run_block['prompt_version'] or 'n/a'}"
+        f"  gold_dir={report['gold_dir']}"
+    )
     if unapproved_cases:
         print(
             f"[gold]     WARNING: gold_dir 含 {len(unapproved_cases)} 筆未核准案例"

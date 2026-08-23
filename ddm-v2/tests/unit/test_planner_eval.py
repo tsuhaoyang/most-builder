@@ -8,7 +8,14 @@ normalized_text 不可比的誠實計分、**自我指涉排除**（plan_origin=
 seed gold 基線釘值、CLI 報告兩段皆在（防 planner 段被靜默跳過）、CLI 退出碼
 守門（壞 gold → 1、compile 失敗 → 1、gold 輸入不可用 → 2——這三條是 mutation
 證據：把 `wi_ai_eval.py` 的 `all(r.ok)` 或 `failed == 0` 拆掉必轉紅）、
-未核准案例混入 gold_dir 時報告降級 wi-draft-*（拆掉 prefix 判斷必轉紅）。
+未核准案例混入 gold_dir 時報告降級 wi-draft-*（拆掉 prefix 判斷必轉紅）、
+**報告的執行來源自述**（v7 `planner_run`：rule 路徑 model/prompt_version 恆 null
+且不需要 LLM 設定；llm 路徑記實際模型與 `plan_v1.PROMPT_VERSION`）、
+**例外訊息的 URL 遮蔽**（`planner_error` 會把 httpx 訊息裡的 endpoint 連同
+userinfo 寫進要入版控的報告——遮蔽後憑證不得出現，但 Pydantic 的診斷細節必須留著）、
+**`model_served` 是遠端可控字串**（分岐時不得靜默挑一個；控制字元與超長值不得
+進報告或終端機，但合法 tag 不得被誤殺）
+＋ `gold_dir` 為 repo 相對路徑（不得夾帶本機絕對路徑）。
 """
 from __future__ import annotations
 
@@ -77,6 +84,7 @@ IE_MODIFIED_GOLD_IDS = IE_MODIFIED_RESEG_GOLD_IDS | IE_MODIFIED_TYPING_GOLD_IDS
 
 # wi_ai_eval 的核准判定與 dataset_note（R4/R6 守門直接打函式，不繞 CLI）
 sys.path.insert(0, str(ROOT / "scripts"))
+import wi_ai_eval  # noqa: E402
 from wi_ai_eval import _case_is_approved, _dataset_note  # noqa: E402
 
 
@@ -653,6 +661,299 @@ def test_planner_pipeline_broken_only_when_all_cases_fail():
     assert planner_pipeline_broken([_r(True), _r(False)]) is False
 
 
+# ── 例外訊息的 URL 遮蔽（憑證不得進入要入版控的報告）──────────────────────────
+
+_CRED_URL = "http://svc-account:hunter2-SECRET@llm-endpoint.invalid:11434/v1/chat/completions"
+
+
+def _http_status_error(url: str = _CRED_URL) -> Exception:
+    """真的用 httpx 產生的 401 HTTPStatusError（訊息格式以 httpx 實作為準，不自己編）。"""
+    import httpx
+
+    request = httpx.Request("POST", url)
+    try:
+        httpx.Response(401, request=request).raise_for_status()
+    except httpx.HTTPStatusError as exc:
+        return exc
+    raise AssertionError("raise_for_status 沒有拋出——httpx 行為變了")
+
+
+def _plan_fn_raising(exc: Exception):
+    async def fn(_data: dict):
+        raise exc
+
+    return fn
+
+
+@pytest.mark.asyncio
+async def test_planner_error_redacts_endpoint_credentials():
+    """httpx 的 `HTTPStatusError` 訊息內嵌完整 request URL **連同 userinfo**，而
+    `planner_error` 會被寫進要入版控的評測報告——帳密不得留在裡面。
+
+    觸發條件是日常的（401 key 錯／過期、404、429、5xx），且 endpoint 設錯正是
+    「跑一次、失敗、修好再跑」的時候，那批報告最可能被一起 commit。
+    mutation 證據：把 `_redact_urls()` 從 `planner_error` 上拿掉，本測試必轉紅。
+    """
+    data = _load_g01()
+    result = await evaluate_planner_case(data, _plan_fn_raising(_http_status_error()))
+
+    assert result.planner_failed is True
+    blob = result.planner_error + " " + " ".join(result.errors)
+    assert "hunter2-SECRET" not in blob
+    assert "svc-account" not in blob
+    assert "llm-endpoint.invalid" not in blob
+    assert "<redacted-url>" in result.planner_error
+    # 診斷力不得被犧牲：類名、狀態碼與原因短語都還在
+    assert result.planner_error.startswith("HTTPStatusError:")
+    assert "401 Unauthorized" in result.planner_error
+    assert result.planner_error_codes == ["HTTPStatusError"]
+
+
+@pytest.mark.asyncio
+async def test_planner_error_keeps_schema_diagnostics_while_redacting():
+    """遮蔽只吃 URL：schema 失敗訊息裡的 `input_value='多顆'` 這類線索必須留著。
+
+    這條是防「修法過當」的反向守衛——把整段訊息換成錯誤碼（或只留狀態碼）會讓
+    `g48`（quantity 收到字串「多顆」）那類敗因從報告裡消失。
+    """
+    from ddm_v2.nlp.planner_ports import PlannerError
+
+    msg = (
+        "planner_schema_invalid:[\"json_or_schema:1 validation error for PlannerOutput\\n"
+        "  Input should be a valid number, unable to parse string as a number "
+        "[type=float_parsing, input_value='多顆', input_type=str]\\n"
+        "  For further information visit https://errors.pydantic.dev/2.11/v/float_parsing\"]"
+    )
+    result = await evaluate_planner_case(
+        _load_g01(), _plan_fn_raising(PlannerError(msg, errors=["json_or_schema:float_parsing"]))
+    )
+
+    assert "input_value='多顆'" in result.planner_error
+    assert "float_parsing" in result.planner_error
+    assert "errors.pydantic.dev" not in result.planner_error  # URL 仍被遮
+    assert result.planner_error_codes == ["json_or_schema"]
+
+
+def test_report_never_contains_endpoint_credentials_on_http_failure(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+):
+    """報告層的整份掃描：LLM 回非 2xx 時，**報告任何角落**都不得出現 endpoint 或其帳密。
+
+    比 `planner_run` 那條更強——`planner_run` 本來就不記 base_url，真正的漏口是
+    `planner_eval.cases[*].planner_error`／`errors`（例外訊息原文）。stub 直接拋
+    httpx 的 401，不打真模型。全案失敗＝管道壞掉 → exit 1（既有契約）。
+    """
+    from ddm_v2.nlp.llm_planner import LLMPlannerAdapter
+    from ddm_v2.settings import get_settings
+
+    gold = tmp_path / "gold"
+    _write_gold(gold, "g01.json", _load_g01())
+    out = tmp_path / "out"
+
+    async def _stub_plan(self, normalized_text: str, context):  # noqa: ANN001
+        raise _http_status_error()
+
+    monkeypatch.setattr(LLMPlannerAdapter, "plan", _stub_plan)
+    monkeypatch.setenv("DDM_LLM_BASE_URL", "http://svc-account:hunter2-SECRET@llm-endpoint.invalid:11434")
+    monkeypatch.setenv("DDM_LLM_API_KEY", "sk-must-not-appear-in-report")
+    monkeypatch.setenv("DDM_LLM_MODEL", "eval-selftest-model:0b")
+    monkeypatch.setattr(
+        sys,
+        "argv",
+        [
+            "wi_ai_eval.py",
+            "--gold-dir",
+            str(gold),
+            "--out",
+            str(out),
+            "--planner",
+            "llm",
+            "--llm-timeout-s",
+            "1",
+        ],
+    )
+
+    get_settings.cache_clear()
+    try:
+        assert wi_ai_eval.main() == 1  # 全案失敗＝管道壞掉
+    finally:
+        get_settings.cache_clear()
+
+    text = (out / "wi-gold-latest.json").read_text(encoding="utf-8")
+    for secret in ("hunter2-SECRET", "svc-account", "llm-endpoint.invalid", "sk-must-not-appear-in-report"):
+        assert secret not in text, f"報告洩漏 {secret}"
+
+    report = json.loads(text)
+    # 全案失敗＝沒有任何成功呼叫：served 誠實為 null，但 requested 不得跟著消失
+    # （失敗時「送出去的是哪顆模型」正是要查的資訊）
+    run = report["planner_run"]
+    assert run["model_requested"] == "eval-selftest-model:0b"
+    assert run["model_served"] is None
+    assert run["model_served_variants"] == []
+    from ddm_v2.nlp.prompts import plan_v1
+
+    assert run["prompt_version"] == plan_v1.PROMPT_VERSION
+
+    case = report["planner_eval"]["cases"][0]
+    assert case["planner_failed"] is True
+    # 失敗形態仍可診斷（遮蔽不得把報告變成看不出發生什麼事）
+    assert "<redacted-url>" in case["planner_error"]
+    assert "401 Unauthorized" in case["planner_error"]
+    assert report["planner_eval"]["summary"]["planner_failures"]["error_codes"] == {
+        "HTTPStatusError": 1
+    }
+
+
+
+def _llm_argv(gold: Path, out: Path, *, timeout: str = "1") -> list[str]:
+    return [
+        "wi_ai_eval.py",
+        "--gold-dir",
+        str(gold),
+        "--out",
+        str(out),
+        "--planner",
+        "llm",
+        "--llm-timeout-s",
+        timeout,
+    ]
+
+
+def _llm_env(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("DDM_LLM_BASE_URL", "http://llm-endpoint.invalid:11434")
+    monkeypatch.setenv("DDM_LLM_MODEL", "eval-selftest-model:0b")
+
+
+def _plan_ok(gold_data: dict, model: str):
+    """回一份合法 plan、並讓伺服器回報 `model` 的 stub（不打真模型）。"""
+    from ddm_v2.nlp.contracts import PlannerOutput
+    from ddm_v2.nlp.planner_ports import LLMRawResponse
+
+    gold_plan = gold_data["plan"]
+    return (
+        PlannerOutput(
+            language=gold_plan["language"],
+            actions=gold_plan["actions"],
+            dependencies=[],
+            unresolved=[],
+        ),
+        LLMRawResponse(content="{}", model=model),
+    )
+
+
+def test_divergent_served_models_are_all_listed_and_none_is_picked(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+):
+    """伺服器對不同案例回報不同 model → `model_served` 為 null、variants 列出全部。
+
+    分岐是真實情形（endpoint 中途被指到別顆、負載平衡到不同 tag）。靜默挑第一個
+    會讓分岐消失於無形，而報告的用途正是佐證「這份數字是哪顆模型跑的」。
+
+    mutation 證據：把 `RunIdentity.to_dict()` 的
+    `variants[0] if len(variants) == 1 else None` 改成 `variants[0] if variants else None`
+    （＝分岐時挑第一個），本測試必轉紅。在此之前 `[]`（全案失敗）與 `>1`（分岐）
+    共用同一支 `else None`，只測前者會給後者假的覆蓋感。
+    """
+    from ddm_v2.nlp.llm_planner import LLMPlannerAdapter
+    from ddm_v2.settings import get_settings
+
+    gold_data = _load_g01()
+    gold = tmp_path / "gold"
+    _write_gold(gold, "g01.json", gold_data)
+    second = _load_g01()
+    second["id"] = "g01b_second_case"
+    # 白名單外的 id 不能沿用 approved_by=seed（R6：那會被判未核准 → 報告降級
+    # wi-draft-*，本測試就讀不到官方報告了）
+    second["approved_by"] = "IEC141289"
+    second["review_status"] = "approved"
+    _write_gold(gold, "g01b.json", second)
+    out = tmp_path / "out"
+
+    calls = {"n": 0}
+
+    async def _stub_plan(self, normalized_text: str, context):  # noqa: ANN001
+        calls["n"] += 1
+        return _plan_ok(gold_data, "model-A" if calls["n"] == 1 else "model-B")
+
+    monkeypatch.setattr(LLMPlannerAdapter, "plan", _stub_plan)
+    _llm_env(monkeypatch)
+    monkeypatch.setattr(sys, "argv", _llm_argv(gold, out))
+
+    get_settings.cache_clear()
+    try:
+        assert wi_ai_eval.main() == 0
+    finally:
+        get_settings.cache_clear()
+
+    run = json.loads((out / "wi-gold-latest.json").read_text(encoding="utf-8"))["planner_run"]
+    assert calls["n"] == 2
+    assert run["model_served"] is None, "分岐時不得挑一個代表"
+    assert run["model_served_variants"] == ["model-A", "model-B"]
+    # requested 不受影響（分岐的是伺服器端，不是我們送出去的）
+    assert run["model_requested"] == "eval-selftest-model:0b"
+
+
+def test_served_model_name_is_stripped_and_truncated(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture
+):
+    """`model_served` 來自 LLM 伺服器回應＝遠端可控字串，兩個 sink 都要乾淨。
+
+    - **終端機**：本檔的 `print` 未經逸出，ESC 序列可清屏／改視窗標題／**覆寫先前
+      印出的其他評測數字**（這是本功能新增的 sink）；
+    - **報告 JSON**：`json.dumps` 會逸出 ESC，但長度無界（`llm_client` 只 `str()`），
+      一個回應就能塞 100KB 進要入版控的報告。
+
+    mutation 證據：把 `observe_served` 的 `_sanitize_model_name()` 拿掉必轉紅。
+    """
+    from ddm_v2.nlp.llm_planner import LLMPlannerAdapter
+    from ddm_v2.settings import get_settings
+
+    hostile = "gpt-4\x1b[2J\x1b]0;pwned\x07" + "A" * 500
+    gold_data = _load_g01()
+    gold = tmp_path / "gold"
+    _write_gold(gold, "g01.json", gold_data)
+    out = tmp_path / "out"
+
+    async def _stub_plan(self, normalized_text: str, context):  # noqa: ANN001
+        return _plan_ok(gold_data, hostile)
+
+    monkeypatch.setattr(LLMPlannerAdapter, "plan", _stub_plan)
+    _llm_env(monkeypatch)
+    monkeypatch.setattr(sys, "argv", _llm_argv(gold, out))
+
+    get_settings.cache_clear()
+    try:
+        assert wi_ai_eval.main() == 0
+    finally:
+        get_settings.cache_clear()
+    stdout = capsys.readouterr().out
+
+    text = (out / "wi-gold-latest.json").read_text(encoding="utf-8")
+    served = json.loads(text)["planner_run"]["model_served"]
+
+    # 終端機：原始 ESC 位元組不得出現（json.dumps 幫不到 print）
+    assert "\x1b" not in stdout
+    # 報告：連逸出形式都不該有（代表控制字元在寫入前就被剝掉）
+    assert "\x1b" not in text
+    assert "\\u001b" not in text
+    # 長度有界，且截斷**留痕**（不得看起來像完整值）
+    assert len(served) < len(hostile)
+    assert "[truncated from" in served
+    # 可見內容仍保留，仍看得出跑的是什麼（不是白名單式誤殺）
+    assert served.startswith("gpt-4")
+
+
+def test_legit_model_tags_survive_sanitizing():
+    """反向守衛：合法 tag 含 `:` `/` `.` `-`、也可能非 ASCII——一個字元都不得被動到。
+
+    誤殺的後果是「報告說不出自己跑了哪顆模型」，正好摧毀 `model_served` 存在的目的
+    （所以這裡刻意**不能**用字元白名單實作）。
+    """
+    for name in ("qwen2.5:14b-instruct-q4_K_M", "org/model.v2", "gpt-4o-2024-08-06", "模型-中文"):
+        assert wi_ai_eval._sanitize_model_name(name) == name
+
+
+
 # ── CLI：兩段並列輸出；退出碼守門（0/1/2）────────────────────────────────────
 
 
@@ -687,7 +988,7 @@ def test_cli_report_contains_both_segments(tmp_path: Path):
     assert latest.exists()
     report = json.loads(latest.read_text(encoding="utf-8"))
 
-    assert report["report_schema_version"] == "wi-gold-report-v6"
+    assert report["report_schema_version"] == "wi-gold-report-v7"
     assert report["unapproved_cases"] == []
     # 向後相容：頂層 summary/cases（compile 段）維持 v1 形狀
     assert report["summary"] == {"total": GOLD_TOTAL_N, "passed": GOLD_TOTAL_N, "failed": 0}
@@ -739,6 +1040,153 @@ def test_cli_report_contains_both_segments(tmp_path: Path):
 
     assert "[planner]" in proc.stdout
     assert "[compile]" in proc.stdout
+
+
+def test_cli_report_self_attests_rule_planner_run(tmp_path: Path):
+    """T-1（rule 路徑）＋S-6：報告要能自己佐證「誰跑的、跑的是哪個 gold」。
+
+    在 v7 之前，報告不記 model 也不記 prompt 版本，版本歸屬只能靠人工命名的
+    檔名；`gold_dir` 則是含 OS 使用者名的本機絕對路徑。這裡同時釘住：
+    ⑴ rule planner 的來源欄恆 null（它不碰 LLM）；⑵ **rule 路徑不因為要填這些
+    欄位而變成需要 LLM 設定**——故意把 `DDM_LLM_BASE_URL` 清空跑（llm 分支在
+    這個環境下會 SystemExit），仍必須 exit 0；⑶ gold_dir 是 repo 相對路徑。
+
+    mutation 證據：把 `planner_run` 拿掉、或把 `_repo_relative()` 換回
+    `str(args.gold_dir)`，本測試必轉紅。
+    """
+    out = tmp_path / "out"
+    proc = _run_cli(out_dir=out, env_extra={"DDM_LLM_BASE_URL": ""})
+    assert proc.returncode == 0, proc.stdout + proc.stderr
+
+    text = (out / "wi-gold-latest.json").read_text(encoding="utf-8")
+    report = json.loads(text)
+
+    run = report["planner_run"]
+    assert run["planner"] == RULE_PLANNER_NAME
+    assert run["model_requested"] is None
+    assert run["model_served"] is None
+    assert run["model_served_variants"] == []
+    assert run["prompt_version"] is None
+    assert run["llm_timeout_s"] is None
+    assert "不碰 LLM" in run["note"]
+    # 報告內的 planner 名稱兩處必須一致（summary 那個是 v6 起就有的）
+    assert run["planner"] == report["planner_eval"]["summary"]["planner"]
+
+    # S-6：相對於 ddm-v2/，且整份報告不得夾帶本機絕對路徑
+    assert report["gold_dir"] == "tests/gold/wi_plans"
+    assert not Path(report["gold_dir"]).is_absolute()
+    assert "/home/" not in text
+
+    # 終端機讀的那一份同樣看得到（不是只有 JSON 裡有）
+    assert f"planner={RULE_PLANNER_NAME}" in proc.stdout
+    assert "model_requested=n/a" in proc.stdout
+    assert "gold_dir=tests/gold/wi_plans" in proc.stdout
+
+
+def test_report_self_attests_llm_model_and_prompt_version(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+):
+    """T-1（llm 路徑）：報告必須記下**這趟用的模型**與 `plan_v1.PROMPT_VERSION`。
+
+    不打真模型：client 建構本身無 I/O，只把 `LLMPlannerAdapter.plan` 換成 stub。
+    量的是「執行來源有沒有被寫進報告」，不是模型表現。
+
+    另外釘住兩件事：`model_requested`（送出去的）與 `model_served`（伺服器回報的）
+    分開記且不互相覆蓋；報告自述的 `llm_timeout_s` **真的被套用**到 adapter 上
+    （只驗欄位值等於自己寫的常數，等於什麼都沒驗）。
+
+    同時守住反向要求：**base_url 與 api_key 不得出現在報告任何角落**——這些報告
+    要入版控，base_url 有夾帶憑證的可能（重現方式寫在 README 的指令裡，不靠報告
+    帶 endpoint）。mutation 證據：把 identity 改成從別處讀死值、或把 base_url／
+    api_key 加進 `planner_run`，本測試必轉紅。
+    """
+    from ddm_v2.nlp.contracts import PlannerOutput
+    from ddm_v2.nlp.llm_planner import LLMPlannerAdapter
+    from ddm_v2.nlp.planner_ports import LLMRawResponse
+    from ddm_v2.nlp.prompts import plan_v1
+    from ddm_v2.settings import get_settings
+
+    gold_data = _load_g01()
+    gold = tmp_path / "gold"
+    _write_gold(gold, "g01.json", gold_data)
+    out = tmp_path / "out"
+
+    seen: dict[str, float] = {}
+
+    async def _stub_plan(self, normalized_text: str, context):  # noqa: ANN001
+        # adapter 實際收到的 timeout——報告自述的 llm_timeout_s 必須是這個值，
+        # 否則就是「自述說謊」（本欄位存在的目的正是防這件事）
+        seen["timeout_s"] = self._timeout_s
+        gold_plan = gold_data["plan"]
+        return (
+            PlannerOutput(
+                language=gold_plan["language"],
+                actions=gold_plan["actions"],
+                dependencies=[],
+                unresolved=[],
+            ),
+            # 伺服器回報的 model 刻意**不等於**請求值（ollama 的 tag 解析、
+            # 伺服器端別名都會這樣）——報告必須兩個都記得下來
+            LLMRawResponse(content="{}", model="eval-selftest-model:0b-q4_K_M-SERVED"),
+        )
+
+    monkeypatch.setattr(LLMPlannerAdapter, "plan", _stub_plan)
+    monkeypatch.setenv("DDM_LLM_BASE_URL", "http://llm-endpoint.invalid:11434")
+    monkeypatch.setenv("DDM_LLM_API_KEY", "sk-must-not-appear-in-report")
+    monkeypatch.setenv("DDM_LLM_MODEL", "eval-selftest-model:0b")
+    monkeypatch.setattr(
+        sys,
+        "argv",
+        [
+            "wi_ai_eval.py",
+            "--gold-dir",
+            str(gold),
+            "--out",
+            str(out),
+            "--planner",
+            "llm",
+            "--llm-timeout-s",
+            "7.5",
+        ],
+    )
+
+    get_settings.cache_clear()  # 讓上面的 env 生效
+    try:
+        assert wi_ai_eval.main() == 0
+    finally:
+        get_settings.cache_clear()  # 別把測試用模型名快取漏給其他測試
+
+    text = (out / "wi-gold-latest.json").read_text(encoding="utf-8")
+    report = json.loads(text)
+
+    run = report["planner_run"]
+    assert run["planner"] == "llm"
+    # requested 取自 settings（不是寫死字串——寫死的話換模型就會謊報）
+    assert run["model_requested"] == "eval-selftest-model:0b"
+    # served 取自伺服器回報值（`LLMRawResponse.model`，與 wi_ai_service 同源）；
+    # 與 requested 不同時**兩個都要在**，不得被 requested 蓋掉
+    assert run["model_served"] == "eval-selftest-model:0b-q4_K_M-SERVED"
+    assert run["model_served_variants"] == ["eval-selftest-model:0b-q4_K_M-SERVED"]
+    assert run["model_served"] != run["model_requested"]
+    # 取自常數（不是報告自己寫死一個版本號——常數升版時這裡必須跟著動）
+    assert run["prompt_version"] == plan_v1.PROMPT_VERSION
+    assert run["prompt_version"].startswith("plan-v")
+    # 量測條件：timeout 過短會整批 ReadTimeout（曾讓一份報告作廢），要記在報告裡
+    assert run["llm_timeout_s"] == 7.5
+    # ⚠️ 光是「報告寫 7.5」不夠——要證明這個值**真的被套用**到 adapter 上。
+    # mutation 證據：把 `LLMPlannerAdapter(client, timeout_s=timeout_s)` 改成
+    # 寫死 999.0，本斷言必轉紅（在此之前報告會自述 7.5 而實跑 999）。
+    assert seen["timeout_s"] == run["llm_timeout_s"] == 7.5
+
+    # 憑證與 endpoint 一律不得入報告
+    assert "sk-must-not-appear-in-report" not in text
+    assert "llm-endpoint.invalid" not in text
+    assert "llm_base_url" not in run
+    assert "llm_api_key" not in run
+
+    # gold_dir 在 repo 外（tmp）時同樣不得寫成本機絕對路徑
+    assert not Path(report["gold_dir"]).is_absolute()
+    assert "/home/" not in text
 
 
 def test_cli_fails_on_empty_gold_dir(tmp_path: Path):

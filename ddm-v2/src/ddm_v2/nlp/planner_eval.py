@@ -57,9 +57,10 @@ boundary 標註可用性規則（缺就點名，不硬湊）：
 Planner 個案失敗隔離（`planner_failed`）：
 
 - planner 對單一案例拋例外（LLM schema retry 用盡的 `PlannerError`、timeout、連線失敗…）
-  **不再中止整批**：該案記 `planner_failed=True`、`planner_error`（原文訊息）與
-  `planner_error_codes`（`PlannerError.errors` 的錯誤碼前綴，例
-  `evidence_offset_oor`），繼續評測其餘案例——否則「失敗形態的分布」量不到。
+  **不再中止整批**：該案記 `planner_failed=True`、`planner_error`（例外訊息，
+  **URL 一律遮蔽**——見 `_redact_urls`）與 `planner_error_codes`
+  （`PlannerError.errors` 的錯誤碼前綴，例 `evidence_offset_oor`），繼續評測
+  其餘案例——否則「失敗形態的分布」量不到。
 - 失敗案例**計入 Plan 層指標且記為漏**（`pred_action_count=0`、
   `action_count_match` 僅在 gold 也是 0 個 action 時為真、gold span 全記 FN、
   無 FP），不是排除。排除會讓「難的案例失敗、簡單的案例得分」變成分數上升，
@@ -76,6 +77,7 @@ CI 與預設一律 rule_based。
 from __future__ import annotations
 
 import json
+import re
 import time
 from collections import Counter
 from collections.abc import Awaitable, Callable
@@ -328,6 +330,33 @@ def _f1(tp: int, fp: int, fn: int) -> float | None:
     return (2 * tp) / (2 * tp + fp + fn)
 
 
+# 任何 scheme 的 URL；在引號／空白／角括號處停住（httpx 的訊息把 URL 包在單引號裡）
+_URL_RE = re.compile(r"""\w+://[^\s'"<>]+""")
+
+
+def _redact_urls(message: str) -> str:
+    """把例外訊息裡的 URL 換成 `<redacted-url>`。
+
+    **例外訊息不是可信的字串來源**：httpx 的 `HTTPStatusError` 會把完整 request
+    URL **連同 userinfo** 寫進訊息——
+    ``Client error '401 Unauthorized' for url 'http://user:pass@host/v1/...'``——
+    而 `planner_error` 會被寫進**要入版控的評測報告**。觸發條件是日常的
+    （401 key 錯／過期、404、429、5xx），且 endpoint 設錯正是「跑一次、失敗、
+    修好再跑」的時候，那批報告最可能被一起 commit。
+
+    不特判 `HTTPStatusError`：洩漏的類別是「訊息含 URL」，產生者不只一個
+    （`UnsupportedProtocol`、`InvalidURL`、proxy 錯誤、未來換掉的 client…），
+    只擋一種等於留著同一個洞的其他入口。
+
+    **診斷力不受影響**：訊息其餘部分原樣保留——HTTP 錯誤仍看得到狀態碼與原因短語
+    （``Client error '401 Unauthorized' for url '<redacted-url>'``），Pydantic 的
+    ``input_value='多顆'`` 這類細節照留；被換掉的只有 URL 本身（含 MDN／
+    pydantic 的說明連結，那些沒有診斷價值）。錯誤**分類**另有
+    `_planner_error_codes`（不經訊息字串）。
+    """
+    return _URL_RE.sub("<redacted-url>", message)
+
+
 def _planner_error_codes(exc: BaseException) -> list[str]:
     """把 planner 例外壓成可統計的錯誤碼（失敗形態分布用）。
 
@@ -394,7 +423,9 @@ async def evaluate_planner_case(data: dict, plan_fn: PlannerFn) -> PlannerCaseRe
     try:
         pred_plan = await plan_fn(data)
     except Exception as exc:  # noqa: BLE001 — 個案失敗是被量測的對象，逐案記錄後續評
-        planner_error = f"{type(exc).__name__}:{exc}"
+        # URL 一律遮蔽：例外訊息會夾帶 endpoint 與其中的 userinfo，而這裡的
+        # 字串會進入要入版控的報告（見 _redact_urls）
+        planner_error = _redact_urls(f"{type(exc).__name__}:{exc}")
         planner_error_codes = _planner_error_codes(exc)
         errors.append(f"planner_failed:{planner_error}")
     elapsed_ms = round((time.perf_counter() - t0) * 1000, 2)
