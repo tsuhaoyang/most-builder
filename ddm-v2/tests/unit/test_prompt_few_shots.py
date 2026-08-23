@@ -20,6 +20,7 @@ from pathlib import Path
 from typing import get_args
 
 import pytest
+from _contract_freeze_v1 import FROZEN_DEPENDENCY_TYPE, FROZEN_ROLE_KEYS
 
 from ddm_v2.nlp.contracts import (
     ROLE_KEYS,
@@ -212,7 +213,14 @@ def test_system_prompt_enumerates_every_contract_role_key():
 
     契約與教材同步的守衛：日後若真的新增角色鍵（ADR-011 的欄位只增不改），
     忘了寫進 prompt 這條會紅——模型不會用它不知道的鍵。
+
+    ⚠️ 判準的**下界**不由 `ROLE_KEYS` 自己提供（見下一句斷言）：拿被測物當合法集合的
+    來源，收窄時判準會跟著收窄——不但擋不住收窄，還會替收窄背書。
     """
+    assert FROZEN_ROLE_KEYS <= set(ROLE_KEYS), (
+        f"ROLE_KEYS 收窄了，少了 {sorted(FROZEN_ROLE_KEYS - set(ROLE_KEYS))}"
+        "——本測試的合法集合會跟著縮，請先看 test_contract_enum_freeze。"
+    )
     missing = sorted(
         k
         for k in ROLE_KEYS
@@ -235,8 +243,16 @@ def test_system_prompt_enumerates_every_dependency_type():
     與 `test_system_prompt_enumerates_every_contract_role_key` 同一個道理，來源也
     同一個：plan-v1.2 的評測裡模型自創 `same_hand`，整筆 json_or_schema 作廢——
     契約列了四個合法值，prompt 一個都沒列。日後 enum 增值忘了寫進 prompt，這條會紅。
+
+    ⚠️ `get_args(DependencyType)` 是「目前的合法集合」，**不是下界**：enum 一收窄，
+    這裡的 `legal` 也跟著縮，missing 恆為空＝守衛替收窄背書。下界由
+    `_contract_freeze_v1.FROZEN_DEPENDENCY_TYPE`（凍結測試獨立保證）補上。
     """
     legal = get_args(DependencyType)
+    assert FROZEN_DEPENDENCY_TYPE <= set(legal), (
+        f"DependencyType 收窄了，少了 {sorted(FROZEN_DEPENDENCY_TYPE - set(legal))}"
+        "——本測試的合法集合會跟著縮，請先看 test_contract_enum_freeze。"
+    )
     missing = sorted(t for t in legal if t not in plan_v1.SYSTEM_PROMPT)
     assert missing == [], f"system prompt 未列出的 dependency type：{missing}"
 

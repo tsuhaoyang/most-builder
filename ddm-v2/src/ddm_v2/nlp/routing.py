@@ -16,6 +16,12 @@ ROUTING_REASONS = frozenset(
         # 非有限值（NaN／±Inf）被 compiler 拒收——放行會落到最大 A 檔位／算出
         # nan TMU／丟 Decimal 例外（見 policies.NON_FINITE_VALUE_REJECTED）
         "non_finite_value_rejected",
+        # `template_hint`：由 `compute_routing` 從 candidate 的 review_reason 寫進
+        # reasons，並列在 `_eligible_auto` 的 `blocked` 內擋 auto——**先前漏宣告**。
+        # 這裡是宣告，那裡是執行；兩者由
+        # `tests/unit/test_contract_enum_freeze.py::test_eligible_auto_blocked_reasons_are_all_declared`
+        # 單向釘死（blocked ⊆ 本集合）。
+        "template_hint",
         "planner_invented_action",
         "tool_state_violation",
         # ADR-033 D6（spec §7.5.1）：adapter 邊界的**剝除**旗標。契約放寬後這些

@@ -1,6 +1,17 @@
 """WI AI Parser orchestrator（L0–L2：plan → link → compile → engine gate）。
 
 Spec §10；drafts 由 most_compiler + engine 產生，禁止在本層算 TMU。
+
+⚠️ **本檔不得訂閱 planner 的 sanitize observer**——`LLMPlannerAdapter` 的那個建構子
+參數（名稱＝`on_` ＋ `sanitize`，**本檔刻意拆成兩段寫**，理由見下）。它的第三個
+callback 參數帶 `contracts.StripDetail`＝**被剝除的原文值**（模型可控字串：role 的
+text/value/unit、定位不到的 evidence 片語），只給評測腳本 `scripts/wi_ai_eval.py`；
+生產路徑掛上去等於把那些值送進非預期路徑。
+
+守衛 `tests/unit/test_production_no_sanitize_observer.py` 是**零容忍的字面子字串比對**
+——**連註解與 docstring 也算命中**（同下方 `_option_labels` 對 `FORBIDDEN_EN_CARRIERS`
+的先例）。所以要在本檔提到那個參數名，一律拆開寫，否則「寫一句『這裡刻意不掛它』」
+本身就會讓守衛紅，而且訊息會指控本檔訂閱了它。
 """
 from __future__ import annotations
 

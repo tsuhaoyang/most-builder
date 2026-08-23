@@ -29,6 +29,17 @@
 
 狀態值：`not_started / in_progress / blocked / completed / blocked_on_adr`
 
+**ADR-033 收斂遷移（2026-08-22 裁定，P0→P5 不得跳階）**
+
+| Phase | 內容 | 狀態 | 開工 | 完成 | Checkpoint |
+|-------|------|------|------|------|------------|
+| P0 | ADR-033 裁決（U-1~U-7 全數決定，`accepted`） | `completed` | 2026-08-22 | 2026-08-22 | 使用者親筆裁決 |
+| P1 | **只放寬契約，prompt 一字未動**（單變數觀察） | `completed` | 2026-08-23 | 2026-08-23 | `678c0ff`；硬失敗 8→1；cr APPROVE_WITH_NITS ＋ 事後抽驗 |
+| P2 | prompt 改寫為 `plan-v2.0`（D1 去數值／D2 角色鍵收斂） | `not_started` | — | — | — |
+| P3 | 距離單一來源接管（D7）＋ 頻率 parser 對接 | `not_started` | — | — | — |
+| P4 | 觀察期（U-7：把「契約放寬」與「prompt 改寫」兩個變數分開判讀） | `not_started` | — | — | — |
+| P5 | 收線與門檻重訂 | `not_started` | — | — | — |
+
 ## 2. Checklist 進度（對照 spec §18）
 
 ### L0
@@ -320,6 +331,82 @@ explicit 角色**，對 `explicit_unresolved` 完全不驗，對只帶 `value` �
 「有值」、不問有無依據——兩處捏造都落在盲點裡。與 S-2 同源。
 
 
+### P1 落地紀錄（ADR-033「只放寬契約」，2026-08-23，commit `678c0ff`）
+
+P1 是刻意設計的**單變數觀察**：契約放寬，**prompt 一字未動**（仍是 `plan-v1.4`）。
+目的是把「契約在擋合格答案」與「模型解不出來」兩件事分開量。
+
+**結果：硬失敗 8 → 1。**而且 8 案裡有 **4 案（`g20`／`g24`／`g35`／`g46`）
+是 gold=1／pred=1／f1=1.0 的完美答案被契約擋掉**——模型早就答對了，是我們的驗證形狀
+在拒收。這一條驗證了 ADR-033 的前提：8 個硬失敗**全部是契約形狀問題，語義錯誤 0 個**。
+
+契約側動的三件事（細節見 ADR-033 D2/D3/D5）：`status` 由必填改為可選、四條 status
+規則移除、`dependencies` 在 `model_validate` **之前**清理（`ActionDependency.type` 是
+Literal，pydantic 之後才處理已經太遲——`g13` 就是死在那裡）。
+
+**T-16 的診斷結論（StripDetail 側通道）**：4 個被剝除的值裡，2 個是佔位字串
+（「未指定」／「未指定工具」——正是規則 4 明文禁止的東西，**剝除是對的**），
+2 個是縮寫改述（「鎖附固定並確認到位」漏掉「螺絲」）。
+**建議：不要放寬 `role_text_not_in_source` 這條不變量，改在 P2 的 prompt 裡教「照抄不要改寫」。**
+理由：這條不變量正在做它該做的事，放寬它會同時把佔位字串放進來。
+
+#### 抽驗結果（`ddm-testing` 席，事後獨立稽核）
+
+- 6 條 mutation 全部確認會轉紅。
+- 兩處「先天空跑」疑慮**經破壞性驗證為真守衛**：拿掉 `_redact_secrets` 後，
+  sentinel `sk-t12-e2e-sentinel-MUST-NOT-APPEAR` 與真實的臨時 port 都出現在報告裡
+  ——證明那支 HTTP e2e 探針真的發出過請求，不是 stub。
+- ⚠️ **更正**：先前記錄「role.text 的守衛需要兩步 mutation 才會紅」是錯的，
+  **一步就會紅**（把 role.text 塞進 reason 字串即足）。守衛比實作者自己以為的更強。
+
+#### ⚠️ 缺口 1（本輪新開票，P2）：ADR-011「對外列舉不得收窄」只是偶然被守到
+
+實測：`RoleStatus` 拿掉 `"default"` → `pytest tests/unit` **1385 passed 全綠**。
+拿掉 `"explicit_unresolved"` 會紅，但那是**偶然**——因為 production 目前剛好會產出這個值，
+不是因為有相容性守衛；沒有 producer 的成員一律無聲。
+更糟一層：`tests/unit/test_prompt_few_shots.py:239` 拿 `get_args(DependencyType)`
+**當合法集合的來源**——enum 一收窄，守衛的判準跟著收窄，不但擋不住還替收窄背書。
+
+#### ⚠️ 缺口 2（P3）：production 路徑沒有守衛擋住評測用 side-channel
+
+沒有測試斷言 `wi_ai_service` **不會**掛上 `on_sanitize` observer。`StripDetail` 是評測專用，
+掛到 production 等於把被剝除的原文值送進非預期路徑。
+
+#### 事故紀錄：逾時中斷的 mutation 會把壞掉的中間態留在磁碟上
+
+本輪一度出現兩個違反 ADR-011 的中間態（`DependencyType` 少 `precedes`、
+`RoleStatus` 少 `explicit_unresolved`）。原因**不是**程式迴歸：某席位的逐值 mutation 迴圈
+**撞到 Bash 2 分鐘逾時**，剛好卡在「已寫入收窄後的 enum、還沒執行還原」的位置——
+**還原寫在同一條指令的尾端，中斷即不執行**。另有一次整檔 `cp` 還原蓋掉了另一席位的編輯。
+
+**因此定為動手紀律（已寫入 `.claude/agents/ddm-testing.md` 與本節）**：
+
+1. **mutation 與還原必須是兩條獨立的 Bash 指令**，不得綁在同一條指令的頭尾。
+2. 還原一律 `git checkout <file>`，由 git 決定真相；**不得**用 `cp` 備份還原（會連別人的編輯一起蓋掉）。
+3. **先 commit 建立乾淨基準，再做 mutation。**
+4. 同一批檔案**不得同時派多個會寫入的席位**（本輪三次排程錯誤，第三次造成實害）。
+5. ⚠️ **「測試通過」驗不出「某段編輯被覆蓋掉」**——被蓋掉的若是 docstring，測試永遠是綠的。
+   完整性稽核要用標記清單 ＋ 執行期行為探針，不能只看綠燈。
+6. **mutation 只能對 git 追蹤中的檔案做。** 新檔（`??`）沒有 index 版本，`git checkout` 救不回來
+   ——要驗新檔就先真的 `git add`（暫存內容，不必 commit）。2026-08-24 驗「凍結表被掏空」時踩到，
+   只能手動還原；`ddm-testing` 席位當時正確地迴避了這條 mutation，理由就是這個。
+
+   ⚠️ **`git add -N`（intent-to-add）不算數，而且比沒 add 更危險。** 實測（2026-08-24）：
+   `git add -N` 寫進 index 的是 `e69de29`——git 的**空 blob 常數**。之後 `git checkout -- <file>`
+   會**退出碼 0、無任何警告、把檔案截成 0 byte**。它不是「還原失敗」，是**看起來成功的靜默資料遺失**。
+   要有真的還原路徑只有兩條：真 `git add`（暫存內容）或先 commit。
+
+7. **mutation 之前，index 必須等於你要還原回去的那個狀態。** `git checkout` 是**從 index 還原**，
+   不是從「我剛才驗過的工作狀態」還原。2026-08-24 實際出事兩次：協調者 `git add` 的是**修改前**
+   的快照，實作席在那之上改完（未 stage）就開始 mutation，`git checkout` 把**它自己的修復一起
+   還原掉**——其中一次抹掉的是產品碼（`routing.py` 的 `template_hint`）。兩次都被下一輪測試抓到，
+   但中間還留下一個殘骸撐到全跑才現形。
+
+   所以正確順序是三步不是兩步：**改完 → 驗綠 → `git add` → 才開始 mutation → `git checkout` 還原
+   → 驗證還原結果**（`git diff --stat` 該為空，或 grep 計數該對）。
+   ⚠️ **`git add` 一個「還沒驗過」的中間態，跟沒有還原路徑一樣危險。**
+
+
 ## 9. 已知限制與待決票（2026-08-22 checkpoint 明確不修的項目）
 
 > 這一節的存在是為了讓「沒修」是**被決定的**、不是被遺忘的。每一項都附「為什麼這輪不修」。
@@ -422,3 +509,97 @@ explicit 角色**，對 `explicit_unresolved` 完全不驗，對只帶 `value` �
 3. **S-5**：`ROUTING_REASONS` 白名單落地或刪除（宣告了卻不執行比沒有更糟）。
 4. **T-6**：`tests/conftest.py` 加 autouse fixture 每測試後 `get_settings.cache_clear()`（通則解，取代目前只涵蓋同檔的偵測器）。
 5. **T-7**：把「spec §7.2 的 prompt 區塊 ＝ `SYSTEM_PROMPT` 常數」變成測試（目前靠人工比對）。
+
+### Q-4 · P1 事後抽驗開出的守衛缺口（2026-08-23 開票，G-1／G-2 已於 2026-08-24 關閉）
+
+> 這兩項都不是「程式有 bug」，是**宣稱沒有紅燈守著**（CI_GATES 硬性規則 9）。
+> 缺口 1 與本輪的實際事故是同一個形狀，優先於 P2。
+
+| 票 | 級別 | 內容 | 完成證據 |
+|---|---|---|---|
+| **G-1** ✅ | P2 | ADR-011「對外列舉不得收窄」無守衛。`RoleStatus` 拿掉 `"default"` → unit **1385 passed 全綠**。需對 `contracts.py` 全部 5 個對外 Literal 別名（`ActionType`／`RoleStatus`／`DependencyType`／`CandidateSource`／`RoutingStatus`）加**凍結基準 ⊆ 實際**斷言。連帶修 `test_prompt_few_shots.py:239` 拿 `get_args(DependencyType)` 當合法集合來源的 anti-pattern（enum 收窄時守衛判準會跟著收窄） | 逐個別名 mutation 轉紅；**另需對「`get_args()` 回空 tuple 而恆綠」做一次 mutation**（把別名改成 `str`），證明凍結測試自己不是空跑 |
+| **G-2** ✅ | P3 | 無測試斷言 `wi_ai_service` **不會**掛上 `on_sanitize` observer。`StripDetail` 側通道是評測專用，掛到 production 等於把被剝除的原文值送進非預期路徑 | mutation：在 production 路徑掛上 observer → 測試轉紅 |
+
+**G-1／G-2 關閉紀錄（2026-08-24）**：新增 `tests/unit/test_contract_enum_freeze.py`（55 案）、
+`tests/unit/test_production_no_sanitize_observer.py`（5 案）與資料模組 `_contract_freeze_v1.py`
+（凍結下界表，**判準來源刻意放在契約之外**）。unit 1385 → **1445 passed**，ruff 全綠。
+mutation 證據：實作席 13 條 ＋ 協調者獨立複驗 4 條，數字一致——
+`RoleStatus` 去 `default` → 3 failed；`RoutingStatus = str` → 6 failed（含掃描器自檢）；
+production 掛 observer → 2 failed；**凍結表掏空 → 5 failed ＋ 3 skipped**（那 3 skipped
+就是「參數化清單一空、斷言整批消失而非變紅」的無聲失效形狀，防掏空下界正是在擋它）。
+最有訊息量的一條是 `ROUTING_REASONS` 去一個成員 → **只有新守衛紅**，直接證明它先前 100% 無聲。
+
+**複審（`code-reviewer`）開出 2×P1／2×P2／1×P3，全數修完（2026-08-24）**：unit 1445 → **1468**
+（+23），integration 589 passed／1 skipped，ruff 全綠。兩條 P1 都是**靜默失效**，且**都不在
+實作席的自我揭露裡**：
+
+- **P1-1｜驗證的對象選錯了一格。** 凍結表沒抄錯——它**忠實複製了一個本身就漏的宣告**。
+  `template_hint` 在 `routing.py:88` 寫進 `reasons`、`:127` 的 `blocked` 裡實際擋 auto，
+  卻不在 `ROUTING_REASONS`。雙向 diff 照不到，因為表與宣告完全一致。真正該比的是
+  「宣告 vs 生產端實際吐出的鍵」。修法：補宣告 ＋ 新增 `blocked ⊆ ROUTING_REASONS`
+  守衛（AST 取 function-local 字面量，非 grep）——**加這條時它就是紅的**，補完才綠。
+  ⚠️ **只單向**：反方向那四個（`composite_unknown`／`fallback_rule_based`／
+  `planner_invented_action`／`tool_state_violation`）是**正確設計**，後兩者走
+  `plan.unresolved`（`contracts.py:634` 取 `r.split(":",1)[0]` 的裸前綴），被 `_eligible_auto`
+  第一行 `if plan.unresolved: return False` 擋得更早更硬。斷言反方向會把正確設計判成錯，
+  已在 docstring 寫明「請不要順手補齊」。
+- **P1-2**：`FROZEN_ALIAS_SCAN_MODULES` 是唯一被 `parametrize` 直接消費卻沒有下界守著的表；
+  清空它，涵蓋率檢查**skipped 而非 failed**（`stale` 反向檢查在同一個消失的 body 裡也一起消失）。
+- **P2-1**：`MIN_*` 的 `>=` 會沉默鬆弛（表長大、常數不動 → 一次刪多個仍全綠），改 exact parity。
+- **P2-2**：實際涵蓋 11/15 個模組級別名，`schemas/v2` 另有 13 個 inline Literal 欄位零守衛。
+  範圍不擴（G-3），但檔頭必須講白——**標題比內容大比沒有守衛更危險**。
+- **P3-1**：靜態掃描是純字面比對，**註解也算命中**；不改邏輯（同型先例 `FORBIDDEN_EN_CARRIERS`），
+  改在生產檔留警語 ＋ 訊息從「訂閱了」改成「提到（含註解）」。
+
+**協調者獨立量到、複審也沒抓到的一條**：判準 `base ⊆ actual` 讓**合法新增永遠是綠的，
+包含「加了成員但忘了登記進凍結表」**——該成員從此不受保護，日後被拿掉不會紅。
+**凍結表會腐爛，而腐爛過程全綠。** 修法是另加 `actual ⊆ base` 的獨立家族（21 例），
+刻意**不**合併成相等：一組答「誰違反 ADR-011」，一組答「誰忘了登記」，混成一條訊息會失去指向性。
+實測對照最有說服力——加 `RoutingStatus.deferred` 不登記 → **新守衛 2 紅，舊的
+`members_only_grow` 11 支全綠**。
+
+**三輪複審的收斂紀錄（2026-08-24 收線，最終 unit 1385 → 1471、integration 589／1 skipped）**
+
+複審跑了三輪，每一輪都在**上一輪的修復**裡找到新洞：
+
+| 輪次 | 發現 | 性質 |
+|---|---|---|
+| 1 | P1-1 `template_hint` 漏宣告、P1-2 掃描清單無防掏空、P2-1 `MIN_*` 鬆弛、P2-2 涵蓋率、P3-1 註解誤報 | 原始守衛的洞 |
+| 2 | F1 抽取器**過濾而非驗證**、F3 不對稱只有 docstring 擋、F4 措辭修好一個弄壞另一個 | **第 1 輪修復引進的新洞** |
+| 3 | G1 抽取器只認第一個綁定（`\|=` 全綠）、G2 新表漏了防掏空常數 | **第 2 輪修復引進的新洞** |
+
+⚠️ **這條迴圈不會自然收斂。** 「加守衛 → 守衛自己有洞 → 再加守衛」每一輪都找得到東西，
+而且 G2 與第 1 輪剛修好的 P1-2 是**同一個模式**（新表漏了防掏空常數）。收斂只能靠人為劃線。
+
+**劃線的判準（本輪採用）**：**能擋住所有已實測的繞過方式，就足夠進 repo。** 不是「已經完美」
+——是遞減報酬的轉折點已經過了。剩下的**已知未保證誠實列進 CI_GATES 與本節**，不假裝守到了。
+
+**這三輪最有價值的三個 mutation 形狀**（都不是實作者會想到的）：
+1. `blocked` 裡放一個 `Name` 引用 → elts 15／抽到 14 → **全綠**（過濾式抽取器的結構性盲點）
+2. `blocked |= {...}` 加在字面量之後 → **全綠**（提早 return 的盲點）
+3. 掏空 `_INTENTIONALLY_UNBLOCKED` → 兩個斷言對空 dict **同時恆真** → 全綠
+
+**方法論教訓（比修好的東西更值得留）**：
+- **驗證的對象可能選錯一格。** P1-1 的凍結表沒抄錯，它忠實複製了一個**本身就漏的宣告**；
+  雙向 diff 比的是「表 vs 宣告」（一致），該比的是「宣告 vs 生產端實際吐出的鍵」。
+- **過濾 ≠ 驗證。** 凡是「篩出合格的」而不是「不合格就失敗」的程式，被篩掉的東西不留痕跡，
+  任何基於篩後結果的數量檢查都測不出自己漏了什麼。
+- **不作為要有名字。** 「刻意不加某個東西」若只寫在 docstring，下一個人「順手補齊」不會有任何
+  東西紅——而那次補齊可能實際改變行為。把不對稱寫成可執行斷言，紅燈就是決策點。
+
+**仍為已知未保證（不修，誠實列出）**：抽取器只讀得懂單一字串字面量（更複雜的寫法會被擋下
+而非讀懂）；靜態掃描字串拼接繞得過；`FROZEN_ALIAS_SCAN_MODULES` 以外的新模組不會被自動發現；
+G-3 那 17 個未凍結列舉確實無守衛；別名層 11／欄位層 8 只逐一 mutate 了其中數條；
+`test_production_no_sanitize_observer.py` 這個檔名拿掉 `no_` 就會變成 needle（無測試釘住）。
+
+**G-3（新開，未排期）**：`motion_module.category`／`scope`、`rule_set_options.vision_scope`／`kind`
+同屬 ADR-011 範圍但**無等價守衛**，是真空白。本輪未納入是因為範圍限在 wi-plan-v1／`ai_parse_runs`
+那條線；要不要用同一張凍結表擴出去，需裁決。另有兩個**已知盲區**（非疏漏，是設計取捨）：
+AST 涵蓋率掃描的模組清單是顯式的，新增 `schemas/v2/*.py` 的別名不會被自動偵測；
+observer 靜態掃描只認字面，字串拼接（`getattr(planner, "_on_" + "sanitize")`）繞得過。
+
+### 未決的上游問題（提出三次未獲裁決，記在這裡以免再遺忘）
+
+`docs/llm/wi-ai-parser-system-spec.md` §14.4 訂了 **dependency F1 門檻**。ADR-033 **D5 已把
+`dependencies` 降為選填、不可致命**，該門檻因此**不再適用**。要嘛開票改上游 spec、要嘛明文
+記為「已知失效條文」——現在的狀態是兩者皆無，一條沒有人要負責的門檻還掛在權威文件裡。
