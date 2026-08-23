@@ -1,6 +1,8 @@
 """compute_routing §10.3 決策表。"""
 from __future__ import annotations
 
+import pytest
+
 from ddm_v2.nlp.contracts import (
     CycleDraft,
     EvidenceSpan,
@@ -252,3 +254,65 @@ def test_auto_blocked_by_non_finite_value_rejected():
     )
     assert status == "review"
     assert "non_finite_value_rejected" in reasons
+
+
+# ── ADR-033 D6：adapter 邊界的剝除旗標必須擋 auto ──────────────────────────
+#
+# 契約放寬（P1）之後，「模型輸出有問題」不再等於整筆退回 rule parser，而是逐項
+# 剝除後繼續。代價是那份計畫**已經被我方改過**——被改過的東西不得自動落地成
+# 工時標準，覆核者也必須看得到改了什麼。四個旗標經 `plan.unresolved` 進來
+# （`contracts.sanitize_planner_output` 併入），這裡驗它們真的擋得住。
+
+
+def _plan_with_unresolved(*reasons: str) -> WorkInstructionPlan:
+    plan = _plan("acquire")
+    return plan.model_copy(update={"unresolved": list(reasons)})
+
+
+@pytest.mark.parametrize(
+    "reason",
+    [
+        "role_key_dropped",
+        "role_numeric_stripped",
+        "role_text_not_in_source",
+        "dependency_dropped",
+    ],
+)
+def test_auto_blocked_by_adapter_strip_reasons(reason: str):
+    """其他條件全綠（候選 synonym_exact、draft complete 且引擎收），唯一擋住
+    auto 的就是旗標本身。
+
+    mutation：把 `unresolved` 那道拆掉、且把該旗標移出 `_eligible_auto` 的
+    blocked 集 → status 變 auto → 本測紅。
+    """
+    drafts = [
+        CycleDraft(
+            action_id="a1",
+            cycle={"seq": "GM"},
+            complete=True,
+            engine_result={"total_tmu": 10},
+            issues=[],
+        )
+    ]
+    status, reasons = compute_routing(
+        _plan_with_unresolved(reason),
+        [_exact_cand("G", "g2.g_code", "g_grasp")],
+        drafts,
+        auto_enabled=True,
+    )
+    assert status == "review", f"{reason} 被我方剝除過的輸出不得自動落地"
+    assert reason in reasons, "旗標必須對覆核者可見"
+
+
+def test_adapter_strip_reasons_are_declared_in_routing_reasons():
+    """四個旗標要進 `ROUTING_REASONS`（前端依 key 顯示文案的封閉集合）。
+    ⚠️ 該常數目前全 repo 零引用（資安 S-5），不會自動擋住漏登記——真正的
+    擋 auto 保證在上面那支參數化測試。"""
+    from ddm_v2.nlp.routing import ROUTING_REASONS
+
+    assert {
+        "role_key_dropped",
+        "role_numeric_stripped",
+        "role_text_not_in_source",
+        "dependency_dropped",
+    } <= ROUTING_REASONS

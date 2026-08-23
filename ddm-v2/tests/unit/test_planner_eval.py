@@ -1269,7 +1269,7 @@ def test_cli_report_contains_both_segments(tmp_path: Path):
     assert latest.exists()
     report = json.loads(latest.read_text(encoding="utf-8"))
 
-    assert report["report_schema_version"] == "wi-gold-report-v8"
+    assert report["report_schema_version"] == "wi-gold-report-v10"
     assert report["unapproved_cases"] == []
     # 向後相容：頂層 summary/cases（compile 段）維持 v1 形狀
     assert report["summary"] == {"total": GOLD_TOTAL_N, "passed": GOLD_TOTAL_N, "failed": 0}
@@ -1669,3 +1669,340 @@ def test_cli_unapproved_cases_demote_report_to_draft(tmp_path: Path):
     report = json.loads(latest.read_text(encoding="utf-8"))
     assert report["unapproved_cases"] == ["d999_pending.json"]
     assert "wi-draft-latest.json" in proc.stdout
+
+
+# ── v10：被剝除的值進報告（ADR-033 P1 觀察期補測）────────────────────────
+#
+# ⚠️ **這一段必須是探針，不能靠預設評測**：預設 `--planner rule` 完全不經
+# `sanitize_planner_output`，`stripped_values` 恆為空 dict——拿「compile 55/55 全綠」
+# 當這條路徑的證據等於空跑（worklog §9 T-8 記著這個陷阱）。所以這裡起一個真的
+# HTTP 伺服器、讓 `LLMPlannerAdapter` 真的跑完 sanitize，逼這條路徑執行。
+
+
+def _start_degrading_llm_server():
+    """起一個回**合法但會被逐項剝除**的 plan 的 OpenAI-compat 伺服器。
+
+    與 `_start_echoing_llm_server` 的差別：那支故意加散文前綴讓 JSON 解析失敗
+    （測硬失敗路徑），這支回**解得開**的 JSON——P1 之後這才是常態，也正是
+    `planner_raw_rejected` 留不下東西的那條路。伺服器同樣把收到的
+    `Authorization` 與請求 URL 抄進**角色片語**裡，於是「模型可控字串挾帶憑證
+    進報告」這條路徑是真的走了一遍。
+    """
+    import threading
+    from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+
+    class _Handler(BaseHTTPRequestHandler):
+        def do_POST(self) -> None:  # noqa: N802 — BaseHTTPRequestHandler 的介面
+            self.rfile.read(int(self.headers.get("Content-Length") or 0))
+            upstream = f"http://{self.headers.get('Host')}{self.path}"
+            plan = {
+                "language": "zh",
+                "actions": [
+                    {
+                        "action_id": "a1",
+                        "action_type": "acquire",
+                        "sequence_order": 1,
+                        "roles": {
+                            # 原文沒有的片語 → role_text_not_in_source
+                            "object": {"text": "記憶體模組"},
+                            # 挾帶憑證與 URL，且夾一個 ESC（終端機是另一個 sink）
+                            "destination": {
+                                "text": f"\x1b[2Jupstream={upstream} "
+                                f"auth={self.headers.get('Authorization')}"
+                            },
+                            # 數值 → role_numeric_stripped
+                            "distance": {"value": 450, "unit": "cm"},
+                            # 自創鍵 → role_key_dropped
+                            "object_ref": {"text": "治具", "action_ref": "a1"},
+                        },
+                        "evidence": [{"text": "拿起dimm"}],
+                    }
+                ],
+                "dependencies": [],
+                "unresolved": [],
+            }
+            body = json.dumps(
+                {
+                    "model": "degrading-echo:0b",
+                    "choices": [
+                        {"message": {"content": json.dumps(plan, ensure_ascii=False)}}
+                    ],
+                },
+                ensure_ascii=False,
+            ).encode("utf-8")
+            self.send_response(200)
+            self.send_header("Content-Type", "application/json")
+            self.send_header("Content-Length", str(len(body)))
+            self.end_headers()
+            self.wfile.write(body)
+
+        def log_message(self, *args) -> None:
+            pass
+
+    server = ThreadingHTTPServer(("127.0.0.1", 0), _Handler)
+    threading.Thread(target=server.serve_forever, daemon=True).start()
+    return server
+
+
+def test_stripped_values_are_preserved_and_redacted_in_the_report(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture
+):
+    """降級（**不是**硬失敗）的案例要留下被剝掉的值，且憑證／URL 不得隨之入版控。
+
+    這條同時釘住四件事：
+    1. `stripped_values` 真的被寫進報告（非空跑——`by_code` 也必須同步計數）；
+    2. 內容答得出「模型寫的是什麼」（`記憶體模組`＝幻覺，可與「不變式過嚴」區分）；
+    3. 遮蔽照走（`<redacted-url>`／`<redacted-secret>`）——它是模型可控字串；
+    4. **終端機只印筆數不印內容**（本欄位不剝控制字元，未逸出印出去是另一個 sink）。
+
+    mutation 證據：拿掉 `sanitize_stripped_value` 的 `_redact_secrets` → api key
+    出現在報告；把 `stripped_values` 從 `SanitizeLog.to_dict` 拿掉 → KeyError；
+    把內容印進 stdout → ESC 斷言轉紅。
+    """
+    from ddm_v2.settings import get_settings
+
+    api_key = "sk-v10-stripped-sentinel-MUST-NOT-APPEAR"
+    server = _start_degrading_llm_server()
+    port = server.server_address[1]
+
+    gold = tmp_path / "gold"
+    _write_gold(gold, "g01.json", _load_g01())
+    out = tmp_path / "out"
+
+    monkeypatch.setenv("DDM_LLM_BASE_URL", f"http://127.0.0.1:{port}")
+    monkeypatch.setenv("DDM_LLM_API_KEY", api_key)
+    monkeypatch.setenv("DDM_LLM_MODEL", "eval-selftest-model:0b")
+    monkeypatch.setattr(sys, "argv", _llm_argv(gold, out, timeout="10"))
+
+    get_settings.cache_clear()
+    try:
+        assert wi_ai_eval.main() == 0
+    finally:
+        get_settings.cache_clear()
+        server.shutdown()
+        server.server_close()
+    stdout = capsys.readouterr().out
+
+    text = (out / "wi-gold-latest.json").read_text(encoding="utf-8")
+    for secret in (api_key, f"127.0.0.1:{port}"):
+        assert secret not in text, f"報告洩漏 {secret}"
+
+    sr = json.loads(text)["planner_eval"]["sanitize_reasons"]
+    entries = sr["stripped_values"]["g01_acquire_dimm"]
+    # 以 (reason, role_key) 為鍵：同一個 reason 可能命中多個角色（此例
+    # `role_text_not_in_source` 同時打到 object 與 destination），只用 reason 當鍵
+    # 會讓後者蓋掉前者、把「兩筆」看成「一筆」。
+    by_slot = {(e["reason"], e["role_key"]): e for e in entries}
+
+    # (1) 非空跑：四筆剝除都到齊，且與 by_code 的計數一致
+    assert set(by_slot) == {
+        ("role_text_not_in_source", "object"),
+        ("role_text_not_in_source", "destination"),
+        ("role_numeric_stripped", "distance"),
+        ("role_key_dropped", "object_ref"),
+    }, by_slot
+    assert sr["by_code"]["role_text_not_in_source"] == 2
+
+    # (2) 答得出「模型寫的是什麼」
+    assert by_slot[("role_text_not_in_source", "object")]["text"] == "記憶體模組"
+    assert by_slot[("role_numeric_stripped", "distance")]["value"] == 450
+    assert by_slot[("role_numeric_stripped", "distance")]["unit"] == "cm"
+    assert by_slot[("role_key_dropped", "object_ref")]["text"] == "治具"
+    assert all(e["phase"] == "initial" for e in entries), "可降級的問題不該觸發 retry"
+
+    # (3) 遮蔽照走——`destination` 那筆挾帶了憑證與 upstream URL
+    tainted = by_slot[("role_text_not_in_source", "destination")]
+    assert "<redacted-url>" in tainted["text"]
+    assert "<redacted-secret>" in tainted["text"]
+
+    # (4) 終端機只印筆數；控制字元不得未經逸出印出去（報告 JSON 由 json.dumps 逸出）
+    assert "stripped_values 留存" in stdout
+    assert "記憶體模組" not in stdout
+    assert "\x1b" not in stdout
+    assert "\x1b" not in text
+    assert "\\u001b" in text
+
+
+def test_stripped_value_over_the_cap_is_truncated_with_a_trace():
+    """超長的被剝值要截斷並**留痕**——截過卻裝成完整值會讓事後判讀得出錯的結論。
+
+    上限（200）遠小於被拒回應的 4000，因為存的東西不同：這裡是單一 role 的片語
+    （gold 全 55 案最長 6 個字）。留 200 是給改寫／幻覺空間，不是給一整份回應。
+    """
+    from ddm_v2.nlp.planner_eval import STRIPPED_VALUE_MAX_LEN, sanitize_stripped_value
+
+    long_value = "字" * (STRIPPED_VALUE_MAX_LEN + 50)
+    out = sanitize_stripped_value(long_value, ())
+    assert out.startswith("字" * STRIPPED_VALUE_MAX_LEN)
+    assert out.endswith(f"…[truncated from {STRIPPED_VALUE_MAX_LEN + 50} chars]")
+
+    short = "記憶體模組"
+    assert sanitize_stripped_value(short, ()) == short, "正常長度不得被動到"
+
+
+def test_stripped_value_redacts_before_truncating():
+    """順序不可對調：先截斷會把橫跨切點的憑證剖成兩半、前半留在報告裡。"""
+    from ddm_v2.nlp.planner_eval import STRIPPED_VALUE_MAX_LEN, sanitize_stripped_value
+
+    secret = "sk-" + "z" * 40
+    # 讓憑證正好橫跨截斷點
+    value = "字" * (STRIPPED_VALUE_MAX_LEN - 10) + secret
+    out = sanitize_stripped_value(value, (secret,))
+    assert secret not in out
+    assert secret[:20] not in out, "憑證前半段留在報告裡＝大部分的祕密材料還在"
+    # 標記本身可能被上限切斷（此例只剩 `<redacted-`）——那是**顯示**的小瑕疵，
+    # 不是洩漏：憑證在截斷之前就已經被換掉了。記在這裡免得日後被當成 bug 修錯方向。
+    assert "<redacted-" in out
+    assert "[truncated from" in out
+
+
+# ── 資安複審 2026-08-23：本批新開的路自己漏掉的兩個欄位 ────────────────────
+
+
+def test_role_key_goes_through_redaction_and_truncation():
+    """`role_key` **也是模型可控的**，不得繞過遮蔽與截斷。
+
+    會漏是因為直覺把它當「欄位名」——但 `role_key_dropped` 那一類的鍵**依定義是
+    模型自創的**（不在 `ROLE_KEYS` 內，正因如此才被剝掉），封閉集合的保證在這一類
+    上剛好不成立。資安席實測：同一份 payload，走 `text` 的被遮成 228 字，走
+    `role_key` 的 5046 字、含密碼、未截斷地寫進要 commit 的 JSON。
+
+    mutation：把 `_stripped_to_dict` 的 `role_key` 改回 `detail.role_key` → 本測轉紅。
+    """
+    from ddm_v2.nlp.contracts import StripDetail
+    from ddm_v2.nlp.planner_eval import STRIPPED_VALUE_MAX_LEN
+
+    secret = "hunter2-" + "x" * 30
+    # URL 與長填充之間留空白：`_URL_RE` 在空白處停住，否則 5000 個 A 會被整段吞進
+    # `<redacted-url>`，測不到截斷那一層（第一版就踩到這個，留言免得再踩）
+    hostile_key = f"object_ref_{secret} http://internal.host/admin " + "A" * 5000
+    row = wi_ai_eval._stripped_to_dict(
+        "initial",
+        StripDetail(
+            action_id="a1", reason="role_key_dropped", role_key=hostile_key, text="治具"
+        ),
+        (secret,),
+    )
+    assert secret not in row["role_key"]
+    assert "<redacted-secret>" in row["role_key"]
+    assert "<redacted-url>" in row["role_key"]
+    assert len(row["role_key"]) < STRIPPED_VALUE_MAX_LEN + 60, "未截斷"
+    assert "[truncated from" in row["role_key"]
+
+
+def test_our_own_fields_are_not_mangled_by_redaction():
+    """反向控制：我方產生的欄位不得被遮蔽改寫（遮過當＝報告失去診斷價值）。"""
+    from ddm_v2.nlp.contracts import StripDetail
+
+    row = wi_ai_eval._stripped_to_dict(
+        "initial",
+        StripDetail(
+            action_id="a1",
+            reason="role_numeric_stripped",
+            role_key="distance",
+            value=450,
+            unit="cm",
+        ),
+        ("some-secret-value",),
+    )
+    assert (row["phase"], row["action_id"], row["reason"]) == (
+        "initial",
+        "a1",
+        "role_numeric_stripped",
+    )
+    assert (row["role_key"], row["value"], row["unit"]) == ("distance", 450, "cm")
+
+
+def test_non_finite_value_fails_loud_instead_of_writing_invalid_json():
+    """`value=NaN` 不得產生**非法 JSON**（RFC 8259 不允許裸 `NaN`）。
+
+    `RoleValue.value` 進 `StripDetail` 的時間點**早於** D1 的剝除（那正是這個欄位的
+    用途），所以剝除擋不到它。後果不是洩漏而是**版控檔壞掉**：用標準 parser 讀的
+    下游工具會炸，而且是 commit 之後才發現。寫檔那一刻 fail-loud 才對——這裡炸掉
+    是一次跑壞，寫出去是版控裡一份讀不了的證據。
+
+    ⚠️ 這條驗的是**寫檔那一刻的旗標**（`allow_nan=False`），所以它保護的是報告的
+    **所有**數值欄位，不只 `stripped_values.value`。
+
+    mutation：拿掉 `json.dumps(...)` 的 `allow_nan=False` → 本測轉紅（改為產出
+    含裸 `NaN` 的字串，而 `json.loads` 在 `parse_constant` 下會拒收）。
+    """
+    from ddm_v2.nlp.contracts import StripDetail
+
+    log = wi_ai_eval.SanitizeLog()
+    log.bind("g01")
+    log.observe(
+        "initial",
+        ["role_numeric_stripped:a1:distance"],
+        [
+            StripDetail(
+                action_id="a1",
+                reason="role_numeric_stripped",
+                role_key="distance",
+                value=float("nan"),
+            )
+        ],
+    )
+    report = {"planner_eval": {"sanitize_reasons": log.to_dict(())}}
+
+    # 預設（allow_nan=True）產出的是**非法 JSON**：嚴格 parser 拒收
+    lenient = json.dumps(report, ensure_ascii=False)
+    assert "NaN" in lenient
+    with pytest.raises(ValueError):
+        json.loads(lenient, parse_constant=_reject_json_constant)
+
+    # 我們寫檔用的旗標：在寫出去之前就炸
+    with pytest.raises(ValueError):
+        json.dumps(report, ensure_ascii=False, indent=2, allow_nan=False)
+
+
+def _reject_json_constant(name: str):
+    """RFC 8259 沒有 NaN／Infinity；嚴格 parser 會在這裡拒收。"""
+    raise ValueError(f"invalid JSON constant: {name}")
+
+
+def test_report_writer_refuses_to_write_non_finite_values(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+):
+    """**行為**測試：報告裡出現 NaN 時，`main()` 在寫檔前就炸，不產出非法 JSON。
+
+    走真正的寫檔路徑（在行程內跑 `main()`），把 NaN 從 `sanitize_reasons` 注入進去
+    ——那是真實入口：`RoleValue.value` 進 `StripDetail` 的時間點早於 D1 的剝除。
+
+    ⚠️ 為什麼不用 `inspect.getsource(main)` 抓字串：第一版就是那樣寫的，而它**抓不到
+    mutation**——`allow_nan=False` 這幾個字也出現在同一段的**註解**裡，把呼叫上的旗標
+    拿掉之後斷言照樣通過。字串比對不分程式碼與註解，是假的守衛。
+
+    mutation：拿掉寫檔那行的 `allow_nan=False` → 本測轉紅（會寫出含裸 `NaN` 的檔）。
+    """
+    gold = tmp_path / "gold"
+    _write_gold(gold, "g01.json", _load_g01())
+    out = tmp_path / "out"
+    monkeypatch.setattr(
+        sys, "argv", ["wi_ai_eval.py", "--gold-dir", str(gold), "--out", str(out)]
+    )
+
+    original = wi_ai_eval.SanitizeLog.to_dict
+
+    def _with_nan(self, secrets=()):
+        payload = original(self, secrets)
+        payload["stripped_values"] = {
+            "g01_acquire_dimm": [
+                {"phase": "initial", "reason": "role_numeric_stripped", "value": float("nan")}
+            ]
+        }
+        return payload
+
+    monkeypatch.setattr(wi_ai_eval.SanitizeLog, "to_dict", _with_nan)
+    with pytest.raises(ValueError):
+        wi_ai_eval.main()
+    assert not list(out.glob("*.json")), "炸掉之前不得已經寫出壞檔"
+
+
+def test_report_writer_still_writes_normal_reports(tmp_path: Path):
+    """反向控制：旗標不得誤傷合法數值——正常報告照樣寫得出來，且是**合法 JSON**
+    （用拒收 NaN／Infinity 的嚴格 parser 讀一次）。"""
+    proc = _run_cli(out_dir=tmp_path)
+    assert proc.returncode == 0, proc.stdout + proc.stderr
+    text = (tmp_path / "wi-gold-latest.json").read_text(encoding="utf-8")
+    json.loads(text, parse_constant=_reject_json_constant)

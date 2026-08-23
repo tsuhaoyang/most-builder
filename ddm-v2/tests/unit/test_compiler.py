@@ -322,9 +322,16 @@ def test_compiler_package_has_no_tmu_symbols():
 # 案例的 TMU＝改計算語意（IE 裁決範圍）。S-2 的病是靜默，旗標把「這個數字沒有
 # 出處」變成覆核者看得到、且擋得住 auto 的事實。
 #
-# 守衛邊界：本批**沒有**收緊 validation（雙向比對、`elif` 分支都原封不動）——
-# `test_three_bypasses_still_pass_validation` 把那個前提釘成斷言，修法若哪天改成
-# 靠 validation，該測會紅並提醒重跑 55 案評測。
+# 守衛邊界（2026-08-22 當時）：那一批**沒有**收緊 validation，
+# `test_three_bypasses_still_pass_validation` 把該前提釘成斷言。
+#
+# ⚠️ 2026-08-23（ADR-033 P1）三條繞過的攔截點已經改變，但 **compiler 一行沒動**：
+#   - 繞過 B（role.text 是 evidence 的超集）：D3 用「role.text 必須是
+#     `normalized_text` 的字面子字串」取代雙向比對，contracts 現在就擋得住；
+#   - 繞過 A／C（帶 value 的角色）：contracts 仍然放行，但 D1 讓 adapter 邊界
+#     一律剝除 `value`／`unit`，LLM 路徑再也送不進來。
+# 下面三條 compiler 旗標測試照舊——它們直接組 plan，不經 adapter，驗的是
+# 「值真的送到 compiler 時會不會靜默」。攔截點搬家不等於守衛可以拆。
 
 
 def _dist_plan(
@@ -406,28 +413,55 @@ def test_bypass_c_inferred_distance_with_action_ref_is_flagged():
     assert _m_dist(draft) == 400.0
 
 
-def test_three_bypasses_still_pass_validation():
-    """邊界宣告：本批**沒有**動 contracts 的驗證（不收緊雙向比對、不改 `elif`）
-    ——三條繞過依舊 `errors=[]`，攔截點在 compiler。改成靠 validation 擋，等於改變
-    多少 LLM 輸出會被拒→fallback，必須重跑 55 案評測才知道有沒有掉分（另記票）。"""
-    from ddm_v2.nlp.contracts import PlannerOutput, validate_planner_output
+def test_where_each_bypass_is_intercepted_after_adr033_p1():
+    """三條繞過**在哪一層**被攔下——攔截點是會搬家的，搬到哪裡要有斷言記著。
 
-    shapes = [
+    2026-08-22（S-2 修法當時）：三條都 `errors=[]`，唯一的攔截點是 compiler 旗標。
+    2026-08-23（ADR-033 P1）：
+
+    - 繞過 B 由 **contracts** 擋（D3 的字面子字串不變式取代雙向比對）；
+    - 繞過 A／C 的 contracts 仍放行（沒有 `text` 就沒有可驗的片語），改由
+      **adapter 邊界**剝除 `value`／`unit`（D1），LLM 路徑送不進 compiler。
+
+    compiler 側的三條旗標測試（上面）一行沒改、照舊會紅——這裡驗的是上游多了
+    兩道，不是下游可以拆。
+    """
+    from ddm_v2.nlp.contracts import (
+        PlannerOutput,
+        sanitize_planner_output,
+        validate_planner_output,
+    )
+
+    numeric_shapes = [
         {"distance": {"value": 300, "unit": "cm", "status": "explicit"}},
-        {"distance": {"text": "推動治具至三號無塵室30公分", "status": "explicit"}},
         {"distance": {"status": "inferred", "action_ref": "a1", "value": 400, "unit": "cm"}},
     ]
-    for roles in shapes:
+    for roles in numeric_shapes:
         plan = _dist_plan("推動治具", (0, 2, "推動"), roles)
-        errors = validate_planner_output(
-            PlannerOutput(language="zh", actions=plan.actions), normalized_text=plan.normalized_text
+        output = PlannerOutput(language="zh", actions=plan.actions)
+        assert (
+            validate_planner_output(output, normalized_text=plan.normalized_text) == []
+        ), f"契約層不驗數值角色的出處（沒有 text 就沒有片語可驗）：{roles}"
+        sanitized, reasons = sanitize_planner_output(
+            output, normalized_text=plan.normalized_text
         )
-        assert errors == [], (
-            f"validation 已被收緊（{roles}）。**這個紅不代表不准修 validation**——"
-            "它是提醒：收緊 contracts 會改變多少 LLM 輸出被拒→fallback，"
-            "必須重跑 55 案評測（約 25 分鐘）確認沒有掉分，再連同本測一起更新。"
-            "票號：資安 S-2（docs/llm/wi-ai-parser-worklog.md §9 資安表）。"
+        assert "role_numeric_stripped:a1:distance" in reasons, roles
+        role = sanitized.actions[0].roles["distance"]
+        assert (role.value, role.unit) == (None, None), (
+            f"adapter 邊界必須剝掉模型主張的數值（{roles}）——這是 ADR-033 D1／D7 "
+            "「距離只能來自對原文的確定性抽取或 ADR-031 佈局」的落地點。"
         )
+
+    superset = {"distance": {"text": "推動治具至三號無塵室30公分", "status": "explicit"}}
+    plan = _dist_plan("推動治具", (0, 2, "推動"), superset)
+    errors = validate_planner_output(
+        PlannerOutput(language="zh", actions=plan.actions),
+        normalized_text=plan.normalized_text,
+    )
+    assert "role_text_not_in_source:a1:distance" in errors, (
+        "D3 的字面子字串不變式應該擋下「role.text 是 evidence 的超集」這條繞過；"
+        f"實際 errors={errors}"
+    )
 
 
 @pytest.mark.parametrize(
@@ -802,10 +836,9 @@ def test_path2_keeps_centimetre_synonyms():
 def test_path2_reads_the_window_from_normalized_text_not_model_supplied_text():
     """守衛要自足：路徑 (2) 從 `normalized_text[start:end]` 切窗，不讀模型給的
     `ev.text`。捏造 `ev.text="推動治具450公分"`（原文只有「推動治具」）先前可以
-    替 `450cm` 取得背書——今天 `validate_planner_output` 會先擋
-    （`evidence_text_mismatch`），但 `compile_plan` 自己不驗它，守衛不該倚賴
-    另一個模組維持的不變量。原則同 `contracts.repair_evidence_offsets`：
-    text 是模型給的資料、offset 是可推導的座標。"""
+    替 `450cm` 取得背書——今天上游會先擋（ADR-033 D4：`locate_evidence_spans`
+    定位不到就剔除整個 action），但 `compile_plan` 自己不驗它，守衛不該倚賴
+    另一個模組維持的不變量。原則不變：text 是模型給的資料、offset 是可推導的座標。"""
     from ddm_v2.most_compiler.policies import numeric_claim_is_evidenced
 
     norm = "推動治具"
@@ -831,8 +864,11 @@ def test_path2_reads_the_window_from_normalized_text_not_model_supplied_text():
 
 
 def test_out_of_range_evidence_span_is_an_empty_window_not_an_exception():
-    """越界 span（模型算錯 offset 且 text 定位不到時 `repair_evidence_offsets`
-    會原樣留著）→ 切不出文字＝空窗＝無憑據，不得拋例外。"""
+    """越界 span → 切不出文字＝空窗＝無憑據，不得拋例外。
+
+    ADR-033 D4 之後正式管線不會再送進越界 span（offset 由
+    `contracts.locate_evidence_spans` 推導，定位不到的 action 直接剔除）——
+    但守衛不該倚賴另一個模組維持的不變量，本條照留。"""
     from ddm_v2.most_compiler.policies import numeric_claim_is_evidenced
 
     norm = "推動治具"

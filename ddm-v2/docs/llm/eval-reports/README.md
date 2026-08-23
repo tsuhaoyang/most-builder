@@ -14,7 +14,7 @@
   **拒寫** `wi-gold-*`——覆核期間不得污染官方報告（報告內 `unapproved_cases` 點名）。
 - 本目錄以 `.gitkeep` 與 `wi-gold-latest.json` 為起點；歷史報告可選擇性 commit。
 
-## 報告格式（`report_schema_version: wi-gold-report-v8`）
+## 報告格式（`report_schema_version: wi-gold-report-v10`）
 
 兩段並列、分開呈現：
 
@@ -130,6 +130,11 @@
   （`by_code`／`by_phase`／`by_case`＋note）＝`contracts.sanitize_planner_output()`
   的 reasons（含 evidence offset 修復次數）。純觀測，不影響分數與退出碼；
   rule planner 不經 sanitize，三個統計恆為空。
+  ⚠️ **ADR-033 P1（2026-08-23）起 `sanitize_reasons` 的代碼詞彙與
+  `evidence_offset_repaired` 的語意都變了**（報告 schema 形狀不變，故未升版）：
+  `evidence_text_ambiguous` 不再出現、`evidence_text_not_found` 併入
+  `planner_invented_action`、另新增四個剝除代碼。跨該日期比較這一區的數字之前，
+  **以報告內 `sanitize_reasons.note` 的說明為準**——那份 note 是隨報告走的權威。
 - v6 → v7（2026-08-22）：加法＋兩個既有欄位的值域收斂。新增頂層 `planner_run`
   （見上表；模型記 `model_requested` 與 `model_served` **兩個**——請求值與伺服器
   回報值會分岔，後者證據力較強）——此前報告**不記自己是哪顆模型、哪一版 prompt
@@ -143,6 +148,38 @@
   說明其值域與遮蔽。頂層 compile 段與 `planner_eval` 其餘形狀不變；分數、退出碼與
   既有欄位語意皆不受影響（純觀測）。動機見 ADR-033 T-12：報告只記錯誤碼時，
   契約放寬後「硬失敗變切分錯誤」這件事量不到。
+- v8 → v9（2026-08-23）：**形狀不變、語意變更**——**這是第一個這種性質的版本**。
+  v3–v8 全是加法（或加法＋值域收斂），只有本版**沒有任何欄位增減**：頂層 compile 段、
+  `planner_eval` 的欄位、分數與退出碼**全部不變**。變的是
+  `planner_eval.sanitize_reasons` 的代碼詞彙與其中一個代碼的**意思**（ADR-033 P1）：
+  - `evidence_offset_repaired`：從「模型算錯 offset、我方修好」的**防線動作次數**，
+    變成「模型給的 offset 與推導結果不同」的**純觀測量**（P1 起 offset 一律由
+    `contracts.locate_evidence_spans()` 推導，模型報的座標不再有權威）。
+    **跨 v8／v9 比較這個數字會誤讀**——v8 以前的既有報告（plan-v1.3 兩輪各 62／63 次）
+    用的是舊語意。
+  - `evidence_text_ambiguous` 不再出現；`evidence_text_not_found` 不再單獨出現
+    （併入 `planner_invented_action:<id>:evidence_text_not_found`，而 `by_code` 只取
+    冒號前前綴，故在 `by_code` 裡看不到差別，要看 `by_case`）。
+  - 新增四個剝除代碼：`role_key_dropped`／`role_numeric_stripped`／
+    `role_text_not_in_source`／`dependency_dropped`。
+  **為什麼形狀沒變也升版**：這是最危險的一種變化——**名字一樣、型別一樣、數字可比、
+  意思不同**。欄位改名會讓下游工具立刻壞掉，語意漂移不會。而 `prompt_version`
+  **分辨不了 P1 前後**（P1 刻意不動 prompt，前後都是 `plan-v1.4`），
+  所以 `report_schema_version` 是報告裡**唯一**能承載「這份的欄位語意與先前不同」
+  的欄位。詳細說明隨報告走，見 `planner_eval.sanitize_reasons.note`。
+- v9 → v10（2026-08-23）：**加法**（形狀增欄、既有欄位語意不變）。
+  `planner_eval.sanitize_reasons` 新增 `stripped_values`（逐案清單：
+  `phase`／`action_id`／`reason`／`role_key`／`text`／`value`／`unit`）與
+  `stripped_values_note`。頂層 compile 段、分數與退出碼皆不變。
+  **動機**：v9 的 `by_code` 只答得出「剝了幾次」，答不出「**剝掉的是什麼**」——
+  而那正是分辨「模型幻覺」與「字面子字串不變式過嚴、誤殺合法改寫」的唯一依據
+  （T-16）。P1 之前這件事由 `planner_raw_rejected` 回答，但它**只在硬失敗時留存**，
+  P1 之後硬失敗幾乎消失（8 → 1）、有意思的案例全變成降級，於是那個欄位失去對象。
+  ⚠️ `text` 是**模型可控字串**：寫入前先遮已知憑證與 URL、再截斷至 200 字元並留痕。
+  ⚠️ 這些值**只存在於報告**——走 `LLMPlannerAdapter(on_sanitize=…)` 的 observer
+  旁通道，**不進** `plan.unresolved`／`routing_reasons`（那條路會落 DB 並回 API，
+  放模型可控字串進去等於開一個新的注入／洩漏面）。生產路徑不掛 observer，
+  那裡根本不收集這些值。rule planner 不經 sanitize，本欄恆為空 dict。
 
 ### planner 段指標（操作型定義）
 

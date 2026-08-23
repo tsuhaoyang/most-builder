@@ -75,6 +75,7 @@ import os
 import re
 import sys
 from collections import Counter
+from collections.abc import Sequence
 from datetime import datetime, timezone
 from pathlib import Path
 
@@ -82,6 +83,7 @@ ROOT = Path(__file__).resolve().parents[1]
 if str(ROOT / "src") not in sys.path:
     sys.path.insert(0, str(ROOT / "src"))
 
+from ddm_v2.nlp.contracts import StripDetail  # noqa: E402
 from ddm_v2.nlp.gold_eval import (  # noqa: E402
     GOLD_SCHEMA_VERSION,
     evaluate_gold_case,
@@ -91,16 +93,18 @@ from ddm_v2.nlp.planner_eval import (  # noqa: E402
     PLANNER_RAW_REJECTED_MAX_LEN,
     RULE_PLANNER_NAME,
     SPEC_DOC,
+    STRIPPED_VALUE_MAX_LEN,
     PlannerFn,
     evaluate_planner_case,
     is_self_referential,
     load_gold_cases_checked,
     planner_pipeline_broken,
     rule_based_plan,
+    sanitize_stripped_value,
     summarize_planner_results,
 )
 
-REPORT_SCHEMA_VERSION = "wi-gold-report-v8"
+REPORT_SCHEMA_VERSION = "wi-gold-report-v10"
 
 EXIT_CODE_HELP = (
     "exit codes: 0 = all green; "
@@ -114,11 +118,56 @@ EXIT_CODE_HELP = (
 
 SANITIZE_REASONS_NOTE = (
     "sanitize_planner_output() 的 reasons（`nlp/contracts.py`）——觀測用，"
-    "不影響分數與退出碼。`evidence_offset_repaired` 的次數＝模型算錯 evidence "
-    "offset 但 `text` 可唯一定位、已被自動修正的次數；`evidence_text_not_found`／"
-    "`evidence_text_ambiguous` 是修不了而被 validate 照常拒絕的（fail-closed）。"
-    "phase=initial 是第一次呼叫、retry 是帶驗證錯誤重試的那次。"
+    "不影響分數與退出碼。phase=initial 是第一次呼叫、retry 是帶驗證錯誤重試的那次。"
     "rule planner 不經過 sanitize，恆為空。"
+    "⚠️ **ADR-033 P1（2026-08-23）起本欄位的代碼詞彙與語意都變了；跨這個日期比較"
+    "數字之前請先讀完本段。** "
+    "(1) `evidence_offset_repaired` 的**語意已變**。舊義＝「模型算錯 offset、`text` "
+    "可唯一定位而被我方修好」的次數，那是一個**防線的動作次數**；P1 起 offset 一律由 "
+    "`contracts.locate_evidence_spans()` 推導、模型報的座標不再有任何權威，本代碼"
+    "改為**純觀測量**＝「模型給的 offset 與推導結果不同」的次數。**因此不可與 P1 "
+    "之前的數字直接比較**——plan-v1.3 兩輪各 62／63 次（55 案）用的是舊語意。 "
+    "(2) `evidence_text_ambiguous` **P1 起不再出現**：`text` 在原文多次出現改為依 "
+    "`sequence_order` 由左至右單調指派（ADR-033 D4、U-4 裁決「不會有倒裝」），"
+    "不再視為歧義而拒絕。 "
+    "(3) `evidence_text_not_found` **P1 起不再單獨出現**：定位不到＝模型改寫或幻覺，"
+    "該 action 直接剔除，改記為 `planner_invented_action:<id>:evidence_text_not_found`。"
+    "⚠️ `by_code` 只取第一個冒號前的前綴，所以它在 `by_code` 裡併入 "
+    "`planner_invented_action`；要分辨「這個 action 根本沒有 evidence」與「evidence "
+    "是幻覺」兩種剔除，看 `by_case`。 "
+    "(4) P1 新增四個**剝除**代碼——契約放寬後這些情形不再讓整筆輸出作廢（過去是 retry "
+    "→ PlannerError → 退回 rule parser，連語意正確的切分一起丟），改為逐項剝除並記名，"
+    "reason 經 `plan.unresolved` 進 routing 擋 auto："
+    "`role_key_dropped`（模型自創角色鍵）／"
+    "`role_numeric_stripped`（`value`／`unit` 被剝除；ADR-033 D1：數值不歸 LLM）／"
+    "`role_text_not_in_source`（片語不是 `normalized_text` 的字面子字串＝改寫或幻覺）／"
+    "`dependency_dropped`（型別不合法，或端點所指的 action 已被剔除）。 "
+    "⚠️ **`role_numeric_stripped` 預期高頻，那不是模型迴歸**：P1 只放寬契約、"
+    "prompt 仍是 plan-v1.4 且仍在教模型輸出數量與距離（few-shot 自己就有 2 處），"
+    "數值一到 adapter 邊界就被剝掉。這是 P1／P2 刻意分階段（把「契約放寬」與「prompt "
+    "改寫」兩個變因分開量）的**已知代價**；P2 改 prompt 之後這個代碼應該歸零。"
+)
+
+
+
+STRIPPED_VALUES_NOTE = (
+    "`planner_eval.sanitize_reasons.stripped_values`＝**被剝除的值本身**"
+    "（逐案；ADR-033 P1 觀察期補測）。`by_code` 只告訴你「剝了幾次」，"
+    "答不了**「剝掉的是什麼」**——而那正是分辨「模型幻覺」與「字面子字串不變式過嚴、"
+    "誤殺了合法改寫」的唯一依據（T-16）。P1 之前這件事由 `planner_raw_rejected` 回答，"
+    "但它**只在硬失敗時留存**，而 P1 之後硬失敗幾乎消失、有意思的案例全變成降級。"
+    "欄位：`phase`（initial／retry）、`action_id`、`reason`（與 by_code 同名的代碼）、"
+    "`role_key`（evidence 類的剝除為 null）、`text`／`value`／`unit`（被剝掉的內容）。"
+    "⚠️ `text` 是**模型可控字串**：寫入前先遮已知憑證與 URL、再截斷至 "
+    f"{STRIPPED_VALUE_MAX_LEN} 字元並留痕（`…[truncated from N chars]`，N 為遮蔽後長度）。"
+    "⚠️ 這些值**只存在於本報告**：它們走 `LLMPlannerAdapter(on_sanitize=…)` 的 observer "
+    "旁通道，**不進** `plan.unresolved`／`routing_reasons`（那條路會落 DB 並回 API）。"
+    "⚠️ 但**不要據此以為 `routing_reasons` 是乾淨的**：`PlannerOutput.unresolved` 本身"
+    "就是模型可控的 `list[str]`，`sanitize_planner_output` 逐字沿用它——那是既有的 S-5，"
+    "至今未修。本欄位的設計只是**不再多開一條**，不是把那條關掉（見 `contracts.StripDetail`）。"
+    "生產路徑（`wi_ai_service`）不掛 observer：明細照樣被收集，但**不會被發送**給任何人，"
+    "隨該次呼叫的區域變數一起丟棄。"
+    "rule planner 不經過 sanitize，恆為空 dict。"
 )
 
 
@@ -260,12 +309,15 @@ class SanitizeLog:
         self.by_code: Counter = Counter()
         self.by_phase: Counter = Counter()
         self.by_case: dict[str, list[str]] = {}
+        # 被剝除的**值本身**（模型可控字串）——與上面三個統計量分開存，因為它們的
+        # 去向不同：統計量可以印到終端機，這個只准進報告 JSON（見 STRIPPED_VALUES_NOTE）
+        self.stripped: dict[str, list[StripDetail]] = {}
         self._case_id: str | None = None
 
     def bind(self, case_id: str) -> None:
         self._case_id = case_id
 
-    def observe(self, phase: str, reasons: list[str]) -> None:
+    def observe(self, phase: str, reasons: list[str], details: list[StripDetail]) -> None:
         self.by_phase[phase] += len(reasons)
         for r in reasons:
             self.by_code[str(r).split(":", 1)[0]] += 1
@@ -273,14 +325,61 @@ class SanitizeLog:
             self.by_case.setdefault(self._case_id, []).extend(
                 f"{phase}:{r}" for r in reasons
             )
+        if self._case_id is not None and details:
+            self.stripped.setdefault(self._case_id, []).extend(
+                (phase, d) for d in details
+            )
 
-    def to_dict(self) -> dict:
+    @property
+    def stripped_count(self) -> int:
+        return sum(len(v) for v in self.stripped.values())
+
+    def to_dict(self, secrets: Sequence[str] = ()) -> dict:
+        """`secrets`＝本次執行的憑證字面值，寫進報告前抹掉（同 `planner_raw_rejected`）。
+
+        遮蔽放在序列化這一刻而不是收集那一刻：報告用的憑證清單由 CLI 持有
+        （刻意不掛在 `RunIdentity` 上，那個物件會被序列化進報告），收集端拿不到。
+        """
         return {
             "note": SANITIZE_REASONS_NOTE,
             "by_code": dict(self.by_code.most_common()),
             "by_phase": dict(self.by_phase.most_common()),
             "by_case": {k: v for k, v in sorted(self.by_case.items())},
+            "stripped_values_note": STRIPPED_VALUES_NOTE,
+            "stripped_values": {
+                case_id: [_stripped_to_dict(phase, d, secrets) for phase, d in items]
+                for case_id, items in sorted(self.stripped.items())
+            },
         }
+
+
+def _stripped_to_dict(phase: str, detail: StripDetail, secrets: Sequence[str]) -> dict:
+    """`StripDetail` → 報告欄位。**逐欄位判定要不要遮蔽／截斷**（漏一個就等於沒有）。
+
+    - `text`：模型可控字串 → 遮蔽＋截斷。
+    - `unit`：同樣來自模型，只是通常很短 → 照走一次，不因為「短」就豁免。
+    - `role_key`：**也是模型可控的**。這個欄位一度被漏掉（資安複審 2026-08-23 實測：
+      惡意鍵含密碼＋內部主機名＋5000 個 A，`text` 被遮成 228 字，`role_key` 卻
+      **5046 字、含密碼、未截斷**地寫進要 commit 的 JSON）。會漏是因為直覺把它當
+      「欄位名」——但 `role_key_dropped` 那一類的鍵**依定義是模型自創的**
+      （不在 `ROLE_KEYS` 內，正因如此才被剝掉），封閉集合的保證在這一類上剛好不成立。
+    - `phase`／`action_id`／`reason`：**我方產生**，不是模型字串。⚠️ `action_id` 記的是
+      剝除當下的原始 id（仍由模型給），但它被 `PlannedAction.action_id` 的用途限制在
+      短識別碼且不會被當成內容渲染；哪天它改成原樣保留模型的值，這裡要一起遮。
+    - `value`：數值不是字串 → 無從夾帶憑證；它的風險是**非有限值**（NaN／Inf 會讓
+      `json.dumps` 產生 RFC 8259 不允許的裸 `NaN`），擋在寫檔那一刻的 `allow_nan=False`。
+    """
+    return {
+        "phase": phase,
+        "action_id": detail.action_id,
+        "reason": detail.reason,
+        "role_key": (
+            None if detail.role_key is None else sanitize_stripped_value(detail.role_key, secrets)
+        ),
+        "text": None if detail.text is None else sanitize_stripped_value(detail.text, secrets),
+        "value": detail.value,
+        "unit": None if detail.unit is None else sanitize_stripped_value(detail.unit, secrets),
+    }
 
 
 def _build_llm_plan_fn(
@@ -479,6 +578,32 @@ def main() -> int:
 
     report = {
         "report_kind": "wi-gold-eval",
+        # v10：加法（形狀增欄，語意不變）。`planner_eval.sanitize_reasons` 新增
+        # `stripped_values`（逐案：phase/action_id/reason/role_key/text/value/unit）
+        # 與 `stripped_values_note`。動機：v9 的 `by_code` 只答得出「剝了幾次」，
+        # 答不出「**剝掉的是什麼**」——而 P1 觀察期正是卡在這裡：`role_text_not_in_source`
+        # 出現 4 處，卻無從判斷是模型幻覺還是字面子字串不變式過嚴（T-16），
+        # 因為 `planner_raw_rejected` **只在硬失敗時留存**，而 P1 之後硬失敗幾乎消失、
+        # 有意思的案例全變成降級。值是模型可控字串：先遮憑證與 URL、再截斷留痕，
+        # 且**只走 observer 旁通道進報告**，不進 unresolved／routing_reasons／DB。
+        # 其餘形狀、分數與退出碼皆不變。
+        # v9：**形狀不變、語意變更**——這是第一個這種性質的版本，v3–v8 全是加法
+        # （或加法＋值域收斂），只有本版**沒有任何欄位增減**。變的是
+        # `planner_eval.sanitize_reasons` 的代碼詞彙與其中一個代碼的**意思**
+        # （ADR-033 P1，2026-08-23）：`evidence_offset_repaired` 從「模型算錯 offset、
+        # 我方修好」的**防線動作次數**，變成「模型給的 offset 與推導結果不同」的
+        # **純觀測量**（P1 起 offset 一律由 contracts.locate_evidence_spans() 推導）；
+        # `evidence_text_ambiguous` 不再出現、`evidence_text_not_found` 併入
+        # `planner_invented_action`；另新增 role_key_dropped／role_numeric_stripped／
+        # role_text_not_in_source／dependency_dropped 四個剝除代碼。
+        # **為什麼形狀沒變也要升版**：這是最危險的一種變化——**名字一樣、型別一樣、
+        # 數字可比、意思不同**。欄位改名會讓下游工具立刻壞掉，語意漂移不會，它只會
+        # 讓人算出一個看起來合理的錯結論。而 `prompt_version` **分辨不了 P1 前後**
+        # （P1 刻意不動 prompt，前後都是 `plan-v1.4`），所以兩份報告可以都寫
+        # plan-v1.4 而 `evidence_offset_repaired` 意思不同——
+        # **`report_schema_version` 是報告裡唯一能承載「這份的欄位語意與先前不同」
+        # 的欄位**。`sanitize_reasons.note` 寫的是同一件事，但 note 是散文、
+        # 這個欄位才是機器讀得到的。跨 v8／v9 比較 sanitize_reasons 之前必須先讀 note。
         # v8：加法。`planner_eval.cases[*]` 新增 `planner_raw_rejected`＝**被拒絕的
         # 原始模型回應本文**（＋`planner_eval.raw_rejected_note` 說明值域與遮蔽）。
         # 在此之前失敗只留錯誤碼，於是「那份被拒的輸出切分得對不對」事後無從回答
@@ -531,7 +656,7 @@ def main() -> int:
         "planner_eval": {
             "db_required": False,
             "summary": planner_summary,
-            "sanitize_reasons": sanitize_log.to_dict(),
+            "sanitize_reasons": sanitize_log.to_dict(report_secrets),
             "raw_rejected_note": PLANNER_RAW_REJECTED_NOTE,
             "cases": [r.to_dict() for r in planner_results],
         },
@@ -541,7 +666,14 @@ def main() -> int:
     prefix = "wi-draft" if unapproved_cases else "wi-gold"
     out_path = args.out / f"{prefix}-{stamp}.json"
     latest = args.out / f"{prefix}-latest.json"
-    text = json.dumps(report, ensure_ascii=False, indent=2) + "\n"
+    # `allow_nan=False`：Python 預設會把 NaN／±Infinity 寫成裸 `NaN`／`Infinity`，
+    # 而 RFC 8259 不允許——產出的就是**非法 JSON**，標準 parser 讀不了，而且是
+    # commit 之後才會被下游工具發現。真實入口不只一個：`sanitize_reasons.stripped_values`
+    # 的 `value` 直接來自模型（`RoleValue.value` 進 `StripDetail` 的時間點**早於**
+    # D1 的剝除，那正是這個欄位的用途），latency／分數等計算欄位也可能算出 NaN。
+    # 在**寫檔這一刻** fail-loud 比產出壞檔好：這裡炸掉是一次跑壞，寫出去是版控裡
+    # 一份讀不了的證據。與 compiler 邊界擋 NaN 是同一族，只是 sink 是檔案。
+    text = json.dumps(report, ensure_ascii=False, indent=2, allow_nan=False) + "\n"
     out_path.write_text(text, encoding="utf-8")
     latest.write_text(text, encoding="utf-8")
 
@@ -622,6 +754,14 @@ def main() -> int:
         print(
             f"           sanitize_reasons: {codes}  (phase: {phases})"
             "  ← 觀測量，不影響分數／退出碼"
+        )
+    if sanitize_log.stripped_count:
+        # **只印筆數**：被剝的值是模型可控字串且不剝控制字元（同 planner_raw_rejected），
+        # 未經逸出印到終端機是另一個 sink。內容只在報告 JSON（json.dumps 會逸出）。
+        print(
+            f"           stripped_values 留存 {sanitize_log.stripped_count} 筆"
+            f"（{len(sanitize_log.stripped)} 案）"
+            "  ← 內容只在報告 JSON 的 sanitize_reasons.stripped_values"
         )
     for r in planner_results:
         mark = "OK" if r.ok else "GOLD-ERR"

@@ -420,6 +420,32 @@ def _sanitize_rejected_raw(content: str, secrets: Sequence[str]) -> str:
     return cleaned
 
 
+# 被剝除值的長度上限（字元）。比 `PLANNER_RAW_REJECTED_MAX_LEN`（4000，存整份回應）
+# 小兩個數量級是因為存的東西不同：這裡是**單一 role 的片語**——gold 全 55 案裡最長的
+# role text 是 6 個字。設 200 給改寫／幻覺留足空間（幻覺常比原文長），又不讓一個
+# 惡意長字串塞爆要入版控的報告。超長照樣**留痕**（截斷是事實，不能裝成完整值）。
+STRIPPED_VALUE_MAX_LEN = 200
+
+
+def sanitize_stripped_value(text: str, secrets: Sequence[str]) -> str:
+    """被剝除的模型字串寫進報告前的處理：**先遮蔽、後截斷**（同 `_sanitize_rejected_raw`）。
+
+    與被拒回應同一套規則、同一個理由——順序不可對調，因為 `_redact_secrets` 靠字面
+    比對，先截斷會把橫跨切點的憑證剖成兩半而不再匹配。這裡另外把它寫成**公開**函式
+    （被拒回應那支是私有的），因為呼叫端在 `scripts/wi_ai_eval.py`：遮蔽規則只能有
+    一份，複製一份到腳本裡就一定會漂移。
+
+    ⚠️ 這是**模型可控字串**且報告要入版控。它之所以只出現在報告，是因為
+    `contracts.StripDetail` 走的是 observer 旁通道，不進 `unresolved`／
+    `routing_reasons`（那條路會落 DB 並回 API）——見該 dataclass 的 docstring。
+    """
+    cleaned = _redact_urls(_redact_secrets(text, secrets))
+    if len(cleaned) > STRIPPED_VALUE_MAX_LEN:
+        head = cleaned[:STRIPPED_VALUE_MAX_LEN]
+        return f"{head}…[truncated from {len(cleaned)} chars]"
+    return cleaned
+
+
 def _rejected_raw_of(exc: BaseException, secrets: Sequence[str]) -> str | None:
     """例外帶得出模型回應就留存，否則 None。
 

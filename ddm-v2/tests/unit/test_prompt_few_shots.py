@@ -100,17 +100,64 @@ def test_few_shot_evidence_text_is_exact_substring(idx: int):
             )
 
 
+# ADR-033 P1 起，契約比 prompt 早一階：`value`／`unit` 已在 adapter 邊界剝除
+# （D1），而 prompt 維持 plan-v1.4、仍教模型輸出數量與距離（P2 才改，刻意分離
+# 「契約放寬」與「prompt 改寫」兩個變因）。因此**只有** `role_numeric_stripped`
+# 是這一階段可接受的示範剝除；清單只准變短——P2 把數值從示範拿掉之後，
+# `test_pending_prompt_debt_is_not_stale` 會要求把它一起刪掉。
+_PROMPT_LAGS_CONTRACT_REASON_PREFIXES = ("role_numeric_stripped:",)
+
+
 @pytest.mark.parametrize("idx", range(len(plan_v1.FEW_SHOTS)))
 def test_few_shot_needs_no_sanitize_repair(idx: int):
-    """示範不得需要 sanitize 修補。
+    """示範不得需要 sanitize 修補（`role_numeric_stripped` 除外，見上方註）。
 
-    `sanitize_planner_output` 會替模型修 offset、剔除無證據動作、降級非法 tool_ref。
-    示範若要靠這些修補才合法，模型學到的就是「被修過的版本」以外的東西——
-    `evidence_offset_repaired` 在評測報告裡的次數也會被自家教材墊高。
+    `sanitize_planner_output` 會替模型推導 offset、剔除無證據動作、降級非法
+    tool_ref、剝除自創角色鍵與原文沒有的片語。示範若要靠這些修補才合法，
+    模型學到的就是「被修過的版本」以外的東西——這些 reason 在評測報告裡的
+    次數也會被自家教材墊高。
     """
     _i, text, output = _shots()[idx]
     _sanitized, reasons = sanitize_planner_output(output, normalized_text=text)
-    assert reasons == [], f"few-shot #{idx + 1} 需要 sanitize 修補：{reasons}"
+    unexpected = [
+        r
+        for r in reasons
+        if not r.startswith(_PROMPT_LAGS_CONTRACT_REASON_PREFIXES)
+    ]
+    assert unexpected == [], f"few-shot #{idx + 1} 需要 sanitize 修補：{unexpected}"
+
+
+def test_few_shot_numeric_roles_are_exactly_the_known_prompt_debt():
+    """把「prompt 落後契約一階」釘成可數的事實，而不是一句註解。
+
+    P1 只放寬契約、不動 prompt（ADR §5、U-7：這是唯一能把兩個變因分開量的機會）。
+    代價是示範仍在教模型輸出 `value`／`unit`，而 adapter 一律剝除——這裡列出
+    受影響的位置，P2 改 prompt 時應該全部消失。
+    """
+    stripped = [
+        (i + 1, r)
+        for i, text, output in _shots()
+        for r in sanitize_planner_output(output, normalized_text=text)[1]
+        if r.startswith("role_numeric_stripped:")
+    ]
+    assert stripped == [
+        (1, "role_numeric_stripped:a2:quantity"),
+        (4, "role_numeric_stripped:a1:distance"),
+    ], f"示範的數值角色分布變了：{stripped}"
+
+
+def test_pending_prompt_debt_is_not_stale():
+    """P2 把數值從示範拿掉之後，上面的豁免必須跟著刪——否則守衛悄悄變寬。"""
+    still_numeric = any(
+        role.value is not None or role.unit is not None
+        for _i, _text, output in _shots()
+        for action in output.actions
+        for role in action.roles.values()
+    )
+    assert still_numeric == bool(_PROMPT_LAGS_CONTRACT_REASON_PREFIXES), (
+        "示範已經沒有數值角色了（或反之）——`_PROMPT_LAGS_CONTRACT_REASON_PREFIXES` "
+        "與 `test_few_shot_numeric_roles_are_exactly_the_known_prompt_debt` 要一起更新"
+    )
 
 
 @pytest.mark.parametrize("idx", range(len(plan_v1.FEW_SHOTS)))
@@ -152,14 +199,34 @@ def test_few_shots_demonstrate_non_tool_role_reuse():
     )
 
 
+# 契約已有、prompt 尚未索取的角色鍵。ADR-033 §5.2.2 把 `return_to`（＝A6
+# 「返回若有」）排在 P1 進契約、P2 進 prompt、P3 進 compiler 分支——P1 不動
+# prompt 是刻意的（見上方 `_PROMPT_LAGS_CONTRACT_REASON_PREFIXES` 的理由）。
+# 清單只准變短：寫進 prompt 之後 `test_pending_role_key_exemptions_are_not_stale`
+# 會要求把它從這裡刪掉。
+_PENDING_PROMPT_ROLE_KEYS = frozenset({"return_to"})
+
+
 def test_system_prompt_enumerates_every_contract_role_key():
     """`ROLE_KEYS` 有的鍵，system prompt 必須都告訴模型。
 
     契約與教材同步的守衛：日後若真的新增角色鍵（ADR-011 的欄位只增不改），
     忘了寫進 prompt 這條會紅——模型不會用它不知道的鍵。
     """
-    missing = sorted(k for k in ROLE_KEYS if k not in plan_v1.SYSTEM_PROMPT)
+    missing = sorted(
+        k
+        for k in ROLE_KEYS
+        if k not in plan_v1.SYSTEM_PROMPT and k not in _PENDING_PROMPT_ROLE_KEYS
+    )
     assert missing == [], f"system prompt 未列出的角色鍵：{missing}"
+
+
+def test_pending_role_key_exemptions_are_not_stale():
+    """豁免清單只准變短：鍵一旦進了 prompt，就得從清單移除。"""
+    landed = sorted(k for k in _PENDING_PROMPT_ROLE_KEYS if k in plan_v1.SYSTEM_PROMPT)
+    assert landed == [], f"這些鍵已寫進 prompt，請從 _PENDING_PROMPT_ROLE_KEYS 移除：{landed}"
+    unknown = sorted(k for k in _PENDING_PROMPT_ROLE_KEYS if k not in ROLE_KEYS)
+    assert unknown == [], f"豁免了不存在於 ROLE_KEYS 的鍵：{unknown}"
 
 
 def test_system_prompt_enumerates_every_dependency_type():

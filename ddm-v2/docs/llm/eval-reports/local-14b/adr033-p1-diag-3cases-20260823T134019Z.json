@@ -1,0 +1,318 @@
+{
+  "report_kind": "wi-gold-eval",
+  "report_schema_version": "wi-gold-report-v10",
+  "gold_schema_version": "wi-gold-v1",
+  "generated_at": "2026-08-23T13:40:19.783309+00:00",
+  "gold_dir": "../../../../../tmp/claude-1000/-home-howard-workspace-most-builder/ba5e2663-7570-444e-9ebb-4d03aea0fd7b/scratchpad/diag_gold",
+  "planner_run": {
+    "planner": "llm",
+    "model_requested": "qwen2.5:14b",
+    "model_served": "qwen2.5:14b",
+    "model_served_variants": [
+      "qwen2.5:14b"
+    ],
+    "prompt_version": "plan-v1.4",
+    "llm_timeout_s": 300.0,
+    "note": "本報告的執行來源自述：這趟是哪個 planner、哪顆模型、哪一版 prompt 跑的。`model_requested`＝送出去的模型名（settings 的 DDM_LLM_MODEL）；`model_served`＝**伺服器回報**的模型名，證據力較強（ollama 的 tag 解析、伺服器端別名或 endpoint 被指到別顆模型時，兩者會分岔）——同一個問題，`wi_ai_service` 用的也是伺服器回報值（`llm_raw_response.model`）。⚠️ 伺服器若沒回 model 欄，`llm_client` 會退回請求值，此時 served 等於 requested 並非真的被證實。`model_served` 僅在**成功呼叫且回報值一致**時為單一字串；全案失敗（沒有任何成功呼叫）時為 null——此時 requested 仍是有用的資訊，不會一起消失；回報值分岐時 served 為 null 且 `model_served_variants` 列出全部（不靜默挑一個）。⚠️ served 是**遠端可控字串**：寫入前已剝除控制字元並截斷至 200 字元，截過的值帶 `…[truncated from N chars]`。以上四欄與 `llm_timeout_s` 僅 --planner llm 有值；rule planner 不碰 LLM，恆為 null／空。刻意**不記** llm_base_url 與 llm_api_key——報告要入版控，base_url 有夾帶憑證的可能；重現指令見 docs/llm/eval-reports/local-14b/README.md。同一理由，`planner_eval.cases[*].planner_error` 的例外訊息會先把 URL 遮成 `<redacted-url>`（httpx 的 HTTP 錯誤訊息內嵌完整 endpoint 連同 userinfo），所以「不含 endpoint」是整份報告的性質，不只本區塊。"
+  },
+  "dataset_note": "n=3；IE 核准 3/50，未達 docs/architecture/wi-ai-parser-system-spec.md §19 P0 前置；其中 ie_modified≠true 的預標註 3 筆（原樣核准，不計 planner 段證據力——見 self_referential_excluded）",
+  "gold_load_errors": [],
+  "unapproved_cases": [],
+  "summary": {
+    "total": 3,
+    "passed": 3,
+    "failed": 0
+  },
+  "cases": [
+    {
+      "case_id": "g37_board_to_chassis",
+      "ok": true,
+      "action_count": 1,
+      "routing_status": "review",
+      "routing_reasons": [],
+      "cycle_checks": [
+        {
+          "action_id": "a1",
+          "ok": true,
+          "errors": []
+        }
+      ],
+      "errors": [],
+      "metrics": {
+        "action_count": 1,
+        "complete_drafts": 1,
+        "engine_ok": 1,
+        "routing_status": "review"
+      }
+    },
+    {
+      "case_id": "g46_rh_screw_fix_confirm",
+      "ok": true,
+      "action_count": 1,
+      "routing_status": "review",
+      "routing_reasons": [
+        "no_candidate_m",
+        "missing_core_m"
+      ],
+      "cycle_checks": [
+        {
+          "action_id": "a1",
+          "ok": true,
+          "errors": []
+        }
+      ],
+      "errors": [],
+      "metrics": {
+        "action_count": 1,
+        "complete_drafts": 0,
+        "engine_ok": 0,
+        "routing_status": "review"
+      }
+    },
+    {
+      "case_id": "g51_press_dimm_latch_to_position",
+      "ok": true,
+      "action_count": 1,
+      "routing_status": "review",
+      "routing_reasons": [],
+      "cycle_checks": [
+        {
+          "action_id": "a1",
+          "ok": true,
+          "errors": []
+        }
+      ],
+      "errors": [],
+      "metrics": {
+        "action_count": 1,
+        "complete_drafts": 1,
+        "engine_ok": 1,
+        "routing_status": "review"
+      }
+    }
+  ],
+  "compile_eval_note": "頂層 summary/cases 為 compile 段（gold plan → link/compile/engine），planner 段見 planner_eval",
+  "planner_eval": {
+    "db_required": false,
+    "summary": {
+      "planner": "llm",
+      "n": 3,
+      "plan_metrics_n": 3,
+      "planner_failures": {
+        "count": 0,
+        "rate": 0.0,
+        "cases": [],
+        "error_codes": {}
+      },
+      "planner_latency_ms": {
+        "total": 68524.03,
+        "mean": 22841.34,
+        "median": 16095.9,
+        "max": 38893.66
+      },
+      "self_referential_excluded": {
+        "count": 0,
+        "cases": [],
+        "reason": "這些案例的 gold plan 即受測 planner 的預標註輸出（plan_origin=<planner>_preannotation）且 IE 未修改內容（ie_modified≠true）：拿 planner 自己的輸出當標準答案評 planner＝自我指涉，對 Plan 層指標零證據力，故排除。IE 實際改過（ie_modified=true）的案例是真實 ground truth，照常計入；compile 段不受影響（驗 compiler+engine，非 planner）。"
+      },
+      "action_count_accuracy": 1.0,
+      "action_count_matches": 3,
+      "boundary_span": {
+        "annotated_cases": 3,
+        "scored_cases": 3,
+        "unannotated_cases": [],
+        "trivially_empty_cases": [],
+        "micro": {
+          "tp": 3,
+          "fp": 0,
+          "fn": 0,
+          "precision": 1.0,
+          "recall": 1.0,
+          "f1": 1.0
+        }
+      },
+      "dependency_f1": null,
+      "dependency_f1_note": "未實作（docs/architecture/wi-ai-parser-system-spec.md §14.4 門檻列原文為「boundary/dependency F1」合為一項，boundary_span_f1 只涵蓋前半）。未實作原因：(1) action counts 不齊時 pred↔gold 的 action 對齊無定義，dependency 端點無從對應；(2) rule_based_v1 永遠回空 dependencies（gold g02 有 tool_held_for，真的算恆為 0）。實作並定義對齊規則前，不得以 boundary_span_f1 單獨宣告 §14.4 該列達標。",
+      "degenerate_planner_note": null,
+      "spec_targets": {
+        "action_count_exact_match": 0.95,
+        "boundary_span_f1": 0.9
+      }
+    },
+    "sanitize_reasons": {
+      "note": "sanitize_planner_output() 的 reasons（`nlp/contracts.py`）——觀測用，不影響分數與退出碼。phase=initial 是第一次呼叫、retry 是帶驗證錯誤重試的那次。rule planner 不經過 sanitize，恆為空。⚠️ **ADR-033 P1（2026-08-23）起本欄位的代碼詞彙與語意都變了；跨這個日期比較數字之前請先讀完本段。** (1) `evidence_offset_repaired` 的**語意已變**。舊義＝「模型算錯 offset、`text` 可唯一定位而被我方修好」的次數，那是一個**防線的動作次數**；P1 起 offset 一律由 `contracts.locate_evidence_spans()` 推導、模型報的座標不再有任何權威，本代碼改為**純觀測量**＝「模型給的 offset 與推導結果不同」的次數。**因此不可與 P1 之前的數字直接比較**——plan-v1.3 兩輪各 62／63 次（55 案）用的是舊語意。 (2) `evidence_text_ambiguous` **P1 起不再出現**：`text` 在原文多次出現改為依 `sequence_order` 由左至右單調指派（ADR-033 D4、U-4 裁決「不會有倒裝」），不再視為歧義而拒絕。 (3) `evidence_text_not_found` **P1 起不再單獨出現**：定位不到＝模型改寫或幻覺，該 action 直接剔除，改記為 `planner_invented_action:<id>:evidence_text_not_found`。⚠️ `by_code` 只取第一個冒號前的前綴，所以它在 `by_code` 裡併入 `planner_invented_action`；要分辨「這個 action 根本沒有 evidence」與「evidence 是幻覺」兩種剔除，看 `by_case`。 (4) P1 新增四個**剝除**代碼——契約放寬後這些情形不再讓整筆輸出作廢（過去是 retry → PlannerError → 退回 rule parser，連語意正確的切分一起丟），改為逐項剝除並記名，reason 經 `plan.unresolved` 進 routing 擋 auto：`role_key_dropped`（模型自創角色鍵）／`role_numeric_stripped`（`value`／`unit` 被剝除；ADR-033 D1：數值不歸 LLM）／`role_text_not_in_source`（片語不是 `normalized_text` 的字面子字串＝改寫或幻覺）／`dependency_dropped`（型別不合法，或端點所指的 action 已被剔除）。 ⚠️ **`role_numeric_stripped` 預期高頻，那不是模型迴歸**：P1 只放寬契約、prompt 仍是 plan-v1.4 且仍在教模型輸出數量與距離（few-shot 自己就有 2 處），數值一到 adapter 邊界就被剝掉。這是 P1／P2 刻意分階段（把「契約放寬」與「prompt 改寫」兩個變因分開量）的**已知代價**；P2 改 prompt 之後這個代碼應該歸零。",
+      "by_code": {
+        "role_text_not_in_source": 4,
+        "evidence_offset_repaired": 3
+      },
+      "by_phase": {
+        "initial": 7
+      },
+      "by_case": {
+        "g37_board_to_chassis": [
+          "initial:role_text_not_in_source:a1:from_location",
+          "initial:evidence_offset_repaired:a1:[0,13)->[0,11)"
+        ],
+        "g46_rh_screw_fix_confirm": [
+          "initial:role_text_not_in_source:a1:tool",
+          "initial:role_text_not_in_source:a1:process_kind",
+          "initial:evidence_offset_repaired:a1:[0,16)->[0,14)"
+        ],
+        "g51_press_dimm_latch_to_position": [
+          "initial:role_text_not_in_source:a1:process_kind",
+          "initial:evidence_offset_repaired:a1:[0,12)->[0,13)"
+        ]
+      },
+      "stripped_values_note": "`planner_eval.sanitize_reasons.stripped_values`＝**被剝除的值本身**（逐案；ADR-033 P1 觀察期補測）。`by_code` 只告訴你「剝了幾次」，答不了**「剝掉的是什麼」**——而那正是分辨「模型幻覺」與「字面子字串不變式過嚴、誤殺了合法改寫」的唯一依據（T-16）。P1 之前這件事由 `planner_raw_rejected` 回答，但它**只在硬失敗時留存**，而 P1 之後硬失敗幾乎消失、有意思的案例全變成降級。欄位：`phase`（initial／retry）、`action_id`、`reason`（與 by_code 同名的代碼）、`role_key`（evidence 類的剝除為 null）、`text`／`value`／`unit`（被剝掉的內容）。⚠️ `text` 是**模型可控字串**：寫入前先遮已知憑證與 URL、再截斷至 200 字元並留痕（`…[truncated from N chars]`，N 為遮蔽後長度）。⚠️ 這些值**只存在於本報告**：它們走 `LLMPlannerAdapter(on_sanitize=…)` 的 observer 旁通道，**不進** `plan.unresolved`／`routing_reasons`——那條路會落 DB 並回 API，把模型可控字串放進去等於開一個新的注入／洩漏面（見 `contracts.StripDetail`）。生產路徑（`wi_ai_service`）不掛 observer，所以那裡根本不收集這些值。rule planner 不經過 sanitize，恆為空 dict。",
+      "stripped_values": {
+        "g37_board_to_chassis": [
+          {
+            "phase": "initial",
+            "action_id": "a1",
+            "reason": "role_text_not_in_source",
+            "role_key": "from_location",
+            "text": "未指定",
+            "value": null,
+            "unit": null
+          }
+        ],
+        "g46_rh_screw_fix_confirm": [
+          {
+            "phase": "initial",
+            "action_id": "a1",
+            "reason": "role_text_not_in_source",
+            "role_key": "tool",
+            "text": "未指定工具",
+            "value": null,
+            "unit": null
+          },
+          {
+            "phase": "initial",
+            "action_id": "a1",
+            "reason": "role_text_not_in_source",
+            "role_key": "process_kind",
+            "text": "鎖附固定並確認到位",
+            "value": null,
+            "unit": null
+          }
+        ],
+        "g51_press_dimm_latch_to_position": [
+          {
+            "phase": "initial",
+            "action_id": "a1",
+            "reason": "role_text_not_in_source",
+            "role_key": "process_kind",
+            "text": "按壓到定位",
+            "value": null,
+            "unit": null
+          }
+        ]
+      }
+    },
+    "raw_rejected_note": "`planner_eval.cases[*].planner_raw_rejected`＝**被拒絕的原始模型回應本文**（ADR-033 T-12）。只記錯誤碼答不了「那份被拒的輸出切分得對不對」——而契約放寬（ADR-033 P1）之後，原本的硬失敗會變成切分對錯，那才是要量的東西。值域：該案 `planner_failed` 且例外帶得出回應時為字串；**null＝這次失敗沒有回應可留**（timeout、連線失敗、rule planner 的例外、或 PlannerError 未帶 raw），與「伺服器回了空字串」（記 \"\"）不同；該案成功時恆為 null（成功的輸出已由指標與 pred_spans 呈現）。⚠️ 留的是 **retry 那次**的回應：`LLMPlannerAdapter` 只把最後一次掛上 `PlannerError.raw`，initial 那次的回應現行契約留不下來——所以「模型第一次吐了什麼」仍不可考（需要動 planner 契約，記為後續票）。⚠️ 這是**遠端可控字串**且報告要入版控：寫入前先遮 URL（`<redacted-url>`）與已知憑證字面值（`<redacted-secret>`，本次執行的 api key），再截斷至 4000 字元並留痕（`…[truncated from N chars]`，N 為遮蔽後長度）。控制字元**刻意不剝**（換行是回應的合法內容，剝掉會把 pretty-print 的 JSON 打爛；報告 JSON 由 json.dumps 逸出），代價是本欄位**不得未經逸出印到終端機**——CLI 只印留存筆數，不印內容。",
+    "cases": [
+      {
+        "case_id": "g37_board_to_chassis",
+        "ok": true,
+        "gold_action_count": 1,
+        "pred_action_count": 1,
+        "action_count_match": true,
+        "boundary_annotated": true,
+        "boundary_comparable": true,
+        "boundary_trivially_empty": false,
+        "boundary_tp": 1,
+        "boundary_fp": 0,
+        "boundary_fn": 0,
+        "boundary_span_f1": 1.0,
+        "plan_origin": "rule_based_v1_preannotation",
+        "ie_modified": false,
+        "planner_failed": false,
+        "planner_error": null,
+        "planner_error_codes": [],
+        "planner_raw_rejected": null,
+        "planner_elapsed_ms": 38893.66,
+        "gold_spans": [
+          [
+            0,
+            11
+          ]
+        ],
+        "pred_spans": [
+          [
+            0,
+            11
+          ]
+        ],
+        "errors": []
+      },
+      {
+        "case_id": "g46_rh_screw_fix_confirm",
+        "ok": true,
+        "gold_action_count": 1,
+        "pred_action_count": 1,
+        "action_count_match": true,
+        "boundary_annotated": true,
+        "boundary_comparable": true,
+        "boundary_trivially_empty": false,
+        "boundary_tp": 1,
+        "boundary_fp": 0,
+        "boundary_fn": 0,
+        "boundary_span_f1": 1.0,
+        "plan_origin": "rule_based_v1_preannotation",
+        "ie_modified": false,
+        "planner_failed": false,
+        "planner_error": null,
+        "planner_error_codes": [],
+        "planner_raw_rejected": null,
+        "planner_elapsed_ms": 16095.9,
+        "gold_spans": [
+          [
+            0,
+            14
+          ]
+        ],
+        "pred_spans": [
+          [
+            0,
+            14
+          ]
+        ],
+        "errors": []
+      },
+      {
+        "case_id": "g51_press_dimm_latch_to_position",
+        "ok": true,
+        "gold_action_count": 1,
+        "pred_action_count": 1,
+        "action_count_match": true,
+        "boundary_annotated": true,
+        "boundary_comparable": true,
+        "boundary_trivially_empty": false,
+        "boundary_tp": 1,
+        "boundary_fp": 0,
+        "boundary_fn": 0,
+        "boundary_span_f1": 1.0,
+        "plan_origin": "rule_based_v1_preannotation",
+        "ie_modified": false,
+        "planner_failed": false,
+        "planner_error": null,
+        "planner_error_codes": [],
+        "planner_raw_rejected": null,
+        "planner_elapsed_ms": 13534.47,
+        "gold_spans": [
+          [
+            0,
+            13
+          ]
+        ],
+        "pred_spans": [
+          [
+            0,
+            13
+          ]
+        ],
+        "errors": []
+      }
+    ]
+  }
+}

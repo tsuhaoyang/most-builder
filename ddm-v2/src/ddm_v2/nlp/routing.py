@@ -18,6 +18,14 @@ ROUTING_REASONS = frozenset(
         "non_finite_value_rejected",
         "planner_invented_action",
         "tool_state_violation",
+        # ADR-033 D6（spec §7.5.1）：adapter 邊界的**剝除**旗標。契約放寬後這些
+        # 情形不再讓整筆輸出作廢，代價是「我方改過模型的輸出」必須看得見——
+        # 四者都經 plan.unresolved 進來（`sanitize_planner_output` 併入），
+        # 並列在下方 `_eligible_auto` 的 blocked 內顯式擋 auto。
+        "role_key_dropped",          # 自創角色鍵（實測最大宗：object_ref/hand_ref）
+        "role_numeric_stripped",     # value/unit 被剝除（D1：數值不歸 LLM）
+        "role_text_not_in_source",   # 片語不是原文的字面子字串（改寫／幻覺）
+        "dependency_dropped",        # 型別不合法或端點已不存在
         "fallback_rule_based",
         "composite_unknown",
         "next_operation",
@@ -117,6 +125,11 @@ def _eligible_auto(
         # 送進來 NaN／Inf 的計畫是壞掉的模型輸出，一律人工覆核
         "non_finite_value_rejected",
         "template_hint",
+        # ADR-033 D6：被我方剝除過的輸出一律不得自動落地（見 ROUTING_REASONS 註）
+        "role_key_dropped",
+        "role_numeric_stripped",
+        "role_text_not_in_source",
+        "dependency_dropped",
         "i_range_assumed",
         # D3-027（D3-026 複審 H1）：E 型豁免的假設旗標顯式擋 auto——先前擋
         # auto 靠「M 候選 chosen=None」的結構巧合（linker 對 controlled_move

@@ -153,15 +153,19 @@ async def test_on_sanitize_observer_receives_repair_reasons():
     norm = normalize("拿起DIMM")
     seen: list[tuple[str, list[str]]] = []
     client = FakeLLMClient([_offset_off_by_two_json(norm)])
-    planner = LLMPlannerAdapter(client, on_sanitize=lambda phase, rs: seen.append((phase, rs)))
+    planner = LLMPlannerAdapter(client, on_sanitize=lambda phase, rs, _d: seen.append((phase, rs)))
     await planner.plan(norm, ParseContext(rule_set_code="X"))
     assert [p for p, _ in seen] == ["initial"]
     assert any(r.startswith("evidence_offset_repaired:a1") for _, rs in seen for r in rs)
 
 
 @pytest.mark.asyncio
-async def test_unrepairable_text_still_fails_closed():
-    """text 在原文找不到 → 不猜位置；重試用盡後照樣 PlannerError（不得被洗成合法證據）。"""
+async def test_unlocatable_text_still_fails_closed():
+    """text 在原文找不到 → 該 action 剔除（D4 規則 3）；一個都不剩就是三種整筆
+    失敗之一（`all_actions_sanitized_away`），重試用盡後照樣 PlannerError。
+
+    不得被洗成「合法證據」：猜一個看起來合理的 span 會把幻覺變成憑據。
+    """
     norm = normalize("拿起DIMM")
     bogus = json.dumps(
         {
@@ -183,12 +187,221 @@ async def test_unrepairable_text_still_fails_closed():
     )
     seen: list[tuple[str, list[str]]] = []
     client = FakeLLMClient([bogus, bogus])
-    planner = LLMPlannerAdapter(client, on_sanitize=lambda phase, rs: seen.append((phase, rs)))
+    planner = LLMPlannerAdapter(client, on_sanitize=lambda phase, rs, _d: seen.append((phase, rs)))
     with pytest.raises(PlannerError) as exc:
         await planner.plan(norm, ParseContext(rule_set_code="X"))
     assert len(client.calls) == 2
-    assert any(e.startswith("evidence_text_mismatch") for e in exc.value.errors)
+    assert exc.value.errors == ["all_actions_sanitized_away"]
     assert [p for p, _ in seen] == ["initial", "retry"]
     assert all(
-        any(r.startswith("evidence_text_not_found") for r in rs) for _, rs in seen
+        any(r.startswith("planner_invented_action:a1:evidence_text_not_found") for r in rs)
+        for _, rs in seen
     )
+
+
+# ── D6：整筆失敗只剩三種（ADR-033／spec §7.5.1）──────────────────────────
+#
+# 契約放寬前，任一 validation error → retry → `PlannerError` → rule fallback，
+# 連語意正確的切分一起丟。以下先逐一釘住**會**整筆失敗的三種，再逐一釘住
+# 過去會失敗、現在必須逐項降級的那些。
+
+
+def _action_json(**over) -> dict:
+    base = {
+        "action_id": "a1",
+        "action_type": "acquire",
+        "sequence_order": 1,
+        "roles": {},
+        "evidence": [{"text": "拿起dimm"}],
+    }
+    base.update(over)
+    return base
+
+
+def _payload(actions: list[dict], **over) -> str:
+    body = {"language": "zh", "actions": actions, "dependencies": [], "unresolved": []}
+    body.update(over)
+    return json.dumps(body, ensure_ascii=False)
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "payload,code",
+    [
+        pytest.param("{not-json", "json_or_schema", id="fatal-1-json"),
+        pytest.param(_payload([]), "actions_empty", id="fatal-2-actions-empty"),
+        pytest.param(
+            _payload(
+                [
+                    _action_json(action_id="a1", sequence_order=1),
+                    _action_json(action_id="a2", sequence_order=3),
+                ]
+            ),
+            "sequence_order_not_contiguous",
+            id="fatal-3-sequence-gap",
+        ),
+    ],
+)
+async def test_only_three_shapes_fail_the_whole_output(payload: str, code: str):
+    client = FakeLLMClient([payload, payload])
+    planner = LLMPlannerAdapter(client)
+    with pytest.raises(PlannerError) as exc:
+        await planner.plan("拿起dimm", ParseContext(rule_set_code="X"))
+    assert any(e.startswith(code) for e in exc.value.errors), exc.value.errors
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "payload,reason",
+    [
+        pytest.param(
+            _payload([_action_json(roles={"object_ref": {"action_ref": "a1"}})]),
+            "role_key_dropped:a1:object_ref",
+            id="unknown-role-key",
+        ),
+        pytest.param(
+            _payload([_action_json(roles={"distance": {"value": 450, "unit": "cm"}})]),
+            "role_numeric_stripped:a1:distance",
+            id="numeric-role",
+        ),
+        pytest.param(
+            _payload([_action_json(roles={"object": {"text": "記憶體模組"}})]),
+            "role_text_not_in_source:a1:object",
+            id="role-text-rewritten",
+        ),
+        pytest.param(
+            _payload(
+                [_action_json()],
+                dependencies=[
+                    {"from_action": "a1", "to_action": "a1", "type": "same_hand"}
+                ],
+            ),
+            "dependency_dropped:0:illegal_type=",
+            id="illegal-dependency-type",
+        ),
+        pytest.param(
+            _payload([_action_json(evidence=[{"start": 0, "end": 99, "text": "拿起dimm"}])]),
+            "evidence_offset_repaired:a1",
+            id="wrong-offset",
+        ),
+    ],
+)
+async def test_degradable_shapes_no_longer_retry_or_fail(payload: str, reason: str):
+    """逐項降級：不重試（重試是最貴的成本項）、不 fallback、reason 逐條留名。"""
+    seen: list[tuple[str, list[str]]] = []
+    client = FakeLLMClient([payload])
+    planner = LLMPlannerAdapter(client, on_sanitize=lambda phase, rs, _d: seen.append((phase, rs)))
+    out, _raw = await planner.plan("拿起dimm", ParseContext(rule_set_code="X"))
+    assert len(client.calls) == 1, "可降級的問題不該再打一次模型"
+    assert len(out.actions) == 1
+    assert any(r.startswith(reason) for _p, rs in seen for r in rs), seen
+
+
+@pytest.mark.asyncio
+async def test_degraded_reasons_reach_unresolved_so_routing_can_block_auto():
+    """剝除 reason 必須經 `unresolved` 浮到 routing——看不見的降級等於靜默改寫。"""
+    payload = _payload(
+        [_action_json(roles={"distance": {"value": 450, "unit": "cm"}})],
+        dependencies=[{"from_action": "a1", "to_action": "a1", "type": "same_hand"}],
+    )
+    client = FakeLLMClient([payload])
+    planner = LLMPlannerAdapter(client)
+    out, _raw = await planner.plan("拿起dimm", ParseContext(rule_set_code="X"))
+    assert "role_numeric_stripped" in out.unresolved
+    assert "dependency_dropped" in out.unresolved
+
+
+# ── 觀測旁通道在 adapter 這一層（ADR-033 P1 觀察期補測）──────────────────
+
+
+_DEGRADING_PAYLOAD = json.dumps(
+    {
+        "language": "zh",
+        "actions": [
+            {
+                "action_id": "a1",
+                "action_type": "acquire",
+                "sequence_order": 1,
+                "roles": {
+                    "object": {"text": "記憶體模組"},
+                    "distance": {"value": 450, "unit": "cm"},
+                    "object_ref": {"text": "治具", "action_ref": "a1"},
+                },
+                "evidence": [{"text": "拿起dimm"}],
+            }
+        ],
+        "dependencies": [],
+        "unresolved": [],
+    },
+    ensure_ascii=False,
+)
+
+
+@pytest.mark.asyncio
+async def test_observer_receives_the_stripped_values():
+    """降級時被剝掉的**值本身**要送到 observer——`by_code` 只答得出剝了幾次。"""
+    seen: list[tuple[str, list]] = []
+    client = FakeLLMClient([_DEGRADING_PAYLOAD])
+    planner = LLMPlannerAdapter(
+        client, on_sanitize=lambda phase, _rs, ds: seen.append((phase, ds))
+    )
+    out, _raw = await planner.plan("拿起dimm", ParseContext(rule_set_code="X"))
+    assert len(out.actions) == 1, "降級不得丟掉切分"
+
+    details = [d for _phase, ds in seen for d in ds]
+    by_reason = {d.reason: d for d in details}
+    assert by_reason["role_text_not_in_source"].text == "記憶體模組"
+    assert (by_reason["role_numeric_stripped"].value, by_reason["role_numeric_stripped"].unit) == (
+        450,
+        "cm",
+    )
+    assert by_reason["role_key_dropped"].role_key == "object_ref"
+
+
+@pytest.mark.asyncio
+async def test_production_path_leaks_no_stripped_values_into_its_output():
+    """沒掛 observer（＝`wi_ai_service` 的生產設定）→ 輸出不含任何模型可控字串。
+
+    ⚠️ 精確地說**不是**「不收集」：`_parse_sanitize_validate` 一律建 `details` 並傳進
+    sanitize，被擋掉的是**發送**（`_observe` 在 `_on_sanitize is None` 時 no-op），
+    那些值隨區域變數丟棄。這條驗的是**輸出面**——降級後的 `PlannerOutput`（含
+    `unresolved`）不得留著模型可控字串。
+
+    這條與 `test_contracts.py::test_stripped_values_never_reach_unresolved_or_routing`
+    互補：那條走到 `compute_routing` 驗「不會流進 routing_reasons」。
+    """
+    client = FakeLLMClient([_DEGRADING_PAYLOAD])
+    planner = LLMPlannerAdapter(client)  # 無 on_sanitize
+    out, _raw = await planner.plan("拿起dimm", ParseContext(rule_set_code="X"))
+    dumped = json.dumps(out.model_dump(), ensure_ascii=False)
+    for needle in ("記憶體模組", "治具", "450"):
+        assert needle not in dumped, f"降級後的輸出仍帶著 {needle!r}：{dumped}"
+    assert "role_text_not_in_source" in out.unresolved
+
+
+@pytest.mark.asyncio
+async def test_details_are_reported_even_when_the_whole_output_fails():
+    """硬失敗那次也要交出已收集的明細——只在成功時給等於挑好看的樣本回報。"""
+    payload = json.dumps(
+        {
+            "language": "zh",
+            "actions": [
+                {
+                    "action_id": "a1",
+                    "action_type": "acquire",
+                    "sequence_order": 1,
+                    "roles": {},
+                    "evidence": [{"text": "拿起記憶體模組"}],
+                }
+            ],
+            "dependencies": [],
+            "unresolved": [],
+        },
+        ensure_ascii=False,
+    )
+    seen: list[list] = []
+    client = FakeLLMClient([payload, payload])
+    planner = LLMPlannerAdapter(client, on_sanitize=lambda _p, _rs, ds: seen.append(ds))
+    with pytest.raises(PlannerError):
+        await planner.plan("拿起dimm", ParseContext(rule_set_code="X"))
+    assert [d.text for ds in seen for d in ds] == ["拿起記憶體模組", "拿起記憶體模組"]
