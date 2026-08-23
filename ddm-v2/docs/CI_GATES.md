@@ -91,6 +91,59 @@
    「核心格空＋I 面命中」豁免帶真 TMU＋G 面反例不豁免）。同規則適用完整性
    判定的豁免改動（`most_compiler/compile.py` face_hit_params 分支）。
 
+9. **宣稱必須有紅燈守著；守不住就降級成「已知未保證」。** 判準只有一句話——
+   **「這件事變成假的時候，什麼會紅？」** 答不出來就不是被保證的事實，是一段散文。
+   2026-08-22～23 這兩天在三個不同層面各抓到實例（共 16 個），所以成文；
+   與硬性規則 7 的差別：規則 7 管**測試自己**可不可信，本條管**測試之外的宣稱**
+   ——產品欄位、守衛、文件與教材。
+
+   - **(a) 自述欄位（產品側）**：任何宣稱來源／版本／狀態的欄位，必須有測試斷言它
+     等於**實際發生的值**；做不到就回 `null`／標「未知」，**不要回一個看起來確定的錯值**。
+     誠實的「不知道」勝過自信的錯答。
+     實例：`provenance.parser` 在兩處寫死 `rule_based_v1`，不管實際跑 LLM 還是 rule
+     都這樣回報（實機驗證**兩度**誤判「LLM 沒被呼叫」）；`prompt_version` 在快取重播
+     時讀**當下的模組常數**（`ai_parse_runs` 根本沒這個欄位），於是常數一升版，DB 內
+     既有的每一筆 LLM run 都開始謊報（probe 實證 `written plan-v1.3 → replayed
+     plan-v9.9-NEVER-RAN`）；`slots_parser` 為了修前者而新增，卻在重播路徑上**犯了
+     它自己要治的病**（重播的 slots 來自 `SlotLinker.link(LLM plan)`，與 rule parser
+     無關）。三者的共同形狀：欄位講了一件關於自己的事，而沒有任何東西在驗它。
+
+   - **(b) 守衛與判準**：新增或修改守衛時，**必做一次 mutation**——把被守的行為改壞，
+     確認**有測試轉紅**，然後還原；報告要寫「改了什麼 → 哪一支紅了」。
+     ⚠️ **更陰險的是「空跑通過」**：測試綠不代表判準有效，可能是**前置條件在該語料上
+     零命中**，程式根本沒進到判斷式。套用在語料／集合上的檢查必須另附**命中數下界斷言**
+     （既有樣板：`test_prompt_few_shots.py` 的 `_MIN_GOLD_CLAUSES_CHECKED = 10`）。
+     實例：切分守衛的檢查 (2) 宣稱「慣例是查出來的」，但 gold 的 `acquire→move_place`
+     相鄰組數是 **0**，那條 gold 測試**恆綠**、對它零證據力（而 gold plan 是 rule parser
+     預標註，60 個 action 只有 3 個有 roles——**任何 roles-based 判準都拿不到 gold 背書**，
+     見 worklog §9 T-8）；`numeric_claim_is_evidenced` 的路徑 (2) 整段換成 `return False`
+     → **39 支全過**；`model_served` 的分岐規則改成「靜默挑第一個」→ **38 passed 存活**
+     （`else None` 那一支對「空」與「分岐」是同一行程式，「空」那條測試給了它假的覆蓋感）；
+     憑證 sentinel 測試 stub 掉整個 `plan` → **從未發生 HTTP 呼叫**，釘住的只是欄位邊界
+     而不是它宣稱的「整份報告不含 endpoint」。
+
+   - **(c) 文件與教材**：文件引用的數字要能指出**怎麼重算**；教材（few-shot、fixture）
+     必須通過與production 輸出**同一套契約驗證**。會腐爛的值（migration head、測試案例數、
+     語料規模）**不要寫死**——寫查詢指令或判準。
+     實例：`prompts/plan_v1.py` 的 5 個 evidence span 有 **3 個算錯、2 個越界**，等於在
+     in-context **教模型數錯位置**，而沒有任何測試會紅（守衛後補為
+     `tests/unit/test_prompt_few_shots.py`）；`eval-reports/README.md` 一節名為
+     **「現況（誠實基線）」**卻宣稱 gold `n=3、全部 seed`（實際 n=55）與 2026-08-15 的
+     `0.6667/0.5714`（實際 `0.5556/0.4348`）——**一個叫「誠實基線」的段落自己過期了**；
+     `ddm-backend` agent 宣稱 `現 head=v2_0010`（實際 **v2_0043**，差 33 版）且規格來源
+     指向 `bd99460` 已刪除的 `docs/v3/impl`／`analysis`；`ddm-validator` 的案例數停在
+     `82/54/57+/26+`（實際 `88/60/1312/589`）；spec 稱 `ROUTING_REASONS` 為「權威集合」
+     而它**生產端零引用**、稱「前端依這些 key 顯示中文文案」而前端**原樣印英文 key**、
+     稱規則 12 的立論是「prompt 一個都沒列」而 `llm_client` **早就把 schema enum 附進
+     system message**、稱值域規則「補上即可」而資料顯示 `action_ref_unknown` **4/4/4 沒動**。
+
+   **降級的正確寫法**：守不住就明說。例如 spec §10.3 對 `x_seconds` 寫
+   「請不要把本節讀成『模型主張的數字進 TMU 已經有守門了』——distance 與 quantity 有，
+   seconds 沒有」；`numeric_claim_is_evidenced` 的 docstring 自己聲明
+   「⚠️ **不是**『無憑據數值一律 fail-closed』」。**主動標示自己守不住的範圍，
+   比讓讀者以為有守護更有價值。**
+
+
 ## Feature → 驗證測試點 → script
 
 | Feature | 重大驗證測試點 | Script |
