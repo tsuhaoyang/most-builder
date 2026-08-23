@@ -14,7 +14,10 @@ seed gold 基線釘值、CLI 報告兩段皆在（防 planner 段被靜默跳過
 **例外訊息的 URL 遮蔽**（`planner_error` 會把 httpx 訊息裡的 endpoint 連同
 userinfo 寫進要入版控的報告——遮蔽後憑證不得出現，但 Pydantic 的診斷細節必須留著）、
 **`model_served` 是遠端可控字串**（分岐時不得靜默挑一個；控制字元與超長值不得
-進報告或終端機，但合法 tag 不得被誤殺）
+進報告或終端機，但合法 tag 不得被誤殺）、
+**被拒回應留存**（v8 `planner_raw_rejected`：失敗且帶得出回應才有值、沒有回應時為
+null 且與「回了空字串」分得開；遮 URL 與已知憑證、超長截斷留痕；憑證 sentinel 走
+**真的 HTTP 呼叫**——回聲式伺服器把我們送出的 `Authorization` 抄進回應本文）
 ＋ `gold_dir` 為 repo 相對路徑（不得夾帶本機絕對路徑）。
 """
 from __future__ import annotations
@@ -30,6 +33,7 @@ import pytest
 
 from ddm_v2.nlp.contracts import WorkInstructionPlan
 from ddm_v2.nlp.planner_eval import (
+    PLANNER_RAW_REJECTED_MAX_LEN,
     RULE_PLANNER_NAME,
     evaluate_planner_all,
     evaluate_planner_case,
@@ -799,10 +803,287 @@ def test_report_never_contains_endpoint_credentials_on_http_failure(
     # 失敗形態仍可診斷（遮蔽不得把報告變成看不出發生什麼事）
     assert "<redacted-url>" in case["planner_error"]
     assert "401 Unauthorized" in case["planner_error"]
+    # 非 2xx 在 `resp.raise_for_status()` 就炸了，沒有 completion 可留——
+    # 欄位誠實為 null（不得拿例外訊息充當「原始回應」）
+    assert case["planner_raw_rejected"] is None
     assert report["planner_eval"]["summary"]["planner_failures"]["error_codes"] == {
         "HTTPStatusError": 1
     }
 
+
+
+# ── 被拒回應留存（T-12；ADR-033 §4.4）────────────────────────────────────────
+#
+# 為什麼要留：只記錯誤碼的話，「那份被拒的輸出切分得對不對」事後無從回答。
+# ADR-033 §1.4(c) 的 g07／g23／g46 都輸出了 `a2` 而 gold 是單一 action——契約放寬
+# 後它們會從「硬失敗」變成「切分錯誤」，而那正是要量的東西。
+
+# 被拒回應的樣子：模型加了散文前綴（JSON 解析就失敗）＋切成兩個 action
+_REJECTED_TWO_ACTION_JSON = (
+    '{"language":"zh-TW","actions":['
+    '{"action_id":"a1","action_type":"acquire","sequence_order":1,"roles":{},"evidence":[]},'
+    '{"action_id":"a2","action_type":"process","sequence_order":2,"roles":{},"evidence":[]}'
+    '],"dependencies":[],"unresolved":[]}'
+)
+
+
+def _planner_error_with_raw(content: str) -> PlannerError:
+    """帶 `raw` 的 PlannerError＝schema retry 用盡的真實形狀（`llm_planner` 掛 raw2）。"""
+    from ddm_v2.nlp.planner_ports import LLMRawResponse
+
+    return PlannerError(
+        "planner_schema_invalid:['json_or_schema:Expecting value']",
+        raw=LLMRawResponse(content=content, model="eval-selftest-model:0b"),
+        errors=["json_or_schema:Expecting value"],
+    )
+
+
+async def test_rejected_raw_response_is_preserved_when_case_fails():
+    """失敗案例要留下**被拒絕的原始回應**——否則切分對錯事後答不出來。
+
+    mutation 證據：把 `planner_raw_rejected` 從 `PlannerCaseResult` 拿掉、或不在
+    except 分支填值，本測試必轉紅。
+    """
+    data = _load_g01()
+    result = await evaluate_planner_case(
+        data, _plan_fn_raising(_planner_error_with_raw(_REJECTED_TWO_ACTION_JSON))
+    )
+
+    assert result.planner_failed is True
+    assert result.planner_raw_rejected == _REJECTED_TWO_ACTION_JSON
+    # 這個欄位存在的目的：看得出模型把它切成幾段（此例 a1+a2，gold 是單一 action）
+    assert '"a2"' in result.planner_raw_rejected
+    assert result.gold_action_count == 1
+
+
+async def test_rejected_raw_is_null_when_case_succeeds():
+    """成功的案例沒有「被拒回應」——欄位必須是 null，不得拿成功的輸出充數。"""
+    data = _load_g01()
+    result = await evaluate_planner_case(data, _plan_fn_returning(data["plan"]))
+
+    assert result.planner_failed is False
+    assert result.planner_raw_rejected is None
+
+
+async def test_rejected_raw_distinguishes_no_response_from_empty_response():
+    """`null`＝這次失敗沒有回應可留；`""`＝伺服器真的回了空字串。兩者不可混為一談
+    （混掉的話「模型到底吐了什麼」會退化成「不知道」）。"""
+    data = _load_g01()
+
+    # timeout／連線失敗：例外根本不帶回應
+    no_resp = await evaluate_planner_case(data, _plan_fn_raising(RuntimeError("boom")))
+    assert no_resp.planner_failed is True
+    assert no_resp.planner_raw_rejected is None
+
+    # PlannerError 但沒帶 raw（例如 wi_ai_service 自行拋的）
+    bare = await evaluate_planner_case(
+        data, _plan_fn_raising(PlannerError("planner_schema_invalid:[]", errors=["x:y"]))
+    )
+    assert bare.planner_raw_rejected is None
+
+    # 伺服器回了空字串：留 ""（可判讀為「模型什麼都沒說」），不是 null
+    empty = await evaluate_planner_case(data, _plan_fn_raising(_planner_error_with_raw("")))
+    assert empty.planner_raw_rejected == ""
+
+
+async def test_rejected_raw_redacts_urls_and_known_secrets():
+    """被拒回應是**遠端可控字串**而報告要入版控：URL 與已知憑證都不得留在裡面。
+
+    兩個來源都是真的：URL 進得來（回聲式 proxy 把 upstream 抄進回應本文，或模型
+    自己吐一個），api key 進得來（伺服器拿得到我們送出的 `Authorization: Bearer`）。
+    `_redact_urls` 只擋內嵌 URL，擋不到裸 token——所以兩層都要。
+
+    mutation 證據：把 `_sanitize_rejected_raw` 的 `_redact_urls()` 或
+    `_redact_secrets()` 任一拿掉，本測試必轉紅。
+    """
+    api_key = "sk-t12-unit-sentinel-MUST-NOT-APPEAR"
+    content = (
+        f"upstream=http://svc-account:hunter2-SECRET@llm-endpoint.invalid:11434/v1 "
+        f"auth=Bearer {api_key}\n" + _REJECTED_TWO_ACTION_JSON
+    )
+    result = await evaluate_planner_case(
+        _load_g01(), _plan_fn_raising(_planner_error_with_raw(content)), secrets=(api_key,)
+    )
+
+    raw = result.planner_raw_rejected
+    assert raw is not None
+    for secret in ("hunter2-SECRET", "svc-account", "llm-endpoint.invalid", api_key):
+        assert secret not in raw
+    assert "<redacted-url>" in raw
+    assert "<redacted-secret>" in raw
+    # 遮蔽不得把回應變成看不出切分（那會摧毀本欄位存在的目的）
+    assert '"a2"' in raw
+    assert '"action_type":"process"' in raw
+
+
+async def test_rejected_raw_is_truncated_with_a_visible_trace():
+    """回應長度無界（`llm_client` 未設 response size limit）——截斷且**留痕**。
+
+    留痕是重點：一份被截斷卻裝成完整的「原始回應」，會讓事後判讀切分時得出錯的結論。
+
+    mutation 證據：把 `_sanitize_rejected_raw` 的截斷拿掉，本測試必轉紅。
+    """
+    content = _REJECTED_TWO_ACTION_JSON + "填" * 50_000
+    result = await evaluate_planner_case(
+        _load_g01(), _plan_fn_raising(_planner_error_with_raw(content))
+    )
+
+    raw = result.planner_raw_rejected
+    assert raw is not None
+    assert len(raw) < len(content)
+    assert raw.startswith(_REJECTED_TWO_ACTION_JSON[:50])  # 前段（切分證據）保住
+    assert f"[truncated from {len(content)} chars]" in raw
+    assert len(raw) <= PLANNER_RAW_REJECTED_MAX_LEN + 40  # 上限＋留痕標記
+
+    # 未超長者一個字都不得動（截斷不能變成無條件加工）
+    short = await evaluate_planner_case(
+        _load_g01(), _plan_fn_raising(_planner_error_with_raw(_REJECTED_TWO_ACTION_JSON))
+    )
+    assert short.planner_raw_rejected == _REJECTED_TWO_ACTION_JSON
+
+
+async def test_secret_straddling_the_truncation_point_is_still_redacted():
+    """遮蔽必須在截斷**之前**：先截斷會把橫跨切點的 api key 剖成兩半，前半留在報告裡
+    而完整值不再被字面比對命中（截掉尾巴的 key 仍是大部分的祕密材料）。
+
+    mutation 證據：把 `_sanitize_rejected_raw` 改成「先截斷、再對 head 遮蔽」，
+    本測試必轉紅（其餘遮蔽測試都抓不到這個順序錯誤——它們的內容都不超長）。
+    ⚠️ 順序保護的是**憑證字面值**，不是 URL：`_URL_RE` 沒有結尾要求，被攔腰切斷的
+    URL 照樣整段匹配得到。
+    """
+    api_key = "sk-" + "K" * 40
+    # key 起點落在切點之前、終點在切點之後 → 先截斷就會只留下 key 的前 20 字元
+    content = "填" * (PLANNER_RAW_REJECTED_MAX_LEN - 20) + api_key + "尾" * 100
+    result = await evaluate_planner_case(
+        _load_g01(), _plan_fn_raising(_planner_error_with_raw(content)), secrets=(api_key,)
+    )
+
+    raw = result.planner_raw_rejected
+    assert raw is not None
+    assert "[truncated from" in raw  # 確實走到截斷這條路（否則本測試是空跑）
+    assert api_key not in raw
+    assert api_key[:20] not in raw, "截斷把 key 剖半後前半殘留＝遮蔽順序錯了"
+    assert "<redacted-secret>" in raw
+
+
+async def test_degenerate_secrets_do_not_carpet_the_text():
+    """反向守衛：空字串／過短的「憑證」不得被當成 secret 抹除。
+
+    `"".replace("", x)` 會在**每個字元之間**插入標記，一兩個字元的值則會把正常文字
+    打成馬賽克——遮蔽過當同樣摧毀本欄位的診斷價值。`MIN_REDACTABLE_SECRET_LEN`
+    以下不處理是**刻意取捨**（真實 api key 遠長於此），不是漏看。
+    """
+    result = await evaluate_planner_case(
+        _load_g01(),
+        _plan_fn_raising(_planner_error_with_raw(_REJECTED_TWO_ACTION_JSON)),
+        secrets=("", "ab"),
+    )
+    assert result.planner_raw_rejected == _REJECTED_TWO_ACTION_JSON
+
+
+def _start_echoing_llm_server(hostile_json: str):
+    """起一個把**收到的請求資訊抄進回應本文**的 OpenAI-compat 伺服器。
+
+    為什麼要真的起伺服器（而不是 stub 掉 `LLMPlannerAdapter.plan`）：stub 掉整個
+    `plan` 就**不會發生 HTTP 呼叫**，api key 根本沒離開過行程——那種 sentinel 釘住的
+    只是欄位邊界，不是洩漏路徑。這裡讓 `OpenAICompatClient` 真的送出請求，伺服器把
+    **它實際收到的 `Authorization` header 與請求 URL** 抄進 completion 本文，於是
+    「遠端可控字串把我們的憑證帶回報告」這條路徑是真的走了一遍。
+
+    回聲式 proxy／debug endpoint 就是這個形狀（把收到的 header 原樣寫進錯誤或回應）。
+    """
+    import threading
+    from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+
+    class _Handler(BaseHTTPRequestHandler):
+        def do_POST(self) -> None:  # noqa: N802 — BaseHTTPRequestHandler 的介面
+            self.rfile.read(int(self.headers.get("Content-Length") or 0))
+            upstream = f"http://{self.headers.get('Host')}{self.path}"
+            content = (
+                # 散文前綴 → JSON 解析失敗 → retry → PlannerError（帶 raw2）
+                f"好的，這是解析結果\x1b[2J\x1b]0;pwned\x07"
+                f"（upstream={upstream}, auth={self.headers.get('Authorization')}）：\n"
+                + hostile_json
+            )
+            body = json.dumps(
+                {
+                    "model": "hostile-echo:0b",
+                    "choices": [{"message": {"content": content}}],
+                },
+                ensure_ascii=False,
+            ).encode("utf-8")
+            self.send_response(200)
+            self.send_header("Content-Type", "application/json")
+            self.send_header("Content-Length", str(len(body)))
+            self.end_headers()
+            self.wfile.write(body)
+
+        def log_message(self, *args) -> None:  # 別把測試輸出灌滿 access log
+            pass
+
+    server = ThreadingHTTPServer(("127.0.0.1", 0), _Handler)
+    threading.Thread(target=server.serve_forever, daemon=True).start()
+    return server
+
+
+def test_rejected_raw_never_carries_credentials_over_a_real_http_call(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture
+):
+    """T-12 的端到端：**真的發出 HTTP 呼叫**，憑證真的上線，報告任何角落都不得有它。
+
+    走完整條路徑（`OpenAICompatClient` → 真 socket → `LLMPlannerAdapter` 的
+    initial+retry → `PlannerError(raw=…)` → `planner_eval` → 報告 JSON），
+    伺服器把收到的 `Authorization` 與請求 URL 抄回 completion 本文。
+
+    mutation 證據：拿掉 `_redact_urls` → `127.0.0.1:<port>` 出現在報告；拿掉
+    `_redact_secrets` → api key 出現在報告；拿掉 `planner_raw_rejected` 欄位 →
+    KeyError；把內容印到 stdout → ESC 斷言轉紅。
+    """
+    from ddm_v2.settings import get_settings
+
+    api_key = "sk-t12-e2e-sentinel-MUST-NOT-APPEAR"
+    server = _start_echoing_llm_server(_REJECTED_TWO_ACTION_JSON)
+    port = server.server_address[1]
+
+    gold = tmp_path / "gold"
+    _write_gold(gold, "g01.json", _load_g01())
+    out = tmp_path / "out"
+
+    monkeypatch.setenv("DDM_LLM_BASE_URL", f"http://127.0.0.1:{port}")
+    monkeypatch.setenv("DDM_LLM_API_KEY", api_key)
+    monkeypatch.setenv("DDM_LLM_MODEL", "eval-selftest-model:0b")
+    monkeypatch.setattr(sys, "argv", _llm_argv(gold, out, timeout="10"))
+
+    get_settings.cache_clear()
+    try:
+        # 唯一的案例失敗＝全案失敗＝管道壞掉（既有契約）
+        assert wi_ai_eval.main() == 1
+    finally:
+        get_settings.cache_clear()
+        server.shutdown()
+        server.server_close()
+    stdout = capsys.readouterr().out
+
+    text = (out / "wi-gold-latest.json").read_text(encoding="utf-8")
+    for secret in (api_key, f"127.0.0.1:{port}"):
+        assert secret not in text, f"報告洩漏 {secret}"
+
+    case = json.loads(text)["planner_eval"]["cases"][0]
+    raw = case["planner_raw_rejected"]
+    assert case["planner_failed"] is True
+    assert raw is not None, "帶得出回應的失敗必須留存原始回應"
+    assert "<redacted-url>" in raw and "<redacted-secret>" in raw
+    # 留存的目的：看得出模型把單一 action 的原文切成了 a1+a2
+    assert '"a2"' in raw and case["gold_action_count"] == 1
+    assert "[truncated from" not in raw  # 正常長度的回應不得被動到
+
+    # 終端機是另一個 sink，而本欄位**不剝控制字元**（換行是回應的合法內容）——
+    # 所以它不得未經逸出被印出去。報告 JSON 那邊靠 `json.dumps` 逸出：
+    # 原始 ESC 位元組不在檔案裡，逸出形式在。逸出若哪天消失，這兩條會轉紅。
+    assert "\x1b" not in stdout
+    assert "\x1b" not in text
+    assert "\\u001b" in text
+    assert "raw_rejected 留存 1/1 筆" in stdout
 
 
 def _llm_argv(gold: Path, out: Path, *, timeout: str = "1") -> list[str]:
@@ -988,7 +1269,7 @@ def test_cli_report_contains_both_segments(tmp_path: Path):
     assert latest.exists()
     report = json.loads(latest.read_text(encoding="utf-8"))
 
-    assert report["report_schema_version"] == "wi-gold-report-v7"
+    assert report["report_schema_version"] == "wi-gold-report-v8"
     assert report["unapproved_cases"] == []
     # 向後相容：頂層 summary/cases（compile 段）維持 v1 形狀
     assert report["summary"] == {"total": GOLD_TOTAL_N, "passed": GOLD_TOTAL_N, "failed": 0}
@@ -998,6 +1279,13 @@ def test_cli_report_contains_both_segments(tmp_path: Path):
     planner = report["planner_eval"]
     assert planner["db_required"] is False
     assert planner["summary"]["n"] == GOLD_TOTAL_N
+    # v8：報告自帶 `planner_raw_rejected` 的值域說明——讀報告的人未必拿得到 repo，
+    # 值域（null vs ""）、只留 retry 那次、遮蔽與截斷上限都必須寫在報告裡
+    note = planner["raw_rejected_note"]
+    assert "planner_raw_rejected" in note
+    assert "null" in note and "retry" in note
+    assert "<redacted-url>" in note and "<redacted-secret>" in note
+    assert str(PLANNER_RAW_REJECTED_MAX_LEN) in note
     assert planner["summary"]["planner"] == RULE_PLANNER_NAME
     assert len(planner["cases"]) == GOLD_TOTAL_N
     # ie_modified=false 的轉正全數自我指涉排除；D3-022 重切 3 筆（true）計入

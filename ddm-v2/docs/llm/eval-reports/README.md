@@ -14,7 +14,7 @@
   **拒寫** `wi-gold-*`——覆核期間不得污染官方報告（報告內 `unapproved_cases` 點名）。
 - 本目錄以 `.gitkeep` 與 `wi-gold-latest.json` 為起點；歷史報告可選擇性 commit。
 
-## 報告格式（`report_schema_version: wi-gold-report-v7`）
+## 報告格式（`report_schema_version: wi-gold-report-v8`）
 
 兩段並列、分開呈現：
 
@@ -24,6 +24,7 @@
 | `planner_eval` | **planner 段**：gold 原文 → planner → 與 gold plan 比對（驗 text→plan） | gold 檔 `source_text` |
 | `gold_load_errors` | 載入層即無效的 gold 檔（`gold_case_invalid`：malformed JSON、缺 `plan`、plan schema 不合），點名檔名 | gold 檔本身 |
 | `planner_run` | **執行來源自述**（v7）：這趟是哪個 planner／哪顆模型（請求 vs 伺服器回報）／哪一版 prompt／`--llm-timeout-s` 多少 | CLI 參數＋settings＋`plan_v1.PROMPT_VERSION`＋`LLMRawResponse.model` |
+| `planner_eval.cases[*].planner_raw_rejected` | **被拒絕的原始模型回應**（v8）：失敗案例的模型輸出本文，讓「那份輸出切分得對不對」事後答得出來 | `PlannerError.raw.content`（retry 那次） |
 
 `planner_run` 的取值與邊界：
 
@@ -60,6 +61,37 @@
   `<redacted-url>`（`nlp/planner_eval._redact_urls`）。狀態碼、原因短語與 Pydantic
   的 `input_value=…` 等診斷細節照留，被換掉的只有 URL。
 - `gold_dir` 記**相對於 `ddm-v2/`** 的路徑（v7 起；此前是含 OS 使用者名的本機絕對路徑）。
+
+`planner_raw_rejected`（v8 起；ADR-033 T-12）的取值與邊界：
+
+- **為什麼要留**：在此之前失敗只記錯誤碼（`planner_error_codes`），於是「那份被拒的
+  輸出切分得對不對」**事後無從回答**。ADR-033 §1.4(c) 的 `g07`／`g23`／`g46` 都輸出了
+  `a2` 而 gold 是單一 action——契約放寬（ADR-033 P1）之後，這些案例會從「硬失敗」變成
+  「**切分錯誤**」，而那正是要量的東西。沒有這一欄，P1 的觀察期只看得到一半
+  （硬失敗數下降量得到、切分正確率量不到）。
+- **值域**：該案 `planner_failed` 且例外帶得出回應 → 字串；**`null` ＝這次失敗沒有回應
+  可留**（timeout、連線失敗、非 2xx 在 `raise_for_status()` 就炸了、rule planner 的例外、
+  或 `PlannerError` 未帶 `raw`）；`""` ＝伺服器真的回了空字串（與 `null` **不同**，
+  不可混為一談）。該案成功時恆為 `null`。
+- ⚠️ 留的是 **retry 那次**的回應：`LLMPlannerAdapter` 只把最後一次掛上 `PlannerError.raw`，
+  **initial 那次的回應現行契約留不下來**（要留得動 planner 契約，記為後續票）。
+- ⚠️ 這是**遠端可控字串**且報告要入版控。寫入前依序：⑴ 抹掉**已知憑證字面值**
+  （本次執行的 api key，由 CLI 從 settings 傳入）→ `<redacted-secret>`；
+  ⑵ 遮 URL → `<redacted-url>`；⑶ 截斷至 **4000 字元**並留痕
+  （`…[truncated from N chars]`，N 為遮蔽後長度）。
+  順序不可對調——先截斷會把橫跨切點的 api key 剖成兩半，前半留在報告裡而完整值不再被
+  字面比對命中（`_URL_RE` 沒有結尾要求，URL 那層不受順序影響）。
+  4000 的依據：現行 55 案 gold plan 序列化後最長 830 字元，模型加上縮排與 roles 也在
+  3000 以內；而回應長度無界（`llm_client` 未設 response size limit），
+  一個回應就能把 100KB 塞進版控。
+- ⚠️ **不剝控制字元**（與 `model_served` 相反）：換行是回應的合法內容，剝掉會把
+  pretty-print 的 JSON 打爛；報告 JSON 這個 sink 由 `json.dumps` 逸出本來就安全。
+  代價是本欄位**不得未經逸出印到終端機**——CLI 只印留存筆數
+  （`raw_rejected 留存 k/n 筆`），不印內容。
+- 憑證防線的證據力：sentinel 測試走**真的 HTTP 呼叫**（本機起一個把收到的
+  `Authorization` 與請求 URL 抄回 completion 本文的回聲伺服器），不是 stub 掉
+  `LLMPlannerAdapter.plan`——stub 掉整個 `plan` 就不會發生 HTTP 呼叫，api key
+  根本沒離開過行程，那種 sentinel 釘住的只是欄位邊界。
 
 版本相容性：
 
@@ -106,6 +138,11 @@
   改為相對於 `ddm-v2/`，`planner_eval.cases[*].planner_error`／`errors` 內的 URL 改為
   `<redacted-url>`（防 endpoint 憑證隨報告入版控）。頂層 compile 段與 `planner_eval`
   的**形狀**皆不變（只有上述欄位的字串內容變）。
+- v7 → v8（2026-08-23）：加法。`planner_eval.cases[*]` 新增 `planner_raw_rejected`
+  （＝**被拒絕的原始模型回應本文**，見上），`planner_eval` 新增 `raw_rejected_note`
+  說明其值域與遮蔽。頂層 compile 段與 `planner_eval` 其餘形狀不變；分數、退出碼與
+  既有欄位語意皆不受影響（純觀測）。動機見 ADR-033 T-12：報告只記錯誤碼時，
+  契約放寬後「硬失敗變切分錯誤」這件事量不到。
 
 ### planner 段指標（操作型定義）
 

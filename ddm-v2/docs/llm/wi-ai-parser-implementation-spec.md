@@ -1,7 +1,7 @@
 # WI AI Parser 實作規格（Implementation Spec）
 
 **文件類型：** 實作規格（implementation-level；從屬於 architecture spec 與 ADR）
-**版本：** 1.1 — 可派工（修訂紀錄見 §20.5）
+**版本：** 1.2 — 可派工（修訂紀錄見 §20.5）
 **建立日期：** 2026-08-06
 **進度追蹤：** [wi-ai-parser-worklog.md](wi-ai-parser-worklog.md)（phase 狀態、卡點、實作級決策）
 **上游權威：**
@@ -9,6 +9,8 @@
 [ADR-026](../decisions/ADR-026-wi-ai-parser-pipeline-boundary.md)（proposed）、
 [ADR-027](../decisions/ADR-027-domain-evolution-versioning-and-ai-readiness.md)（proposed）、
 [ADR-015](../decisions/ADR-015-nl-parsing-in-scope.md)（accepted）、
+[ADR-033](../decisions/ADR-033-llm-planner-scope-narrowing.md)（**accepted 2026-08-23**——LLM 職責收窄；
+本文件 §5.2 為其 P0 同步，§5／§5.1／§7.2 的現況描述與它的目標契約並存是刻意的）、
 [Domain Evolution 與 AI Readiness](../architecture/domain-evolution-and-ai-readiness-spec.md)、
 [MiniMOST Sequence Model](../core-logic/minimost-sequence-model-core-logic-spec.md)
 **交付順序依據：** [WI AI 與批次建模交付計畫](../roadmap/wi-ai-and-batch-modeling-delivery-plan.md)
@@ -36,7 +38,9 @@ IE 在 UI 審核、修正、採用；**每一筆人工修正都落庫**成 appen
 1. 在工作台輸入「拿取電動起子，依圖示鎖附兩顆螺絲」，得到 ≥2 個 action 的拆解、
    每個 action 的 GM/CM 草稿與 top-K 候選、缺漏欄位標示；TMU 全部來自 `compute_cycle()`。
 2. 輸入「拿起 DIMM」（無下一步資訊）時，系統**不自行補「插入」或任何未提及動作**，
-   destination 標 `missing`，routing 為 `review`。
+   `destination` **缺席**（P1 前可寫成 `status=missing`；ADR-033 收窄後＝該鍵直接不存在，
+   見 §5.2——`compile.py` 判的本來就是「鍵在不在」，兩種寫法對下游同義），
+   `unresolved` 帶 `next_operation`，routing 為 `review`。
 3. IE 在 UI 替換一個 G 候選並採用後，DB 可查到該次 run 的完整 plan/candidates 與
    一筆 `replace_candidate` review event（含 before/after）。
 4. LLM 服務關機時，`/nl-draft` 仍以 rule-based fallback 回應，provenance 標明 fallback，
@@ -157,6 +161,11 @@ L0→L3 可由同一（組）agent 依序實作；L4 另立工單。
 
 以 Pydantic v2 定義（不是 dataclass——需要 JSON schema 給 LLM structured output 與 OpenAPI）。
 **此檔案是跨層契約，欄位只增不改**；未來抽離服務時整檔搬到 `packages/wi_ai_contract/`。
+
+> ⚠️ **本節與 §5.1 的 code block ＝ P1 前的「現況」，不是目標。**
+> [ADR-033](../decisions/ADR-033-llm-planner-scope-narrowing.md)（accepted 2026-08-23）把 LLM 的
+> 職責收窄到「語意分段 ＋ 角色片語」，契約隨之瘦身——**目標形狀與落地階段見 §5.2**。
+> 兩節不一致是預期的（P1–P5 尚未執行），不是文件過期。
 
 ```python
 """wi-plan-v1 契約：MOST-neutral 作業計畫與候選。
@@ -287,9 +296,10 @@ class ParseRunResult(BaseModel):
     provenance: dict                 # bundle/model/prompt_version/latency/fallback（§10.3）
 ```
 
-### 5.1 LLM structured output 子集
+### 5.1 LLM structured output 子集（**現況**；目標見 §5.2）
 
-LLM 只被允許產生下列子集（`PlannerOutput`）；candidates、TMU、routing 一律不在其中：
+LLM 只被允許產生下列子集（`PlannerOutput`）；candidates、TMU、routing 一律不在其中
+（**這條邊界 ADR-033 不動，只會更嚴**）：
 
 ```python
 class PlannerOutput(BaseModel):
@@ -309,6 +319,103 @@ class PlannerOutput(BaseModel):
 5. role key 不在封閉集合 → invalid。
 6. **任何 action 的任何 role，若原文與 context 均無出處，status 不得為 explicit/inferred**
    （機械檢查：explicit 需 evidence；inferred 需 `action_ref` 或 context key，見 §7.5）。
+
+> ⚠️ 上列第 3、5、6 條與 `RoleStatus` 綁在一起，**P1 起由 §5.2 的規則集取代**。
+> 取代的理由（`RoleValue.status` 的下游消費者盤點、v1.4 的失敗分布）在
+> [ADR-033](../decisions/ADR-033-llm-planner-scope-narrowing.md) §1.4，本節不重複。
+
+---
+
+### 5.2 ADR-033 收窄後的目標契約與落地階段
+
+> **狀態（2026-08-23）**：[ADR-033](../decisions/ADR-033-llm-planner-scope-narrowing.md)
+> **accepted**（D1–D7 全數核可、§7 七個未決全數裁決）。遷移路徑的 **P0＝本節，已完成**；
+> **P1–P5 全部尚未實作**——`contracts.py`／`plan_v1.py`／`compile.py`／`linking.py` 目前仍是
+> §5／§5.1／§7.2 描述的形狀。
+> **決策理由、量測依據、取捨與被否決的選項一律不在此重複**——見 ADR-033 §1（現況量測）、
+> §2（D1–D7）、§4（影響清單）、§6（考慮過的選項）。本節只寫**實作者需要的形狀與順序**。
+
+**一句話範圍**：LLM 只回答「這句話有幾個動作、每個動作的哪幾個字扮演哪個角色」。
+凡是「多少」（距離／數量／秒數）都不由它產生；凡是「哪一格、幾 TMU」更不由它產生
+（後者是 §1 既有邊界，ADR-033 只是把前者一併關掉）。
+
+#### 5.2.1 目標 `PlannerOutput`（P1–P2 落地）
+
+```text
+language
+actions[]:
+    action_id            # a1, a2…（run 內唯一）
+    action_type          # 既有 7 種列舉，**不變**——它決定 GM/CM 與核心格（§9.2）
+    sequence_order       # 1..N 連續
+    roles{}              # key ∈ {object, tool, tool_ref, from_location, destination,
+                         #        return_to, process_kind, inspect_kind}
+                         # value = { text: <原文字面片語> }
+                         #         tool_ref 另可帶 { action_ref: "aN" }
+    evidence[]           # [{ text: <原文字面片語> }]  ← 無 start/end
+dependencies[]           # 選用；type ∈ {uses_tool, tool_held_for, same_object}
+unresolved[]
+```
+
+#### 5.2.2 欄位級變更與落地階段
+
+| 項目 | 現況（P1 前） | 目標 | 落地階段 |
+|---|---|---|---|
+| `RoleValue.status` | 必填列舉 | **不向模型索取**；欄位改 `RoleStatus \| None = None` | P1（契約）＋P2（prompt） |
+| `RoleValue.value`／`unit` | 索取 | **不索取**，adapter 邊界剝除並記名 | P1（剝除）＋P2（prompt）＋P3（compiler 側入口關閉） |
+| `RoleValue.action_ref` | 任意 role 可帶 | **僅 `tool_ref`** | P1 |
+| `EvidenceSpan.start`／`end` | 模型產出＋驗證＋修復 | **改為選填，由我方推導**（§5.2.4） | P1 |
+| `hand`／`distance`／`quantity` | 索取 | **不索取**（鍵仍留在 `ROLE_KEYS` 白名單，不收窄列舉） | P2 |
+| `return_to` | **不存在** | **新增**（加法）→ 對應 A6 | P1（契約）＋P3（compiler 分支） |
+| `dependencies` | 必要；型別違反＝整筆失敗 | 選用；型別違反者丟棄並記名。`precedes` 不再索取（型別保留） | P1＋P2 |
+
+**ADR-011 相容性**：以上全部是**放寬**（必填→選填）與**新增**，沒有欄位被刪除、
+沒有列舉被收窄。既有 `tests/gold/wi_plans/*.json` 與既有 `ai_parse_runs.plan` JSON 照常解析。
+
+#### 5.2.3 取代 `status` 的單一不變式
+
+**任何 role 的 `text` 必須是 `normalized_text` 的字面子字串。**
+
+- 這是**可機械驗證的事實**，不是模型的自我宣告；
+- 它比舊的 `_role_covered_by_evidence` **更嚴**——舊實作是**雙向**子字串比對
+  （`text in ev.text` **或** `ev.text in text`），所以「role.text 是 evidence 的超集」可通過；
+- 連帶廢止 `explicit_without_value`／`explicit_without_evidence`／`inferred_without_ref`／
+  `action_ref_unknown` 四條驗證規則。
+
+> ⚠️ **已知脆弱點（記票 T-14）**：本不變式假設原文用字完整。gold 已知有缺字的案例
+> （`g32` 少一個「並」），缺字會讓「字面子字串」的匹配多一分脆弱。**不擅自改 gold 原文**；
+> 此處記錄以免下一位讀者以為不變式無條件成立。
+
+#### 5.2.4 evidence offset 改為推導（U-4 已裁決）
+
+模型只給 `text`，**不給 `start`／`end`**；offset 由我方定位：
+
+1. `text` 在 `normalized_text` 恰好出現一次 → 直接定位。
+2. 出現多次 → 依 `sequence_order` **由左至右單調指派**（同一位置不重用）。
+   **不掛額外旗標、不擋 auto**——User 裁決 2026-08-23：「應該不會有倒裝」，
+   動作順序與文字順序一致，指派安全。
+3. 找不到（模型改寫／幻覺）→ 該 action 剔除，沿用既有 `planner_invented_action` 語意。
+
+（現行 `repair_evidence_offsets` 的三分支在 P1 由本規則取代；它的 docstring 早已寫明
+「修復次數是之後決定要不要讓模型別輸出 offset 的依據」，依據見 ADR-033 §1.4。）
+
+#### 5.2.5 三類數值的新來源
+
+| 數值 | 收窄後來源 | 現在做嗎 |
+|---|---|---|
+| 距離（A0／A3／A6／M 分量） | ⑴ 對**原文**的確定性抽取（`quantities.extract_distances`，**保留不動**）；⑵ [ADR-031](../decisions/ADR-031-spatial-layout-and-distance-acquisition.md) 的站內佈局（帶出處、IE 確認才落值） | ⑴ 已在；⑵ 依 ADR-031 自己的分期 |
+| 數量／`frequency` | CSV／匯入欄或 IE 手填 | **延後另案**（§19 #1） |
+| 製程秒數 `x_seconds` | 同上 | **延後另案**（§19 #1） |
+
+**架構不變式 I-D1（ADR-033 D7）**：`most_compiler` 不得從 LLM 產出的 role 取得任何進入
+TMU 檔位的數值。P3 完成後，`compile.py` 不得再出現 `role.value` 的讀取——
+這是可機械檢查的（grep），**建議在 P3 一併加 CI 守衛**（同 §14 的 `compiler 無 TMU 符號` grep gate 慣例）。
+
+#### 5.2.6 「對應到哪一步」由確定性表提供，不由模型提供
+
+User 的裁決是「把解出來的詞對應到 MOST sequence model 的哪一步」。**這個對應不進 prompt**：
+`linking._LINK_SPEC` ＋ `policies.SEQ_BY_ACTION`／`CORE_PARAM_BY_ACTION`（本文件 §9.1／§9.2／附錄 A2）
+已經是那張確定性表。讓模型直接吐 `A0`／`G2`／`P5` 會違反 §1 與 §3.1（AI 輸出必須 MOST-neutral），
+並製造第二個可漂移的 sequence 權威。四段結構與序列格的對照見 ADR-033 §1.3。
 
 ---
 
@@ -384,6 +491,21 @@ class LLMClientPort(Protocol):
 不得在程式碼寫死任何雲端網域。
 
 ### 7.2 System prompt v1（`prompts/plan_v1.py`，`PROMPT_VERSION = "plan-v1.4"`）
+
+> ⚠️ **以下 12 條規則是 plan-v1.4 的原文，＝收窄前的現況。**
+> [ADR-033](../decisions/ADR-033-llm-planner-scope-narrowing.md) D1／D2 收窄了索取範圍，
+> prompt 因此要改寫為 **`plan-v2.0`**（形狀變更，不是微調），**落在遷移路徑 P2、尚未執行**。
+> 預期變動（此處只記結果，理由見 ADR-033 §2）：
+>
+> - **移除**規則 4（`status` 四態）、規則 8（evidence offset 的數法）、
+>   規則 9（quantity 抽數值與單位）、規則 12（dependency type 白名單的白話版）；
+> - **改寫**規則 4 的「禁止猜測／禁佔位字」為「role text 必須是原文字面片語」（§5.2.3）；
+>   **縮短**規則 7 的鍵名清單（移除 `hand`／`distance`／`quantity`，新增 `return_to`）；
+> - 規則 1／2／3／5／6／10／11 **不動**——切分慣例（規則 2）是收窄後保留的核心職責。
+> - **四則 few-shot 全部重寫**：現行每一則都示範了 `status`、offset 或數值角色。
+>   重寫後必須照舊通過 `tests/unit/test_prompt_few_shots.py`（示範即契約）。
+>
+> **P2 不得在 P1 的觀察期之前執行**（U-7 裁決，見 §19 的 ADR-033 分期註）。
 
 ```text
 你是製造業 IE（工業工程）的作業拆解引擎。任務：把一段工序描述拆解成「原子動作計畫」。
@@ -581,12 +703,35 @@ API key 只從 env 讀，不落 log、不進 provenance。
 
 ### 7.5 Planner 後驗證（`validate_planner_output()`）
 
-除 §5.1 的 6 條 schema 規則外，加兩條**語意防線**（違反 → 整筆降級 review 並記 reason）：
+**現況（P1 前）**：除 §5.1 的 6 條 schema 規則外，加兩條**語意防線**
+（違反 → 整筆降級 review 並記 reason）：
 
 - **no-invented-step**：每個 action 至少一個 evidence span，或 action_type 為
   `composite_unknown`；沒有 evidence 的 action 直接剔除並記 `planner_invented_action`。
 - **tool-state**：`tool_ref` 指向的 action 必須是排序在前的 `acquire`；否則將該 role
   降為 `missing` 並記 `tool_state_violation`。
+
+#### 7.5.1 目標：嚴格屬於契約，寬容屬於 adapter 邊界（ADR-033 D6；**P1 落地，尚未實作**）
+
+現況的問題是**驗證失敗會丟掉整份輸出**：任一 error → retry 一次 → 仍錯就 `PlannerError`
+→ `wi_ai_service` fallback 到 rule parser，連**語意正確的切分**一起丟。
+收窄後改為**逐項降級**，責任分三層：
+
+| 層 | 職責 | 失敗處理 |
+|---|---|---|
+| `llm_planner`（adapter 邊界） | 寬容前處理：剝未知 role key、剝數值（`value`／`unit`）、丟型別不合法的 dependency、依 §5.2.4 推導 evidence offset | 逐項剝除並記 reason；**不 raise** |
+| `contracts.validate_planner_output`（契約） | 只驗**結構完整性**：`action_id` 唯一、`sequence_order` 連續、role `text` 是 `normalized_text` 的字面子字串（§5.2.3）、dependency 端點存在 | 違反才 raise |
+| `routing`（§10.3） | 把所有剝除 reason 變成可見旗標並擋 auto | — |
+
+**保留整筆失敗的情形只剩三種**：JSON 解析失敗、`actions` 全空、`sequence_order` 不連續。
+
+兩條語意防線（no-invented-step、tool-state）**維持不變**——它們判的是「計畫本身有沒有缺口」，
+不是「模型的自我宣告可不可信」，不在收窄範圍內。
+
+新增的剝除 reason（需一併進 `routing.ROUTING_REASONS` 並擋 auto）：
+`role_numeric_stripped`、`role_key_dropped`、`dependency_dropped`。
+> ⚠️ `ROUTING_REASONS` 目前是**宣告了卻不執行**的白名單（`compute_routing` 無條件
+> `extend(plan.unresolved)`）——加旗標不會修好它，那是 worklog §9 S-5 自己的票。
 
 ### 7.6 Prompt injection 防線（測試必備）
 
@@ -625,6 +770,12 @@ fallback 觸發條件：`wi_ai_enabled=False`、LLM timeout/連線失敗、schem
 「拿起 DIMM → 不會出現輕拍」的保證鏈：層 4 擋「原文沒有的步驟」；若模型仍輸出，
 層 1 的 evidence 規則使該 action 無合法 span → 層 4 後驗證剔除；就算文字裡真有「輕拍」，
 層 3/5 會因與站點模板/rule baseline 不一致而送審，層 6 保證它最多成為待審 draft。
+
+> **ADR-033 對本表的影響（P1 起）**：六層都留著，但層 1 的「封閉 enum」在 `dependencies`
+> 這一項改為**寬容剝除**（型別不合法者丟棄，不再打掉整份輸出，見 §7.5.1）；
+> 層 4 的兩條語意防線（no-invented-step、tool-state）**不變**，
+> 被取代的只有與 `RoleStatus` 綁在一起的那幾條（§5.2.3）。
+> **這條保證鏈本身不受影響**——它靠的是 evidence 規則，而 evidence 收窄後仍是必要條件。
 
 ---
 
@@ -667,6 +818,24 @@ fallback 觸發條件：`wi_ai_enabled=False`、LLM timeout/連線失敗、schem
 （規則：quantity role 掛在 process/move_place 上且無 per-piece 差異證據）→ cycle
 `frequency=N` 並記 `quantity_policy_review` 進 unresolved（IE 必看）。其他情境一律
 frequency=1 ＋ review reason。**不展開多 action、不自動用 repeat_count**（上游 §20.2 未決）。
+
+> **ADR-033 對本節的影響（P1–P3；尚未實作）**
+>
+> 1. **`frequency` 的入口暫時沒人餵**：`quantity` 不再由 LLM 產出（D1），所以上段的
+>    QuantityPolicyV1 邏輯**留著但恆走 frequency=1** 那一支，直到 §19 #1 的供給端另案落地。
+>    ⚠️ 這是**延後**不是廢止——`resolve_frequency` 不刪。
+>    語料佐證：IE 核准的 gold 中 frequency≠1 的只有手寫 seed 那一筆，且
+>    「`×16`＝一句一條 cycle、不拆成 16 個 action」是 User 2026-08-23 的明示裁決。
+> 2. **`A0`／`A3`／M 分量的距離不再從 role 取值**（D7 的 I-D1）：只保留「對原文的確定性抽取」
+>    與 ADR-031 的佈局來源（§5.2.5）。
+> 3. **本表缺一格：`A6`（返回）。** 讀碼查證（2026-08-23）：`compile_plan` 的
+>    **GM 分支只填 `a0/b1/g2/a3/p5/frequency`、CM 分支只填 `b1/g2/m3/x4/i5/frequency`**
+>    ——`a6` 在兩條分支都**從未被填過**（恆 0），**CM 的 `a0` 也從未被填過**。
+>    `StrictGmDraft`／`StrictCmDraft` 有這些欄位、引擎也算得出來，只是編譯路徑不產生它們。
+>    P3 補上 `return_to` → `a6`（以及 CM 的 `a0`）之後本表要補列。
+>    ⚠️ **`return_to` 的語意（U-5 裁決）＝返回身體最初始狀態（站位），不是回到 `from_location`**
+>    ——`from_location` 是**取件處**，站位是**身體初始位置**，兩者不同；
+>    A6 量的是「終點 → 站位」，端點需 ADR-031 的佈局提供。**不要把 A6 寫成回到 `from_location`。**
 
 ### 9.3 Compiler（新 package `src/ddm_v2/most_compiler/`）
 
@@ -1101,7 +1270,7 @@ upsert）；`embedding_model` 或 rule-set 內容變更即重建整組，不就�
 | `test_linking.py`：slot pool 隔離（G 查詢不回 X 候選）、低分回空、disagree 標記 | L2 |
 | `test_compiler.py`：§9.2 決策表逐 action_type 矩陣；partial draft 不硬塞 default；**grep gate：compiler 無 TMU 符號**；composite_unknown 不編譯 | L2 |
 | `test_routing.py`：§10.3 四狀態決策表全枝覆蓋；auto flag 關閉時永不回 auto | L2 |
-| `test_dimm_case.py`：「拿起DIMM」→ 1 action、無 invented 後續動作、destination missing、review（§0.1-2 鎖死） | L1 |
+| 「拿起DIMM」→ 1 action、無 invented 後續動作、`destination` 缺席、review（§0.1-2）。⚠️ **`test_dimm_case.py` 這個檔名不存在**：實際覆蓋落在 `test_llm_planner.py`（斷言 `next_operation` 進 `unresolved`），**「destination 缺席」這一半目前沒有任何斷言**（CI_GATES 硬性規則 9(b)：宣稱要有紅燈守著）。補齊屬 P1 的測試工作 | L1 |
 
 ### 14.2 Integration（`tests/integration/`，真連 DB）
 
@@ -1207,13 +1376,34 @@ L3-3  gold plans 目錄與 eval script 骨架
 
 | # | 事項 | 目前 v1 保守解 | 最終裁決 |
 |---|------|----------------|----------|
-| 1 | quantity 展開 policy | frequency=N＋強制 review | R0/IE（上游 §20.2） |
+| 1 | quantity／seconds 的**供給端**契約（欄位語意、與 `frequency` 的關係、「多顆」這類非數值量詞如何表示） | `quantity` 不再由 LLM 產出（ADR-033 D1）→ `frequency` 恆 1；`x_seconds` 恆 0（seconds 模式的 X 選項因此恆掛 `x_seconds_required`、不落 chosen；fixed／zero 模式不受影響） | **⏸ 2026-08-23 User 裁決：現階段不做，延後另案。** 原話：「以後會開案做 csv parser 去帶出數量／frequency，**現階段重點是 LLM 能不能解出四段結構**」。⚠️ 記成**延後**不是**不需要**——`resolve_frequency` 的 QuantityPolicyV1 仍在，只是入口暫時沒人餵。⚠️ 本列的**問題形狀已被 ADR-033 改寫**：原本問「LLM 該怎麼表示 N」，現在問「CSV／IE 怎麼供給 N」 |
 | 2 | inspect 併入前 cycle 的 I5 | 一律獨立 cycle | modeling policy |
-| 3 | 手別/SIMO 自動分配 | 全部 missing/review | R0/IE |
+| 3 | 手別／SIMO 自動分配的**來源** | `hand` 不再由 LLM 產出（ADR-033 D2）；鍵仍在 `ROLE_KEYS` 白名單但不索取 | **⏸ 2026-08-23 User 裁決：同 #1，延後另案。** ADR-033 只確立「不歸 LLM」，沒有指定供給端（`TARGET_FIELDS.hand` 欄／IE 手填／併入 SIMO 判定 ADR-020 都還開著） |
 | 4 | 雲端 LLM | 禁用（僅私有 URL） | R0 |
 | 5 | auto-accept 開啟 | flag 硬關閉 | gold baseline＋校準後另審 |
 | 6 | `ai_*` 表是否入獨立 PostgreSQL schema | 先同 schema、加 `ai_` 前綴 | R0（roadmap §20.6） |
 | 7 | worksheet revision 綁定 | run 記 worksheet_id 弱參照，不做 stale 阻擋（人工採用時人是防線） | R1 落地後補 `source_revision` 欄位（加法） |
+
+> **ADR-033 的七個未決已全數裁決（2026-08-23），不再列於本表**——裁決內容與連帶效果見
+> [ADR-033](../decisions/ADR-033-llm-planner-scope-narrowing.md) §7（U-1…U-7 逐條標註）。
+> 其中兩條會直接約束本文件其他章節的執行順序，在此點名：
+>
+> - **U-7（觀察期，硬約束）**：**P1 完成後必須先跑一輪評測，才可以進 P2（改 prompt）。**
+>   理由有兩層：⑴ 這是**唯一**能把「契約放寬」與「prompt 改寫」兩個變因分開量的機會——
+>   舊契約一旦拆掉，就再也造不出「舊契約＋新 prompt」的對照組；
+>   ⑵ **若 P1 之後數字沒有明顯改善，那本身就是重要訊號**——代表失敗不只是契約刁難造成的，
+>   收窄的假設有問題，該在動 prompt 之前搞清楚（對應 ADR-033 §8 訊號 1）。
+>   單輪即可（P1 的預期效果大到單輪看得出來）。
+> - **U-1（gold roles 走 IE 親筆）**：親筆標註**不帶** `plan_origin=<planner>_preannotation`，
+>   因此**不受 `planner_eval` 的自我指涉排除**——P4 的 role slot accuracy 從第一天就有完整分母。
+>   ⚠️ **這個排除是「對哪個 planner」而言的**（判準是
+>   `planner_eval.planner_preannotation_origin(planner)`），讀報告時容易看錯：
+>   現行 gold 的 `plan_origin` 是 `rule_based_v1_preannotation`，所以
+>   **`--planner llm` 的排除數是 0**（Plan 層分母＝全部案例），
+>   **`--planner rule_based`（＝CI 預設）才會排掉一大批**、分母只剩個位數。
+>   實際筆數一律以報告的 `self_referential_excluded.count` 與 `plan_metrics_n` 為準，不在此寫死。
+>   **這正是不走「從已核准 LLM plan 回填」的關鍵理由**：一旦回填，`plan_origin` 變成
+>   `llm_preannotation`，**LLM 評測**就會開始排除那些案例——今天為 0 的排除數會反過來咬。
 
 ---
 
@@ -1282,6 +1472,7 @@ Commit 規範依 repo 慣例（CLAUDE.md）；只在 user 要求或 checkpoint �
 |------|------|------|
 | 1.0 | 2026-08-06 | 初版（L0–L4 全章節） |
 | 1.1 | 2026-08-07 | 新增附錄 A（七項實作決策，含引擎空 slot 語意查證）、§20 文件與追蹤 workflow；§9.3 completeness 判準由附錄 A5 精確化 |
+| 1.2 | 2026-08-23 | **ADR-033（accepted）同步＝遷移路徑 P0**：新增 §5.2（收窄後的目標契約、欄位級落地階段、取代 `status` 的子字串不變式、evidence offset 改推導、三類數值的新來源、I-D1）；§5／§5.1／§7.2 標示為「P1 前現況」並列出 P2 的 prompt 預期變動；§7.5 新增 7.5.1（嚴格屬契約／寬容屬 adapter 的三層責任）；§19 依 U-2／U-3 改寫待決 #1／#3 為「延後另案」並補 U-7 觀察期與 U-1 自我指涉排除的正確讀法；§0.1-2／§8／§9.2／§14.1 做真值維護（含 `a6`／CM `a0` 從未被填過的讀碼查證）。**本次只改文件，未動任何實作**（P1 才動程式） |
 
 ---
 

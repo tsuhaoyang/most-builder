@@ -58,6 +58,13 @@ sanitize 觀測（v6 起）：報告的 `planner_eval.sanitize_reasons` 記
 （httpx 的 `HTTPStatusError` 會把完整 URL 連同 userinfo 寫進訊息），由
 `planner_eval._redact_urls()` 在寫進 `planner_error` 前遮成 `<redacted-url>`。
 同版起 `gold_dir` 改記相對於 `ddm-v2/` 的路徑（絕對路徑會寫進本機路徑與 OS 使用者名）。
+
+被拒回應留存（v8 起，ADR-033 T-12）：`planner_eval.cases[*].planner_raw_rejected` 記
+**被拒絕的原始模型回應本文**。在此之前報告只留錯誤碼，於是「那份被拒的輸出切分得對
+不對」事後無從回答——而契約放寬（ADR-033 P1）之後，硬失敗會變成切分對錯，那才是要量
+的東西。回應是**遠端可控字串**且會入版控：寫入前先遮 URL 與已知憑證（`_redact_urls`／
+`_redact_secrets`，api key 由本檔從 settings 傳入）再截斷留痕，且**只進報告 JSON、
+不印到終端機**（stdout 只給留存筆數）。
 """
 from __future__ import annotations
 
@@ -81,6 +88,7 @@ from ddm_v2.nlp.gold_eval import (  # noqa: E402
     is_seed_gold_case,
 )
 from ddm_v2.nlp.planner_eval import (  # noqa: E402
+    PLANNER_RAW_REJECTED_MAX_LEN,
     RULE_PLANNER_NAME,
     SPEC_DOC,
     PlannerFn,
@@ -92,7 +100,7 @@ from ddm_v2.nlp.planner_eval import (  # noqa: E402
     summarize_planner_results,
 )
 
-REPORT_SCHEMA_VERSION = "wi-gold-report-v7"
+REPORT_SCHEMA_VERSION = "wi-gold-report-v8"
 
 EXIT_CODE_HELP = (
     "exit codes: 0 = all green; "
@@ -111,6 +119,26 @@ SANITIZE_REASONS_NOTE = (
     "`evidence_text_ambiguous` 是修不了而被 validate 照常拒絕的（fail-closed）。"
     "phase=initial 是第一次呼叫、retry 是帶驗證錯誤重試的那次。"
     "rule planner 不經過 sanitize，恆為空。"
+)
+
+
+PLANNER_RAW_REJECTED_NOTE = (
+    "`planner_eval.cases[*].planner_raw_rejected`＝**被拒絕的原始模型回應本文**"
+    "（ADR-033 T-12）。只記錯誤碼答不了「那份被拒的輸出切分得對不對」——而契約放寬"
+    "（ADR-033 P1）之後，原本的硬失敗會變成切分對錯，那才是要量的東西。"
+    "值域：該案 `planner_failed` 且例外帶得出回應時為字串；"
+    "**null＝這次失敗沒有回應可留**（timeout、連線失敗、rule planner 的例外、"
+    "或 PlannerError 未帶 raw），與「伺服器回了空字串」（記 \"\"）不同；"
+    "該案成功時恆為 null（成功的輸出已由指標與 pred_spans 呈現）。"
+    "⚠️ 留的是 **retry 那次**的回應：`LLMPlannerAdapter` 只把最後一次掛上 "
+    "`PlannerError.raw`，initial 那次的回應現行契約留不下來——"
+    "所以「模型第一次吐了什麼」仍不可考（需要動 planner 契約，記為後續票）。"
+    "⚠️ 這是**遠端可控字串**且報告要入版控：寫入前先遮 URL（`<redacted-url>`）與"
+    "已知憑證字面值（`<redacted-secret>`，本次執行的 api key），再截斷至 "
+    f"{PLANNER_RAW_REJECTED_MAX_LEN} 字元並留痕（`…[truncated from N chars]`，"
+    "N 為遮蔽後長度）。控制字元**刻意不剝**（換行是回應的合法內容，剝掉會把 "
+    "pretty-print 的 JSON 打爛；報告 JSON 由 json.dumps 逸出），代價是本欄位"
+    "**不得未經逸出印到終端機**——CLI 只印留存筆數，不印內容。"
 )
 
 
@@ -257,8 +285,13 @@ class SanitizeLog:
 
 def _build_llm_plan_fn(
     timeout_s: float, sanitize_log: SanitizeLog
-) -> tuple[PlannerFn, RunIdentity]:
+) -> tuple[PlannerFn, RunIdentity, tuple[str, ...]]:
     """顯式 --planner llm 才建構；需要已設定的 LLM endpoint。
+
+    第三個回傳值是**本次執行的憑證字面值**（api key），交給 `evaluate_planner_case`
+    在寫報告前抹掉——`planner_raw_rejected` 存的是伺服器回應本文，而伺服器拿得到我們
+    送出的 `Authorization: Bearer <key>`，回聲式的 proxy 會把它抄進回應。刻意**不掛到
+    `RunIdentity`** 上：那個物件會被 `to_dict()` 序列化進報告。
 
     一併回傳這趟的 `RunIdentity` 給報告的 `planner_run`。`model_requested` 與建構
     client 用的是**同一次** `get_settings()`——不是因為再讀一次會拿到別的值
@@ -309,8 +342,10 @@ def _build_llm_plan_fn(
             unresolved=list(output.unresolved),
         )
 
-    # base_url／api_key 不進報告（報告入版控，base_url 有夾帶憑證的可能）
-    return _plan, identity
+    # base_url／api_key 不進報告（報告入版控，base_url 有夾帶憑證的可能）；
+    # api_key 只作為「要從報告字串裡抹掉的值」往下傳，不入任何序列化結構
+    secrets = tuple(v for v in (settings.llm_api_key,) if v)
+    return _plan, identity, secrets
 
 
 def _case_is_approved(data: dict) -> bool:
@@ -411,8 +446,12 @@ def main() -> int:
     # 本腳本的 import 鏈一定會走到。零操作影響（每個欄位都有預設值），真正要保住的
     # 是 **`--planner rule` 不需要 LLM 設定就能跑**（有測試守）。
     run_identity = RunIdentity(RULE_PLANNER_NAME)
+    # 寫進報告前要抹掉的憑證字面值；rule 路徑不碰 LLM，恆空
+    report_secrets: tuple[str, ...] = ()
     if args.planner == "llm":
-        plan_fn, run_identity = _build_llm_plan_fn(args.llm_timeout_s, sanitize_log)
+        plan_fn, run_identity, report_secrets = _build_llm_plan_fn(
+            args.llm_timeout_s, sanitize_log
+        )
     planner_name = run_identity.planner
 
     # 載入層先把「檔案壞掉」轉成具名 gold_case_invalid（點名檔案、進報告、exit 2），
@@ -421,7 +460,10 @@ def main() -> int:
 
     async def _run():
         compile_results = [await evaluate_gold_case(data) for _path, data in cases]
-        planner_results = [await evaluate_planner_case(data, plan_fn) for _path, data in cases]
+        planner_results = [
+            await evaluate_planner_case(data, plan_fn, secrets=report_secrets)
+            for _path, data in cases
+        ]
         return compile_results, planner_results
 
     compile_results, planner_results = asyncio.run(_run())
@@ -437,6 +479,12 @@ def main() -> int:
 
     report = {
         "report_kind": "wi-gold-eval",
+        # v8：加法。`planner_eval.cases[*]` 新增 `planner_raw_rejected`＝**被拒絕的
+        # 原始模型回應本文**（＋`planner_eval.raw_rejected_note` 說明值域與遮蔽）。
+        # 在此之前失敗只留錯誤碼，於是「那份被拒的輸出切分得對不對」事後無從回答
+        # （ADR-033 §1.4c：g07／g23／g46 都輸出了 a2 而 gold 是單一 action）——
+        # 契約放寬後硬失敗會變成切分對錯，那才是要量的東西。回應是遠端可控字串且
+        # 報告入版控：先遮 URL 與已知憑證，再截斷留痕。其餘形狀不變。
         # v7：新增頂層 `planner_run`（planner/model_requested/model_served/
         # model_served_variants/prompt_version/llm_timeout_s＋note）——報告原本不記
         # 自己是哪顆模型、哪一版 prompt 跑的，版本歸屬只能靠人工命名的檔名。
@@ -484,6 +532,7 @@ def main() -> int:
             "db_required": False,
             "summary": planner_summary,
             "sanitize_reasons": sanitize_log.to_dict(),
+            "raw_rejected_note": PLANNER_RAW_REJECTED_NOTE,
             "cases": [r.to_dict() for r in planner_results],
         },
     }
@@ -553,6 +602,14 @@ def main() -> int:
             f" ({'n/a' if rate is None else f'{rate:.1%}'})"
             f"  error_codes: {codes or 'n/a'}"
             "  ← 個案失敗記為漏（Plan 層指標已含），不影響退出碼"
+        )
+        # 只印**筆數**：內容是遠端可控字串且未剝控制字元，未經逸出印到終端機
+        # 等於把 ESC 序列交給終端機（見 PLANNER_RAW_REJECTED_NOTE）
+        kept = sum(1 for r in planner_results if r.planner_raw_rejected is not None)
+        print(
+            f"           raw_rejected 留存 {kept}/{failures['count']} 筆"
+            "（其餘失敗沒有回應可留：timeout／連線失敗）"
+            "  ← 內容只在報告 JSON 的 planner_raw_rejected"
         )
     lat = planner_summary["planner_latency_ms"]
     print(

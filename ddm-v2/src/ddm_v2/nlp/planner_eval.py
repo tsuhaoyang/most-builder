@@ -68,6 +68,13 @@ Planner 個案失敗隔離（`planner_failed`）：
 - `ok` 仍只反映 **gold 標註**是否可用（planner 失敗不是 gold 的問題），因此
   `wi_ai_eval.py` 的退出碼契約維持原義；但「全部案例都失敗」＝管道壞掉而非量測結果，
   由 CLI 另行判為失敗（見該檔 docstring）。
+- 例外**帶著模型回應**時（`PlannerError.raw`）另記 `planner_raw_rejected`＝
+  **被拒絕的原始回應本文**（遮蔽後截斷，見 `_sanitize_rejected_raw`）。只記錯誤碼的話
+  「那份輸出的切分到底對不對」事後無從回答：ADR-033 §1.4(c) 的 `g07`／`g23`／`g46`
+  正是這個形狀（模型都輸出了 `a2`，而 gold 是單一 action），契約放寬後它們會從
+  「硬失敗」變成「**切分錯誤**」——那才是要量的東西。沒有回應的失敗（timeout、
+  連線失敗、rule planner 的例外）恆為 `None`；回應是空字串則記 `""`——兩者不同，
+  不可混為一談。
 
 DB 依賴：rule_based 路徑**不需要 DB** —— planner 只需 gold 檔內 `synthetic_synonyms`
 （`RuleBasedParser` 的 GM/CM 判型關鍵字是程式常數；讀 motion_templates/synonyms 的
@@ -80,7 +87,7 @@ import json
 import re
 import time
 from collections import Counter
-from collections.abc import Awaitable, Callable
+from collections.abc import Awaitable, Callable, Sequence
 from dataclasses import asdict, dataclass, field
 from pathlib import Path
 from statistics import median
@@ -257,6 +264,9 @@ class PlannerCaseResult:
     planner_failed: bool = False
     planner_error: str | None = None
     planner_error_codes: list[str] = field(default_factory=list)
+    # 被拒絕的**原始模型回應**（遮蔽＋截斷後）；只在該案失敗且例外帶得出回應時有值。
+    # None＝這次失敗沒有回應可留（timeout／連線失敗／rule planner）；""＝真的回了空字串
+    planner_raw_rejected: str | None = None
     planner_elapsed_ms: float = 0.0
     gold_spans: list[list[int]] = field(default_factory=list)
     pred_spans: list[list[int]] = field(default_factory=list)
@@ -357,6 +367,73 @@ def _redact_urls(message: str) -> str:
     return _URL_RE.sub("<redacted-url>", message)
 
 
+# 被拒回應的長度上限（字元）。gold 尺度的**合法**回應遠低於此：現行 55 案的 gold plan
+# 序列化後最長 830 字元，模型加上縮排與 roles 也在 3000 以內；而回應是**遠端可控**且
+# 長度無界（`llm_client` 只做 `str()`、httpx 未設 response size limit，`max_tokens`
+# 只約束守規矩的伺服器），一個回應就能把 100KB 塞進要入版控的報告。
+PLANNER_RAW_REJECTED_MAX_LEN = 4000
+
+# 短於此的「憑證」不做字面抹除：`""` 會讓 str.replace 在每個字元間插入標記、
+# 一兩個字元的值會把正常文字打成馬賽克——遮蔽過當的後果是報告失去診斷價值
+# （正是本欄位存在的目的）。真實 api key 遠長於此；**設得比這短的憑證不受保護**，
+# 這是刻意的取捨，不是漏看。
+MIN_REDACTABLE_SECRET_LEN = 8
+
+
+def _redact_secrets(text: str, secrets: Sequence[str]) -> str:
+    """把**已知憑證的字面值**換成 `<redacted-secret>`。
+
+    `_redact_urls` 擋的是「訊息裡內嵌 URL」，擋不到裸 token：`planner_raw_rejected`
+    存的是**伺服器回應本文**，而伺服器拿得到我們送出的 `Authorization: Bearer <key>`
+    ——回聲式的 proxy／debug endpoint 把收到的 header 抄進回應本文，key 就會隨報告
+    進版控。這裡只抹**我們自己知道的值**（由 CLI 從 settings 傳入），不做樣式猜測
+    （猜測會誤殺模型輸出的正常內容）。
+    """
+    for secret in secrets:
+        if secret and len(secret) >= MIN_REDACTABLE_SECRET_LEN:
+            text = text.replace(secret, "<redacted-secret>")
+    return text
+
+
+def _sanitize_rejected_raw(content: str, secrets: Sequence[str]) -> str:
+    """被拒回應寫進報告前的處理：**先遮蔽、後截斷**。
+
+    順序不可對調——理由是**憑證字面值**而不是 URL：`_redact_secrets` 靠字面比對，
+    先截斷會把橫跨切點的 api key 剖成兩半，前半留在報告裡而完整值不再匹配
+    （截掉尾巴的 key 仍是大部分的祕密材料）。URL 那層不受影響：`_URL_RE`
+    沒有結尾要求，被攔腰切斷的 URL 照樣整段匹配得到——所以真正靠順序保護的是前者。
+
+    截斷**留痕**（同 `wi_ai_eval._sanitize_model_name`）：截過的值帶
+    `…[truncated from N chars]`，不讓它看起來像完整回應——一份被截斷卻裝成完整的
+    「原始回應」會讓事後判讀切分時得出錯的結論。N 是**遮蔽後**的長度（遮蔽會改變
+    長度，報遮蔽前的數字對不上眼前這串字）。
+
+    不剝控制字元（與 `model_served` 不同）：回應本文的換行是合法內容，剝掉會把
+    pretty-print 的 JSON 打爛；`json.dumps` 會把控制字元逸出，報告 JSON 這個 sink
+    本來就是安全的。代價是**本欄位不得未經逸出印到終端機**（CLI 只印統計數字，
+    不印內容；有測試守）。
+    """
+    cleaned = _redact_urls(_redact_secrets(content, secrets))
+    if len(cleaned) > PLANNER_RAW_REJECTED_MAX_LEN:
+        head = cleaned[:PLANNER_RAW_REJECTED_MAX_LEN]
+        return f"{head}…[truncated from {len(cleaned)} chars]"
+    return cleaned
+
+
+def _rejected_raw_of(exc: BaseException, secrets: Sequence[str]) -> str | None:
+    """例外帶得出模型回應就留存，否則 None。
+
+    `None`＝**這次失敗沒有回應可留**（timeout、連線失敗、rule planner 的例外，或
+    `PlannerError` 未帶 raw）；`""`＝伺服器真的回了空字串。兩者在報告裡必須分得開，
+    否則「模型到底吐了什麼」的答案會退化成「不知道」。留的是 `PlannerError.raw`，
+    即 **retry 那次**的回應（adapter 只把最後一次掛上例外）——initial 那次的回應
+    現行契約留不下來，見報告的 `raw_rejected_note`。
+    """
+    if not isinstance(exc, PlannerError) or exc.raw is None:
+        return None
+    return _sanitize_rejected_raw(exc.raw.content, secrets)
+
+
 def _planner_error_codes(exc: BaseException) -> list[str]:
     """把 planner 例外壓成可統計的錯誤碼（失敗形態分布用）。
 
@@ -383,7 +460,15 @@ def _case_provenance(data: dict) -> tuple[str | None, bool | None]:
     return origin, (ie_mod if isinstance(ie_mod, bool) else None)
 
 
-async def evaluate_planner_case(data: dict, plan_fn: PlannerFn) -> PlannerCaseResult:
+async def evaluate_planner_case(
+    data: dict, plan_fn: PlannerFn, *, secrets: Sequence[str] = ()
+) -> PlannerCaseResult:
+    """評測單一案例。
+
+    `secrets`：本次執行**已知的憑證字面值**（CLI 從 settings 取 api key 傳入）。
+    寫進報告的字串（`planner_error`／`planner_raw_rejected`）會先抹掉這些值——
+    回應本文是遠端可控的，而報告要入版控。預設空＝rule planner 路徑不需要也拿不到。
+    """
     case_id = str(data.get("id") or "unknown")
     errors: list[str] = []
     plan_origin, ie_modified = _case_provenance(data)
@@ -419,14 +504,17 @@ async def evaluate_planner_case(data: dict, plan_fn: PlannerFn) -> PlannerCaseRe
     pred_plan: WorkInstructionPlan | None = None
     planner_error: str | None = None
     planner_error_codes: list[str] = []
+    planner_raw_rejected: str | None = None
     t0 = time.perf_counter()
     try:
         pred_plan = await plan_fn(data)
     except Exception as exc:  # noqa: BLE001 — 個案失敗是被量測的對象，逐案記錄後續評
-        # URL 一律遮蔽：例外訊息會夾帶 endpoint 與其中的 userinfo，而這裡的
-        # 字串會進入要入版控的報告（見 _redact_urls）
-        planner_error = _redact_urls(f"{type(exc).__name__}:{exc}")
+        # URL 與已知憑證一律遮蔽：例外訊息會夾帶 endpoint 與其中的 userinfo，而這裡的
+        # 字串會進入要入版控的報告（見 _redact_urls／_redact_secrets）
+        planner_error = _redact_urls(_redact_secrets(f"{type(exc).__name__}:{exc}", secrets))
         planner_error_codes = _planner_error_codes(exc)
+        # 被拒絕的原始回應：錯誤碼答不了「這份輸出的切分對不對」（ADR-033 T-12）
+        planner_raw_rejected = _rejected_raw_of(exc, secrets)
         errors.append(f"planner_failed:{planner_error}")
     elapsed_ms = round((time.perf_counter() - t0) * 1000, 2)
 
@@ -494,6 +582,7 @@ async def evaluate_planner_case(data: dict, plan_fn: PlannerFn) -> PlannerCaseRe
         planner_failed=pred_plan is None,
         planner_error=planner_error,
         planner_error_codes=planner_error_codes,
+        planner_raw_rejected=planner_raw_rejected,
         planner_elapsed_ms=elapsed_ms,
         gold_spans=sorted([list(k) for k in gold_spans.elements()]),
         pred_spans=sorted([list(k) for k in pred_spans.elements()]),
@@ -600,9 +689,12 @@ async def evaluate_planner_all(
     *,
     plan_fn: PlannerFn | None = None,
     planner_name: str = RULE_PLANNER_NAME,
+    secrets: Sequence[str] = (),
 ) -> tuple[list[PlannerCaseResult], dict[str, Any]]:
+    # secrets 透傳（見 evaluate_planner_case）：自訂 plan_fn 可以是 LLM planner，
+    # 遮蔽不該只在 CLI 那條路上生效
     fn = plan_fn or rule_based_plan
     results: list[PlannerCaseResult] = []
     for _path, data in load_gold_cases(gold_dir):
-        results.append(await evaluate_planner_case(data, fn))
+        results.append(await evaluate_planner_case(data, fn, secrets=secrets))
     return results, summarize_planner_results(results, planner=planner_name)
