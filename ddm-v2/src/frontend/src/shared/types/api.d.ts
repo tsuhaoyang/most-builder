@@ -1722,6 +1722,40 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v2/dsx/ui-url": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Dsx Ui Url */
+        get: operations["dsx_ui_url_api_v2_dsx_ui_url_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v2/dsx/a3-distance": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** A3 Distance */
+        post: operations["a3_distance_api_v2_dsx_a3_distance_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/": {
         parameters: {
             query?: never;
@@ -1729,8 +1763,8 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /** Root */
-        get: operations["root__get"];
+        /** Index */
+        get: operations["index__get"];
         put?: never;
         post?: never;
         delete?: never;
@@ -1743,6 +1777,42 @@ export interface paths {
 export type webhooks = Record<string, never>;
 export interface components {
     schemas: {
+        /** A3DistanceIn */
+        A3DistanceIn: {
+            /** Wi Row Id */
+            wi_row_id?: string | null;
+            /**
+             * From Vocab Id
+             * Format: uuid
+             */
+            from_vocab_id: string;
+            /**
+             * To Vocab Id
+             * Format: uuid
+             */
+            to_vocab_id: string;
+        };
+        /** A3DistanceOut */
+        A3DistanceOut: {
+            /** Available */
+            available: boolean;
+            /** Distance Cm */
+            distance_cm?: number | null;
+            /** Horizontal Cm */
+            horizontal_cm?: number | null;
+            /** Vertical Cm */
+            vertical_cm?: number | null;
+            /** Provisional */
+            provisional?: boolean | null;
+            /** Measure From Mode */
+            measure_from_mode?: string | null;
+            /** Warnings */
+            warnings?: string[];
+            /** Queried At */
+            queried_at?: string | null;
+            /** Reason */
+            reason?: ("vocab_not_mapped" | "dsx_object_not_found" | "dsx_unreachable" | "integration_disabled") | null;
+        };
         /** ASlot */
         ASlot: {
             /**
@@ -2033,6 +2103,14 @@ export interface components {
             is_active: boolean;
         };
         /**
+         * DsxUiUrlOut
+         * @description DSX 3D 擺放介面的網址（給前端開 iframe modal 用；未設定時為 null）。
+         */
+        DsxUiUrlOut: {
+            /** Url */
+            url?: string | null;
+        };
+        /**
          * FromModuleRequest
          * @description POST /worksheets/{wid}/rows/from-module body。
          */
@@ -2090,9 +2168,15 @@ export interface components {
          * I18nMarkReviewedIn
          * @description 標記已覆核；可選在同一個請求裡順手修正譯文（同交易）。
          *
-         *     `target_en=None` ＝不改譯文（沿用現有的 `_en`）。**清空譯文請走 `_en` 專用
-         *     寫入端點**（`PATCH /rule-sets/{code}/params/{param}/options/{code}/en`）——
+         *     `target_en=None` ＝不改譯文（沿用現有的 `_en`）。**把既有譯文清成空請走 `_en`
+         *     專用寫入端點**（`PATCH /rule-sets/{code}/params/{param}/options/{code}/en`）——
          *     「覆核」與「把譯文清成空」是兩個相反的動作，不該共用一個請求。
+         *
+         *     **唯一的例外是句面（`field='sentence'`）且該列中文句面本身為空**（D7.6「刻意
+         *     不入句」，active 版 7 條）：那時空字串**就是**要覆核的那個值，`target_en=''`
+         *     走這裡是對的。判準在 `_is_reviewable_target`（`_BLANK_OK_FIELDS` ＋ 該列的
+         *     `source_is_fallback`），不是「只要是句面就放行」；`None` 對這種列代表「沿用現有
+         *     的 NULL」→ 仍會被 `I18N_REVIEW_TARGET_MISSING` 擋下，所以前端必須顯式送 `''`。
          *
          *     **`target_en` 一律 strip**（與 `schemas/v2/vocab.py` 的 `NameEn` 同一個語意，
          *     以及 `OptionEnTextIn` 的兩欄）：這條路徑會寫進 `name_en`／`label_en`／
@@ -7372,7 +7456,60 @@ export interface operations {
             };
         };
     };
-    root__get: {
+    dsx_ui_url_api_v2_dsx_ui_url_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DsxUiUrlOut"];
+                };
+            };
+        };
+    };
+    a3_distance_api_v2_dsx_a3_distance_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["A3DistanceIn"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["A3DistanceOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    index__get: {
         parameters: {
             query?: never;
             header?: never;

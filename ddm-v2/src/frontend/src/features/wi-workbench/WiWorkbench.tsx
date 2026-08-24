@@ -24,6 +24,8 @@ import {
   useWiTemplates, useInstantiateToWorksheet,
   type MotionModuleSummary,
 } from '../workbench-v3/api'
+import { DsxA3Suggestion } from '../workbench-v3/DsxA3Suggestion'
+import { DsxUiEntry } from '../workbench-v3/DsxUiViewer'
 import { Trans, useTranslation } from 'react-i18next'
 
 // ─── Local types ───────────────────────────────────────────────────────────────
@@ -731,6 +733,14 @@ export function WiWorkbench() {
                 {t('workbench.wiEditor.insertFromWi')}
               </button>
             )}
+            {/* DSX 3D 擺放介面入口：內部／工程用，非正式功能，故用低調樣式跟主要
+                動作按鈕區隔。見 DsxUiViewer.tsx 檔頭註——單一觀看者限制反映在開啟前
+                的確認對話框裡，不在這裡處理。
+                editable 門檻：這會搶走唯一的 WebRTC 觀看者名額，不該讓最低權限的人
+                （包含唯讀模式下看歷史版工時表的 viewer）有能力把正在工作的人踢下線——
+                跟旁邊「從 WI 庫插入」一致，後端端點維持 current_user 不用改（純讀取，
+                升級門檻換不到實質保護）。 */}
+            {editable && <DsxUiEntry />}
           </div>
           <div className="text-sm">
             <Trans
@@ -970,7 +980,29 @@ export function WiWorkbench() {
               {activeSlot === 'a0' && aBlock(cur.a0, s => set({ a0: s }))}
               {activeSlot === 'b1' && bBlock('b1')}
               {activeSlot === 'g' && gBlock()}
-              {activeSlot === 'a3' && aBlock(cur.a3, s => set({ a3: s }))}
+              {activeSlot === 'a3' && (
+                <>
+                  {aBlock(cur.a3, s => set({ a3: s }))}
+                  {/* DSX 建議距離（MVP，契約草案 §1.1／§3.1 掛載點更正）：只在 a3（from→to
+                      物件間移動）出現，不做 a0／a6（§0.2）。這個面板組的是尚未存檔的新列，
+                      wi_row_id 選填不帶——D4：建議值，never 自動寫入，需使用者明確點選填入。
+                      reach／foot 兩顆填入按鈕各自獨立（2026-08-24 拿掉互斥：MOST 引擎算
+                      TMU 對 A 格取 max(reach_index, foot_index, twist_index)，同一格
+                      reach_cm／foot_cm 本來就允許同時有值）。onFillReach/onFillFoot 仍用
+                      setCur 的 functional updater 而非 `set` helper——`set` helper 的 patch
+                      是呼叫當下用閉包裡的 cur.a3 算好的，若使用者快速連續操作、兩次 setCur
+                      排進同一輪 React 更新，用 c => ({ ...c, a3: { ...c.a3, ... } }) 才能保證
+                      讀到佇列裡最新的 a3、疊加而不是互相蓋掉。 */}
+                  <DsxA3Suggestion
+                    fromVocabId={cur.nv.from}
+                    toVocabId={cur.nv.to}
+                    bandsReach={opts.a_bands.reach}
+                    bandsFoot={opts.a_bands.foot}
+                    onFillReach={cm => setCur(c => ({ ...c, a3: { ...c.a3, reach: cm } }))}
+                    onFillFoot={cm => setCur(c => ({ ...c, a3: { ...c.a3, foot: cm } }))}
+                  />
+                </>
+              )}
               {activeSlot === 'b4' && bBlock('b4')}
               {activeSlot === 'p' && pBlock()}
               {activeSlot === 'm' && mVerbBlock()}

@@ -375,6 +375,24 @@ VOCAB_LABELS: dict[str, str] = {
     "顯示卡": "Graphics card",
     "風扇": "Fan",
     "風槍": "Air gun",
+    # DSX「MOST 單站情境」場景物件（scripts/dev_seed_dsx_vocab.py 種的 9 列）。
+    "作業員": "Operator",
+    "手動工作站": "Manual workstation",
+    "輸送帶作業位": "Conveyor work location",
+    "料車": "Material shuttle",
+    "工具 01": "Tool 01",
+    "工具 02": "Tool 02",
+    "螢幕": "Monitor",
+    "料盒（黃）": "Bin (yellow)",
+    "料盒（白）": "Bin (white)",
+    # 同一批物件的合成 kind='to' 列（H1 修正，external_code 加 SYNTHETIC_TO_SUFFIX
+    # 後綴——見 dev_seed_dsx_vocab.py 模組 docstring）；name_zh 另外加「（到）」，
+    # 所以是不同的 dict key，不會跟上面五筆共用翻譯。
+    "手動工作站（到）": "Manual workstation (destination)",
+    "輸送帶作業位（到）": "Conveyor work location (destination)",
+    "料車（到）": "Material shuttle (destination)",
+    "料盒（黃）（到）": "Bin (yellow) (destination)",
+    "料盒（白）（到）": "Bin (white) (destination)",
 }
 
 # 範本庫（motion_templates）：現況全部 16 筆皆已有 name_en（legacy_seed 分支處理，

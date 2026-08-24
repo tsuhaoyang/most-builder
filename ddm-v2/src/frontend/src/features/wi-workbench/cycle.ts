@@ -78,6 +78,21 @@ export function aBandOpts(bands: ABand[], comp: 'reach' | 'twist' | 'foot') {
   return out
 }
 
+/**
+ * 把一個原始公分數字歸入最接近的 band 值（ASlot.reach/foot 只接受離散 band 值，
+ * 不接受任意 cm）。邏輯與 ADistanceSelector 的 manual cm 輸入落檔一致：取第一個
+ * cm ≤ maxCm 的 band；全部超過則落最末開放檔。DSX 建議距離（原始 cm）填入 a3 前
+ * 需先過這一關，否則寫入的值不對應任何 band，畫面會顯示「未選」。
+ */
+export function cmToBandValue(cm: number, bands: ABand[]): number {
+  if (bands.length === 0) return 0
+  for (const b of bands) {
+    const maxCm = b.max_value == null ? Infinity : b.max_value
+    if (cm <= maxCm) return b.max_value == null ? 999 : b.max_value
+  }
+  return bands[bands.length - 1].max_value ?? 999
+}
+
 const A = (s: ASlot) => ({ reach_cm: s.reach || 0, twist_deg: s.twist || 0, foot_cm: s.foot || 0 })
 
 export function buildPayload(c: CycleState, ruleSetCode: string): Record<string, unknown> {

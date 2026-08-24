@@ -53,9 +53,14 @@ def test_rule_option_translations_total_sixty_three():
     assert total == 63
 
 
-def test_vocab_translations_cover_fifty_three_distinct_names():
-    """實測 `work_vocab_items` 59 列、53 個相異中文名（同名跨 kind 共用一條翻譯）。"""
-    assert len(SEED.VOCAB_LABELS) == 53
+def test_vocab_translations_cover_sixty_seven_distinct_names():
+    """實測 `work_vocab_items` 73 列、67 個相異中文名（同名跨 kind 共用一條翻譯）。
+
+    2026-08-24：DSX「MOST 單站情境」種子（`dev_seed_dsx_vocab.py`）新增 9 個相異
+    中文名，53 → 62（見 VOCAB_LABELS 尾端 DSX 註解區塊）。同日 H1 修正再加 5 個
+    合成 `kind='to'` 列的相異中文名（`XXX（到）`），62 → 67。
+    """
+    assert len(SEED.VOCAB_LABELS) == 67
 
 
 @pytest.mark.parametrize("model_name", ["B", "G", "P_BASE", "P_ADDON", "M", "X", "I"])

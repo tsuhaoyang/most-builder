@@ -1,9 +1,12 @@
 from __future__ import annotations
 
+import logging
 import os
 from dataclasses import dataclass
 from functools import lru_cache
 from pathlib import Path
+
+logger = logging.getLogger(__name__)
 
 
 def _parse_csv(value: str | None, fallback: list[str]) -> list[str]:
@@ -17,6 +20,21 @@ def _parse_bool(value: str | None, fallback: bool) -> bool:
     if value is None:
         return fallback
     return value.strip().lower() in {"1", "true", "yes", "on"}
+
+
+def _parse_http_url(value: str | None, *, env_var: str) -> str | None:
+    """防禦性 scheme 檢查：這個值會被前端原樣塞進 `<iframe src>`，不是即時漏洞
+    （ops 控制的設定值），但把「這是頁面網址」這個不變式寫進程式很便宜。格式不符時
+    視同未設定（回 None），只記 WARNING，不讓應用啟動失敗。
+    """
+    if not value:
+        return None
+    if not (value.startswith("http://") or value.startswith("https://")):
+        logger.warning(
+            "%s 值不是合法的 http(s) URL，視同未設定：%r", env_var, value
+        )
+        return None
+    return value
 
 
 def _resolve_path(raw: str | None, default: Path, root_dir: Path) -> Path:
@@ -72,6 +90,10 @@ class Settings:
     parse_worker_enabled: bool
     parse_worker_interval_s: float
     parse_worker_batch: int
+    dsx_api_base_url: str | None
+    dsx_integration_enabled: bool
+    dsx_timeout_s: float
+    dsx_ui_url: str | None
 
 
 @lru_cache(maxsize=1)
@@ -107,6 +129,14 @@ def get_settings() -> Settings:
         # （LEASE_SECONDS=60 vs 批次 LLM 耗時）而封頂。設超過時 worker 啟動會
         # WARNING 並以上限執行，不會靜默照單全收。
         parse_worker_batch=int(os.getenv("DDM_PARSE_WORKER_BATCH", "4")),
+        dsx_api_base_url=os.getenv("DDM_DSX_API_BASE_URL") or None,
+        # 預設關閉：兩邊都在內網、MVP 裁決不加認證層（ADR-031 §5.1），這個旗標不是
+        # 資安控制，是變更管理——讓部署環境明確知道「這條會打外部系統的路徑」有沒有開。
+        dsx_integration_enabled=_parse_bool(os.getenv("DDM_DSX_INTEGRATION_ENABLED"), False),
+        dsx_timeout_s=float(os.getenv("DDM_DSX_TIMEOUT_S", "5.0")),
+        # DSX 的 3D 場景 UI 網址（給人看的頁面，不是 data-service API）——與
+        # dsx_integration_enabled 無關：a3 距離查詢開關跟能不能看到 UI 網址是分開的兩件事。
+        dsx_ui_url=_parse_http_url(os.getenv("DDM_DSX_UI_URL"), env_var="DDM_DSX_UI_URL"),
     )
 
 

@@ -170,6 +170,9 @@ const MOCK_AUDIT_LOG = { total: 0, items: [] }
 const MOCK_VOCAB = [
   { id: 'v1', kind: 'object', name_zh: '主板', source_system: 'manual', is_active: true },
   { id: 'v2', kind: 'component', name_zh: 'M4 螺絲', source_system: 'manual', is_active: true },
+  // from/to（H-DSX：DSX 建議距離查詢需要 WiWorkbench 建立器面板的「從哪裡」／「到哪裡」有值）
+  { id: 'v3', kind: 'from', name_zh: '料架', source_system: 'manual', is_active: true },
+  { id: 'v4', kind: 'to', name_zh: '流水線', source_system: 'manual', is_active: true },
 ]
 
 const MOCK_TEMPLATES: unknown[] = []
@@ -620,6 +623,214 @@ test.describe('§C-01 動作清單 12 欄表格結構 (checklist C-01)', () => {
     await expect(tableHead.getByText('Eff TMU')).toBeVisible()
     await expect(tableHead.getByText('CT(秒)')).toBeVisible()
     await expect(tableHead.getByText('頻率')).toBeVisible()
+  })
+})
+
+// ─── § H-DSX: DSX 建議距離（契約草案 §1.1／§3.1；掛載點 WiWorkbench.tsx 建立器面板）──
+// 掛載點 2026-08-24 更正：原掛 workbench-v3/WiItemInspector 的模組模板列永遠沒有真實
+// wi_row_id（ModuleRowIn 沒有穩定 id），改掛這裡（WiWorkbench.tsx 的 a3/from/to 建立器
+// 面板）——這裡組的是尚未存檔的新列，`wi_row_id` 選填不帶。只驗 `integration_disabled`
+// 路徑（預設 DDM_DSX_INTEGRATION_ENABLED=false，不需要真的連 DSX 或種子資料，最好測）。
+
+test.describe('§H-DSX DSX 建議距離 (契約草案 §3.1)', () => {
+  test('H-DSX-1: a3 modal 查詢建議距離 → integration_disabled 顯示對應訊息，且 request 不帶 wi_row_id', async ({ page }) => {
+    await setupRoutes(page, ADMIN_ME, MOCK_CASES_DRAFT)
+    await gotoAndWait(page)
+    await clickNavAndWait(page, /分析案件/)
+    await page.getByText('組裝站作業').click()
+    await page.getByRole('button', { name: '編輯工時表' }).click()
+    await page.waitForLoadState('networkidle')
+
+    // 建立器面板組一筆尚未存檔的新列：填 from/to（a3 DSX 查詢的前提）
+    await page.getByPlaceholder('—來源—').click()
+    await page.getByText('料架').click()
+    await page.getByPlaceholder('—目的地—').click()
+    await page.getByText('流水線').click()
+
+    // mock DSX 端點（優先於 setupRoutes 的 catch-all：Playwright 後註冊的路由先比對）
+    let capturedBody: Record<string, unknown> | null = null
+    await page.route('**/api/v2/dsx/a3-distance', route => {
+      capturedBody = route.request().postDataJSON() as Record<string, unknown>
+      return route.fulfill({
+        status: 200, contentType: 'application/json',
+        body: JSON.stringify({ available: false, reason: 'integration_disabled' }),
+      })
+    })
+
+    // 開 a3（放置段）modal → 觸發查詢
+    await page.getByTitle('A 移動 — 放置段').click()
+    await expect(page.getByTestId('dsx-a3-suggestion')).toBeVisible()
+    await page.getByTestId('dsx-a3-query-btn').click()
+
+    await expect(page.getByTestId('dsx-a3-unavailable')).toHaveText('DSX 距離查詢功能目前未啟用。')
+    // 不得出現 available=true 的建議卡（integration_disabled 不是「查到結果」）
+    await expect(page.getByTestId('dsx-a3-result')).toHaveCount(0)
+
+    expect(capturedBody).not.toBeNull()
+    expect(capturedBody!.from_vocab_id).toBe('v3')
+    expect(capturedBody!.to_vocab_id).toBe('v4')
+    // 建立器面板組的是尚未存檔的新列：不帶 wi_row_id（掛載點更正的核心斷言）
+    expect(capturedBody).not.toHaveProperty('wi_row_id')
+  })
+
+  test('H-DSX-2: 查到建議距離 → 填入伸手與填入腳步各自獨立落 cmToBandValue 換算後的 band 值，互不清空，並顯示水平/垂直分量', async ({ page }) => {
+    // cmToBandValue 是純函式，前端沒有 vitest/jest，只有這裡的 e2e 路徑會真的跑到它
+    // （MOCK_OPTS.a_bands：reach=[{max_value:5,index:2}]、foot=[{max_value:null,index:0}]，
+    // 所以 distance_cm=3 時 reach 落檔應為 5、foot 落檔應為 999——見 cycle.ts 的規則）。
+    // 2026-08-24：互斥拿掉（ASlot 架構上 reach_cm／foot_cm 本來就允許同時有值，MOST
+    // 引擎算 TMU 取 max(reach_index, foot_index, twist_index)，不是相加），改驗兩格
+    // 可以同時帶著 DSX 建議值；同時驗新增的 horizontal_cm／vertical_cm 分量有顯示。
+    await setupRoutes(page, ADMIN_ME, MOCK_CASES_DRAFT)
+    await gotoAndWait(page)
+    await clickNavAndWait(page, /分析案件/)
+    await page.getByText('組裝站作業').click()
+    await page.getByRole('button', { name: '編輯工時表' }).click()
+    await page.waitForLoadState('networkidle')
+
+    await page.getByPlaceholder('—來源—').click()
+    await page.getByText('料架').click()
+    await page.getByPlaceholder('—目的地—').click()
+    await page.getByText('流水線').click()
+
+    await page.route('**/api/v2/dsx/a3-distance', route => route.fulfill({
+      status: 200, contentType: 'application/json',
+      body: JSON.stringify({
+        available: true, distance_cm: 3, horizontal_cm: 2.5, vertical_cm: 1.2, provisional: true,
+      }),
+    }))
+
+    await page.getByTitle('A 移動 — 放置段').click()
+    const modal = page.getByTestId('dsx-a3-suggestion').locator('xpath=ancestor::div[contains(@class,"rounded-xl")][1]')
+    // aBlock(cur.a3) 依序渲染 reach/twist/foot 三個 <select>，activeSlot==='a3' 時 modal
+    // 內沒有其他 select（bBlock/gBlock/pBlock 等都是別的 slot 才會渲染）
+    const reachSelect = modal.locator('select').nth(0)
+    const footSelect = modal.locator('select').nth(2)
+
+    await page.getByTestId('dsx-a3-query-btn').click()
+    await expect(page.getByTestId('dsx-a3-result')).toBeVisible()
+
+    // 水平/垂直分量顯示為參考數值，不是一一對應的填入建議。用各自獨立的
+    // testid + toHaveText 精確比對（而非對整段文字 toContainText 兩個數字）：
+    // 後者測不出水平/垂直被對調的 mutation（'2.5cm' 和 '1.2cm' 都還在文字裡，
+    // 只是換了位置，弱比對照樣通過）。
+    await expect(page.getByTestId('dsx-a3-component-horizontal')).toHaveText('水平分量 2.5cm')
+    await expect(page.getByTestId('dsx-a3-component-vertical')).toHaveText('垂直分量 1.2cm')
+
+    // ── 填入伸手：reach 落 band 值 5（3cm → cmToBandValue 找第一個 max_value>=3 的 band）
+    await page.getByTestId('dsx-a3-fill-reach').click()
+    await expect(reachSelect).toHaveValue('5')
+    await expect(footSelect).toHaveValue('0')
+    await expect(page.getByTestId('dsx-a3-filled-reach'))
+      .toHaveText('已填入 A2 伸手：DSX 建議 3cm → 落檔 5cm')
+
+    // ── 再填入腳步：foot 落 band 值 999（唯一 band 是開放檔 max_value=null），
+    //    reach 維持剛才填入的值不變（沒有互斥）
+    await page.getByTestId('dsx-a3-fill-foot').click()
+    await expect(footSelect).toHaveValue('999')
+    await expect(reachSelect).toHaveValue('5')
+    await expect(page.getByTestId('dsx-a3-filled-reach'))
+      .toHaveText('已填入 A2 伸手：DSX 建議 3cm → 落檔 5cm')
+    await expect(page.getByTestId('dsx-a3-filled-foot'))
+      .toHaveText('已填入 A2 腳步：DSX 建議 3cm → 落檔 999cm')
+  })
+})
+
+// ─── § H-DSX3D: DSX 3D 擺放介面入口（內部／工程用，GET /api/v2/dsx/ui-url）────
+// 掛載點：WiWorkbench.tsx「Table section」標頭，跟從 WI 庫插入按鈕同一區塊。
+// 單一觀看者限制（NVIDIA Kit 架構限制）必須反映在開啟前的確認對話框文案裡。
+
+const DSX_UI_URL = 'http://172.32.3.60:8081/most.html'
+// 這個位址是真實廠內 DSX/Nucleus 主機（零認證、單一 WebRTC 觀看者，且不在
+// RFC1918 私網段內），H-DSX3D-1 開 iframe modal 會讓瀏覽器真的對它發連線——
+// 誤連可能把正在使用 3D 介面的人踢下線。這裡回一段有明確標記的假 HTML，
+// 讓 iframe 拿到內容但**不放行任何真實網路連線**（Playwright route.fulfill
+// 在請求離開瀏覽器前攔截，見下方 H-DSX3D-1 對 iframe 內容的斷言：只要那裡
+// 讀到的是這個標記字串，就證明走的是這條 mock 而不是真的連上 172.32.3.60）。
+const DSX_HOST_STUB_MARKER = 'MOCK-DSX-HOST-STUB'
+
+// DsxUiEntry 掛載時就會查詢 GET /api/v2/dsx/ui-url（見 dsxUiUrl.ts 檔頭註：要在使用者
+// 點擊前就決定入口是否可用），所以 mock 必須在 setupRoutes 的 catch-all 之後、
+// gotoAndWait 觸發掛載之前註冊——Playwright 後註冊的路由先比對。
+async function gotoWorksheet(page: Page, dsxUiUrl: string | null, identity = ADMIN_ME) {
+  await setupRoutes(page, identity, MOCK_CASES_DRAFT)
+  // page.route 對整個 page（含其內所有 iframe）生效，攔在請求出瀏覽器之前，
+  // 所以下面這行必須在 gotoAndWait 之前註冊——絕對不能讓這條 pattern 漏接。
+  await page.route('http://172.32.3.60:8081/**', route => route.fulfill({
+    status: 200, contentType: 'text/html',
+    body: `<html><body>${DSX_HOST_STUB_MARKER}</body></html>`,
+  }))
+  await page.route('**/api/v2/dsx/ui-url', route => route.fulfill({
+    status: 200, contentType: 'application/json',
+    body: JSON.stringify({ url: dsxUiUrl }),
+  }))
+  await gotoAndWait(page)
+  await clickNavAndWait(page, /分析案件/)
+  await page.getByText('組裝站作業').click()
+  // 「編輯工時表」只依 isLatest 停用，不看 canEdit（見 CasesPage.tsx 的
+  // 「歷史版唯讀」註解）——viewer 也能點進來，只是進去後是唯讀模式。
+  await page.getByRole('button', { name: '編輯工時表' }).click()
+  await page.waitForLoadState('networkidle')
+}
+
+test.describe('§H-DSX3D DSX 3D 擺放介面入口', () => {
+  test('H-DSX3D-1: 已設定網址 → 入口可點 → 確認對話框警告單一觀看者斷線 → 確認後 modal 開啟且 iframe src 正確', async ({ page }) => {
+    await gotoWorksheet(page, DSX_UI_URL)
+
+    const entry = page.getByTestId('dsx-ui-entry-btn')
+    await expect(entry).toBeEnabled()
+    await expect(page.getByTestId('dsx-ui-unavailable-reason')).toHaveCount(0)
+
+    await entry.click()
+    const confirmDialog = page.getByTestId('dsx-ui-confirm-dialog')
+    await expect(confirmDialog).toBeVisible()
+    await expect(confirmDialog).toContainText('斷線')
+    await expect(page.getByTestId('dsx-ui-modal')).toHaveCount(0)
+
+    await page.getByTestId('dsx-ui-confirm-proceed').click()
+    await expect(confirmDialog).toHaveCount(0)
+    const modal = page.getByTestId('dsx-ui-modal')
+    await expect(modal).toBeVisible()
+    await expect(page.getByTestId('dsx-ui-iframe')).toHaveAttribute('src', DSX_UI_URL)
+    // iframe 讀到的必須是上面 mock 回的假內容——這是「請求真的沒有離開瀏覽器打到
+    // 172.32.3.60」的正面證據，不是只看 src 屬性（那個永遠對，不管有沒有連成）。
+    // 若日後不慎移除 gotoWorksheet 裡的 route 攔截，這裡會變紅（真實 DSX 頁面的內容
+    // 不會是這個標記字串，或者連線在沙盒環境直接失敗導致 frameLocator 逾時）。
+    await expect(page.frameLocator('[data-testid="dsx-ui-iframe"]').locator('body'))
+      .toHaveText(DSX_HOST_STUB_MARKER)
+
+    // sandbox 屬性：允許 script/same-origin（WebRTC/signaling 必要），但不給
+    // top-navigation/popups/modals/downloads/forms（誤觸不該能把整個分頁導航走）
+    await expect(page.getByTestId('dsx-ui-iframe')).toHaveAttribute('sandbox', 'allow-scripts allow-same-origin')
+
+    await page.getByTestId('dsx-ui-modal-close').click()
+    await expect(modal).toHaveCount(0)
+  })
+
+  test('H-DSX3D-3: modal 開啟時按 Esc 會關閉（釋放唯一 WebRTC 觀看者名額的快速手段）', async ({ page }) => {
+    await gotoWorksheet(page, DSX_UI_URL)
+
+    await page.getByTestId('dsx-ui-entry-btn').click()
+    await page.getByTestId('dsx-ui-confirm-proceed').click()
+    const modal = page.getByTestId('dsx-ui-modal')
+    await expect(modal).toBeVisible()
+
+    await page.keyboard.press('Escape')
+    await expect(modal).toHaveCount(0)
+  })
+
+  test('H-DSX3D-2: 未設定網址（url=null）→ 入口 disabled 並顯示原因', async ({ page }) => {
+    await gotoWorksheet(page, null)
+
+    const entry = page.getByTestId('dsx-ui-entry-btn')
+    await expect(entry).toBeDisabled()
+    await expect(page.getByTestId('dsx-ui-unavailable-reason')).toBeVisible()
+  })
+
+  test('H-DSX3D-4: viewer（無編輯權限）進到唯讀工時表 → 看不到 DSX 3D 入口', async ({ page }) => {
+    // 「編輯工時表」按鈕只依 isLatest 停用、不看 canEdit，viewer 進得來但是唯讀模式；
+    // DsxUiEntry 會搶走唯一 WebRTC 觀看者名額，不該讓最低權限的人有這個能力。
+    await gotoWorksheet(page, DSX_UI_URL, VIEWER_ME)
+    await expect(page.getByTestId('dsx-ui-entry-btn')).toHaveCount(0)
   })
 })
 
