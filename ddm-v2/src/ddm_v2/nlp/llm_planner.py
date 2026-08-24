@@ -73,7 +73,12 @@ class LLMPlannerAdapter:
     async def plan(
         self, normalized_text: str, context: ParseContext
     ) -> tuple[PlannerOutput, LLMRawResponse]:
-        schema = PlannerOutput.model_json_schema()
+        # ADR-033 P2：送出去的是**索取** schema（`plan_v2_schema.PlannerRequest`），
+        # 不是解析端契約（`PlannerOutput`）。schema 與 prompt 是兩個公告面——
+        # 舊版送 `PlannerOutput.model_json_schema()`，等於一邊用規則說「別輸出
+        # status／數值／字元位置」、一邊用 schema 公告那些欄位可以放東西，而模型會
+        # 照 schema 走。解析端**維持寬鬆不動**（D6 的逐項降級）。
+        schema = plan_v1.REQUEST_JSON_SCHEMA
         user = plan_v1.build_user_message(normalized_text, context.model_dump())
         raw = await self._client.structured_completion(
             system=plan_v1.SYSTEM_PROMPT,

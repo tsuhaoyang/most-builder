@@ -11,6 +11,17 @@
 
 負向控制在 `test_guard_catches_shifted_offset`：offset 位移 2 個字元必須被抓到，
 否則守衛本身是死的。
+
+## plan-v2.0（ADR-033 P2）之後多守的三件事
+
+1. **索取範圍**：示範不得帶 `value`／`unit`（D1）、`status`（D3）、evidence 的
+   `start`／`end`（D4），也不得用刻意不索取的角色鍵／dependency type。
+2. **豁免表的語意分離**：`_PENDING_PROMPT_ROLE_KEYS`（之後會進 prompt）與
+   `_DELIBERATELY_UNASKED_ROLE_KEYS`（刻意永不索取）是**相反**的狀態，斷言互斥，
+   兩張表各有 `==` 的規模常數防掏空。
+3. **第三個公告面在別處**：送給模型的 JSON Schema 同樣是索取範圍的宣告，
+   守衛在 `tests/unit/test_planner_request_schema.py`——prompt 說「別輸出」而
+   schema 說「這裡可以放」，模型會照 schema 走。
 """
 from __future__ import annotations
 
@@ -26,6 +37,7 @@ from ddm_v2.nlp.contracts import (
     ROLE_KEYS,
     DependencyType,
     PlannerOutput,
+    locate_evidence_spans,
     sanitize_planner_output,
     validate_planner_output,
 )
@@ -35,6 +47,18 @@ from ddm_v2.nlp.prompts import plan_v1
 pytestmark = pytest.mark.unit
 
 _WI_TEXT_RE = re.compile(r"<wi_text>\n(.*)\n</wi_text>\Z", re.DOTALL)
+
+
+def _mentions(prompt: str, token: str) -> bool:
+    """prompt 是否**以識別字為單位**提到 `token`（而不是碰巧的子字串）。
+
+    為什麼不能用 `token in prompt`：規則 12 舉的反例 `same_hand` 含有 `hand`，
+    於是「`hand` 沒有出現在 prompt 裡」這個判準會**假陽性**——
+    `test_deliberately_unasked_role_keys_stay_out_of_prompt` 會無故紅，而修法會是
+    刪掉一個有量測依據的反例（模型真的自創過 `same_hand`，g13 因此整筆作廢）。
+    同理 `precedes` 也不該被 `preceding` 之類的字誤中。
+    """
+    return re.search(rf"(?<![0-9a-z_]){re.escape(token)}(?![0-9a-z_])", prompt) is not None
 
 
 def _wi_text(user_message: str) -> str:
@@ -81,10 +105,10 @@ def test_few_shot_passes_planner_validation(idx: int):
 
 @pytest.mark.parametrize("idx", range(len(plan_v1.FEW_SHOTS)))
 def test_few_shot_evidence_text_is_exact_substring(idx: int):
-    """evidence.text 必須是 normalized 原文在 [start, end) 的**精確**切片。
+    """evidence.text 必須逐字出現在 normalized 原文裡（規則 4 的教材面）。
 
-    validate 已驗切片相等；這裡另外要求 text 在原文中真的存在（模型改寫原文、
-    只是「意思對」的 text 不算證據），並把失敗訊息寫成可直接讀出正解的形式。
+    模型改寫原文、只是「意思對」的 text 不算證據——P1 觀察期實測到的正是這個形態
+    （「鎖附螺絲固定並確認到位」→「鎖附固定並確認到位」，漏字）。
     """
     _i, text, output = _shots()[idx]
     for action in output.actions:
@@ -93,72 +117,88 @@ def test_few_shot_evidence_text_is_exact_substring(idx: int):
                 f"few-shot #{idx + 1} {action.action_id}：evidence text {ev.text!r} "
                 f"不是 wi_text 的子字串"
             )
-            expected_start = text.find(ev.text)
-            assert (ev.start, ev.end) == (expected_start, expected_start + len(ev.text)), (
-                f"few-shot #{idx + 1} {action.action_id}：offset [{ev.start},{ev.end}) 錯，"
-                f"正解 [{expected_start},{expected_start + len(ev.text)})"
-                f"（wi_text 長度 {len(text)}）"
-            )
-
-
-# ADR-033 P1 起，契約比 prompt 早一階：`value`／`unit` 已在 adapter 邊界剝除
-# （D1），而 prompt 維持 plan-v1.4、仍教模型輸出數量與距離（P2 才改，刻意分離
-# 「契約放寬」與「prompt 改寫」兩個變因）。因此**只有** `role_numeric_stripped`
-# 是這一階段可接受的示範剝除；清單只准變短——P2 把數值從示範拿掉之後，
-# `test_pending_prompt_debt_is_not_stale` 會要求把它一起刪掉。
-_PROMPT_LAGS_CONTRACT_REASON_PREFIXES = ("role_numeric_stripped:",)
 
 
 @pytest.mark.parametrize("idx", range(len(plan_v1.FEW_SHOTS)))
+def test_few_shot_evidence_declares_no_offset(idx: int):
+    """plan-v2.0（D4）：示範**不得**寫 `start`／`end`——模型會照抄示範的形狀。
+
+    這條與 `test_request_schema_does_not_announce_unasked_fields`（schema 側）
+    是同一件事的兩個公告面：規則 9 說「只給 text」、schema 不宣告座標欄位、
+    示範也不能寫。三者缺一，模型就會繼續產出它幾乎必然算錯的座標
+    （plan-v1.3 兩輪各 62／63 次修復／55 案）。
+
+    ⚠️ 這條取代了舊的「offset 必須等於 `text.find()` 的結果」斷言。舊斷言在
+    plan-v2.0 之下會**恆為 TypeError 而非紅燈**（None 與 int 相比），改寫成本條
+    才是它在新形狀下的等價物：以前守「座標要算對」，現在守「不准出現座標」。
+    """
+    _i, _text, output = _shots()[idx]
+    for action in output.actions:
+        for ev in action.evidence:
+            assert (ev.start, ev.end) == (None, None), (
+                f"few-shot #{idx + 1} {action.action_id}：evidence 帶了字元位置 "
+                f"[{ev.start},{ev.end})——plan-v2.0 起 offset 由我方推導，示範不得教它"
+            )
+
+
+# plan-v2.0（P2）起**沒有任何豁免**：prompt 不再索取數值，示範自然也不該有，
+# 於是 sanitize 對教材應該一件事都不用做。
+#
+# ⚠️ 這裡刻意刪掉了 P1 的 `_PROMPT_LAGS_CONTRACT_REASON_PREFIXES`（只放行
+# `role_numeric_stripped:`）而不是把它留成空 tuple——它自己的 stale 守衛
+# （`test_pending_prompt_debt_is_not_stale`）明文寫著「P2 把數值從示範拿掉之後，
+# 上面的豁免必須跟著刪」。取代它的是下面兩條**正面**斷言（D1／D3 各一條），
+# 比「豁免清單是空的」更直接：豁免為空只說明「沒有被放行的剝除」，
+# 正面斷言說的是「教材裡根本沒有那些欄位」。
+@pytest.mark.parametrize("idx", range(len(plan_v1.FEW_SHOTS)))
 def test_few_shot_needs_no_sanitize_repair(idx: int):
-    """示範不得需要 sanitize 修補（`role_numeric_stripped` 除外，見上方註）。
+    """示範不得需要 sanitize 修補——**一項都不行**。
 
     `sanitize_planner_output` 會替模型推導 offset、剔除無證據動作、降級非法
-    tool_ref、剝除自創角色鍵與原文沒有的片語。示範若要靠這些修補才合法，
+    tool_ref、剝除自創角色鍵、原文沒有的片語與數值。示範若要靠這些修補才合法，
     模型學到的就是「被修過的版本」以外的東西——這些 reason 在評測報告裡的
     次數也會被自家教材墊高。
     """
     _i, text, output = _shots()[idx]
     _sanitized, reasons = sanitize_planner_output(output, normalized_text=text)
-    unexpected = [
-        r
-        for r in reasons
-        if not r.startswith(_PROMPT_LAGS_CONTRACT_REASON_PREFIXES)
-    ]
-    assert unexpected == [], f"few-shot #{idx + 1} 需要 sanitize 修補：{unexpected}"
+    assert reasons == [], f"few-shot #{idx + 1} 需要 sanitize 修補：{reasons}"
 
 
-def test_few_shot_numeric_roles_are_exactly_the_known_prompt_debt():
-    """把「prompt 落後契約一階」釘成可數的事實，而不是一句註解。
+@pytest.mark.parametrize("idx", range(len(plan_v1.FEW_SHOTS)))
+def test_few_shot_declares_no_numeric_role(idx: int):
+    """ADR-033 D1：示範不得帶 `value`／`unit`——LLM 不產生任何數字。
 
-    P1 只放寬契約、不動 prompt（ADR §5、U-7：這是唯一能把兩個變因分開量的機會）。
-    代價是示範仍在教模型輸出 `value`／`unit`，而 adapter 一律剝除——這裡列出
-    受影響的位置，P2 改 prompt 時應該全部消失。
+    距離／數量／秒數的來源收窄為「對原文的確定性抽取」與 ADR-031 的站內佈局
+    （帶出處、IE 確認才落值）。示範裡留一個 `distance: {value: 30, unit: "cm"}`
+    就是在教模型繼續產生與那兩條來源競爭的第三條——S-2 記載的
+    「推動治具450mm至定位」＋模型 `value=450 unit="cm"`（真值的 10 倍）正是這樣來的。
     """
-    stripped = [
-        (i + 1, r)
-        for i, text, output in _shots()
-        for r in sanitize_planner_output(output, normalized_text=text)[1]
-        if r.startswith("role_numeric_stripped:")
+    _i, _text, output = _shots()[idx]
+    offenders = [
+        (a.action_id, key)
+        for a in output.actions
+        for key, role in a.roles.items()
+        if role.value is not None or role.unit is not None
     ]
-    assert stripped == [
-        (1, "role_numeric_stripped:a2:quantity"),
-        (4, "role_numeric_stripped:a1:distance"),
-    ], f"示範的數值角色分布變了：{stripped}"
+    assert offenders == [], f"few-shot #{idx + 1} 仍在示範數值角色：{offenders}"
 
 
-def test_pending_prompt_debt_is_not_stale():
-    """P2 把數值從示範拿掉之後，上面的豁免必須跟著刪——否則守衛悄悄變寬。"""
-    still_numeric = any(
-        role.value is not None or role.unit is not None
-        for _i, _text, output in _shots()
-        for action in output.actions
-        for role in action.roles.values()
-    )
-    assert still_numeric == bool(_PROMPT_LAGS_CONTRACT_REASON_PREFIXES), (
-        "示範已經沒有數值角色了（或反之）——`_PROMPT_LAGS_CONTRACT_REASON_PREFIXES` "
-        "與 `test_few_shot_numeric_roles_are_exactly_the_known_prompt_debt` 要一起更新"
-    )
+@pytest.mark.parametrize("idx", range(len(plan_v1.FEW_SHOTS)))
+def test_few_shot_declares_no_role_status(idx: int):
+    """ADR-033 D3：示範不得帶 `status`——模型的自我宣告已被字面子字串取代。
+
+    `status` 零下游消費者（唯一讀它的是 `validate_planner_output` 自己），
+    留在示範裡只會讓模型花 token 去猜四個狀態，而猜錯就是 v1.4 那 8 案裡的
+    `explicit_without_evidence`／`inferred_without_ref`。
+    """
+    _i, _text, output = _shots()[idx]
+    offenders = [
+        (a.action_id, key, role.status)
+        for a in output.actions
+        for key, role in a.roles.items()
+        if role.status is not None
+    ]
+    assert offenders == [], f"few-shot #{idx + 1} 仍在示範 status：{offenders}"
 
 
 @pytest.mark.parametrize("idx", range(len(plan_v1.FEW_SHOTS)))
@@ -180,36 +220,217 @@ def test_few_shot_uses_no_invented_role_key(idx: int):
                 )
 
 
-def test_few_shots_demonstrate_non_tool_role_reuse():
-    """至少一則示範要展示「非 tool 角色沿用」的正確寫法。
+@pytest.mark.parametrize("idx", range(len(plan_v1.FEW_SHOTS)))
+def test_few_shot_uses_no_deliberately_unasked_role_key(idx: int):
+    """示範不得用「刻意不索取」的鍵（`hand`／`distance`／`quantity`）。
 
-    規則寫了不等於學得會——`object: {status: inferred, action_ref: aN}` 必須有
-    示範，否則模型只看得到 `tool_ref` 一種沿用形狀，又會外推出 `object_ref`。
-    這條擋的是「有人把那則示範刪了／改成別的形狀」。
+    上一條只驗「在 `ROLE_KEYS` 裡」，而那三個鍵**仍然在** `ROLE_KEYS`（ADR-011 不收窄
+    列舉）——所以上一條看不見它們。這條補的正是那個縫。
     """
-    found = [
-        (i + 1, a.action_id, key)
-        for i, _text, output in _shots()
+    _i, _text, output = _shots()[idx]
+    offenders = [
+        (a.action_id, key)
         for a in output.actions
-        for key, role in a.roles.items()
-        if key != "tool_ref" and role.status == "inferred" and role.action_ref
+        for key in a.roles
+        if key in _DELIBERATELY_UNASKED_ROLE_KEYS
     ]
-    assert found, (
-        "沒有任何 few-shot 示範非 tool 角色的沿用寫法"
-        "（object/hand 等以 status=inferred + action_ref 表達）"
+    assert offenders == [], (
+        f"few-shot #{idx + 1} 用了不再索取的角色鍵：{offenders}"
+        f"（理由見 _DELIBERATELY_UNASKED_ROLE_KEYS）"
     )
 
 
-# 契約已有、prompt 尚未索取的角色鍵。ADR-033 §5.2.2 把 `return_to`（＝A6
-# 「返回若有」）排在 P1 進契約、P2 進 prompt、P3 進 compiler 分支——P1 不動
-# prompt 是刻意的（見上方 `_PROMPT_LAGS_CONTRACT_REASON_PREFIXES` 的理由）。
-# 清單只准變短：寫進 prompt 之後 `test_pending_role_key_exemptions_are_not_stale`
-# 會要求把它從這裡刪掉。
-_PENDING_PROMPT_ROLE_KEYS = frozenset({"return_to"})
+def test_few_shots_demonstrate_tool_ref_reuse():
+    """至少一則示範要展示 `tool_ref` 的正確寫法（唯一保留的結構參照）。
+
+    plan-v2.0 起 `tool_ref` 是**唯一**帶 `action_ref` 的角色，而它有真實的 TMU 效果
+    （`policies.is_tool_held` → G 格留空＝0 TMU）。規則寫了不等於學得會，
+    這條擋的是「有人把那則示範刪了」。
+    """
+    found = [
+        (i + 1, a.action_id)
+        for i, _text, output in _shots()
+        for a in output.actions
+        for key, role in a.roles.items()
+        if key == "tool_ref" and role.action_ref
+    ]
+    assert found, "沒有任何 few-shot 示範 tool_ref + action_ref 的寫法"
+
+
+@pytest.mark.parametrize("idx", range(len(plan_v1.FEW_SHOTS)))
+def test_few_shots_use_action_ref_only_on_tool_ref(idx: int):
+    """ADR-033 D2：`action_ref` 只有 `tool_ref` 能帶。
+
+    請求 schema 沒辦法只對 `tool_ref` 一個鍵宣告 `action_ref`（`roles` 是
+    `additionalProperties`，鍵名可變），所以它是**整片公告**的——限制只存在於
+    prompt 規則 7 與這條教材守衛。舊版示範用
+    `object: {status: inferred, action_ref: a1}` 表達物件沿用，plan-v2.0 改用
+    `same_object` dependency；示範若退回舊形狀，這條會紅。
+    """
+    _i, _text, output = _shots()[idx]
+    offenders = [
+        (a.action_id, key)
+        for a in output.actions
+        for key, role in a.roles.items()
+        if key != "tool_ref" and role.action_ref is not None
+    ]
+    assert offenders == [], f"few-shot #{idx + 1} 在非 tool_ref 角色上用了 action_ref：{offenders}"
+
+
+def test_few_shots_demonstrate_return_to():
+    """至少一則示範要展示 `return_to`（plan-v2.0 新增的鍵 → A6）。
+
+    `return_to` 是全新的鍵，模型沒有任何先驗，而它對應的是七格模型最後一格
+    （ADR-033 §1.3；`most_compiler` 今天甚至還沒有這個接口，P3 才補）。
+    只寫規則 8 而不給正面示範，等於指望模型從零學會一個它沒見過的角色。
+    """
+    found = [
+        (i + 1, a.action_id, role.text)
+        for i, _text, output in _shots()
+        for a in output.actions
+        for key, role in a.roles.items()
+        if key == "return_to"
+    ]
+    assert found, "沒有任何 few-shot 示範 return_to（規則 8 寫了卻沒有教材）"
+
+
+@pytest.mark.parametrize("idx", range(len(plan_v1.FEW_SHOTS)))
+def test_few_shots_use_no_deliberately_unasked_dependency_type(idx: int):
+    """示範不得用 `precedes`（D5：零消費者、不再索取；型別保留於契約）。"""
+    _i, _text, output = _shots()[idx]
+    offenders = [
+        (d.from_action, d.to_action, d.type)
+        for d in output.dependencies
+        if d.type in _DELIBERATELY_UNASKED_DEPENDENCY_TYPES
+    ]
+    assert offenders == [], f"few-shot #{idx + 1} 用了不再索取的 dependency type：{offenders}"
+
+
+# ── 兩張**語意不同**的豁免表，不得合併 ───────────────────────────────────
+#
+# 這兩張表描述的是**相反的狀態**，共用一個名字會讓下一個讀到的人誤判：
+#
+#   `_PENDING_PROMPT_ROLE_KEYS`      ＝契約已有、prompt **尚未**索取，**之後會進**。
+#                                      清單只准變短；鍵進了 prompt 就得刪掉。
+#   `_DELIBERATELY_UNASKED_ROLE_KEYS` ＝**刻意永不索取**。鍵留在 `ROLE_KEYS`
+#                                      （ADR-011 不收窄列舉），但 prompt 不要它。
+#                                      鍵若出現在 prompt 裡，是**那個改動**錯了。
+#
+# 混在一起的後果很具體：清單變長時，一個人會以為「有東西待辦」，另一個人會以為
+# 「有東西被永久豁免」，而兩種誤讀都會導致錯誤的下一步。
+_PENDING_PROMPT_ROLE_KEYS: frozenset[str] = frozenset()
+
+# 理由掛在 key 上，不寫在旁邊的註解裡——失敗訊息要印得出**逐條**理由，
+# 讀訊息的人才不必回來翻原始碼。
+_DELIBERATELY_UNASKED_ROLE_KEYS: dict[str, str] = {
+    "hand": (
+        "零下游消費者（ADR-033 §1.4a 逐處查證）；spec §19 待決 #3 的 v1 保守解本來就是"
+        "全部 missing/review；來源候選是 ADR-013 `TARGET_FIELDS` 已有的 `hand` 欄。"
+        "plan-v1.2 實測：規則 7 一拿掉 hand 的示範，4 個原本正確的案例就不再產生"
+        "無依據的 hand 角色——**提到一個角色，模型就會去填它**。"
+    ),
+    "distance": (
+        "ADR-033 D1／D7：距離的唯一來源收窄為 ⑴ 對原文的確定性抽取"
+        "（`quantities.extract_distances`）與 ⑵ ADR-031 的站內佈局（帶出處、IE 確認"
+        "才落值）。role 這條路是**不帶出處、不需確認**的競爭來源（S-2：模型把 450mm"
+        "報成 `value=450 unit=cm`，真值的 10 倍）。"
+    ),
+    "quantity": (
+        "ADR-033 D1：數量／頻率改由 CSV／Excel 匯入欄（ADR-013 `TARGET_FIELDS` 已有"
+        "`quantity` 欄）或 IE 手填提供。User 裁決 3：`×16` 這類頻率不由 LLM 拆解。"
+        "v1.4 的 `g48`（`quantity.value` 收到「多」）正是索取這個鍵的直接代價。"
+    ),
+}
+
+# ADR-033 D5：`precedes` 零消費者（`sequence_order` 已表達順序），不再索取；
+# 型別保留在 `contracts.DependencyType`（既存 plan JSON 帶著它，ADR-011）。
+_DELIBERATELY_UNASKED_DEPENDENCY_TYPES: dict[str, str] = {
+    "precedes": (
+        "在型別宣告之外零引用（ADR-033 §1.4a）；`sequence_order` 已經表達順序，"
+        "模型花在它上面的 token 是純浪費。型別保留是為了既存 `ai_parse_runs.plan`。"
+    ),
+}
+
+# ── 防掏空：兩張表的規模常數（`==`，照 `_contract_freeze_v1.EXPECTED_*` 的慣例）──
+#
+# 為什麼非有不可：`_PENDING_PROMPT_ROLE_KEYS` 在 plan-v2.0 是**空的**（`return_to`
+# 已進 prompt），而空集合會讓 `test_pending_role_key_exemptions_are_not_stale` 的
+# 兩個斷言**同時恆真**——保護無聲消失。空是合法狀態，但必須是**被宣告的**空。
+# 本輪已經踩過同形狀的事故（另一支測試的 `_INTENTIONALLY_UNBLOCKED` 被掏空 → 全綠）。
+#
+# ⚠️ 判準是 `==` 不是 `>=`：用 `>=` 的話表合法長大之後沒有東西要求同步調高數字，
+# 防掏空的強度會逐年衰減。**動這兩張表就要改這裡的數字**，這是刻意的摩擦。
+EXPECTED_PENDING_PROMPT_ROLE_KEYS = 0
+EXPECTED_DELIBERATELY_UNASKED_ROLE_KEYS = 3
+EXPECTED_DELIBERATELY_UNASKED_DEPENDENCY_TYPES = 1
+
+
+def test_role_key_exemption_tables_are_not_hollowed_out():
+    """規模常數：表被掏空時，上面那些集合運算會恆真，只有這條會紅。"""
+    assert len(_PENDING_PROMPT_ROLE_KEYS) == EXPECTED_PENDING_PROMPT_ROLE_KEYS, (
+        f"_PENDING_PROMPT_ROLE_KEYS 的規模變了（{sorted(_PENDING_PROMPT_ROLE_KEYS)}）"
+        "——改表就要同步改 EXPECTED_PENDING_PROMPT_ROLE_KEYS"
+    )
+    assert (
+        len(_DELIBERATELY_UNASKED_ROLE_KEYS) == EXPECTED_DELIBERATELY_UNASKED_ROLE_KEYS
+    ), (
+        f"_DELIBERATELY_UNASKED_ROLE_KEYS 的規模變了"
+        f"（{sorted(_DELIBERATELY_UNASKED_ROLE_KEYS)}）"
+        "——改表就要同步改 EXPECTED_DELIBERATELY_UNASKED_ROLE_KEYS"
+    )
+    assert (
+        len(_DELIBERATELY_UNASKED_DEPENDENCY_TYPES)
+        == EXPECTED_DELIBERATELY_UNASKED_DEPENDENCY_TYPES
+    ), (
+        f"_DELIBERATELY_UNASKED_DEPENDENCY_TYPES 的規模變了"
+        f"（{sorted(_DELIBERATELY_UNASKED_DEPENDENCY_TYPES)}）"
+        "——改表就要同步改 EXPECTED_DELIBERATELY_UNASKED_DEPENDENCY_TYPES"
+    )
+
+
+def test_exemption_tables_are_mutually_exclusive():
+    """同一個鍵不得同時「待辦」與「刻意不做」——那是兩個相反的承諾。"""
+    both = sorted(_PENDING_PROMPT_ROLE_KEYS & set(_DELIBERATELY_UNASKED_ROLE_KEYS))
+    assert both == [], (
+        f"這些鍵同時在兩張豁免表裡：{both}——「之後會進 prompt」與「刻意永不索取」"
+        "不可能同時成立，必須先決定是哪一種"
+    )
+
+
+def test_exemption_tables_reference_only_real_contract_values():
+    """豁免一個不存在的鍵＝清單過期而沒有人會發現。"""
+    unknown_pending = sorted(k for k in _PENDING_PROMPT_ROLE_KEYS if k not in ROLE_KEYS)
+    assert unknown_pending == [], f"豁免了不存在於 ROLE_KEYS 的鍵：{unknown_pending}"
+    unknown_unasked = sorted(
+        k for k in _DELIBERATELY_UNASKED_ROLE_KEYS if k not in ROLE_KEYS
+    )
+    assert unknown_unasked == [], (
+        f"_DELIBERATELY_UNASKED_ROLE_KEYS 有不存在於 ROLE_KEYS 的鍵：{unknown_unasked}"
+        "——契約真的刪了鍵的話，先看 test_contract_enum_freeze（ADR-011 禁止收窄）"
+    )
+    legal_deps = set(get_args(DependencyType))
+    unknown_dep = sorted(
+        t for t in _DELIBERATELY_UNASKED_DEPENDENCY_TYPES if t not in legal_deps
+    )
+    assert unknown_dep == [], f"豁免了不存在於 DependencyType 的值：{unknown_dep}"
+
+
+def test_exemption_reasons_are_written_down():
+    """理由必須掛在 key 上：沒有理由的豁免＝下一個人只能猜，然後照著猜的改。"""
+    thin = sorted(
+        k
+        for table in (
+            _DELIBERATELY_UNASKED_ROLE_KEYS,
+            _DELIBERATELY_UNASKED_DEPENDENCY_TYPES,
+        )
+        for k, reason in table.items()
+        if len(reason.strip()) < 40
+    )
+    assert thin == [], f"這些豁免沒有寫清楚理由（<40 字）：{thin}"
 
 
 def test_system_prompt_enumerates_every_contract_role_key():
-    """`ROLE_KEYS` 有的鍵，system prompt 必須都告訴模型。
+    """`ROLE_KEYS` 有的鍵，system prompt 必須都告訴模型——除非它被明確豁免。
 
     契約與教材同步的守衛：日後若真的新增角色鍵（ADR-011 的欄位只增不改），
     忘了寫進 prompt 這條會紅——模型不會用它不知道的鍵。
@@ -221,24 +442,52 @@ def test_system_prompt_enumerates_every_contract_role_key():
         f"ROLE_KEYS 收窄了，少了 {sorted(FROZEN_ROLE_KEYS - set(ROLE_KEYS))}"
         "——本測試的合法集合會跟著縮，請先看 test_contract_enum_freeze。"
     )
+    exempt = _PENDING_PROMPT_ROLE_KEYS | set(_DELIBERATELY_UNASKED_ROLE_KEYS)
     missing = sorted(
-        k
-        for k in ROLE_KEYS
-        if k not in plan_v1.SYSTEM_PROMPT and k not in _PENDING_PROMPT_ROLE_KEYS
+        k for k in ROLE_KEYS if not _mentions(plan_v1.SYSTEM_PROMPT, k) and k not in exempt
     )
     assert missing == [], f"system prompt 未列出的角色鍵：{missing}"
 
 
 def test_pending_role_key_exemptions_are_not_stale():
-    """豁免清單只准變短：鍵一旦進了 prompt，就得從清單移除。"""
-    landed = sorted(k for k in _PENDING_PROMPT_ROLE_KEYS if k in plan_v1.SYSTEM_PROMPT)
+    """待辦清單只准變短：鍵一旦進了 prompt，就得從清單移除。
+
+    ⚠️ **本條目前是空跑**：`_PENDING_PROMPT_ROLE_KEYS` 在 plan-v2.0 是空的
+    （`return_to` 已進 prompt），空集合讓下面的推導式恆為 `[]`。這是**被宣告的**空
+    ——`test_role_key_exemption_tables_are_not_hollowed_out` 的
+    `EXPECTED_PENDING_PROMPT_ROLE_KEYS = 0` 才是這個狀態的守衛。
+    留著本條是為了下一次「契約先加鍵、prompt 後跟上」時它立刻生效。
+    """
+    landed = sorted(k for k in _PENDING_PROMPT_ROLE_KEYS if _mentions(plan_v1.SYSTEM_PROMPT, k))
     assert landed == [], f"這些鍵已寫進 prompt，請從 _PENDING_PROMPT_ROLE_KEYS 移除：{landed}"
-    unknown = sorted(k for k in _PENDING_PROMPT_ROLE_KEYS if k not in ROLE_KEYS)
-    assert unknown == [], f"豁免了不存在於 ROLE_KEYS 的鍵：{unknown}"
+
+
+def test_deliberately_unasked_role_keys_stay_out_of_prompt():
+    """刻意不索取的鍵**不得出現在 prompt 裡**，連「不要輸出這些」都不寫。
+
+    這條同時是兩件事的守衛：
+
+    1. **豁免的 stale 檢查**——有人把 `hand` 加回規則 7 的清單，這裡會紅，
+       逼他先處理 `_DELIBERATELY_UNASKED_ROLE_KEYS` 那筆理由。
+    2. **「不點名」這個決定本身**——plan-v1.2 的量測：規則 7 原本連 `hand` 一起示範
+       沿用寫法，拿掉之後 4 個原本正確的案例才不再產生無依據的 hand 角色。
+       封閉白名單（規則 7 的八個鍵）已足以表達「只能用這些」；再寫一句
+       「不要輸出 hand／distance／quantity」等於把它們重新放進模型的注意力。
+
+    ⚠️ 判準用識別字邊界而不是子字串（`_mentions`）：規則 12 的反例 `same_hand`
+    含有 `hand`，用 `in` 會假陽性、逼人刪掉一個有量測依據的反例。
+    """
+    leaked = sorted(
+        k for k in _DELIBERATELY_UNASKED_ROLE_KEYS if _mentions(plan_v1.SYSTEM_PROMPT, k)
+    )
+    assert leaked == [], (
+        f"這些鍵已被寫進 prompt：{leaked}\n"
+        + "\n".join(f"  - {k}: {_DELIBERATELY_UNASKED_ROLE_KEYS[k]}" for k in leaked)
+    )
 
 
 def test_system_prompt_enumerates_every_dependency_type():
-    """`DependencyType` 有的值，system prompt 必須都告訴模型。
+    """`DependencyType` 有的值，system prompt 必須都告訴模型——除非明確豁免。
 
     與 `test_system_prompt_enumerates_every_contract_role_key` 同一個道理，來源也
     同一個：plan-v1.2 的評測裡模型自創 `same_hand`，整筆 json_or_schema 作廢——
@@ -253,20 +502,46 @@ def test_system_prompt_enumerates_every_dependency_type():
         f"DependencyType 收窄了，少了 {sorted(FROZEN_DEPENDENCY_TYPE - set(legal))}"
         "——本測試的合法集合會跟著縮，請先看 test_contract_enum_freeze。"
     )
-    missing = sorted(t for t in legal if t not in plan_v1.SYSTEM_PROMPT)
+    missing = sorted(
+        t
+        for t in legal
+        if not _mentions(plan_v1.SYSTEM_PROMPT, t)
+        and t not in _DELIBERATELY_UNASKED_DEPENDENCY_TYPES
+    )
     assert missing == [], f"system prompt 未列出的 dependency type：{missing}"
+
+
+def test_deliberately_unasked_dependency_types_stay_out_of_prompt():
+    """`precedes` 不得出現在 prompt 裡——理由同角色鍵那條（不點名、不重新引入）。"""
+    leaked = sorted(
+        t
+        for t in _DELIBERATELY_UNASKED_DEPENDENCY_TYPES
+        if _mentions(plan_v1.SYSTEM_PROMPT, t)
+    )
+    assert leaked == [], (
+        f"這些 dependency type 已被寫進 prompt：{leaked}\n"
+        + "\n".join(
+            f"  - {t}: {_DELIBERATELY_UNASKED_DEPENDENCY_TYPES[t]}" for t in leaked
+        )
+    )
 
 
 def test_guard_catches_shifted_offset():
     """負向控制：把示範的 offset 位移 2 個字元，守衛必須抓到。
 
     沒有這條，上面所有斷言都可能因為「驗法與示範用同一套推導」而恆綠。
+
+    ⚠️ plan-v2.0 起示範**不帶 offset**（D4），所以這裡先自己填上正確座標再位移
+    ——被測的是 `validate_planner_output` 對「模型自己報了座標」這條路的檢查
+    （契約仍然會驗它，只是不再索取）。
     """
     _i, text, output = _shots()[0]
     broken = output.model_copy(deep=True)
     ev = broken.actions[0].evidence[0]
+    start = text.find(ev.text)
+    assert start >= 0
     broken.actions[0].evidence[0] = ev.model_copy(
-        update={"start": ev.start + 2, "end": ev.end + 2}
+        update={"start": start + 2, "end": start + len(ev.text) + 2}
     )
     assert validate_planner_output(broken, normalized_text=text), (
         "offset 位移 2 竟然通過驗證——守衛是死的"
@@ -278,7 +553,9 @@ def test_guard_catches_out_of_range_offset():
     _i, text, output = _shots()[0]
     broken = output.model_copy(deep=True)
     ev = broken.actions[0].evidence[0]
-    broken.actions[0].evidence[0] = ev.model_copy(update={"end": len(text) + 1})
+    broken.actions[0].evidence[0] = ev.model_copy(
+        update={"start": text.find(ev.text), "end": len(text) + 1}
+    )
     errors = validate_planner_output(broken, normalized_text=text)
     assert any(e.startswith("evidence_offset_oor") for e in errors), (
         f"越界 offset 未被辨識為 evidence_offset_oor：{errors}"
@@ -349,8 +626,28 @@ def _clauses(text: str) -> list[tuple[int, int, str]]:
     return [(s, e, t) for s, e, t in out if t.strip()]
 
 
-def _as_dicts(output: PlannerOutput) -> tuple[list[dict], list[dict]]:
-    dumped = output.model_dump()
+def _as_dicts(output: PlannerOutput, normalized_text: str) -> tuple[list[dict], list[dict]]:
+    """dump 成 dict，**並先把 evidence 的座標補上**。
+
+    切分守衛的子句比對是座標運算（`c_start <= ev.start and ev.end <= c_end`），
+    而 plan-v2.0 起示範不寫 offset（D4：模型只給 text）。這裡用 production 的
+    `contracts.locate_evidence_spans` 推導，而不是自己 `find()`——守衛看到的座標
+    必須與「模型輸出被解讀成的座標」是同一套，否則守的是另一個東西。
+    """
+    located, unlocatable, _diag = locate_evidence_spans(output.actions, normalized_text)
+    assert not unlocatable, (
+        f"evidence 在原文定位不到（{sorted(unlocatable)}）——這一則示範連 sanitize "
+        f"都過不了，先看 test_few_shot_needs_no_sanitize_repair"
+    )
+    with_spans = output.model_copy(
+        update={
+            "actions": [
+                a.model_copy(update={"evidence": located.get(a.action_id, [])})
+                for a in output.actions
+            ]
+        }
+    )
+    dumped = with_spans.model_dump()
     return dumped["actions"], dumped["dependencies"]
 
 
@@ -404,15 +701,25 @@ def _link_between(acquire: dict, move_place: dict, dependencies: list[dict]) -> 
 def _own_object(action: dict) -> bool:
     """該 action 是否**自己**交代了放的是什麼（原文字面提供，不是沿用前一個 action）。
 
-    `explicit` 與 `explicit_unresolved` 都算——兩者都表示這一段文字自己提到了物件
-    （後者是「內容在外部」，例如「依圖示」，仍然是原文有提）。`inferred`／`missing`／
-    整個省略都不算：那三種寫法都是「放的東西要去別處找」。
+    判準隨 plan-v2.0 改為「**有沒有自己的 object 片語**」：
+
+    - `status` 缺席（plan-v2.0 的形狀，D3 之後不再索取）→ 只看 `text` 有沒有值。
+      有片語就是「這一段文字自己講得出放的是什麼」，那正是判準想問的事。
+    - `status` 存在（舊資料／舊格式的 plan）→ 沿用舊語意：`explicit` 與
+      `explicit_unresolved` 都算（後者是「內容在外部」，例如「依圖示」，仍然是原文
+      有提），`inferred`／`missing`／`default` 都不算——那幾種寫法都是「放的東西要去
+      別處找」。
+
+    ⚠️ **不要把 status 缺席讀成 False**（改成 v2.0 形狀時最容易寫錯的一步）：
+    那會讓每一則 v2.0 示範的 `move_place` 都「講不出自己放什麼」，(2b) 於是對
+    **合法**的 acquire→move_place 相鄰誤報，而修法會變成加豁免清單。
 
     ⚠️ 這個判別只對 **roles 齊全的 plan**（few-shot、LLM 輸出）有意義。現行 gold 是
     rule parser 預標註，roles 幾乎全空——它對 gold 23 個 move_place 一律回 False。
     """
     obj = (action["roles"] or {}).get("object") or {}
-    if obj.get("status") not in ("explicit", "explicit_unresolved"):
+    status = obj.get("status")
+    if status is not None and status not in ("explicit", "explicit_unresolved"):
         return False
     return obj.get("text") is not None or obj.get("value") is not None
 
@@ -475,7 +782,7 @@ def _gold_plans() -> list[tuple[str, str, list[dict], list[dict]]]:
 def test_few_shot_clause_with_acquire_and_place_is_one_move_place(idx: int):
     """檢查 (1)：示範的「一句取＋放」不得被切成多個 action。"""
     _i, text, output = _shots()[idx]
-    actions, _deps = _as_dicts(output)
+    actions, _deps = _as_dicts(output, text)
     problems, _checked = _clause_violations(text, actions)
     assert problems == [], f"few-shot #{idx + 1} 違反 gold 切分慣例：{problems}"
 
@@ -489,7 +796,7 @@ def test_few_shot_does_not_split_acquire_then_move_place(idx: int):
     `test_guard_catches_linkless_split_with_objectless_move_place`。
     """
     _i, _text, output = _shots()[idx]
-    actions, deps = _as_dicts(output)
+    actions, deps = _as_dicts(output, _text)
     problems = _adjacent_split_violations(actions, deps)
     assert problems == [], f"few-shot #{idx + 1} 違反 gold 切分慣例：{problems}"
 
@@ -659,7 +966,7 @@ def test_guard_catches_the_plan_v11_mis_segmented_shot():
     )
     # 前提：它在**結構上**完全合法——這正是 25 條結構守衛當初全綠的原因。
     assert validate_planner_output(bad, normalized_text=text) == []
-    actions, deps = _as_dicts(bad)
+    actions, deps = _as_dicts(bad, text)
     clause_problems, _checked = _clause_violations(text, actions)
     assert clause_problems == [], (
         "壞示範竟被子句檢查抓到——那 test_guard_catches_clause_level_oversplit "
@@ -683,6 +990,10 @@ _LINKLESS_SPLIT_A2_ROLES = [
         },
         id="object_missing",
     ),
+    # plan-v2.0 的形狀：完全沒有 status（D3 之後不再索取）。單獨列出來，是因為
+    # `_own_object` 對「status 缺席」的處理正是這一版最容易寫錯的地方——寫成
+    # 「缺席即 False」會讓守衛誤報合法案例，寫成「缺席即 True」會讓這個壞形狀溜過去。
+    pytest.param({"destination": {"text": "工作臺"}}, id="object_omitted_v2_shape"),
 ]
 
 
@@ -728,7 +1039,7 @@ def test_guard_catches_linkless_split_with_objectless_move_place(a2_roles: dict)
     bad = _linkless_split_output(a2_roles)
     # 前提一：結構完全合法（與 plan-v1.1 那則壞示範一樣，25 條結構守衛不會響）。
     assert validate_planner_output(bad, normalized_text=text) == []
-    actions, deps = _as_dicts(bad)
+    actions, deps = _as_dicts(bad, text)
     # 前提二：跨逗號，子句檢查 (1) 抓不到。
     clause_problems, _checked = _clause_violations(text, actions)
     assert clause_problems == []
@@ -739,14 +1050,26 @@ def test_guard_catches_linkless_split_with_objectless_move_place(a2_roles: dict)
     )
 
 
-def test_split_guard_allows_unrelated_acquire_then_move_place():
+@pytest.mark.parametrize(
+    "with_status",
+    [pytest.param(True, id="legacy_statused"), pytest.param(False, id="v2_shape")],
+)
+def test_split_guard_allows_unrelated_acquire_then_move_place(with_status: bool):
     """(2b) 的收窄邊界：取工具→放另一件東西是合法的，不得誤報。
 
     「拿取電動起子,將主板放到治具」是 acquire(工具) + move_place(別的物件)，兩者
     本來就是兩個 action。這條與上一條配成一對：只有「move_place 講不出自己放的是
     什麼」才算違規，判準不是「相鄰就違規」。沒有這條，(2b) 可以靠「一律紅」假裝有效。
+
+    **兩種形狀都要測**：舊資料帶 `status`、plan-v2.0 的輸出沒有。`_own_object` 若把
+    「status 缺席」讀成「講不出自己放什麼」，`v2_shape` 這一組會紅——那正是這一版
+    最容易寫錯的地方，而寫錯之後守衛會對合法案例誤報。
     """
     text = "拿取電動起子,將主板放到治具"
+
+    def _role(payload: dict) -> dict:
+        return {**payload, "status": "explicit"} if with_status else payload
+
     ok = PlannerOutput.model_validate(
         {
             "language": "zh",
@@ -755,18 +1078,18 @@ def test_split_guard_allows_unrelated_acquire_then_move_place():
                     "action_id": "a1",
                     "action_type": "acquire",
                     "sequence_order": 1,
-                    "roles": {"tool": {"text": "電動起子", "status": "explicit"}},
-                    "evidence": [{"start": 0, "end": 6, "text": "拿取電動起子"}],
+                    "roles": {"tool": _role({"text": "電動起子"})},
+                    "evidence": [{"text": "拿取電動起子"}],
                 },
                 {
                     "action_id": "a2",
                     "action_type": "move_place",
                     "sequence_order": 2,
                     "roles": {
-                        "object": {"text": "主板", "status": "explicit"},
-                        "destination": {"text": "治具", "status": "explicit"},
+                        "object": _role({"text": "主板"}),
+                        "destination": _role({"text": "治具"}),
                     },
-                    "evidence": [{"start": 7, "end": 14, "text": "將主板放到治具"}],
+                    "evidence": [{"text": "將主板放到治具"}],
                 },
             ],
             "dependencies": [],
@@ -774,7 +1097,11 @@ def test_split_guard_allows_unrelated_acquire_then_move_place():
         }
     )
     assert validate_planner_output(ok, normalized_text=text) == []
-    actions, deps = _as_dicts(ok)
+    actions, deps = _as_dicts(ok, text)
+    assert _own_object(actions[1]), (
+        "move_place 明明有自己的 object 片語，`_own_object` 卻回 False"
+        "——(2b) 會對合法案例誤報"
+    )
     assert _adjacent_split_violations(actions, deps) == [], (
         "取工具→放別的東西被誤判為切錯——判準太寬，會逼出豁免清單"
     )

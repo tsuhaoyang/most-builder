@@ -407,6 +407,47 @@ Literal，pydantic 之後才處理已經太遲——`g13` 就是死在那裡）�
    ⚠️ **`git add` 一個「還沒驗過」的中間態，跟沒有還原路徑一樣危險。**
 
 
+### P2 落地紀錄（ADR-033「prompt 改寫為 plan-v2.0」，2026-08-24）
+
+`PROMPT_VERSION` → `plan-v2.0`：SYSTEM_PROMPT 12 條規則重寫（刪 status／evidence offset／
+quantity 數值三段規則；角色鍵縮為 8 個並新增 `return_to`；新增「逐字照抄」鐵律）、5 則
+few-shot 全部重寫、新增**索取** schema（`prompts/plan_v2_schema.py`）與解析端契約分離
+（`llm_planner.py` 送出的 `response_format`／system schema 改用 `plan_v1.REQUEST_JSON_SCHEMA`，
+不再是 `contracts.PlannerOutput.model_json_schema()`）。
+
+**兩個結構性張力**（動手前先查證，見 dispatch 紀錄）：⑴ 送給模型的 schema 本身就是一份公告
+——只改 prompt 不改 schema，收窄等於沒做；⑵ `hand`／`distance`／`quantity` 退出索取但仍留在
+`ROLE_KEYS`（ADR-011 不收窄列舉），需要與「契約已有、prompt 尚未索取」語意相反的獨立豁免表
+（`_DELIBERATELY_UNASKED_ROLE_KEYS`／`_DELIBERATELY_UNASKED_DEPENDENCY_TYPES`，理由掛在 key
+上），不得與 `_PENDING_PROMPT_ROLE_KEYS` 合併。
+
+**驗證數字**：unit 1471→**1525 passed**、integration 589 passed／1 skipped（與基準相同）、
+ruff／mypy 改動檔零錯誤。**mutation 9 組全部按預期紅、還原全部驗證**（含反向：把
+`contracts.RoleValue.status` 拿掉會讓 7 支測試紅，證明「解析端維持寬鬆」這半邊真的有守）。
+
+#### checkpoint 抽驗（code-reviewer／test-engineer／security-reviewer，2026-08-24）
+
+- **security-reviewer**：本批不引入新資安風險，無 HIGH/MEDIUM 發現。
+- **test-engineer**：協調者的 9 組 mutation 之外又補 8 組，全部有效；額外抓到 1 個真洞
+  （見 T-22）。3 支既知空跑（`_PENDING_PROMPT_ROLE_KEYS` 現為空 frozenset 所致）逐一覆核，
+  判定維持現狀（已用 mutation 證實表的「非-pending」部分是活的）。
+- **code-reviewer**：3 個發現，見 **T-19／T-20／T-21**。其中 T-19／T-20 是同一根因
+  （`status` 沒有得到 `dependency.type` 那種等級的前置過濾與剝除）在兩個後果上的表現——
+  T-19 是「會整筆炸掉」，T-20 是「炸不掉時會靜默漏過去」。**兩者實測可及**：正式環境
+  `response_format_mode` 預設 `"json_object"`（非 `json_schema`），schema 對模型只是文字建議、
+  API 層無結構性擋欄。
+
+**已知未保證**（不擋這次 commit，寫下以免被誤讀成「已覆蓋」）：`notes` 從索取 schema 拿掉無
+守衛；`request_json_schema()` 宣稱「每次回新 dict」無守衛（只驗 `==` 不驗 `is not`）；
+「內容有動就升 `PROMPT_VERSION`」無機械守衛；`from_location` 沒有 few-shot 示範（既存缺口，
+plan-v1.4 也沒有，決定 P4 補——那時它才會真正變成查表鍵，示範與「教材涵蓋所有索取鍵」的
+守衛一起落地才有意義）。
+
+**未跑**：55 案 ×2 輪評測（P2 的完成判準）。決定先 commit 再排評測——兩個 AI flag
+（`DDM_WI_AI_ENABLED`／`DDM_WI_AI_AUTO_ENABLED`）均預設 false，`input_hash` 不含 `PROMPT_VERSION`
+（既有 `ai_parse_runs` 快取不受影響），plan-v2.0 進 tree 對產品零立即影響。
+
+
 ## 9. 已知限制與待決票（2026-08-22 checkpoint 明確不修的項目）
 
 > 這一節的存在是為了讓「沒修」是**被決定的**、不是被遺忘的。每一項都附「為什麼這輪不修」。
@@ -453,6 +494,10 @@ Literal，pydantic 之後才處理已經太遲——`g13` 就是死在那裡）�
 
 | T-17 | **`locate_evidence_spans` 的 `len(starts)==1` 分支繞過 `used`，兩個 action 會拿到同一個 span**（code review 實測：原文「推動治具」、a1/a2 的 evidence 都是「推動治具」→ 兩者都得 `(0,4)`）。docstring 明寫「同一位置**不重用**」，程式沒做到。兩個後果：⑴ 評測——重複／重疊的 pred span 進 boundary micro 聚合，tp/fp 失真；⑵ **與 S-2 的交互（較要緊）**——`most_compiler.policies` 的證據窗判準是「**該 action 自己的** evidence」，兩個 action 共用同一個窗時，A 句子裡的數字就能替 B 的數值主張背書，那正是花兩輪收緊的性質 | **不是一行可改**：reviewer 把該分支改成尊重 `used` 後有 **2 條 CLI 測試轉紅**，代表現行行為在某條路徑上承重。當成**要設計的修正**。⚠️ **最低限度先把 docstring 改成與程式相符**——現在文件承諾了一件程式沒做到的事（規則 9）。觸發條件需兩個 action 引用同一個唯一片語，v1.4 的 per-clause evidence 下不常見，故列 P2 級 |
 | T-18 | **`action_ref` 的參照完整性在 P1／P2 之間留了一個沒人管的窗**：`action_ref_unknown` 隨 D3 廢止（它與 `status` 那三條**不同類**——驗的是**參照完整性**，不是模型的自我宣告），但 `action_ref` 收窄延到 P2，而 prompt 仍在**主動教**這個形狀（`plan_v1.py:202` few-shot #2）。實測 `roles={"object": RoleValue(action_ref="a99")}`（a99 不存在）→ sanitize reasons 空、validate errors 空、原樣留下 | **今天無害**（唯一消費者 `policies.py:282` 的 `is_tool_held` 只讀 `tool_ref`），所以不擋 P1。但「教它產生 → 不檢查 → 收窄延後」三者疊在一起，**P2 收窄落地前記著這個窗** |
+| T-19 | **`status` 沒有得到 `dependency.type` 那種等級的前置過濾（P2 checkpoint，code-reviewer 2026-08-24 實測重現）**：`prepare_planner_payload`（`contracts.py:375-414`）專門在 `model_validate` **之前**過濾非法 `dependency.type`，理由寫得很清楚——模型自創一個 type 會讓整份 JSON 在 pydantic 就炸掉。但 `status` 是同樣形狀的風險卻沒有對應前置過濾。實測 `role={'text':'dimm','status':'confirmed'}` → `PlannerOutput.model_validate()` 直接 `ValidationError`，整份輸出落入 `llm_planner._parse_sanitize_validate` 的 `json_or_schema` 致命路徑——正是 D6 想消滅的「語意正確的切分被整份丟掉」。**可及性已查證非理論**：正式環境的 `response_format_mode` 預設是 `"json_object"`（`wi_ai_service.py:182`、`scripts/wi_ai_eval.py:417`），該模式下 schema 只是貼進 system message 的文字建議，API 層**不會**結構性擋掉模型輸出 schema 沒宣告的欄位；`PlannerRequest`／`RequestedRoleValue` 也未設 `extra="forbid"`。P2 把 status 的 5 個合法值從 prompt／schema 全部拿掉後，模型若仍因訓練習慣吐出某個 status 字串，現在完全沒有合法值可循，比 P1 更容易踩到 Literal 之外的值 | **今天無害**：`DDM_WI_AI_ENABLED`／`DDM_WI_AI_AUTO_ENABLED` 均預設 false，無真實資料會觸發。**P3（開 AI 路徑）前必修**：比照 `prepare_planner_payload` 對 `dependency.type` 的處理模式，對 `status` 加一段等價的前置過濾（非法值降級/剝除，不讓整份 validate 失敗）|
+| T-20 | **`sanitize_planner_output` 的 docstring 宣稱清了 `status`，實際沒清（同 T-19 根因，code-reviewer 2026-08-24 實測重現）**：`plan_v2_schema.py:26-29` 明寫「模型若仍吐 value／unit／status／start／end 照樣收得下來，再由 adapter 邊界逐項剝除並記名」，但 `_sanitize_roles`（`contracts.py:483-518`）只清了 `value`／`unit`（513-516 行），**完全沒清 `status`**，也沒清非-tool_ref 角色上的 `action_ref`（規則 7 明文禁止但無機械剝除）。實測：`status` 與 `action_ref` 原封不動流入輸出，`StripDetail` 旁通道完全沒收到（`_record` 只在既有三個分支被呼叫）。影響：即使 `status` 剛好是合法值（不觸發 T-19），也會**靜默**流進 `ai_parse_runs.plan`／API，不進 `unresolved`／`routing_reasons`，連評測用的 `StripDetail` 都看不到——比「`notes` 無守衛」更隱蔽，因為這是**註解主動宣稱有做、實際沒做** | **今天無害**（同 T-19，兩個 AI flag 皆 false）。**與 T-19 同一輪修**：`_sanitize_roles` 補這兩項的清除與記錄，成本低（照抄既有 `value`／`unit` 那兩行的模式）|
+| T-21 | **`release_return`（既有 `ActionType` 合法值）與新增的 `return_to` 角色語意重疊，prompt 未分工（code-reviewer 2026-08-24）**：`release_return` 是 `contracts.ActionType` 的合法值（`contracts.py:33`），`RequestedAction.action_type` 沿用同一個 enum，但 SYSTEM_PROMPT 與全部 5 則 few-shot 從未定義、從未示範它。這是既存缺口（plan-v1.4 同樣沒教），但 P2 新增的規則 8／`return_to` 角色（`plan_v1.py:120-124`）語意（「歸位／返回」）與它高度重疊，prompt 完全沒說兩者何時各用哪個。新增 `return_to` 之前，`release_return` 只是「沒人教」；新增之後，變成「兩條合法路徑、規則沒分工」的真歧義 | Low-Medium，非阻擋。P4（gold roles 標註／role slot accuracy 上線）前一併釐清：prompt 明確排除 `release_return` 或明確定義分工，並補負向測試 |
+| T-22 | **few-shot 沒有任何正面斷言要求示範 `dependency` type（test-engineer 2026-08-24 mutation 抓到）**：把 few-shot #1 的 `tool_held_for` 與 #2 的 `same_object` 兩個 dependency 示範同時清空（模擬「教材把所有 dependency 示範一起弄丟」），91 個測試全綠、零提示。`test_few_shots_use_no_deliberately_unasked_dependency_type` 只驗證「不是 `precedes`」，`dependencies` 為空 list 時迴圈體不執行、恆真。與已有的 `test_few_shots_demonstrate_return_to`／`test_few_shots_demonstrate_tool_ref_reuse` 同一種正面斷言，這裡沒補 | 修法：仿照 `test_few_shots_demonstrate_return_to` 補兩條——至少一則示範 `tool_held_for`、至少一則示範 `same_object`。純測試檔改動，可與 T-19／T-20 同一輪一起做，或更早獨立補（低風險、低成本）|
 
 
 ### 設計取捨（已決定，記錄理由）
