@@ -68,6 +68,12 @@ services:
       DDM_PARSE_WORKER_ENABLED: ${DDM_PARSE_WORKER_ENABLED:-true}
       DDM_PARSE_WORKER_INTERVAL_S: ${DDM_PARSE_WORKER_INTERVAL_S:-3.0}
       DDM_PARSE_WORKER_BATCH: ${DDM_PARSE_WORKER_BATCH:-4}
+      # DSX 3D 整合（a3 距離查詢 + 擺放介面 iframe 入口）。預設關閉，跨網段搬遷時
+      # 只需要改 .env 的 DDM_DSX_API_BASE_URL／DDM_DSX_UI_URL，不必動程式或本檔。
+      DDM_DSX_INTEGRATION_ENABLED: ${DDM_DSX_INTEGRATION_ENABLED:-false}
+      DDM_DSX_API_BASE_URL: ${DDM_DSX_API_BASE_URL:-}
+      DDM_DSX_UI_URL: ${DDM_DSX_UI_URL:-}
+      DDM_DSX_TIMEOUT_S: ${DDM_DSX_TIMEOUT_S:-5.0}
 
 volumes:
   ddm-v2-pgdata:
