@@ -49,14 +49,14 @@ jobs:
         image: postgres:16-alpine
         env:
           POSTGRES_USER: ci
-          POSTGRES_PASSWORD: ci
+          POSTGRES_PASSWORD: db-secret-991
           POSTGRES_DB: ddm_ci
         ports: ['5432:5432']
         options: >-
           --health-cmd "pg_isready -U ci -d ddm_ci"
           --health-interval 5s --health-timeout 5s --health-retries 20
     env:
-      DATABASE_URL: postgresql+asyncpg://ci:ci@localhost:5432/ddm_ci
+      DATABASE_URL: postgresql+asyncpg://ci:db-secret-991@localhost:5432/ddm_ci
       AUTH_DEV_USER: IEC141289
       PYTHONPATH: src
     steps:

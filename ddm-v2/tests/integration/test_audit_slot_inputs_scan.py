@@ -356,8 +356,26 @@ async def test_readonly_snapshot_is_enforced_by_postgres(db_session):
             #   assert "***" in rendered or "@" not in <authority>
             # ——標準 URL 下前半恆真，後半永遠不會被求值，而且從未斷言真正的密碼不在輸出裡。
             rendered = identity["DATABASE_URL（已遮罩密碼與 query 值）"]
-            secret = make_url(url).password
+            parsed_url = make_url(url)
+            secret = parsed_url.password
             assert secret, "測試環境的 DATABASE_URL 沒有密碼，這條斷言就沒有鑑別力（請帶密碼）"
+            # 密碼若是 username／database 的子字串，下面的 `secret not in rendered`
+            # 會被 userinfo／database 這兩個「本來就該印」的合法欄位打成假陽性——
+            # 測試資料本身就沒有鑑別力，不是 redact_url() 有 bug。
+            # ⚠️ 只查這個方向：反過來（username／database 是密碼的子字串）不會讓
+            # 「完整密碼字串」出現在 rendered 裡，`secret not in rendered` 照樣有鑑別力，
+            # 不該被擋。而且反向用 `value in secret` 在 value 是空字串時（例如 URL 不帶
+            # database path，asyncpg 合法寫法）恆為 True，會把「URL 缺欄位」誤診斷成
+            # 「密碼重疊」，訊息反而導人換錯地方。
+            username = parsed_url.username or ""
+            database = parsed_url.database or ""
+            for label, value in (("username", username), ("database", database)):
+                assert secret not in value, (
+                    f"測試環境的密碼是{label}（{value!r}）的子字串，這條斷言會有假陽性："
+                    f"密碼字串會透過合法顯示的 {label} 欄位出現在遮罩後的輸出裡，"
+                    f"不代表密碼真的外洩。請把 CI 的 POSTGRES_PASSWORD 換成"
+                    f"不是 POSTGRES_USER／POSTGRES_DB 子字串的值。"
+                )
             assert secret not in rendered, f"報告 header 原樣印出了密碼：{rendered}"
 
             # replica 判定欄位：runbook 第 3 步建議「量大就跑 read replica」，
