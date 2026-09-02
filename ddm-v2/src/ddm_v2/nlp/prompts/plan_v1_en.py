@@ -25,6 +25,22 @@ Output Rules (violations render output invalid):
    acquire→remove packaging. Combined verbs (e.g., "pick up and fasten") belong to this category and must be split.
    When uncertain, lean toward **fewer cuts**: one sentence describing one transport is one action.
 3. action_type must be selected from given list; use composite_unknown when reliable parsing is impossible.
+   【How to choose action_type — the distinctions that get confused】
+   - acquire: get/grasp an object, no placement stated ("pick up DIMM", "grasp the screw").
+   - move_place: move an object to a **loose/open** target — set/put/place onto a surface, rack,
+     bench, tray ("place the board on the bench", "put it on the rack"). The object simply rests there.
+   - controlled_move: guide an object into a **constrained/mating** target that resists or requires
+     alignment — **push/insert/press/plug/seat into** a slot, socket, connector, hole, latch, fixture
+     ("push the connector into the socket", "insert the DIMM into the slot", "press the board into the
+     press fixture"). **The verbs push/insert/plug/seat/press-into signal controlled_move, NOT move_place**,
+     because the endpoint constrains the motion. This mirrors the Chinese convention where 推入／插入／壓入
+     are controlled_move.
+   - process: act ON an object with a tool or hand — fasten, tighten, screw, blow-clean, glue, cut.
+   - inspect: check/confirm/verify/visually check ("confirm seated", "inspect the joints").
+   - release_return: let go / return to position.
+   When the target is a slot/socket/connector/hole/latch/fixture and the verb is push/insert/plug/seat/
+   press-into → controlled_move. When the target is a surface/rack/bench/tray and the verb is put/set/
+   place → move_place.
 4. 【Most Important | All text verbatim copy】Whether role text or evidence text,
    must be **continuous segments** from original text, not a single character difference: no rewriting, abbreviation, 
    synonyms, additions, deletions, or reordering.
@@ -35,8 +51,14 @@ Output Rules (violations render output invalid):
    "none", "N/A" are all forbidden), and don't invent a destination just to make a move_place.
 5. 【Strict】Don't add steps not mentioned in original text. When description only says "pick up DIMM", you must not
    add "insert", "place" or any subsequent actions; put missing elements in unresolved.
-6. 【Strict】Tool state: Only after acquire(tool) appears in this text segment can subsequent actions use tool_ref
-   to reference it; seeing a tool name doesn't mean it's already held.
+6. 【Strict】Tool state and ordering: Only after acquire(tool) appears in this text segment can subsequent
+   actions use tool_ref to reference it; seeing a tool name doesn't mean it's already held.
+   【Ordering when the tool appears at the end via "with"】English often names the tool AFTER the main verb
+   ("fasten the screw **with** an electric screwdriver"). The physical order is still: first acquire the
+   tool, then use it. So emit acquire(tool) with sequence_order=1 and the process action with
+   sequence_order=2, and point the dependency acquire→process (tool_held_for). Do NOT put the process
+   action first just because the sentence mentions it first. If you write process before acquiring the
+   tool, that is a tool_state_violation.
 7. 【Strict】Role key names can only use these eight, no invention or renaming:
    object / tool / tool_ref / from_location / destination / return_to /
    process_kind / inspect_kind
@@ -232,6 +254,78 @@ ENGLISH_FEW_SHOTS = [
                     }
                 ],
                 "dependencies": [],
+                "unresolved": []
+            },
+            ensure_ascii=False
+        )
+    ),
+
+    # Example 5: "push ... into ... slot" -> controlled_move (constrained target).
+    # Fixes the en/zh divergence where English "push into slot" was read as move_place(P)
+    # while Chinese 推入插槽 is controlled_move(M). The constrained target (slot) is the signal.
+    (
+        build_user_message_en(
+            "Push the board into the slot",
+            {"available_tools": [], "available_locations": []}
+        ),
+        json.dumps(
+            {
+                "language": "en",
+                "actions": [
+                    {
+                        "action_id": "a1",
+                        "action_type": "controlled_move",
+                        "sequence_order": 1,
+                        "roles": {
+                            "object": {"text": "board"},
+                            "destination": {"text": "slot"}
+                        },
+                        "evidence": [{"text": "Push the board into the slot"}]
+                    }
+                ],
+                "dependencies": [],
+                "unresolved": []
+            },
+            ensure_ascii=False
+        )
+    ),
+
+    # Example 6: tool named at sentence end via "with" -> acquire FIRST, then process.
+    # Fixes the ordering bug where the model emitted process (seq 1) before acquire (seq 2)
+    # just because English puts the main verb first and the tool last.
+    (
+        build_user_message_en(
+            "Fasten the screw with an electric screwdriver",
+            {"available_tools": ["electric screwdriver"], "available_locations": []}
+        ),
+        json.dumps(
+            {
+                "language": "en",
+                "actions": [
+                    {
+                        "action_id": "a1",
+                        "action_type": "acquire",
+                        "sequence_order": 1,
+                        "roles": {
+                            "object": {"text": "electric screwdriver"}
+                        },
+                        "evidence": [{"text": "with an electric screwdriver"}]
+                    },
+                    {
+                        "action_id": "a2",
+                        "action_type": "process",
+                        "sequence_order": 2,
+                        "roles": {
+                            "tool_ref": {"action_ref": "a1"},
+                            "object": {"text": "screw"},
+                            "process_kind": {"text": "fasten"}
+                        },
+                        "evidence": [{"text": "fasten the screw"}]
+                    }
+                ],
+                "dependencies": [
+                    {"from_action": "a1", "to_action": "a2", "type": "tool_held_for"}
+                ],
                 "unresolved": []
             },
             ensure_ascii=False

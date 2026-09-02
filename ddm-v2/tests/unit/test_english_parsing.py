@@ -99,41 +99,39 @@ class TestLanguageAwarePrompts:
 
 
 class TestEnglishFewShotValidation:
-    """Test that English few-shot examples are valid."""
+    """Test that English few-shot examples are valid against the real planner contract."""
 
-    def test_english_few_shots_are_valid(self):
-        """Test that all English few-shot examples pass validation."""
+    def test_english_few_shots_pass_contract(self):
+        """Each English few-shot's assistant JSON must pass validate_planner_output
+        against its own user message — the same authority that guards the Chinese
+        few-shots (see tests/unit/test_prompt_few_shots.py). This closes the gap
+        where English teaching examples were previously unvalidated.
+        """
+        import json
+        import re
+
+        from ddm_v2.nlp.contracts import PlannerOutput, validate_planner_output
+        from ddm_v2.nlp.normalization import normalize
+
+        wi_re = re.compile(r"<wi_text>\n(.*)\n</wi_text>", re.DOTALL)
+
+        for idx, (user_message, assistant_json) in enumerate(ENGLISH_FEW_SHOTS):
+            m = wi_re.search(user_message)
+            assert m, f"few-shot #{idx}: user message missing <wi_text> block"
+            normalized = normalize(m.group(1))
+
+            output = PlannerOutput.model_validate(json.loads(assistant_json))
+            errors = validate_planner_output(output, normalized_text=normalized)
+            assert not errors, f"few-shot #{idx} failed contract: {errors}"
+
+    def test_english_few_shots_have_language_field(self):
+        """All English few-shots declare a valid language."""
+        import json
+
         for user_message, assistant_json in ENGLISH_FEW_SHOTS:
-            import json
-            
-            # Parse the assistant response
             output_data = json.loads(assistant_json)
-            
-            # Extract normalized text from user message
-            # This is a simplified extraction - in real usage it would be more sophisticated
-            lines = user_message.split('\n')
-            normalized_text = ""
-            for i, line in enumerate(lines):
-                if line.strip() == "<wi_text>":
-                    normalized_text = lines[i + 1].strip()
-                    break
-            
-            assert normalized_text, f"Could not extract normalized text from: {user_message[:100]}"
-            
-            # Validate the output structure - this should not raise any errors
-            # Note: We're testing structure, not full semantic validation which requires the contracts module
-            assert "language" in output_data
-            assert output_data["language"] in ["zh", "en", "mixed"]
-            assert "actions" in output_data
-            assert isinstance(output_data["actions"], list)
-            
-            # Basic action structure validation
-            for action in output_data["actions"]:
-                assert "action_id" in action
-                assert "action_type" in action
-                assert "sequence_order" in action
-                assert "roles" in action
-                assert "evidence" in action
+            assert output_data.get("language") in {"zh", "en", "mixed"}
+            assert isinstance(output_data.get("actions"), list)
 
 
 class TestEnglishPromptContent:
