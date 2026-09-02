@@ -12,3 +12,7 @@ data/runtime-db.legacy-json.json
 data/*.corrupt-*.json
 # Claude Code local config (agents, skills, memory — never commit)
 .claude/
+# graphify knowledge graph artifacts (rebuild locally with `graphify update .`)
+# The .kiro/skills/graphify + .kiro/steering/graphify.md ARE committed; only the
+# generated graph output is local (11MB graph.json, machine-path sidecars, cache).
+graphify-out/
