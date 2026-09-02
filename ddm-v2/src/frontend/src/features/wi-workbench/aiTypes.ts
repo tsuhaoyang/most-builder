@@ -34,6 +34,7 @@ export interface AiParseBlock {
     schema_version: string
     source_text: string
     normalized_text: string
+    language: 'zh' | 'en' | 'mixed' // 👈 Add language support
     actions: AiPlannedAction[]
     unresolved: string[]
   }

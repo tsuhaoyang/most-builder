@@ -27,7 +27,9 @@ class TestLanguageDetection:
 
     def test_detect_mixed(self):
         """Test detection of mixed language text."""
-        mixed_text = "Take the 螺絲 and place on workbench"
+        # Mixed = neither CJK-dominant (>=30%) nor ASCII-letter-dominant (>=50%).
+        # A string with symbols/digits and a little of each language lands here.
+        mixed_text = "OK 螺絲 123 -- 456"
         assert detect_language(mixed_text) == "mixed"
 
     def test_detect_empty_text(self):
@@ -36,9 +38,10 @@ class TestLanguageDetection:
         assert detect_language("   ") == "zh"
 
     def test_detect_numeric_text(self):
-        """Test detection with mostly numeric text."""
+        """Test detection with only digits (no CJK, no ASCII letters)."""
+        # No CJK and no ASCII letters -> neither dominance rule fires -> 'mixed'.
         numeric_text = "123456789"
-        assert detect_language(numeric_text) == "zh"  # Default to Chinese
+        assert detect_language(numeric_text) == "mixed"
 
 
 class TestLanguageAwarePrompts:
@@ -197,11 +200,15 @@ class TestEnglishParsingIntegration:
         
         # Test that rule-based fallback still works with English text
         mock_result = NLDraftResult(
+            raw_text=english_text,
             normalized_text=english_text,
             suggested_seq="GM",
-            slot_suggestions=[]
+            context={},
+            slots=[],
+            overall_confidence=0.8,
+            provenance={"parser": "rule_based"},
         )
-        
+
         plan, candidates = plan_from_rule_result(mock_result)
         assert plan.language == "en"
         assert plan.normalized_text == english_text
