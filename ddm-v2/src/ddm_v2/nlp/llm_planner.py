@@ -21,6 +21,7 @@ from ddm_v2.nlp.contracts import (
 )
 from ddm_v2.nlp.planner_ports import LLMClientPort, LLMRawResponse, PlannerError
 from ddm_v2.nlp.prompts import plan_v1
+from ddm_v2.nlp.prompts.language_aware import build_language_aware_prompt
 
 # (phase, reasons, details) — phase ∈ {"initial", "retry"}；見 LLMPlannerAdapter.__init__
 #
@@ -79,14 +80,17 @@ class LLMPlannerAdapter:
         # status／數值／字元位置」、一邊用 schema 公告那些欄位可以放東西，而模型會
         # 照 schema 走。解析端**維持寬鬆不動**（D6 的逐項降級）。
         schema = plan_v1.REQUEST_JSON_SCHEMA
-        user = plan_v1.build_user_message(normalized_text, context.model_dump())
+        
+        # Use language-aware prompt selection
+        system_prompt, few_shots, user = build_language_aware_prompt(normalized_text, context.model_dump())
+        
         raw = await self._client.structured_completion(
-            system=plan_v1.SYSTEM_PROMPT,
+            system=system_prompt,
             user=user,
             json_schema=schema,
             temperature=0.0,
             timeout_s=self._timeout_s,
-            few_shots=plan_v1.FEW_SHOTS,
+            few_shots=few_shots,
         )
         output, errors, reasons, details = _parse_sanitize_validate(raw.content, normalized_text)
         self._observe("initial", reasons, details)
@@ -100,12 +104,12 @@ class LLMPlannerAdapter:
             + "\nPlease output corrected JSON only."
         )
         raw2 = await self._client.structured_completion(
-            system=plan_v1.SYSTEM_PROMPT,
+            system=system_prompt,
             user=retry_user,
             json_schema=schema,
             temperature=0.0,
             timeout_s=self._timeout_s,
-            few_shots=plan_v1.FEW_SHOTS,
+            few_shots=few_shots,
         )
         output2, errors2, reasons2, details2 = _parse_sanitize_validate(raw2.content, normalized_text)
         self._observe("retry", reasons2, details2)

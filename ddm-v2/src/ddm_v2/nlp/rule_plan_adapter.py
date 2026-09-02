@@ -32,15 +32,37 @@ def _action_type_for_seq(seq: str | None) -> str:
 
 
 def _detect_language(text: str) -> str:
+    """Detect language of input text with improved accuracy.
+    
+    Returns 'zh' for Chinese, 'en' for English, 'mixed' for mixed content.
+    """
     if not text:
-        return "zh"
-    cjk = sum(1 for ch in text if "\u4e00" <= ch <= "\u9fff")
-    ratio = cjk / max(len(text), 1)
-    if ratio >= 0.3:
-        return "zh"
+        return "zh"  # Default to Chinese for empty text
+    
+    # Count CJK characters (Chinese, Japanese, Korean)
+    cjk_count = sum(1 for ch in text if "\u4e00" <= ch <= "\u9fff")
+    
+    # Count ASCII letters 
     ascii_letters = sum(1 for ch in text if ch.isascii() and ch.isalpha())
-    if ascii_letters / max(len(text), 1) >= 0.5:
+    
+    # Count total non-whitespace characters
+    total_chars = len([ch for ch in text if not ch.isspace()])
+    
+    if total_chars == 0:
+        return "zh"
+    
+    cjk_ratio = cjk_count / total_chars
+    ascii_ratio = ascii_letters / total_chars
+    
+    # If majority CJK characters, it's Chinese
+    if cjk_ratio >= 0.3:
+        return "zh"
+    
+    # If majority ASCII letters and very few CJK, it's English  
+    if ascii_ratio >= 0.5 and cjk_ratio < 0.1:
         return "en"
+    
+    # Mixed content
     return "mixed"
 
 
