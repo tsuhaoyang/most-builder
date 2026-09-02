@@ -70,6 +70,8 @@ export interface WsReadRow {
     total_tmu: number
     total_seconds: number
     narrative: string | null
+    /** ADR-032：語言中立 API 並列回傳英文敘述，由前端依 locale 選欄 */
+    narrative_en: string | null
     /** 原始 CycleIn JSON（後端權威）— apply-back 時整包回傳 */
     slot_inputs: unknown
     /** 計算時使用的 rule-set UUID（apply-back 回傳給後端） */

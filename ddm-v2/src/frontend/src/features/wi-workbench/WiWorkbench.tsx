@@ -556,7 +556,7 @@ export function WiWorkbench() {
     addRow({
       id: crypto.randomUUID(), seq: cur.seq, handCode: cur.handCode, freq: cur.freq, simoGroup: cur.simoGroup,
       // narr 留空＝「還沒有後端敘述」；預覽句由 useRowNarr 在顯示時重算
-      nv: { ...cur.nv }, narr: '', tmu, seconds: tmu * TMU_SEC, payload,
+      nv: { ...cur.nv }, narr: '', narrEn: null, tmu, seconds: tmu * TMU_SEC, payload,
     } as Row)
   }
 
@@ -587,7 +587,10 @@ export function WiWorkbench() {
           id: r.id, seq_no: i + 1, hand: r.handCode,
           object_vocab_id: r.nv.obj || null,
           from_vocab_id: r.nv.from || null, to_vocab_id: r.nv.to || null,
-          frequency: r.freq, simo_group_id: r.simoGroup || null, narrative: rowNarr(r), cycle: r.payload,
+          frequency: r.freq, simo_group_id: r.simoGroup || null,
+          // Backend regenerates narrative_zh/narrative_en from the pinned rule-set; never send
+          // the locale-dependent display selection back as the Chinese narrative input.
+          narrative: r.narr || null, cycle: r.payload,
           level: {
             coefficient: e.coefficient ?? 1, ascription: e.ascription ?? 'main', level: e.level ?? String(i + 1),
             countersignature: e.countersignature ?? null, parent_countersignature: e.parent_countersignature ?? null,

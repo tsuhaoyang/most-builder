@@ -9,10 +9,15 @@ export interface Row {
   /** 情境欄。`component`／`where` 只有本地新加的列帶得到（後端 WiRow 沒有這兩欄）。 */
   nv: { obj: string; from: string; to: string; component?: string; where?: string }
   /**
-   * 後端敘述（`most_cycles.narrative_zh`）。**本地新加的列一律留空**——把 `i18n.t`
+   * 後端中文敘述（`most_cycles.narrative_zh`）。**本地新加的列一律留空**——把 `i18n.t`
    * 的產物凍進 state 會讓那些列永遠停在加入當下的語言。顯示請走 `useRowNarr()`。
    */
   narr: string
+  /**
+   * 後端英文敘述（`most_cycles.narrative_en`）。`null` 代表 API 尚未提供英文欄位值；
+   * 空字串則保留後端的明確空值語意，不在前端翻譯或猜測。
+   */
+  narrEn: string | null
   tmu: number
   seconds: number
   payload: unknown   // CycleIn

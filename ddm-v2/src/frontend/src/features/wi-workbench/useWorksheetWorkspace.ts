@@ -30,6 +30,7 @@ export function useWorksheetWorkspace(worksheetId: string) {
         to: row.to_vocab_id ?? '',
       },
       narr: row.cycle?.narrative ?? row.sub_activity ?? '',
+      narrEn: row.cycle?.narrative_en ?? null,
       tmu: row.cycle?.total_tmu ?? 0,
       seconds: row.cycle?.total_seconds ?? 0,
       payload: row.cycle?.slot_inputs ?? null,
