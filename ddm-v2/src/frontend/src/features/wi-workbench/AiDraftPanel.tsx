@@ -3,6 +3,7 @@ import { useAiDraftStore } from './aiDraft.store'
 import { useWiStore } from './store'
 import { useTranslation } from 'react-i18next'
 import { ActionCard } from './ActionCard'
+import { detectLanguage } from './detectLanguage'
 import type { CycleState } from './cycle'
 import type { NlDraftLegacySlot, NlDraftResponse } from './aiTypes'
 import { ApiError } from '../../shared/api/client'
@@ -161,6 +162,12 @@ export function AiDraftPanel({
       </div>
 
       {errMsg && <p className="text-xs text-red-500">{errMsg}</p>}
+
+      {text.trim() && (
+        <p className="text-xs text-slate-400" data-testid="ai-draft-lang-preview">
+          {t('workbench.aiDraft.lang.detected')}: {t(`workbench.aiDraft.lang.${detectLanguage(text)}`)}
+        </p>
+      )}
 
       {stale && (
         <p className="text-xs text-amber-700 bg-amber-50 border border-amber-200 rounded px-2 py-1">

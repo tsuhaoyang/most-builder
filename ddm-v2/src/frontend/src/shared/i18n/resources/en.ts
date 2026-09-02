@@ -228,6 +228,7 @@ const en: Widen<typeof zhTW> = {
       fillCompat: 'Fill the editor (compatibility)',
       lang: {
         label: 'Language',
+        detected: 'Detected',
         zh: 'Chinese',
         en: 'English',
         mixed: 'Mixed',

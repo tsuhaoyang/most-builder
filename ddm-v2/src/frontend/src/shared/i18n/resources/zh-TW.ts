@@ -196,6 +196,7 @@ const zhTW = {
       fillCompat: '填入編輯器（相容）',
       lang: {
         label: '語言',
+        detected: '偵測語言',
         zh: '中文',
         en: '英文',
         mixed: '中英混合',
