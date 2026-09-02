@@ -32,6 +32,12 @@ export function ActionCard({
     ? t('workbench.actionCard.statusAdoptable')
     : t('workbench.actionCard.statusPending')
 
+  // Extracted roles (object/destination/tool/from_location/…) — surfaces what the
+  // parser understood from the sentence, language-agnostic (zh or en text as-is).
+  const roleEntries = Object.entries(action?.roles ?? {})
+    .map(([key, val]) => [key, val?.text] as const)
+    .filter((entry): entry is readonly [string, string] => typeof entry[1] === 'string' && entry[1].length > 0)
+
   return (
     <div
       className={`rounded-lg border p-3 space-y-2 ${adopted ? 'border-emerald-400 bg-emerald-50/40' : 'border-slate-200 bg-white'}`}
@@ -50,6 +56,18 @@ export function ActionCard({
           <span className="text-xs text-slate-500 ml-auto">{tmu} TMU</span>
         )}
       </div>
+      {roleEntries.length > 0 && (
+        <div className="flex flex-wrap gap-1" data-testid={`ai-action-roles-${draft.action_id}`}>
+          {roleEntries.map(([key, text]) => (
+            <span
+              key={key}
+              className="text-xs px-1.5 py-0.5 rounded bg-slate-50 border border-slate-200 text-slate-600"
+            >
+              <span className="text-slate-400">{key}:</span> {text}
+            </span>
+          ))}
+        </div>
+      )}
       {draft.narrative && (
         <p className="text-xs text-slate-600 line-clamp-2">{draft.narrative}</p>
       )}

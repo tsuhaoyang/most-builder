@@ -194,6 +194,12 @@ const zhTW = {
       multi: '多個動作草稿 — 請逐筆採用，勿靜默只取第一筆。',
       noDraft: '無完整 AI draft（可能僅 rule 建議）',
       fillCompat: '填入編輯器（相容）',
+      lang: {
+        label: '語言',
+        zh: '中文',
+        en: '英文',
+        mixed: '中英混合',
+      },
     },
     wiEditor: {
       insertTitle: '從 WI 庫插入',

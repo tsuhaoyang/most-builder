@@ -226,6 +226,12 @@ const en: Widen<typeof zhTW> = {
       multi: 'Several motion drafts — adopt them one at a time; do not silently keep only the first.',
       noDraft: 'No complete AI draft (there may be a rule-based suggestion only)',
       fillCompat: 'Fill the editor (compatibility)',
+      lang: {
+        label: 'Language',
+        zh: 'Chinese',
+        en: 'English',
+        mixed: 'Mixed',
+      },
     },
     wiEditor: {
       insertTitle: 'Insert from the WI library',

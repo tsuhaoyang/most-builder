@@ -176,6 +176,14 @@ export function AiDraftPanel({
 
       {ai && (
         <div className="flex flex-wrap gap-2 text-xs text-slate-500">
+          {ai.plan?.language && (
+            <span
+              className="px-1.5 rounded bg-slate-100 border border-slate-200 text-slate-700"
+              data-testid="ai-draft-language"
+            >
+              {t('workbench.aiDraft.lang.label')}: {t(`workbench.aiDraft.lang.${ai.plan.language}`)}
+            </span>
+          )}
           <span>routing: {ai.routing_status}</span>
           {ai.provenance?.planner && <span>planner: {String(ai.provenance.planner)}</span>}
           {ai.provenance?.fallback && <span className="text-amber-700">rule fallback</span>}
