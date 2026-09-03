@@ -1,5 +1,6 @@
 import { useRef, useState } from 'react'
 import { Trans, useTranslation } from 'react-i18next'
+import { resolveErrorMessage } from '../../shared/i18n/errorMessage'
 import { OptionEditor } from './OptionEditor'
 import { VersionList } from './VersionList'
 import { useRuleSetVersions, useVersionMutations } from './api'
@@ -68,7 +69,7 @@ export function DictionaryPage() {
       setCreated(draft.code)
       setAsk(null)
     } catch (e) {
-      setErr((e as Error).message)
+      setErr(resolveErrorMessage(e, t))
     } finally {
       setBusy(false)
     }

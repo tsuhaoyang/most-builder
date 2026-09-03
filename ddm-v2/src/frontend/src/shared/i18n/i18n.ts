@@ -9,6 +9,13 @@ import i18next from 'i18next'
 import { initReactI18next } from 'react-i18next'
 import en from './resources/en'
 import zhTW from './resources/zh-TW'
+// ADR-034 §C2：錯誤 catalog（errors.<CODE>[.<resource>]）。刻意與 en/zh-TW 的
+// Widen 對稱機制分開維護——errors 的 key 一致性由 errorCodes.ts 的 ErrorCatalog
+// 型別保證（涵蓋 registry.py 全部 code），不套用 Widen 的字面值對稱規則
+// （NOT_FOUND 等含 resource 子物件，語序中英本就不同）。這裡把 errors 併入
+// 各語系的 translation 命名空間，讓 t('errors.NOT_FOUND.rule_set') 可直接查得到。
+import errorsEn from './resources/errors.en'
+import errorsZhTW from './resources/errors.zh-TW'
 
 // 語系碼與資源鍵的對照唯一定義處（ADR-032 I6：zh-TW ↔ _zh、en ↔ _en）。
 // 後端對照見 src/ddm_v2/locale.py——兩邊各自維護一份是因為前後端是不同執行環境，
@@ -49,8 +56,8 @@ const initialLocale = readCachedLocale()
 
 void i18next.use(initReactI18next).init({
   resources: {
-    'zh-TW': { translation: zhTW },
-    en: { translation: en },
+    'zh-TW': { translation: { ...zhTW, errors: errorsZhTW } },
+    en: { translation: { ...en, errors: errorsEn } },
   },
   lng: initialLocale,
   fallbackLng: DEFAULT_LOCALE,

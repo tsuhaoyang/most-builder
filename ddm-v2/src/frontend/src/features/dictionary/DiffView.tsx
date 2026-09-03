@@ -1,5 +1,6 @@
 import { useState } from 'react'
 import { Trans, useTranslation } from 'react-i18next'
+import { resolveErrorMessage } from '../../shared/i18n/errorMessage'
 import type { TFunction } from 'i18next'
 import type { DiffChanged, DiffSection, RuleSetDiff } from './api'
 
@@ -193,7 +194,7 @@ export function DiffView({ data, isLoading, error, compact }: {
     return (
       <div className="rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700" data-testid="diff-error">
         <p className="font-medium">{t('dictionary.diff.errorTitle')}</p>
-        <p className="text-xs">{(error as Error).message}</p>
+        <p className="text-xs">{resolveErrorMessage(error, t)}</p>
         <p className="text-xs">{t('dictionary.diff.errorHint')}</p>
       </div>
     )

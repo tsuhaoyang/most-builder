@@ -1,5 +1,6 @@
 import { useState } from 'react'
 import { useTranslation } from 'react-i18next'
+import { resolveErrorMessage } from '../../shared/i18n/errorMessage'
 import type { FieldSpec, SectionSpec } from './paramSchema'
 import type { OptionRow } from './api'
 
@@ -112,7 +113,7 @@ export function OptionDialog({ section, row, onCancel, onSubmit }: {
       )
       await onSubmit(payload)
     } catch (e) {
-      setErr((e as Error).message)
+      setErr(resolveErrorMessage(e, t))
     } finally {
       setBusy(false)
     }

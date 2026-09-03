@@ -1,5 +1,6 @@
 import { useQuery, useMutation, useQueryClient, type QueryClient } from '@tanstack/react-query'
 import { apiGet, apiPost, apiPut, apiDelete, apiDeleteJson } from '../../shared/api/client'
+import { resolveErrorMessage } from '../../shared/i18n/errorMessage'
 
 // ── Instantiate response (from-module endpoint) ────────────────────────────
 
@@ -120,38 +121,18 @@ export interface ModuleFilters {
 }
 
 /**
- * 錯誤訊息萃取（P1-B）：client.ts 的 toError 會把非字串 detail 整包 JSON.stringify。
- * 兩種 detail 形狀都要處理（review M1）：
- *   1. 服務層自訂（object）：`422 {"code":"SIMO_PAIR_INVALID","message":"…"}` → message
- *   2. FastAPI/Pydantic 驗證（**恆為 array**）：
- *      `422 [{"type":"missing","loc":[…],"msg":"Field required"}]` → msg（多筆取前 2 筆串接）
- * 解析失敗（非結構化 detail）→ 原字串照舊（不吞錯、不編訊息）。
+ * 錯誤訊息萃取（ADR-034 §C3）：現已委派給單一入口 `resolveErrorMessage`（C1）。
+ *
+ * 保留此函式簽章以最小改動既有呼叫點；語意升級為 language-aware：
+ *   1. ApiError → 讀 error 信封的 code + detail，查 errors.<CODE>[.<resource>] catalog，
+ *      以結構化參數插值，依當前 locale 顯示（ADR-034 D2/D4）。
+ *   2. 查無 catalog key → graceful fallback 後端 message（ADR-034 I4，不偽翻譯）。
+ *
+ * 注意：此無參數版本用預設 i18n 單例。React 元件內建議改傳 useTranslation() 的 t
+ * 以取得 locale-reactive 更新（見 resolveErrorMessage 的 i18nOrT 參數）。
  */
 export function apiErrorMessage(err: unknown): string {
-  const raw = err instanceof Error ? err.message : String(err)
-  const m = raw.match(/^(\d{3})\s+(\{[\s\S]*\}|\[[\s\S]*\])$/)
-  if (!m) return raw
-  try {
-    const d: unknown = JSON.parse(m[2])
-    if (Array.isArray(d)) {
-      const parts = d.slice(0, 2).map(one => {
-        const e = one as { msg?: unknown; code?: unknown; loc?: unknown }
-        const text = typeof e.msg === 'string' ? e.msg
-          : typeof e.code === 'string' ? e.code
-          : null
-        if (!text) return null
-        // loc 末段（欄位名）有助定位，如「frequency: Field required」
-        const field = Array.isArray(e.loc) ? e.loc[e.loc.length - 1] : null
-        return typeof field === 'string' ? `${field}: ${text}` : text
-      }).filter((s): s is string => !!s)
-      if (parts.length > 0) return parts.join('；')
-    } else if (d && typeof d === 'object') {
-      const o = d as { message?: unknown; code?: unknown }
-      if (typeof o.message === 'string' && o.message) return o.message
-      if (typeof o.code === 'string' && o.code) return o.code
-    }
-  } catch { /* 非 JSON → 落回原字串 */ }
-  return raw
+  return resolveErrorMessage(err)
 }
 
 // ── Query key ─────────────────────────────────────────────────────────────────

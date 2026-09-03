@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react'
 import { Trans, useTranslation } from 'react-i18next'
+import { resolveErrorMessage } from '../../shared/i18n/errorMessage'
 import type { TFunction } from 'i18next'
 import { useQueryClient } from '@tanstack/react-query'
 import { useUploadImport, useMapColumns, useCreateProfile, useSubmitImport, type UploadOut, type PreviewOut, type PreviewRow, type ProfileOut, type SubmitOut, type MatchOption, type RowMatch } from './api'
@@ -63,7 +64,7 @@ export function ImportModal({ onClose }: { onClose: () => void }) {
     up ? 'map' : 'upload'
 
   const curSheet = up?.sheets.find(s => s.name === sheet)
-  const fail = (e: unknown) => setMsg('⚠️ ' + (e as Error).message)
+  const fail = (e: unknown) => setMsg('⚠️ ' + resolveErrorMessage(e, t))
 
   function onFile(file: File) {
     setMsg('')

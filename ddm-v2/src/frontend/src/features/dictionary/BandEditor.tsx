@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react'
 import { Trans, useTranslation } from 'react-i18next'
+import { resolveErrorMessage } from '../../shared/i18n/errorMessage'
 import type { OptionRow } from './api'
 import type { SectionSpec } from './paramSchema'
 
@@ -69,7 +70,7 @@ export function BandEditor({ section, items, readOnly, onSave }: {
       if (result === 'aborted') return   // 編輯內容保留；訊息由上層對話框呈現
       setDirty(false); setOk(true)
     } catch (e) {
-      setErr((e as Error).message)
+      setErr(resolveErrorMessage(e, t))
     } finally {
       setBusy(false)
     }
