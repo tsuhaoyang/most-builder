@@ -17,6 +17,7 @@ import React, { useState, useEffect, useCallback } from 'react'
 import { useTranslation } from 'react-i18next'
 import type { TFunction } from 'i18next'
 import i18n from '../../shared/i18n/i18n'
+import { pickNarrative } from '../../shared/i18n/pickNarrative'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { apiGet, apiPost, apiPut, apiDelete } from '../../shared/api/client'
 import { TMU_SEC } from '../../shared/config'
@@ -33,6 +34,8 @@ interface PoolModuleRow {
   sub_activity: string | null
   /** 後端組句（DISC-02/07：前端不組句）；舊版本資料可能缺 → fallback sub_activity */
   narrative_zh?: string | null
+  /** ADR-032 D7.2：後端讀取時即時產生（刻意不落盤）；en locale 顯示用 */
+  narrative_en?: string | null
   /** ADR-020：非 null = SIMO 從屬列（宣告者），貢獻 0 */
   simo_pair_index?: number | null
   /** ADR-022 批次 A：publish 時引擎算好持久化；舊資料缺 → UI 顯示 '—'，不假造 */
@@ -486,7 +489,7 @@ const POOL_COL_SPAN = 8
  * SIMO 從屬列（simo_pair_index != null）：Y 標記＋Eff TMU 劃線（貢獻 0，ADR-020）。
  */
 function ExpandedRows({ moduleId }: { moduleId: string }) {
-  const { t } = useTranslation()
+  const { t, i18n: i18nInst } = useTranslation()
   const { data, isLoading } = useModuleDetail(moduleId)
   const rows = data?.current_version_detail?.rows
 
@@ -533,7 +536,7 @@ function ExpandedRows({ moduleId }: { moduleId: string }) {
                   <tr key={i} className="border-t border-blue-100">
                     <td className="p-1 text-slate-400">{i + 1}</td>
                     <td className="p-1 text-slate-600">
-                      {row.narrative_zh ?? row.sub_activity ?? '—'}
+                      {pickNarrative(i18nInst, row.narrative_zh, row.narrative_en, row.sub_activity) ?? '—'}
                     </td>
                     <td className="p-1 text-slate-500">{row.hand}</td>
                     <td className="p-1 text-right font-mono text-slate-700">

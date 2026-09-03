@@ -44,6 +44,8 @@ export interface MotionModuleRow {
   /** ADR-022 A-1 批次 A 後端寫入；批次 A 之前發布的版本可能缺 → UI 顯示 '—' */
   computed?: ModuleRowComputed | null
   narrative_zh?: string | null
+  /** ADR-032 D7.2：後端讀取時以版本 pin 的 rule-set 即時產生（刻意不落盤）；en locale 顯示用 */
+  narrative_en?: string | null
 }
 
 /** MotionModuleVersionResponse — GET /motion-modules/{id} 的 current_version_detail */

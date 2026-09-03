@@ -7,6 +7,7 @@
 import { useEffect, useMemo, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { TMU_SEC } from '../../shared/config'
+import { pickNarrative } from '../../shared/i18n/pickNarrative'
 import {
   useWiTemplates,
   useMotionModuleDetail,
@@ -197,7 +198,7 @@ function WiOutlineCard({
   onStartRename, onRenameDraftChange, onRenameCancel, onRenameSave, renameBusy,
   deleteDisabled, onInspect, showToast, activeTarget,
 }: WiOutlineCardProps) {
-  const { t } = useTranslation()
+  const { t, i18n } = useTranslation()
   const { data: detail, isLoading } = useMotionModuleDetail(wi.id, expanded)
   const reorderRows = useReorderModuleRows()
   const deleteRow = useDeleteModuleRow()
@@ -338,6 +339,12 @@ function WiOutlineCard({
             const isSimo = row.simo_pair_index != null
             const isActive = activeTarget?.moduleId === wi.id && activeTarget?.rowIndex === i
             const label = row.sub_activity ?? row.narrative_zh ?? t('workbench.wiOutline.rowFallbackLabel', { n: i + 1 })
+            // ADR-032：依 locale 選敘述欄（en→narrative_en、zh-TW→narrative_zh）；en 缺值退到 sub_activity，
+            // 絕不把中文 narrative_zh 當英文顯示。尾端 fallback 只用語言中立的序號標籤，
+            // 不可回退到含 narrative_zh 的 label（否則 en locale 會外洩中文敘述）。
+            const narr =
+              pickNarrative(i18n, row.narrative_zh, row.narrative_en, row.sub_activity) ??
+              t('workbench.wiOutline.rowFallbackLabel', { n: i + 1 })
             return (
               <div
                 key={i}
@@ -356,8 +363,8 @@ function WiOutlineCard({
                 <span className="text-slate-500 shrink-0">
                   {(HAND_CODES as readonly string[]).includes(row.hand) ? t(`workbench.hand.${row.hand}`) : row.hand}
                 </span>
-                <span className="flex-1 min-w-0 truncate text-slate-700" title={row.narrative_zh ?? label}>
-                  {row.narrative_zh ?? label}
+                <span className="flex-1 min-w-0 truncate text-slate-700" title={narr}>
+                  {narr}
                 </span>
                 <span className="text-slate-400 shrink-0">×{row.frequency}</span>
                 <span className="shrink-0">

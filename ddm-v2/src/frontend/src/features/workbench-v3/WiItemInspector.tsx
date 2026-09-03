@@ -11,6 +11,7 @@ import type { VocabIn } from '../master-data/api'
 import { buildPayload, payloadToState, type CycleState } from '../wi-workbench/cycle'
 import { TMU_SEC } from '../../shared/config'
 import { useActiveRuleSet } from '../../shared/api/useActiveRuleSet'
+import { pickNarrative } from '../../shared/i18n/pickNarrative'
 import { RuleSetUnavailable } from '../../shared/ui/RuleSetUnavailable'
 import { SlotBuilder } from './SlotBuilder'
 import {
@@ -35,7 +36,7 @@ export interface WiItemInspectorProps {
 export function WiItemInspector({
   moduleId, moduleName, rowIndex, row, onClose, onSaved,
 }: WiItemInspectorProps) {
-  const { t } = useTranslation()
+  const { t, i18n } = useTranslation()
   // ADR-014 值權威：row 重算/發版一律用 V2（與工作台一致；WI rows 為 V2 選項碼快照）
   const activeRs = useActiveRuleSet()
   const { data: opts, error: optsErr } = useRuleSetOptions(activeRs.data?.code)
@@ -113,7 +114,8 @@ export function WiItemInspector({
   const rowLabel = (r: MotionModuleRow, j: number) =>
     t('workbench.inspector.rowLabel', {
       n: j + 1,
-      text: r.narrative_zh ?? r.sub_activity ?? t('workbench.inspector.noNarrative'),
+      text: pickNarrative(i18n, r.narrative_zh, r.narrative_en, r.sub_activity)
+        ?? t('workbench.inspector.noNarrative'),
     })
 
   // 顯示用算術（非 TMU 規則計算）：eff = tmu × freq
@@ -190,7 +192,8 @@ export function WiItemInspector({
               {/* 列摘要：句子＋SIMO 標記 */}
               <div className="rounded-lg border px-3 py-2 bg-slate-50 space-y-1">
                 <p className="text-sm text-slate-700">
-                  {row.narrative_zh ?? row.sub_activity ?? t('workbench.inspector.noNarrative')}
+                  {pickNarrative(i18n, row.narrative_zh, row.narrative_en, row.sub_activity)
+                    ?? t('workbench.inspector.noNarrative')}
                 </p>
                 <div className="flex items-center gap-3 text-xs text-slate-500">
                   <span>{cur.seq === 'GM' ? t('workbench.seq.GM') : t('workbench.seq.CM')}</span>
