@@ -26,6 +26,13 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from ddm_v2.auth.deps import CurrentUser, current_user, require_role
 from ddm_v2.database import get_db_session
+from ddm_v2.errors.registry import ErrorCode
+from ddm_v2.exceptions import (
+    ConflictError,
+    ForbiddenError,
+    NotFoundError,
+    ValidationError,
+)
 from ddm_v2.most_engine import SequenceError
 from ddm_v2.schemas.v2.motion_module import (
     FromModuleRequest,
@@ -72,7 +79,8 @@ async def create_module(
     try:
         return await svc.create_module(session, payload, user.employee_no, user.level)
     except svc.ScopePermissionError as e:
-        raise HTTPException(status_code=403, detail=str(e))
+        msg = str(e)
+        raise ForbiddenError(msg, detail={"code": ErrorCode.FORBIDDEN, "_compat_detail": msg}) from None
 
 
 # ── 取詳情 ───────────────────────────────────────────────────────────
@@ -87,7 +95,8 @@ async def get_module(
         # SM-1：傳入 user.employee_no 供 service 進行 personal scope 能見度檢查
         return await svc.get_module(session, module_id, user.employee_no)
     except svc.ModuleNotFound:
-        raise HTTPException(status_code=404, detail=f"模組不存在：{module_id}")
+        msg = f"模組不存在：{module_id}"
+        raise NotFoundError(msg, detail={"code": ErrorCode.NOT_FOUND, "_compat_detail": msg}) from None
 
 
 # ── 排序（stub）─────────────────────────────────────────────────────
@@ -117,11 +126,14 @@ async def update_module(
         # SM-3：傳入 user.level 供 service 進行 scope escalation 檢查
         return await svc.update_module(session, module_id, payload, user.employee_no, user.level)
     except svc.ModuleNotFound:
-        raise HTTPException(status_code=404, detail=f"模組不存在：{module_id}")
+        msg = f"模組不存在：{module_id}"
+        raise NotFoundError(msg, detail={"code": ErrorCode.NOT_FOUND, "_compat_detail": msg}) from None
     except svc.ModuleNotEditable as e:
-        raise HTTPException(status_code=409, detail=str(e))
+        msg = str(e)
+        raise ConflictError(msg, detail={"code": ErrorCode.CONFLICT, "_compat_detail": msg}) from None
     except svc.ScopePermissionError as e:
-        raise HTTPException(status_code=403, detail=str(e))
+        msg = str(e)
+        raise ForbiddenError(msg, detail={"code": ErrorCode.FORBIDDEN, "_compat_detail": msg}) from None
 
 
 # ── 刪除 ─────────────────────────────────────────────────────────────
@@ -135,11 +147,14 @@ async def delete_module(
     try:
         await svc.delete_module(session, module_id, user.employee_no)
     except svc.ModuleNotFound:
-        raise HTTPException(status_code=404, detail=f"模組不存在：{module_id}")
+        msg = f"模組不存在：{module_id}"
+        raise NotFoundError(msg, detail={"code": ErrorCode.NOT_FOUND, "_compat_detail": msg}) from None
     except svc.ScopePermissionError as e:
-        raise HTTPException(status_code=403, detail=str(e))
+        msg = str(e)
+        raise ForbiddenError(msg, detail={"code": ErrorCode.FORBIDDEN, "_compat_detail": msg}) from None
     except svc.ModuleIsStandard as e:
-        raise HTTPException(status_code=409, detail=str(e))
+        msg = str(e)
+        raise ConflictError(msg, detail={"code": ErrorCode.CONFLICT, "_compat_detail": msg}) from None
 
 
 # ── 複製 ─────────────────────────────────────────────────────────────
@@ -157,7 +172,8 @@ async def clone_module(
     try:
         return await svc.clone_module(session, module_id, user.employee_no)
     except svc.ModuleNotFound:
-        raise HTTPException(status_code=404, detail=f"模組不存在：{module_id}")
+        msg = f"模組不存在：{module_id}"
+        raise NotFoundError(msg, detail={"code": ErrorCode.NOT_FOUND, "_compat_detail": msg}) from None
 
 
 # ── 發布新版本 ───────────────────────────────────────────────────────
@@ -176,28 +192,25 @@ async def publish_version(
     try:
         return await svc.publish_version(session, module_id, payload, user.employee_no)
     except svc.ModuleNotFound:
-        raise HTTPException(status_code=404, detail=f"模組不存在：{module_id}")
+        msg = f"模組不存在：{module_id}"
+        raise NotFoundError(msg, detail={"code": ErrorCode.NOT_FOUND, "_compat_detail": msg}) from None
     except svc.ModuleNotEditable as e:
-        raise HTTPException(status_code=409, detail=str(e))
+        msg = str(e)
+        raise ConflictError(msg, detail={"code": ErrorCode.CONFLICT, "_compat_detail": msg}) from None
     except svc.ScopePermissionError as e:
         # SM-5：publish 時的 ownership guard → 403
-        raise HTTPException(status_code=403, detail=str(e))
+        msg = str(e)
+        raise ForbiddenError(msg, detail={"code": ErrorCode.FORBIDDEN, "_compat_detail": msg}) from None
     except svc.RuleSetNotFound as e:
-        raise HTTPException(status_code=404, detail=f"rule-set 不存在：{e}")
+        msg = f"rule-set 不存在：{e}"
+        raise NotFoundError(msg, detail={"code": ErrorCode.NOT_FOUND, "_compat_detail": msg}) from None
     except svc.PublishValidationError as e:
-        raise HTTPException(
-            status_code=422,
-            detail={
-                "code": e.code,
-                "row_index": e.row_index,
-                "message": e.message,
-            },
-        )
+        compat = {"code": e.code, "row_index": e.row_index, "message": e.message}
+        raise ValidationError(e.message, detail={**compat, "_compat_detail": compat}) from e
     except SequenceError as e:
-        raise HTTPException(
-            status_code=422,
-            detail={"code": e.code, "message": str(e)},
-        )
+        # I1：engine SequenceError 的 code 維持動態讀取（不常數化、不碰 engine）。
+        compat = {"code": e.code, "message": str(e)}
+        raise ValidationError(compat["message"], detail={**compat, "_compat_detail": compat}) from e
 
 
 # ── apply-back：從工序表列同步回模組庫（SM-7）────────────────────────
@@ -217,27 +230,24 @@ async def create_version_from_rows(
     try:
         return await svc.create_version_from_rows(session, module_id, payload, user.employee_no)
     except svc.ModuleNotFound:
-        raise HTTPException(status_code=404, detail=f"模組不存在：{module_id}")
+        msg = f"模組不存在：{module_id}"
+        raise NotFoundError(msg, detail={"code": ErrorCode.NOT_FOUND, "_compat_detail": msg}) from None
     except svc.ModuleNotEditable as e:
-        raise HTTPException(status_code=409, detail=str(e))
+        msg = str(e)
+        raise ConflictError(msg, detail={"code": ErrorCode.CONFLICT, "_compat_detail": msg}) from None
     except svc.ScopePermissionError as e:
-        raise HTTPException(status_code=403, detail=str(e))
+        msg = str(e)
+        raise ForbiddenError(msg, detail={"code": ErrorCode.FORBIDDEN, "_compat_detail": msg}) from None
     except svc.RuleSetNotFound as e:
-        raise HTTPException(status_code=404, detail=f"rule-set 不存在：{e}")
+        msg = f"rule-set 不存在：{e}"
+        raise NotFoundError(msg, detail={"code": ErrorCode.NOT_FOUND, "_compat_detail": msg}) from None
     except svc.PublishValidationError as e:
-        raise HTTPException(
-            status_code=422,
-            detail={
-                "code": e.code,
-                "row_index": e.row_index,
-                "message": e.message,
-            },
-        )
+        compat = {"code": e.code, "row_index": e.row_index, "message": e.message}
+        raise ValidationError(e.message, detail={**compat, "_compat_detail": compat}) from e
     except SequenceError as e:
-        raise HTTPException(
-            status_code=422,
-            detail={"code": e.code, "message": str(e)},
-        )
+        # I1：engine SequenceError 的 code 維持動態讀取（不常數化、不碰 engine）。
+        compat = {"code": e.code, "message": str(e)}
+        raise ValidationError(compat["message"], detail={**compat, "_compat_detail": compat}) from e
 
 
 # ── row 級操作（ADR-022 A-2：WI 微調 = Inspector 後端）───────────────
@@ -247,24 +257,30 @@ async def _run_row_op(coro) -> MotionModuleVersionResponse:
     try:
         return await coro
     except svc.ModuleNotFound as e:
-        raise HTTPException(status_code=404, detail=f"模組不存在：{e}")
+        msg = f"模組不存在：{e}"
+        raise NotFoundError(msg, detail={"code": ErrorCode.NOT_FOUND, "_compat_detail": msg}) from None
     except svc.ModuleVersionNotFound as e:
-        raise HTTPException(status_code=404, detail=str(e))
+        msg = str(e)
+        raise NotFoundError(msg, detail={"code": ErrorCode.NOT_FOUND, "_compat_detail": msg}) from None
     except svc.ModuleRowNotFound as e:
-        raise HTTPException(status_code=404, detail=str(e))
+        msg = str(e)
+        raise NotFoundError(msg, detail={"code": ErrorCode.NOT_FOUND, "_compat_detail": msg}) from None
     except svc.ModuleNotEditable as e:
-        raise HTTPException(status_code=409, detail=str(e))
+        msg = str(e)
+        raise ConflictError(msg, detail={"code": ErrorCode.CONFLICT, "_compat_detail": msg}) from None
     except svc.ScopePermissionError as e:
-        raise HTTPException(status_code=403, detail=str(e))
+        msg = str(e)
+        raise ForbiddenError(msg, detail={"code": ErrorCode.FORBIDDEN, "_compat_detail": msg}) from None
     except svc.RuleSetNotFound as e:
-        raise HTTPException(status_code=404, detail=f"rule-set 不存在：{e}")
+        msg = f"rule-set 不存在：{e}"
+        raise NotFoundError(msg, detail={"code": ErrorCode.NOT_FOUND, "_compat_detail": msg}) from None
     except svc.PublishValidationError as e:
-        raise HTTPException(
-            status_code=422,
-            detail={"code": e.code, "row_index": e.row_index, "message": e.message},
-        )
+        compat = {"code": e.code, "row_index": e.row_index, "message": e.message}
+        raise ValidationError(e.message, detail={**compat, "_compat_detail": compat}) from e
     except SequenceError as e:
-        raise HTTPException(status_code=422, detail={"code": e.code, "message": str(e)})
+        # I1：engine SequenceError 的 code 維持動態讀取（不常數化、不碰 engine）。
+        compat = {"code": e.code, "message": str(e)}
+        raise ValidationError(compat["message"], detail={**compat, "_compat_detail": compat}) from e
 
 
 @router.put(
@@ -323,6 +339,8 @@ async def promote_module(
     module_id: uuid.UUID,
     _: CurrentUser = Depends(require_role("approver")),
 ) -> dict:
+    # ADR-034 §A4 batch 5：501（Not Implemented）是「端點尚未存在」的路由級佔位，
+    # 不是 domain 錯誤契約的一環（無對應 DomainError 家族），故維持裸 HTTPException。
     raise HTTPException(
         status_code=501,
         detail="promote 端點尚未實作（P5 接 ADR-018 審核流）。",
@@ -344,7 +362,8 @@ async def get_versions(
         # SM-1 gap fix：傳入 user.employee_no 供 service 進行 personal scope 能見度檢查
         return await svc.get_versions(session, module_id, user.employee_no)
     except svc.ModuleNotFound:
-        raise HTTPException(status_code=404, detail=f"模組不存在：{module_id}")
+        msg = f"模組不存在：{module_id}"
+        raise NotFoundError(msg, detail={"code": ErrorCode.NOT_FOUND, "_compat_detail": msg}) from None
 
 
 # ── 實體化至工序表 ───────────────────────────────────────────────────
@@ -365,25 +384,27 @@ async def instantiate_to_worksheet(
             session, worksheet_id, payload, user.employee_no
         )
     except svc.WorksheetNotFound:
-        raise HTTPException(status_code=404, detail=f"工序表不存在：{worksheet_id}")
+        msg = f"工序表不存在：{worksheet_id}"
+        raise NotFoundError(msg, detail={"code": ErrorCode.NOT_FOUND, "_compat_detail": msg}) from None
     except svc.WorksheetPermissionError as e:
-        raise HTTPException(status_code=403, detail=str(e))
+        msg = str(e)
+        raise ForbiddenError(msg, detail={"code": ErrorCode.FORBIDDEN, "_compat_detail": msg}) from None
     except svc.ModuleNotFound:
-        raise HTTPException(
-            status_code=404, detail=f"模組不存在：{payload.module_id}"
-        )
+        msg = f"模組不存在：{payload.module_id}"
+        raise NotFoundError(msg, detail={"code": ErrorCode.NOT_FOUND, "_compat_detail": msg}) from None
     except svc.ModuleRetired as e:
-        raise HTTPException(status_code=409, detail=str(e))
+        msg = str(e)
+        raise ConflictError(msg, detail={"code": ErrorCode.CONFLICT, "_compat_detail": msg}) from None
     except svc.ModuleVersionNotFound as e:
-        raise HTTPException(status_code=404, detail=str(e))
+        msg = str(e)
+        raise NotFoundError(msg, detail={"code": ErrorCode.NOT_FOUND, "_compat_detail": msg}) from None
     except svc.RuleSetNotFound as e:
-        raise HTTPException(status_code=409, detail=str(e))
+        msg = str(e)
+        raise ConflictError(msg, detail={"code": ErrorCode.CONFLICT, "_compat_detail": msg}) from None
     except svc.PublishValidationError as e:
         # 版本快照內 simo_pair_index 非法（舊資料/手改 DB）→ 明確報錯，不靜默當主列
-        raise HTTPException(
-            status_code=422,
-            detail={"code": e.code, "row_index": e.row_index, "message": e.message},
-        )
+        compat = {"code": e.code, "row_index": e.row_index, "message": e.message}
+        raise ValidationError(e.message, detail={**compat, "_compat_detail": compat}) from e
 
     return InstantiateResponse(
         new_rows=result["new_rows"],

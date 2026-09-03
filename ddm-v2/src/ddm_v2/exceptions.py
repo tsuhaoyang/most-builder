@@ -74,3 +74,16 @@ class PayloadTooLargeError(DomainError):
     """
 
     pass
+
+
+class BadRequestError(DomainError):
+    """Malformed request / semantic input error (HTTP 400).
+
+    ADR-034 §A4 batch 5：rule-set 版本級端點以裸 ``HTTPException(status_code=400,
+    detail=str(exc))`` 表達「帶界／區塊鍵／multiplier 等 payload 語意錯誤、以及狀態機
+    非法轉移（如 activate 非 published、retire 啟用中）」。這些歷史上就是 400（不是
+    422 的 schema 級錯，也不是 409 的資源衝突），故收斂至此子類以**位元級保留既有狀態碼**
+    （I2）。與家族子類同走 ``error_handlers._envelope`` 收尾，享頂層 ``detail`` 相容鍵機制。
+    """
+
+    pass

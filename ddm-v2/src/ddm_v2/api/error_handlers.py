@@ -19,6 +19,7 @@ from sqlalchemy.exc import IntegrityError
 
 from ddm_v2.errors.registry import ErrorCode
 from ddm_v2.exceptions import (
+    BadRequestError,
     ConflictError,
     DomainError,
     ForbiddenError,
@@ -105,6 +106,17 @@ def register_exception_handlers(app: FastAPI) -> None:
         """ADR-034 §A4：413（上傳超限）。走 _envelope 享頂層 detail 相容。"""
         error_code = (exc.detail or {}).get("code") or ErrorCode.PAYLOAD_TOO_LARGE
         return _envelope(error_code, exc.message, exc.detail, status.HTTP_413_REQUEST_ENTITY_TOO_LARGE)
+
+    @app.exception_handler(BadRequestError)
+    async def bad_request_handler(request: Request, exc: BadRequestError) -> JSONResponse:
+        """ADR-034 §A4 batch 5：400（payload 語意錯誤／狀態機非法轉移）。
+
+        rule-set 版本級端點歷史上以 400 表達帶界/區塊鍵/multiplier 非法與 activate/retire
+        的非法狀態轉移；收斂至此子類以位元級保留既有狀態碼（I2）。走 _envelope 享頂層
+        detail 相容。
+        """
+        error_code = (exc.detail or {}).get("code") or ErrorCode.BAD_REQUEST
+        return _envelope(error_code, exc.message, exc.detail, status.HTTP_400_BAD_REQUEST)
 
     @app.exception_handler(NoActiveRuleSet)
     async def no_active_rule_set_handler(request: Request, exc: NoActiveRuleSet) -> JSONResponse:

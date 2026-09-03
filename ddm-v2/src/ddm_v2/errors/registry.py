@@ -44,15 +44,24 @@ class ErrorCode(str, Enum):
     RATE_LIMITED = "RATE_LIMITED"
     SERVICE_UNAVAILABLE = "SERVICE_UNAVAILABLE"
     PAYLOAD_TOO_LARGE = "PAYLOAD_TOO_LARGE"
+    BAD_REQUEST = "BAD_REQUEST"
 
     # --- Rule-set lifecycle / integrity codes (route + service layers) ---
     RULE_SET_INCOMPLETE = "RULE_SET_INCOMPLETE"
     RULE_SET_NOT_RETIRED = "RULE_SET_NOT_RETIRED"
     RULE_SET_RETIRED = "RULE_SET_RETIRED"
     RULE_SET_ACTIVE = "RULE_SET_ACTIVE"
+    RULE_SET_NOT_DRAFT = "RULE_SET_NOT_DRAFT"
+    RULE_SET_FROZEN = "RULE_SET_FROZEN"
     RULE_SET_IN_USE = "RULE_SET_IN_USE"
     CERTIFIED_IMMUTABLE = "CERTIFIED_IMMUTABLE"
     EN_LABEL_NOT_UNIQUE = "EN_LABEL_NOT_UNIQUE"
+    EN_FIELD_NOT_WRITABLE = "EN_FIELD_NOT_WRITABLE"
+
+    # --- Motion-module publish validation codes (ADR-034 §A4 batch 5; route+service explicit, I3) ---
+    # 注意：SequenceError.code 為 engine 動態碼（I1，不常數化），故不在此登錄。
+    EMPTY_ROWS = "EMPTY_ROWS"
+    REORDER_INVALID = "REORDER_INVALID"
 
     # --- Synonyms / dictionary codes ---
     SYNONYM_CONFLICT = "SYNONYM_CONFLICT"
