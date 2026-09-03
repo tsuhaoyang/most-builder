@@ -6,13 +6,20 @@ from __future__ import annotations
 
 import uuid
 
-from fastapi import APIRouter, Depends, File, HTTPException, UploadFile
+from fastapi import APIRouter, Depends, File, UploadFile
 from pydantic import BaseModel, Field
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from ddm_v2.auth.deps import CurrentUser, current_user, require_role
 from ddm_v2.database import get_db_session
+from ddm_v2.errors.registry import ErrorCode
+from ddm_v2.exceptions import (
+    ConflictError,
+    NotFoundError,
+    PayloadTooLargeError,
+    ValidationError,
+)
 from ddm_v2.models.v2.import_staging import ExcelImport, ImportProfile
 from ddm_v2.schemas.v2.import_excel import (
     MapIn,
@@ -47,17 +54,31 @@ async def upload(file: UploadFile = File(...), worksheet_id: uuid.UUID | None = 
     # 讀上限+1 位元組即可判斷超限，不把整份超大檔吸進記憶體才檢查。
     content = await file.read(_MAX_UPLOAD_BYTES + 1)
     if len(content) > _MAX_UPLOAD_BYTES:
-        raise HTTPException(
-            status_code=413,
-            detail=f"檔案超過上限 {_MAX_UPLOAD_BYTES // (1024 * 1024)} MiB，"
-                   "請移除圖片/嵌入物件或拆分工作簿後重試",
+        msg = (
+            f"檔案超過上限 {_MAX_UPLOAD_BYTES // (1024 * 1024)} MiB，"
+            "請移除圖片/嵌入物件或拆分工作簿後重試"
+        )
+        raise PayloadTooLargeError(
+            msg,
+            detail={
+                "code": ErrorCode.PAYLOAD_TOO_LARGE,
+                "max_bytes": _MAX_UPLOAD_BYTES,
+                "_compat_detail": msg,
+            },
         )
     try:
         raw = import_service.parse_workbook(content)
     except Exception as e:  # noqa: BLE001
-        raise HTTPException(status_code=422, detail=f"無法解析 Excel：{e}") from e
+        msg = f"無法解析 Excel：{e}"
+        raise ValidationError(
+            msg,
+            detail={"code": ErrorCode.VALIDATION_ERROR, "_compat_detail": msg},
+        ) from e
     if not raw["sheets"]:
-        raise HTTPException(status_code=422, detail="檔案沒有可讀的分頁")
+        raise ValidationError(
+            "檔案沒有可讀的分頁",
+            detail={"code": ErrorCode.VALIDATION_ERROR, "_compat_detail": "檔案沒有可讀的分頁"},
+        )
 
     rec = ExcelImport(id=uuid.uuid4(), worksheet_id=worksheet_id, source_name=file.filename,
                       status="uploaded", raw_payload=raw, imported_by=actor.employee_no)
@@ -79,7 +100,10 @@ async def map_columns(import_id: uuid.UUID, payload: MapIn, session: AsyncSessio
                       _: CurrentUser = Depends(require_role("analyst"))) -> PreviewOut:
     rec = await session.get(ExcelImport, import_id)
     if rec is None:
-        raise HTTPException(status_code=404, detail="匯入批次不存在")
+        raise NotFoundError(
+            "匯入批次不存在",
+            detail={"code": ErrorCode.NOT_FOUND, "resource": "import", "_compat_detail": "匯入批次不存在"},
+        )
     rows, warnings = import_service.apply_mapping(rec.raw_payload, payload.sheet, payload.header_row,
                                                   payload.column_map, payload.time_unit)
     rec.sheet, rec.header_row = payload.sheet, payload.header_row
@@ -97,7 +121,10 @@ async def get_import(import_id: uuid.UUID, session: AsyncSession = Depends(get_d
                      _: CurrentUser = Depends(current_user)) -> PreviewOut:
     rec = await session.get(ExcelImport, import_id)
     if rec is None:
-        raise HTTPException(status_code=404, detail="匯入批次不存在")
+        raise NotFoundError(
+            "匯入批次不存在",
+            detail={"code": ErrorCode.NOT_FOUND, "resource": "import", "_compat_detail": "匯入批次不存在"},
+        )
     rows = rec.staged_rows or []
     # ADR-025 D10：match 以「現在」的 active 重算，不持久化 → GET 每次重新計算（避免 stale TMU）。
     enriched = await import_service.build_row_matches(session, rows)
@@ -174,18 +201,39 @@ async def submit_import(
     except ValueError as e:
         code = str(e)
         if code == "import_not_found":
-            raise HTTPException(status_code=404, detail="匯入批次不存在")
+            raise NotFoundError(
+                "匯入批次不存在",
+                detail={"code": ErrorCode.NOT_FOUND, "resource": "import", "_compat_detail": "匯入批次不存在"},
+            ) from None
         if code == "already_submitted":
             # Fix-H2：已提交批次不得重複提交
-            raise HTTPException(status_code=409, detail="此匯入批次已完成提交，如需再次匯入請重新上傳")
+            raise ConflictError(
+                "此匯入批次已完成提交，如需再次匯入請重新上傳",
+                detail={"code": ErrorCode.CONFLICT, "_compat_detail": "此匯入批次已完成提交，如需再次匯入請重新上傳"},
+            ) from None
         if code == "import_not_mapped":
-            raise HTTPException(status_code=409, detail="匯入批次尚未完成欄位對應（status 須為 mapped）")
+            raise ConflictError(
+                "匯入批次尚未完成欄位對應（status 須為 mapped）",
+                detail={"code": ErrorCode.CONFLICT, "_compat_detail": "匯入批次尚未完成欄位對應（status 須為 mapped）"},
+            ) from None
         if code == "worksheet_not_found":
-            raise HTTPException(status_code=404, detail="工序表不存在")
+            raise NotFoundError(
+                "工序表不存在",
+                detail={"code": ErrorCode.NOT_FOUND, "resource": "worksheet", "_compat_detail": "工序表不存在"},
+            ) from None
         if code == "worksheet_not_draft":
             # Fix-H3：只允許提交到 draft 工序表
-            raise HTTPException(status_code=409, detail="工序表已發布或退役，無法新增列（須為 draft 狀態）")
+            raise ConflictError(
+                "工序表已發布或退役，無法新增列（須為 draft 狀態）",
+                detail={"code": ErrorCode.CONFLICT, "_compat_detail": "工序表已發布或退役，無法新增列（須為 draft 狀態）"},
+            ) from None
         if code == "no_staged_rows":
-            raise HTTPException(status_code=422, detail="無暫存列可提交")
-        raise HTTPException(status_code=422, detail=str(e))
+            raise ValidationError(
+                "無暫存列可提交",
+                detail={"code": ErrorCode.VALIDATION_ERROR, "_compat_detail": "無暫存列可提交"},
+            ) from None
+        raise ValidationError(
+            str(e),
+            detail={"code": ErrorCode.VALIDATION_ERROR, "_compat_detail": str(e)},
+        ) from None
     return SubmitOut(**result)

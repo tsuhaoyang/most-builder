@@ -9,12 +9,19 @@ from __future__ import annotations
 
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends
 from pydantic import BaseModel, Field
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from ddm_v2.auth.deps import CurrentUser, current_user, require_role
 from ddm_v2.database import get_db_session
+from ddm_v2.errors.registry import ErrorCode
+from ddm_v2.exceptions import (
+    NotFoundError,
+    RateLimitedError,
+    ServiceUnavailableError,
+    ValidationError,
+)
 from ddm_v2.services.v2 import parse_job_service as svc
 from ddm_v2.services.v2 import synonym_service as syn_svc
 
@@ -49,15 +56,41 @@ async def create_parse_job(
             bundle_code=payload.bundle_code,
         )
     except svc.ImportNotFound:
-        raise HTTPException(status_code=404, detail="匯入批次不存在") from None
+        raise NotFoundError(
+            "匯入批次不存在",
+            detail={"code": ErrorCode.NOT_FOUND, "resource": "import", "_compat_detail": "匯入批次不存在"},
+        ) from None
     except svc.JobQuotaExceeded as exc:
-        raise HTTPException(status_code=429, detail=str(exc)) from None
+        msg = str(exc)
+        raise RateLimitedError(
+            msg,
+            detail={"code": ErrorCode.RATE_LIMITED, "_compat_detail": msg},
+        ) from None
     except svc.NoStagedRows:
-        raise HTTPException(status_code=422, detail="無可用暫存列（需先 map 且含 description）") from None
+        raise ValidationError(
+            "無可用暫存列（需先 map 且含 description）",
+            detail={
+                "code": ErrorCode.VALIDATION_ERROR,
+                "_compat_detail": "無可用暫存列（需先 map 且含 description）",
+            },
+        ) from None
     except syn_svc.RuleSetNotFound:
-        raise HTTPException(status_code=404, detail=f"rule set 不存在：{payload.rule_set_code}") from None
+        msg = f"rule set 不存在：{payload.rule_set_code}"
+        raise NotFoundError(
+            msg,
+            detail={
+                "code": ErrorCode.NOT_FOUND,
+                "resource": "rule_set",
+                "rule_set_code": payload.rule_set_code,
+                "_compat_detail": msg,
+            },
+        ) from None
     except RuntimeError as exc:
-        raise HTTPException(status_code=503, detail=str(exc)) from None
+        msg = str(exc)
+        raise ServiceUnavailableError(
+            msg,
+            detail={"code": ErrorCode.SERVICE_UNAVAILABLE, "_compat_detail": msg},
+        ) from None
 
 
 @router.get("/{import_id}/parse-jobs/{job_id}")
@@ -70,7 +103,10 @@ async def get_parse_job(
     try:
         return await svc.get_job(session, import_id=import_id, job_id=job_id)
     except svc.JobNotFound:
-        raise HTTPException(status_code=404, detail="parse job 不存在") from None
+        raise NotFoundError(
+            "parse job 不存在",
+            detail={"code": ErrorCode.NOT_FOUND, "resource": "parse_job", "_compat_detail": "parse job 不存在"},
+        ) from None
 
 
 @router.post("/{import_id}/parse-jobs/{job_id}/tick")
@@ -92,11 +128,22 @@ async def tick_parse_job(
             worker_id=body.worker_id or f"api:{actor.employee_no}",
         )
     except svc.JobNotFound:
-        raise HTTPException(status_code=404, detail="parse job 不存在") from None
+        raise NotFoundError(
+            "parse job 不存在",
+            detail={"code": ErrorCode.NOT_FOUND, "resource": "parse_job", "_compat_detail": "parse job 不存在"},
+        ) from None
     except syn_svc.RuleSetNotFound as exc:
-        raise HTTPException(status_code=404, detail=f"pinned rule set 不存在：{exc}") from None
+        msg = f"pinned rule set 不存在：{exc}"
+        raise NotFoundError(
+            msg,
+            detail={"code": ErrorCode.NOT_FOUND, "resource": "rule_set", "_compat_detail": msg},
+        ) from None
     except RuntimeError as exc:
-        raise HTTPException(status_code=503, detail=str(exc)) from None
+        msg = str(exc)
+        raise ServiceUnavailableError(
+            msg,
+            detail={"code": ErrorCode.SERVICE_UNAVAILABLE, "_compat_detail": msg},
+        ) from None
 
 
 @router.post("/{import_id}/parse-jobs/{job_id}/cancel")
@@ -109,4 +156,7 @@ async def cancel_parse_job(
     try:
         return await svc.request_cancel(session, import_id=import_id, job_id=job_id)
     except svc.JobNotFound:
-        raise HTTPException(status_code=404, detail="parse job 不存在") from None
+        raise NotFoundError(
+            "parse job 不存在",
+            detail={"code": ErrorCode.NOT_FOUND, "resource": "parse_job", "_compat_detail": "parse job 不存在"},
+        ) from None

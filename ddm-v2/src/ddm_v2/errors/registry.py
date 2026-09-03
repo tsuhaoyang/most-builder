@@ -40,6 +40,11 @@ class ErrorCode(str, Enum):
     RULE_SET_ACTIVATE_CONFLICT = "RULE_SET_ACTIVATE_CONFLICT"
     INTERNAL_ERROR = "INTERNAL_ERROR"
 
+    # --- Non-family HTTP status codes (ADR-034 §A4; additive, I3) ---
+    RATE_LIMITED = "RATE_LIMITED"
+    SERVICE_UNAVAILABLE = "SERVICE_UNAVAILABLE"
+    PAYLOAD_TOO_LARGE = "PAYLOAD_TOO_LARGE"
+
     # --- Rule-set lifecycle / integrity codes (route + service layers) ---
     RULE_SET_INCOMPLETE = "RULE_SET_INCOMPLETE"
     RULE_SET_NOT_RETIRED = "RULE_SET_NOT_RETIRED"

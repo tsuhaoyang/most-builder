@@ -23,6 +23,9 @@ from ddm_v2.exceptions import (
     DomainError,
     ForbiddenError,
     NotFoundError,
+    PayloadTooLargeError,
+    RateLimitedError,
+    ServiceUnavailableError,
     UnauthorizedError,
     ValidationError,
 )
@@ -84,6 +87,24 @@ def register_exception_handlers(app: FastAPI) -> None:
     async def unauthorized_error_handler(request: Request, exc: UnauthorizedError) -> JSONResponse:
         error_code = (exc.detail or {}).get("code") or ErrorCode.UNAUTHORIZED
         return _envelope(error_code, exc.message, exc.detail, status.HTTP_401_UNAUTHORIZED)
+
+    @app.exception_handler(RateLimitedError)
+    async def rate_limited_handler(request: Request, exc: RateLimitedError) -> JSONResponse:
+        """ADR-034 §A4：429（配額/速率限制）。走 _envelope 享頂層 detail 相容。"""
+        error_code = (exc.detail or {}).get("code") or ErrorCode.RATE_LIMITED
+        return _envelope(error_code, exc.message, exc.detail, status.HTTP_429_TOO_MANY_REQUESTS)
+
+    @app.exception_handler(ServiceUnavailableError)
+    async def service_unavailable_handler(request: Request, exc: ServiceUnavailableError) -> JSONResponse:
+        """ADR-034 §A4：503（設定錯誤，可重試）。走 _envelope 享頂層 detail 相容。"""
+        error_code = (exc.detail or {}).get("code") or ErrorCode.SERVICE_UNAVAILABLE
+        return _envelope(error_code, exc.message, exc.detail, status.HTTP_503_SERVICE_UNAVAILABLE)
+
+    @app.exception_handler(PayloadTooLargeError)
+    async def payload_too_large_handler(request: Request, exc: PayloadTooLargeError) -> JSONResponse:
+        """ADR-034 §A4：413（上傳超限）。走 _envelope 享頂層 detail 相容。"""
+        error_code = (exc.detail or {}).get("code") or ErrorCode.PAYLOAD_TOO_LARGE
+        return _envelope(error_code, exc.message, exc.detail, status.HTTP_413_REQUEST_ENTITY_TOO_LARGE)
 
     @app.exception_handler(NoActiveRuleSet)
     async def no_active_rule_set_handler(request: Request, exc: NoActiveRuleSet) -> JSONResponse:

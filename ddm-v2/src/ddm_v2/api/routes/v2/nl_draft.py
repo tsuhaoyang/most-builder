@@ -10,12 +10,14 @@ from __future__ import annotations
 
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends
 from pydantic import BaseModel, Field
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from ddm_v2.auth.deps import CurrentUser, current_user
 from ddm_v2.database import get_db_session
+from ddm_v2.errors.registry import ErrorCode
+from ddm_v2.exceptions import NotFoundError, ServiceUnavailableError
 from ddm_v2.nlp.contracts import ParseContext
 from ddm_v2.services.v2 import synonym_service as syn_svc
 from ddm_v2.services.v2 import wi_ai_service
@@ -64,13 +66,23 @@ async def nl_draft(
             worksheet_id=payload.worksheet_id,
         )
     except syn_svc.RuleSetNotFound:
-        raise HTTPException(
-            status_code=404,
-            detail=f"rule-set 不存在：{payload.rule_set_code}",
+        msg = f"rule-set 不存在：{payload.rule_set_code}"
+        raise NotFoundError(
+            msg,
+            detail={
+                "code": ErrorCode.NOT_FOUND,
+                "resource": "rule_set",
+                "rule_set_code": payload.rule_set_code,
+                "_compat_detail": msg,
+            },
         ) from None
     except RuntimeError as exc:
         # bundle 未 seed 等設定錯誤
-        raise HTTPException(status_code=503, detail=str(exc)) from exc
+        msg = str(exc)
+        raise ServiceUnavailableError(
+            msg,
+            detail={"code": ErrorCode.SERVICE_UNAVAILABLE, "_compat_detail": msg},
+        ) from exc
 
     multi_action = len(result.plan.actions) > 1
     body = {

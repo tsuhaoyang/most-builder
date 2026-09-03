@@ -10,11 +10,13 @@ DSX 整合 API 契約 v2 §3.1／§6。人類使用者觸發（WiWorkbench.tsx �
 """
 from __future__ import annotations
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from ddm_v2.auth.deps import CurrentUser, current_user, require_role
 from ddm_v2.database import get_db_session
+from ddm_v2.errors.registry import ErrorCode
+from ddm_v2.exceptions import ServiceUnavailableError
 from ddm_v2.schemas.v2.dsx import A3DistanceIn, A3DistanceOut, DsxUiUrlOut
 from ddm_v2.services.v2 import dsx_service
 from ddm_v2.settings import get_settings
@@ -43,5 +45,9 @@ async def a3_distance(
         )
     except RuntimeError as exc:
         # 設定錯誤（integration_enabled=1 但未設 base_url），比照 nl_draft 慣例回 503。
-        raise HTTPException(status_code=503, detail=str(exc)) from exc
+        msg = str(exc)
+        raise ServiceUnavailableError(
+            msg,
+            detail={"code": ErrorCode.SERVICE_UNAVAILABLE, "_compat_detail": msg},
+        ) from exc
     return A3DistanceOut(**result)
