@@ -7,12 +7,14 @@ from __future__ import annotations
 
 import uuid
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from ddm_v2.auth.deps import CurrentUser, current_user, require_role
 from ddm_v2.database import get_db_session
+from ddm_v2.errors.registry import ErrorCode
+from ddm_v2.exceptions import ForbiddenError, NotFoundError
 from ddm_v2.models.v2.motion_template import MotionTemplate
 from ddm_v2.schemas.v2.most import CycleIn
 from ddm_v2.schemas.v2.motion_template import (
@@ -83,7 +85,7 @@ async def promote_template(template_id: uuid.UUID, session: AsyncSession = Depen
     """草稿 → 廠標準（approver+）。"""
     t = await session.get(MotionTemplate, template_id)
     if t is None:
-        raise HTTPException(status_code=404, detail="範本不存在")
+        raise NotFoundError("範本不存在", detail={"code": ErrorCode.NOT_FOUND, "resource": "motion_template", "id": str(template_id), "_compat_detail": "範本不存在"})
     prev_status = t.status
     t.status = "standard"
     t.owner = None
@@ -104,9 +106,9 @@ async def promote_template(template_id: uuid.UUID, session: AsyncSession = Depen
 async def patch_template(template_id: uuid.UUID, payload: MotionTemplatePatchIn, session: AsyncSession = Depends(get_db_session, scope="function"), user: CurrentUser = Depends(require_role("analyst"))) -> MotionTemplateOut:
     t = await session.get(MotionTemplate, template_id)
     if t is None:
-        raise HTTPException(status_code=404, detail="範本不存在")
+        raise NotFoundError("範本不存在", detail={"code": ErrorCode.NOT_FOUND, "resource": "motion_template", "id": str(template_id), "_compat_detail": "範本不存在"})
     if not _can_modify(t, user):
-        raise HTTPException(status_code=403, detail="標準範本需 approver+；草稿僅擁有者可改")
+        raise ForbiddenError("標準範本需 approver+；草稿僅擁有者可改", detail={"code": ErrorCode.FORBIDDEN, "resource": "motion_template", "action": "modify", "_compat_detail": "標準範本需 approver+；草稿僅擁有者可改"})
     if payload.name_zh is not None:
         t.name_zh = payload.name_zh
     if payload.name_en is not None:
@@ -131,7 +133,7 @@ async def delete_template(template_id: uuid.UUID, session: AsyncSession = Depend
     if t is None:
         return
     if not _can_modify(t, user):
-        raise HTTPException(status_code=403, detail="標準範本需 approver+；草稿僅擁有者可刪")
+        raise ForbiddenError("標準範本需 approver+；草稿僅擁有者可刪", detail={"code": ErrorCode.FORBIDDEN, "resource": "motion_template", "action": "delete", "_compat_detail": "標準範本需 approver+；草稿僅擁有者可刪"})
     await session.delete(t)
     await session.flush()
 

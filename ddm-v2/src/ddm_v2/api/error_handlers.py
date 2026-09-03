@@ -31,47 +31,59 @@ from ddm_v2.services.v2.policy_service import NoDefaultPolicy
 from ddm_v2.services.v2.rule_set_service import NoActiveRuleSet
 
 
+def _envelope(code: str, message: str, detail: dict | None, status_code: int) -> JSONResponse:
+    """共用信封收尾 + 過渡期相容鍵處理（ADR-034 §D1 + §7 KI-034-1 B 方案）。
+
+    5 個 DomainError 家族 handler（NotFound/Validation/Conflict/Forbidden/Unauthorized）
+    共用同一條收尾路徑，確保新信封 ``{error:{code,message,detail}}`` 形狀一致。
+
+    **相容鍵機制（維持既有 integration 斷言不破壞）**：raise 點若在 ``detail`` 內放保留鍵
+    ``"_compat_detail"``（值＝該端點歷史上頂層 ``detail`` 的內容，中文字串或 dict 皆可），
+    本函式收尾時：
+      1. ``payload = ErrorResponse(...).model_dump()`` 先產出新信封；
+      2. ``compat = (detail or {}).get("_compat_detail")``；
+      3. 若 ``compat`` 非 None，則把頂層 ``payload["detail"]`` 設為 ``compat``（還原歷史形狀），
+         並從 ``payload["error"]["detail"]`` pop 掉 ``"_compat_detail"``——新信封不外露相容鍵。
+
+    待階段 C 前端全數遷移到 ``error`` 信封後，移除相容鍵（追蹤見 ADR-034 §7 KI-034-1）。
+    """
+    payload = ErrorResponse(error=ErrorDetail(code=code, message=message, detail=detail or {})).model_dump()
+    compat = (detail or {}).get("_compat_detail")
+    if compat is not None:
+        payload["detail"] = compat
+        payload["error"]["detail"].pop("_compat_detail", None)
+    return JSONResponse(status_code=status_code, content=payload)
+
+
 def register_exception_handlers(app: FastAPI) -> None:
     """把 domain 例外對映到 HTTP 狀態 + 統一錯誤格式。"""
 
     @app.exception_handler(NotFoundError)
     async def not_found_handler(request: Request, exc: NotFoundError) -> JSONResponse:
-        return JSONResponse(
-            status_code=status.HTTP_404_NOT_FOUND,
-            content=ErrorResponse(error=ErrorDetail(code=ErrorCode.NOT_FOUND, message=exc.message, detail=exc.detail)).model_dump(),
-        )
+        error_code = (exc.detail or {}).get("code") or ErrorCode.NOT_FOUND
+        return _envelope(error_code, exc.message, exc.detail, status.HTTP_404_NOT_FOUND)
 
     @app.exception_handler(ValidationError)
     async def validation_error_handler(request: Request, exc: ValidationError) -> JSONResponse:
         error_code = (exc.detail or {}).get("code") or ErrorCode.VALIDATION_ERROR
-        return JSONResponse(
-            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
-            content=ErrorResponse(error=ErrorDetail(code=error_code, message=exc.message, detail=exc.detail)).model_dump(),
-        )
+        return _envelope(error_code, exc.message, exc.detail, status.HTTP_422_UNPROCESSABLE_ENTITY)
 
     @app.exception_handler(ConflictError)
     async def conflict_error_handler(request: Request, exc: ConflictError) -> JSONResponse:
         # ADR-034 §D3/A3：code 一律由 raise 點顯式攜帶（exc.detail["code"]），
         # 不再靠 message.lower() 反推——訊息 i18n 化後字串比對會失配（§1.2）。
         error_code = (exc.detail or {}).get("code") or ErrorCode.CONFLICT
-        return JSONResponse(
-            status_code=status.HTTP_409_CONFLICT,
-            content=ErrorResponse(error=ErrorDetail(code=error_code, message=exc.message, detail=exc.detail)).model_dump(),
-        )
+        return _envelope(error_code, exc.message, exc.detail, status.HTTP_409_CONFLICT)
 
     @app.exception_handler(ForbiddenError)
     async def forbidden_error_handler(request: Request, exc: ForbiddenError) -> JSONResponse:
-        return JSONResponse(
-            status_code=status.HTTP_403_FORBIDDEN,
-            content=ErrorResponse(error=ErrorDetail(code=ErrorCode.FORBIDDEN, message=exc.message, detail=exc.detail)).model_dump(),
-        )
+        error_code = (exc.detail or {}).get("code") or ErrorCode.FORBIDDEN
+        return _envelope(error_code, exc.message, exc.detail, status.HTTP_403_FORBIDDEN)
 
     @app.exception_handler(UnauthorizedError)
     async def unauthorized_error_handler(request: Request, exc: UnauthorizedError) -> JSONResponse:
-        return JSONResponse(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            content=ErrorResponse(error=ErrorDetail(code=ErrorCode.UNAUTHORIZED, message=exc.message, detail=exc.detail)).model_dump(),
-        )
+        error_code = (exc.detail or {}).get("code") or ErrorCode.UNAUTHORIZED
+        return _envelope(error_code, exc.message, exc.detail, status.HTTP_401_UNAUTHORIZED)
 
     @app.exception_handler(NoActiveRuleSet)
     async def no_active_rule_set_handler(request: Request, exc: NoActiveRuleSet) -> JSONResponse:

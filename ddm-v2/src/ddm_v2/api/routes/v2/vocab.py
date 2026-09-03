@@ -8,16 +8,24 @@ from __future__ import annotations
 import uuid
 from datetime import datetime, timezone
 
-from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import APIRouter, Depends, Query
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from ddm_v2.auth.deps import CurrentUser, current_user, require_role
 from ddm_v2.database import get_db_session
+from ddm_v2.errors.registry import ErrorCode
+from ddm_v2.exceptions import NotFoundError
 from ddm_v2.models.v2.vocab import WorkVocabItem
 from ddm_v2.schemas.v2.vocab import VocabItemIn, VocabItemOut, VocabPatchIn
 
 router = APIRouter(prefix="/api/v2", tags=["v2-vocab"])
+
+
+def _vocab_not_found(item_id: uuid.UUID) -> NotFoundError:
+    """ADR-034 §D3/A4：詞彙 404 → NotFoundError 統一信封（結構化 detail + 相容鍵）。"""
+    msg = f"詞彙不存在：{item_id}"
+    return NotFoundError(msg, detail={"code": ErrorCode.NOT_FOUND, "resource": "vocab", "id": str(item_id), "_compat_detail": msg})
 
 
 def _out(v: WorkVocabItem) -> VocabItemOut:
@@ -62,7 +70,7 @@ async def create_vocab(payload: VocabItemIn, session: AsyncSession = Depends(get
 async def patch_vocab(item_id: uuid.UUID, payload: VocabPatchIn, session: AsyncSession = Depends(get_db_session, scope="function"), _: CurrentUser = Depends(require_role("analyst"))) -> VocabItemOut:
     v = await session.get(WorkVocabItem, item_id)
     if v is None or v.deleted_at is not None:
-        raise HTTPException(status_code=404, detail=f"詞彙不存在：{item_id}")
+        raise _vocab_not_found(item_id)
     if payload.name_zh is not None:
         v.name_zh = payload.name_zh
     if "name_en" in payload.model_fields_set:
@@ -81,7 +89,7 @@ async def patch_vocab(item_id: uuid.UUID, payload: VocabPatchIn, session: AsyncS
 async def soft_delete_vocab(item_id: uuid.UUID, session: AsyncSession = Depends(get_db_session, scope="function"), _: CurrentUser = Depends(require_role("analyst"))) -> None:
     v = await session.get(WorkVocabItem, item_id)
     if v is None or v.deleted_at is not None:
-        raise HTTPException(status_code=404, detail=f"詞彙不存在：{item_id}")
+        raise _vocab_not_found(item_id)
     v.is_active = False
     v.deleted_at = datetime.now(timezone.utc)
     await session.flush()

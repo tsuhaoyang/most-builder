@@ -6,15 +6,27 @@ from __future__ import annotations
 
 import uuid
 
-from fastapi import APIRouter, Depends, HTTPException, Response
+from fastapi import APIRouter, Depends, Response
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from ddm_v2.auth.deps import CurrentUser, current_user
 from ddm_v2.database import get_db_session
+from ddm_v2.errors.registry import ErrorCode
+from ddm_v2.exceptions import NotFoundError
 from ddm_v2.services.v2 import export_service as exp
 from ddm_v2.services.v2 import worksheet_service as wsvc
 
 router = APIRouter(prefix="/api/v2", tags=["v2-export"])
+
+
+def _worksheet_not_found(worksheet_id: uuid.UUID) -> NotFoundError:
+    """ADR-034 §D3/A4：裸 404 → NotFoundError 統一信封。
+
+    detail 帶結構化 resource/id 供階段 B 前端在地化組句；
+    ``_compat_detail`` = 歷史頂層 detail 字串（I2 中文語意位元級等價，維持既有斷言）。
+    """
+    msg = f"worksheet 不存在：{worksheet_id}"
+    return NotFoundError(msg, detail={"code": ErrorCode.NOT_FOUND, "resource": "worksheet", "id": str(worksheet_id), "_compat_detail": msg})
 
 
 # ADR-019 Option A: read=viewer+ intentional; do NOT add ownership/created_by checks — see ADR-019
@@ -23,7 +35,7 @@ async def wi_preview(worksheet_id: uuid.UUID, session: AsyncSession = Depends(ge
     try:
         return await exp.wi_preview(session, worksheet_id)
     except wsvc.WorksheetNotFound:
-        raise HTTPException(status_code=404, detail=f"worksheet 不存在：{worksheet_id}")
+        raise _worksheet_not_found(worksheet_id)
 
 
 # ADR-019 Option A: read=viewer+ intentional; do NOT add ownership/created_by checks — see ADR-019
@@ -32,7 +44,7 @@ async def export_excel(worksheet_id: uuid.UUID, session: AsyncSession = Depends(
     try:
         data = await exp.to_excel_bytes(session, worksheet_id)
     except wsvc.WorksheetNotFound:
-        raise HTTPException(status_code=404, detail=f"worksheet 不存在：{worksheet_id}")
+        raise _worksheet_not_found(worksheet_id)
     return Response(
         content=data,
         media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
@@ -46,7 +58,7 @@ async def export_lb_csv(worksheet_id: uuid.UUID, session: AsyncSession = Depends
     try:
         text = await exp.to_lb_csv(session, worksheet_id)
     except wsvc.WorksheetNotFound:
-        raise HTTPException(status_code=404, detail=f"worksheet 不存在：{worksheet_id}")
+        raise _worksheet_not_found(worksheet_id)
     return Response(
         content="﻿" + text,  # BOM 讓 Excel 開 CSV 不亂碼
         media_type="text/csv; charset=utf-8",
@@ -59,7 +71,7 @@ async def export_lb_api(worksheet_id: uuid.UUID, session: AsyncSession = Depends
     try:
         return await exp.lb_api_payload(session, worksheet_id)
     except wsvc.WorksheetNotFound:
-        raise HTTPException(status_code=404, detail=f"worksheet 不存在：{worksheet_id}")
+        raise _worksheet_not_found(worksheet_id)
 
 
 # ADR-019 Option A: read=viewer+ intentional; do NOT add ownership/created_by checks — see ADR-019
@@ -68,7 +80,7 @@ async def export_report_xlsx(worksheet_id: uuid.UUID, session: AsyncSession = De
     try:
         data = await exp.to_report_xlsx_bytes(session, worksheet_id)
     except wsvc.WorksheetNotFound:
-        raise HTTPException(status_code=404, detail=f"worksheet 不存在：{worksheet_id}")
+        raise _worksheet_not_found(worksheet_id)
     return Response(
         content=data,
         media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
