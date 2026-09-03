@@ -12,9 +12,12 @@ e2e 環境回裸 `500 Internal Server Error`。結果是「後端拒絕時要給
 from __future__ import annotations
 
 from fastapi import FastAPI, Request, status
+from fastapi.encoders import jsonable_encoder
+from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
 from sqlalchemy.exc import IntegrityError
 
+from ddm_v2.errors.registry import ErrorCode
 from ddm_v2.exceptions import (
     ConflictError,
     DomainError,
@@ -35,12 +38,12 @@ def register_exception_handlers(app: FastAPI) -> None:
     async def not_found_handler(request: Request, exc: NotFoundError) -> JSONResponse:
         return JSONResponse(
             status_code=status.HTTP_404_NOT_FOUND,
-            content=ErrorResponse(error=ErrorDetail(code="NOT_FOUND", message=exc.message, detail=exc.detail)).model_dump(),
+            content=ErrorResponse(error=ErrorDetail(code=ErrorCode.NOT_FOUND, message=exc.message, detail=exc.detail)).model_dump(),
         )
 
     @app.exception_handler(ValidationError)
     async def validation_error_handler(request: Request, exc: ValidationError) -> JSONResponse:
-        error_code = (exc.detail or {}).get("code") or "VALIDATION_ERROR"
+        error_code = (exc.detail or {}).get("code") or ErrorCode.VALIDATION_ERROR
         return JSONResponse(
             status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
             content=ErrorResponse(error=ErrorDetail(code=error_code, message=exc.message, detail=exc.detail)).model_dump(),
@@ -48,12 +51,9 @@ def register_exception_handlers(app: FastAPI) -> None:
 
     @app.exception_handler(ConflictError)
     async def conflict_error_handler(request: Request, exc: ConflictError) -> JSONResponse:
-        error_code = (exc.detail or {}).get("code") or "CONFLICT"
-        if error_code == "CONFLICT":
-            if "published" in exc.message.lower():
-                error_code = "VERSION_PUBLISHED"
-            elif "time_source" in exc.message.lower():
-                error_code = "TIME_SOURCE_IMMUTABLE"
+        # ADR-034 §D3/A3：code 一律由 raise 點顯式攜帶（exc.detail["code"]），
+        # 不再靠 message.lower() 反推——訊息 i18n 化後字串比對會失配（§1.2）。
+        error_code = (exc.detail or {}).get("code") or ErrorCode.CONFLICT
         return JSONResponse(
             status_code=status.HTTP_409_CONFLICT,
             content=ErrorResponse(error=ErrorDetail(code=error_code, message=exc.message, detail=exc.detail)).model_dump(),
@@ -63,14 +63,14 @@ def register_exception_handlers(app: FastAPI) -> None:
     async def forbidden_error_handler(request: Request, exc: ForbiddenError) -> JSONResponse:
         return JSONResponse(
             status_code=status.HTTP_403_FORBIDDEN,
-            content=ErrorResponse(error=ErrorDetail(code="FORBIDDEN", message=exc.message, detail=exc.detail)).model_dump(),
+            content=ErrorResponse(error=ErrorDetail(code=ErrorCode.FORBIDDEN, message=exc.message, detail=exc.detail)).model_dump(),
         )
 
     @app.exception_handler(UnauthorizedError)
     async def unauthorized_error_handler(request: Request, exc: UnauthorizedError) -> JSONResponse:
         return JSONResponse(
             status_code=status.HTTP_401_UNAUTHORIZED,
-            content=ErrorResponse(error=ErrorDetail(code="UNAUTHORIZED", message=exc.message, detail=exc.detail)).model_dump(),
+            content=ErrorResponse(error=ErrorDetail(code=ErrorCode.UNAUTHORIZED, message=exc.message, detail=exc.detail)).model_dump(),
         )
 
     @app.exception_handler(NoActiveRuleSet)
@@ -78,7 +78,7 @@ def register_exception_handlers(app: FastAPI) -> None:
         """ADR-023 §3.5：無 active rule-set＝系統設定錯誤（非使用者錯誤）→ 500，不得靜默 fallback。"""
         return JSONResponse(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            content=ErrorResponse(error=ErrorDetail(code="NO_ACTIVE_RULE_SET", message=str(exc))).model_dump(),
+            content=ErrorResponse(error=ErrorDetail(code=ErrorCode.NO_ACTIVE_RULE_SET, message=str(exc))).model_dump(),
         )
 
     @app.exception_handler(NoDefaultPolicy)
@@ -86,7 +86,7 @@ def register_exception_handlers(app: FastAPI) -> None:
         """R2a：缺 factory default published policy＝設定錯誤 → 500，不得靜默 NULL。"""
         return JSONResponse(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            content=ErrorResponse(error=ErrorDetail(code="NO_DEFAULT_POLICY", message=str(exc))).model_dump(),
+            content=ErrorResponse(error=ErrorDetail(code=ErrorCode.NO_DEFAULT_POLICY, message=str(exc))).model_dump(),
         )
 
     @app.exception_handler(IntegrityError)
@@ -101,15 +101,45 @@ def register_exception_handlers(app: FastAPI) -> None:
             return JSONResponse(
                 status_code=status.HTTP_409_CONFLICT,
                 content=ErrorResponse(error=ErrorDetail(
-                    code="RULE_SET_ACTIVATE_CONFLICT",
+                    code=ErrorCode.RULE_SET_ACTIVATE_CONFLICT,
                     message="另一個規則版本剛被啟用，請重新整理後再試",
                 )).model_dump(),
             )
         raise exc
 
+    @app.exception_handler(RequestValidationError)
+    async def request_validation_error_handler(request: Request, exc: RequestValidationError) -> JSONResponse:
+        """ADR-034 §D5/A2：把 FastAPI 預設 422 收斂進 {error:{code,message,detail}} 信封。
+
+        預設 422 形狀是頂層 ``{detail: [...]}`` 且 msg 為英文（§1.2 中英夾雜的來源）。
+        統一為 code=VALIDATION_ERROR；原始 loc/msg/type 陣列**原封不動**放進 detail.errors，
+        供前端依 code + 結構化參數重組在地化訊息（§D1）。
+
+        **過渡期向後相容（ADR-034 §5 + KNOWN-ISSUE KI-034-1）**：本 handler 改變了
+        Pydantic request 驗證 422 的形狀——既有 integration 測試與前端呼叫點多處把頂層
+        ``detail`` 當**陣列**讀（`for e in resp.json()["detail"]`）。為避免破壞既有契約，
+        回應**同時保留頂層 ``detail`` 為原始 errors 陣列**（與 FastAPI 預設等價），
+        與新的 ``error`` 信封並存。待 A4／前端 catalog 完成、呼叫點全數遷移到 ``error``
+        後，於後續階段移除此頂層相容欄位（追蹤見 ADR-034 §7 KI-034-1）。
+        """
+        errors = jsonable_encoder(exc.errors())
+        content = ErrorResponse(
+            error=ErrorDetail(
+                code=ErrorCode.VALIDATION_ERROR,
+                message="請求驗證失敗",
+                detail={"errors": errors},
+            )
+        ).model_dump()
+        # 過渡期相容欄位：頂層 detail = 原始 errors 陣列（FastAPI 預設形狀）。
+        content["detail"] = errors
+        return JSONResponse(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            content=content,
+        )
+
     @app.exception_handler(DomainError)
     async def domain_error_handler(request: Request, exc: DomainError) -> JSONResponse:
         return JSONResponse(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            content=ErrorResponse(error=ErrorDetail(code="INTERNAL_ERROR", message=exc.message, detail=exc.detail)).model_dump(),
+            content=ErrorResponse(error=ErrorDetail(code=ErrorCode.INTERNAL_ERROR, message=exc.message, detail=exc.detail)).model_dump(),
         )

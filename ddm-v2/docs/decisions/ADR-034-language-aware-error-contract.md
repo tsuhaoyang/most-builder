@@ -191,3 +191,37 @@ User 於 2026-09-03 裁決：**「中英文切換務必以最業界標準來做�
 3. 階段 C：前端 `errorCatalog` 對照層、單一取訊息入口、補裸露點、雙語 ICU catalog、key 一致性測試。
 4. 每階段：`PYTHONPATH=src pytest`（後端）＋ `npm run typecheck`／`build`／`typecheck:e2e`／相關 Playwright（前端）作回歸閘。
 5. 於 ADR-032 D9(3) 加一行交叉引用指向本 ADR（標記該項已由 ADR-034 承接）。
+
+---
+
+## 7. 已知問題（Known Issues，不可忽略）
+
+### KI-034-1：階段 A2 改變 Pydantic request 驗證 422 的回應形狀（契約變更）
+
+**發現時間**：2026-09-03（階段 A1-A3 實作複核，審核員實跑 integration 測試佐證）。
+
+**問題**：A2 新增的 `RequestValidationError` handler 把 FastAPI 預設的**頂層 `{detail:[...]}`
+陣列**收斂為 `{error:{code,message,detail:{errors:[...]}}}`。這改變了既有 API 錯誤契約——
+多處既有 integration 測試與（待查的）前端呼叫點把頂層 `detail` 當**陣列**讀。
+
+**實證**（審核員實跑，DDM 專屬 db 於 port 15432，`DATABASE_URL=postgresql+asyncpg://howard:111111@localhost:15432/ddm_v2_most`）：
+`tests/integration/test_migration_v2_0022_category_and_template_ruleset.py` 在 A2 套用後
+**6 failed, 22 passed**，失敗全為 `KeyError`（斷言 `resp.json()["detail"]` 迭代，頂層 `detail` 已不存在）。
+此回歸**不會被 unit 測試捕捉**（`pytest tests/unit` 仍 1570 passed）——它只在需要 DB 的
+integration 層可見，正是「1570 passed 綠燈」掩蓋契約變更的典型陷阱。
+
+**本輪處置（B 方案：過渡期雙形狀相容）**：A2 handler **同時保留頂層 `detail`＝原始 errors 陣列**
+（與 FastAPI 預設等價），與新的 `error` 信封並存。既有讀頂層 `detail` 的測試與前端呼叫點不破壞；
+新前端可改讀 `error`。此為過渡期妥協，不是終態。
+
+**待辦（不可忽略）**：
+1. **盤點**所有讀頂層 `detail`（陣列或 `detail.code`）的呼叫點——後端 integration 測試、前端
+   `apiErrorMessage`／`humanMessage`／各呼叫處——列成遷移清單。
+2. 階段 C 前端 catalog 完成、呼叫點全數遷移到 `error` 信封後，**移除頂層 `detail` 相容欄位**，
+   並更新受影響的 integration 測試斷言為 `resp.json()["error"]["detail"]["errors"]`。
+3. 移除相容欄位屬**破壞性契約變更**，須依 ADR-011 加法演進評估，並在移除當次跑**完整
+   integration 測試**（非僅 unit）作回歸閘。
+4. 環境註記：CI／開發如需驗證此類契約變更，**必須跑 integration（需 DB）**；僅跑 unit 會漏。
+
+**風險若不處置**：頂層 `detail` 與 `error` 兩個真相長期並存 → 前端可能各自依賴不同欄位，
+形成 ADR-024 事後剖析所述「同一件事兩個答案」的漂移。故 KI-034-1 必須在階段 C 收斂，不得長存。
