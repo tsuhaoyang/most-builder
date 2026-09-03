@@ -54,7 +54,7 @@ async def _resolve_template_snapshots(
     module = await session.get(MotionModule, wi_template_id)
     if module is None:
         msg = f"組件模組不存在：{wi_template_id}"
-        raise NotFoundError(msg, detail={"code": ErrorCode.NOT_FOUND, "_compat_detail": msg})
+        raise NotFoundError(msg, detail={"code": ErrorCode.NOT_FOUND, "resource": "module", "module_id": str(wi_template_id), "_compat_detail": msg})
     version: MotionModuleVersion | None = None
     if module.current_version > 0:
         version = (
@@ -89,7 +89,7 @@ async def _get_project_or_404(
     project = result.scalar_one_or_none()
     if project is None:
         msg = f"專案不存在：{project_id}"
-        raise NotFoundError(msg, detail={"code": ErrorCode.NOT_FOUND, "_compat_detail": msg})
+        raise NotFoundError(msg, detail={"code": ErrorCode.NOT_FOUND, "resource": "project", "project_id": str(project_id), "_compat_detail": msg})
     return project
 
 
@@ -129,7 +129,7 @@ async def create_project(
     ).scalar_one_or_none()
     if existing is not None:
         msg = f"project_code 已存在：{payload.project_code}"
-        raise ConflictError(msg, detail={"code": ErrorCode.CONFLICT, "_compat_detail": msg})
+        raise ConflictError(msg, detail={"code": ErrorCode.CONFLICT, "resource": "project", "project_code": str(payload.project_code), "_compat_detail": msg})
     project = WiSetProject(
         project_code=payload.project_code,
         name=payload.name,
@@ -184,7 +184,7 @@ async def update_project(
         ).scalar_one_or_none()
         if clash is not None:
             msg = f"project_code 已存在：{payload.project_code}"
-            raise ConflictError(msg, detail={"code": ErrorCode.CONFLICT, "_compat_detail": msg})
+            raise ConflictError(msg, detail={"code": ErrorCode.CONFLICT, "resource": "project", "project_code": str(payload.project_code), "_compat_detail": msg})
 
     for field, value in payload.model_dump(exclude_unset=True).items():
         setattr(project, field, value)
@@ -206,7 +206,7 @@ async def delete_project(
     project = await _get_project_or_404(session, project_id)
     if project.status != "draft":
         msg = f"只有 draft 狀態的專案可以刪除（目前：{project.status}）"
-        raise ConflictError(msg, detail={"code": ErrorCode.CONFLICT, "_compat_detail": msg})
+        raise ConflictError(msg, detail={"code": ErrorCode.CONFLICT, "resource": "project", "project_id": str(project_id), "status": str(project.status), "_compat_detail": msg})
     await session.delete(project)
     await session.flush()
 
@@ -238,7 +238,7 @@ async def add_item(
     )
     if result.scalar_one_or_none() is None:
         msg = f"專案不存在：{project_id}"
-        raise NotFoundError(msg, detail={"code": ErrorCode.NOT_FOUND, "_compat_detail": msg})
+        raise NotFoundError(msg, detail={"code": ErrorCode.NOT_FOUND, "resource": "project", "project_id": str(project_id), "_compat_detail": msg})
 
     # 快照解析
     if payload.wi_template_id is not None:
@@ -295,7 +295,7 @@ async def remove_item(
     item = result.scalar_one_or_none()
     if item is None:
         msg = f"條目不存在：{item_id}（專案 {project_id}）"
-        raise NotFoundError(msg, detail={"code": ErrorCode.NOT_FOUND, "_compat_detail": msg})
+        raise NotFoundError(msg, detail={"code": ErrorCode.NOT_FOUND, "resource": "wi_set_item", "id": str(item_id), "project_id": str(project_id), "_compat_detail": msg})
     await session.delete(item)
     await session.flush()
 
@@ -319,7 +319,7 @@ async def reorder_items(
     )
     if result.scalar_one_or_none() is None:
         msg = f"專案不存在：{project_id}"
-        raise NotFoundError(msg, detail={"code": ErrorCode.NOT_FOUND, "_compat_detail": msg})
+        raise NotFoundError(msg, detail={"code": ErrorCode.NOT_FOUND, "resource": "project", "project_id": str(project_id), "_compat_detail": msg})
 
     # 取出屬於此專案的全部條目
     existing = (
@@ -333,7 +333,7 @@ async def reorder_items(
     requested_ids = set(payload.ordered_ids)
     if requested_ids != existing_ids:
         msg = "ordered_ids 必須包含且僅包含此專案的所有條目 ID"
-        raise ValidationError(msg, detail={"code": ErrorCode.VALIDATION_ERROR, "_compat_detail": msg})
+        raise ValidationError(msg, detail={"code": ErrorCode.VALIDATION_ERROR, "field": "ordered_ids", "_compat_detail": msg})
 
     id_to_item = {item.id: item for item in existing}
     for new_seq, item_id in enumerate(payload.ordered_ids, start=1):

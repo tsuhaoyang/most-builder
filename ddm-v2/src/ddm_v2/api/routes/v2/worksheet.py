@@ -27,10 +27,10 @@ async def save_worksheet(worksheet_id: uuid.UUID, payload: WorksheetSaveIn, sess
         )
     except svc.WorksheetNotFound:
         msg = f"worksheet 不存在：{worksheet_id}"
-        raise NotFoundError(msg, detail={"code": ErrorCode.NOT_FOUND, "_compat_detail": msg})
+        raise NotFoundError(msg, detail={"code": ErrorCode.NOT_FOUND, "resource": "worksheet", "worksheet_id": str(worksheet_id), "_compat_detail": msg})
     except svc.RuleSetNotFound as e:
         msg = f"rule-set 不存在：{e}"
-        raise NotFoundError(msg, detail={"code": ErrorCode.NOT_FOUND, "_compat_detail": msg})
+        raise NotFoundError(msg, detail={"code": ErrorCode.NOT_FOUND, "resource": "rule_set", "rule_set_code": str(e), "_compat_detail": msg})
     except svc.NotEditable as e:
         msg = str(e)
         raise ConflictError(msg, detail={"code": ErrorCode.CONFLICT, "_compat_detail": msg})
@@ -64,7 +64,7 @@ async def read_worksheet(worksheet_id: uuid.UUID, session: AsyncSession = Depend
         result = await svc.read_worksheet(session, worksheet_id)
     except svc.WorksheetNotFound:
         msg = f"worksheet 不存在：{worksheet_id}"
-        raise NotFoundError(msg, detail={"code": ErrorCode.NOT_FOUND, "_compat_detail": msg})
+        raise NotFoundError(msg, detail={"code": ErrorCode.NOT_FOUND, "resource": "worksheet", "worksheet_id": str(worksheet_id), "_compat_detail": msg})
     return WorksheetReadOut(**result)
 
 
@@ -76,7 +76,7 @@ async def worksheet_versions(worksheet_id: uuid.UUID, session: AsyncSession = De
         return await svc.list_versions(session, worksheet_id)
     except svc.WorksheetNotFound:
         msg = f"worksheet 不存在：{worksheet_id}"
-        raise NotFoundError(msg, detail={"code": ErrorCode.NOT_FOUND, "_compat_detail": msg})
+        raise NotFoundError(msg, detail={"code": ErrorCode.NOT_FOUND, "resource": "worksheet", "worksheet_id": str(worksheet_id), "_compat_detail": msg})
 
 
 @router.post("/worksheets/{worksheet_id}/level/validate")
@@ -94,7 +94,7 @@ async def validate_worksheet_level(
         )
     except svc.WorksheetNotFound:
         msg = f"worksheet 不存在：{worksheet_id}"
-        raise NotFoundError(msg, detail={"code": ErrorCode.NOT_FOUND, "_compat_detail": msg})
+        raise NotFoundError(msg, detail={"code": ErrorCode.NOT_FOUND, "resource": "worksheet", "worksheet_id": str(worksheet_id), "_compat_detail": msg})
     # ConflictError → main.py（LEVEL_POLICY_MISMATCH 等）
 
 
@@ -105,7 +105,7 @@ async def publish_worksheet(worksheet_id: uuid.UUID, session: AsyncSession = Dep
         return await svc.publish_worksheet(session, worksheet_id, actor=user.employee_no)
     except svc.WorksheetNotFound:
         msg = f"worksheet 不存在：{worksheet_id}"
-        raise NotFoundError(msg, detail={"code": ErrorCode.NOT_FOUND, "_compat_detail": msg})
+        raise NotFoundError(msg, detail={"code": ErrorCode.NOT_FOUND, "resource": "worksheet", "worksheet_id": str(worksheet_id), "_compat_detail": msg})
     except svc.NotEditable as e:
         msg = str(e)
         raise ConflictError(msg, detail={"code": ErrorCode.CONFLICT, "_compat_detail": msg})
@@ -119,7 +119,7 @@ async def clone_worksheet(worksheet_id: uuid.UUID, session: AsyncSession = Depen
         return await svc.clone_worksheet(session, worksheet_id, actor=user.employee_no)
     except svc.WorksheetNotFound:
         msg = f"worksheet 不存在：{worksheet_id}"
-        raise NotFoundError(msg, detail={"code": ErrorCode.NOT_FOUND, "_compat_detail": msg})
+        raise NotFoundError(msg, detail={"code": ErrorCode.NOT_FOUND, "resource": "worksheet", "worksheet_id": str(worksheet_id), "_compat_detail": msg})
 
 
 @router.post("/worksheets/{worksheet_id}/retire")
@@ -129,7 +129,7 @@ async def retire_worksheet(worksheet_id: uuid.UUID, session: AsyncSession = Depe
         return await svc.retire_worksheet(session, worksheet_id, actor=user.employee_no)
     except svc.WorksheetNotFound:
         msg = f"worksheet 不存在：{worksheet_id}"
-        raise NotFoundError(msg, detail={"code": ErrorCode.NOT_FOUND, "_compat_detail": msg})
+        raise NotFoundError(msg, detail={"code": ErrorCode.NOT_FOUND, "resource": "worksheet", "worksheet_id": str(worksheet_id), "_compat_detail": msg})
     except svc.NotEditable as e:
         msg = str(e)
         raise ConflictError(msg, detail={"code": ErrorCode.CONFLICT, "_compat_detail": msg})

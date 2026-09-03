@@ -58,7 +58,7 @@ async def create_parse_job(
     except svc.ImportNotFound:
         raise NotFoundError(
             "匯入批次不存在",
-            detail={"code": ErrorCode.NOT_FOUND, "resource": "import", "_compat_detail": "匯入批次不存在"},
+            detail={"code": ErrorCode.NOT_FOUND, "resource": "import", "import_id": str(import_id), "_compat_detail": "匯入批次不存在"},
         ) from None
     except svc.JobQuotaExceeded as exc:
         msg = str(exc)
@@ -105,7 +105,7 @@ async def get_parse_job(
     except svc.JobNotFound:
         raise NotFoundError(
             "parse job 不存在",
-            detail={"code": ErrorCode.NOT_FOUND, "resource": "parse_job", "_compat_detail": "parse job 不存在"},
+            detail={"code": ErrorCode.NOT_FOUND, "resource": "parse_job", "job_id": str(job_id), "_compat_detail": "parse job 不存在"},
         ) from None
 
 
@@ -130,13 +130,13 @@ async def tick_parse_job(
     except svc.JobNotFound:
         raise NotFoundError(
             "parse job 不存在",
-            detail={"code": ErrorCode.NOT_FOUND, "resource": "parse_job", "_compat_detail": "parse job 不存在"},
+            detail={"code": ErrorCode.NOT_FOUND, "resource": "parse_job", "job_id": str(job_id), "_compat_detail": "parse job 不存在"},
         ) from None
     except syn_svc.RuleSetNotFound as exc:
         msg = f"pinned rule set 不存在：{exc}"
         raise NotFoundError(
             msg,
-            detail={"code": ErrorCode.NOT_FOUND, "resource": "rule_set", "_compat_detail": msg},
+            detail={"code": ErrorCode.NOT_FOUND, "resource": "rule_set", "rule_set_code": str(exc), "_compat_detail": msg},
         ) from None
     except RuntimeError as exc:
         msg = str(exc)
@@ -158,5 +158,5 @@ async def cancel_parse_job(
     except svc.JobNotFound:
         raise NotFoundError(
             "parse job 不存在",
-            detail={"code": ErrorCode.NOT_FOUND, "resource": "parse_job", "_compat_detail": "parse job 不存在"},
+            detail={"code": ErrorCode.NOT_FOUND, "resource": "parse_job", "job_id": str(job_id), "_compat_detail": "parse job 不存在"},
         ) from None

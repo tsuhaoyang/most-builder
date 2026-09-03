@@ -121,6 +121,25 @@ User 於 2026-09-03 裁決：**「中英文切換務必以最業界標準來做�
 
 **這是本 ADR 工作量最大、風險最高的一塊**（見 §5）。
 
+**D4 實作補記（2026-09-03，階段 B 啟動）**：A4 收斂時部分 raise 點已順帶結構化
+（如 `vocab.py` 已帶 `resource`/`id`、`synonyms`/`calculate` 已帶 `rule_set_code`），
+但**不一致**——`rule_set.py`／`worksheet.py`／`motion_module.py` 多數仍只帶 `_compat_detail`。
+階段 B 的工作是**補齊一致性**，並固定以下**結構化參數命名規範**（前端 catalog key 依此對應，§C 對齊）：
+
+| 錯誤類型 | 必備 detail 鍵 | 範例 |
+|---|---|---|
+| 資源不存在（NOT_FOUND） | `resource`（資源型別字串）＋ 該資源的識別鍵 | `{"resource":"rule_set","rule_set_code":code}`、`{"resource":"module","id":str(id)}`、`{"resource":"parse_run","run_id":str(id)}` |
+| 權限（FORBIDDEN） | `resource`＋`action`（＋必要時 `required_role`／`current_roles`） | `{"resource":"motion_template","action":"modify"}` |
+| 資源衝突（CONFLICT） | 沿用既有結構化鍵 | `{"references":{...}}`、`{"existing":{...}}` |
+| 語意/狀態機（BAD_REQUEST/VALIDATION） | 依錯誤帶對應參數（`field`／`param`／`row_index`／`seq_no`／`row_id`） | `{"row_index":i,"field":"category"}` |
+
+**識別鍵命名固定**：資源自己的自然鍵優先（`rule_set_code`／`run_id`／`worksheet_id`／`module_id`），
+無自然鍵者用泛用 `id`（值一律 `str()`）。**規範一旦定案即為契約（I3 精神）**，前端 catalog
+以 `errors.<CODE>.<resource>` 為 key、用這些參數插值；後端新增同類錯誤須沿用同鍵名。
+
+**不變的三件事（階段 B 純加法）**：不動 `_compat_detail`（KI-034-1 相容仍靠它）、不動 `code`、
+不動 HTTP 狀態碼、不動信封形狀。階段 B 只在 `detail` 內**新增**結構化欄位。
+
 ### D5 分階段交付（每階段可獨立驗收，避免大爆炸式重構）
 
 | 階段 | 內容 | 完成判準 | 依賴 |

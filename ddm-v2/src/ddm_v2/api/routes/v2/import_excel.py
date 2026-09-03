@@ -102,7 +102,7 @@ async def map_columns(import_id: uuid.UUID, payload: MapIn, session: AsyncSessio
     if rec is None:
         raise NotFoundError(
             "匯入批次不存在",
-            detail={"code": ErrorCode.NOT_FOUND, "resource": "import", "_compat_detail": "匯入批次不存在"},
+            detail={"code": ErrorCode.NOT_FOUND, "resource": "import", "import_id": str(import_id), "_compat_detail": "匯入批次不存在"},
         )
     rows, warnings = import_service.apply_mapping(rec.raw_payload, payload.sheet, payload.header_row,
                                                   payload.column_map, payload.time_unit)
@@ -123,7 +123,7 @@ async def get_import(import_id: uuid.UUID, session: AsyncSession = Depends(get_d
     if rec is None:
         raise NotFoundError(
             "匯入批次不存在",
-            detail={"code": ErrorCode.NOT_FOUND, "resource": "import", "_compat_detail": "匯入批次不存在"},
+            detail={"code": ErrorCode.NOT_FOUND, "resource": "import", "import_id": str(import_id), "_compat_detail": "匯入批次不存在"},
         )
     rows = rec.staged_rows or []
     # ADR-025 D10：match 以「現在」的 active 重算，不持久化 → GET 每次重新計算（避免 stale TMU）。
@@ -203,7 +203,7 @@ async def submit_import(
         if code == "import_not_found":
             raise NotFoundError(
                 "匯入批次不存在",
-                detail={"code": ErrorCode.NOT_FOUND, "resource": "import", "_compat_detail": "匯入批次不存在"},
+                detail={"code": ErrorCode.NOT_FOUND, "resource": "import", "import_id": str(import_id), "_compat_detail": "匯入批次不存在"},
             ) from None
         if code == "already_submitted":
             # Fix-H2：已提交批次不得重複提交
@@ -219,7 +219,7 @@ async def submit_import(
         if code == "worksheet_not_found":
             raise NotFoundError(
                 "工序表不存在",
-                detail={"code": ErrorCode.NOT_FOUND, "resource": "worksheet", "_compat_detail": "工序表不存在"},
+                detail={"code": ErrorCode.NOT_FOUND, "resource": "worksheet", "worksheet_id": str(payload.worksheet_id), "_compat_detail": "工序表不存在"},
             ) from None
         if code == "worksheet_not_draft":
             # Fix-H3：只允許提交到 draft 工序表

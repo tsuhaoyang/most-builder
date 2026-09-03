@@ -26,7 +26,7 @@ def _worksheet_not_found(worksheet_id: uuid.UUID) -> NotFoundError:
     ``_compat_detail`` = 歷史頂層 detail 字串（I2 中文語意位元級等價，維持既有斷言）。
     """
     msg = f"worksheet 不存在：{worksheet_id}"
-    return NotFoundError(msg, detail={"code": ErrorCode.NOT_FOUND, "resource": "worksheet", "id": str(worksheet_id), "_compat_detail": msg})
+    return NotFoundError(msg, detail={"code": ErrorCode.NOT_FOUND, "resource": "worksheet", "worksheet_id": str(worksheet_id), "_compat_detail": msg})
 
 
 # ADR-019 Option A: read=viewer+ intentional; do NOT add ownership/created_by checks — see ADR-019

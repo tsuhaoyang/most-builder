@@ -93,7 +93,7 @@ async def get_full(code: str, session: AsyncSession = Depends(get_db_session, sc
         return await svc.load_full(session, code)
     except svc.RuleSetNotFound:
         msg = f"rule-set 不存在：{code}"
-        raise NotFoundError(msg, detail={"code": ErrorCode.NOT_FOUND, "_compat_detail": msg}) from None
+        raise NotFoundError(msg, detail={"code": ErrorCode.NOT_FOUND, "resource": "rule_set", "rule_set_code": str(code), "_compat_detail": msg}) from None
 
 
 @router.post("/rule-sets/{code}/clone-draft")
@@ -103,10 +103,10 @@ async def clone_draft(code: str, payload: CloneDraftIn, session: AsyncSession = 
         return await svc.clone_draft(session, code, payload.new_code, payload.name_zh, actor=user.employee_no)
     except svc.RuleSetNotFound:
         msg = f"rule-set 不存在：{code}"
-        raise NotFoundError(msg, detail={"code": ErrorCode.NOT_FOUND, "_compat_detail": msg}) from None
+        raise NotFoundError(msg, detail={"code": ErrorCode.NOT_FOUND, "resource": "rule_set", "rule_set_code": str(code), "_compat_detail": msg}) from None
     except svc.RuleSetExists:
         msg = f"code 已存在：{payload.new_code}"
-        raise ConflictError(msg, detail={"code": ErrorCode.CONFLICT, "_compat_detail": msg}) from None
+        raise ConflictError(msg, detail={"code": ErrorCode.CONFLICT, "resource": "rule_set", "rule_set_code": str(payload.new_code), "_compat_detail": msg}) from None
 
 
 @router.put("/rule-sets/{code}/full")
@@ -116,7 +116,7 @@ async def put_full(code: str, full: dict[str, Any] = Body(...), session: AsyncSe
         return await svc.replace_children(session, code, full, actor=user.employee_no)
     except svc.RuleSetNotFound:
         msg = f"rule-set 不存在：{code}"
-        raise NotFoundError(msg, detail={"code": ErrorCode.NOT_FOUND, "_compat_detail": msg}) from None
+        raise NotFoundError(msg, detail={"code": ErrorCode.NOT_FOUND, "resource": "rule_set", "rule_set_code": str(code), "_compat_detail": msg}) from None
     except svc.NotEditable as e:
         msg = str(e)
         raise ConflictError(msg, detail={"code": ErrorCode.CONFLICT, "_compat_detail": msg}) from None
@@ -149,7 +149,7 @@ async def diff_rule_set(code: str, session: AsyncSession = Depends(get_db_sessio
         return await svc.diff_against_active(session, code)
     except svc.RuleSetNotFound:
         msg = f"rule-set 不存在：{code}"
-        raise NotFoundError(msg, detail={"code": ErrorCode.NOT_FOUND, "_compat_detail": msg}) from None
+        raise NotFoundError(msg, detail={"code": ErrorCode.NOT_FOUND, "resource": "rule_set", "rule_set_code": str(code), "_compat_detail": msg}) from None
 
 
 @router.get("/rule-sets/{code}/export")
@@ -165,7 +165,7 @@ async def export_rule_set(code: str, session: AsyncSession = Depends(get_db_sess
         return await svc.export_full(session, code, exported_by=user.employee_no)
     except svc.RuleSetNotFound:
         msg = f"rule-set 不存在：{code}"
-        raise NotFoundError(msg, detail={"code": ErrorCode.NOT_FOUND, "_compat_detail": msg}) from None
+        raise NotFoundError(msg, detail={"code": ErrorCode.NOT_FOUND, "resource": "rule_set", "rule_set_code": str(code), "_compat_detail": msg}) from None
 
 
 class ImportIn(BaseModel):
@@ -199,7 +199,7 @@ async def import_rule_set(payload: ImportIn = Body(...),
         raise BadRequestError(msg, detail={"code": ErrorCode.BAD_REQUEST, "_compat_detail": msg}) from e
     except svc.RuleSetExists:
         msg = f"code 已存在：{new_code}"
-        raise ConflictError(msg, detail={"code": ErrorCode.CONFLICT, "_compat_detail": msg}) from None
+        raise ConflictError(msg, detail={"code": ErrorCode.CONFLICT, "resource": "rule_set", "rule_set_code": str(new_code), "_compat_detail": msg}) from None
 
 
 @router.post("/rule-sets/{code}/publish")
@@ -209,7 +209,7 @@ async def publish(code: str, session: AsyncSession = Depends(get_db_session, sco
         return await svc.publish(session, code, actor=user.employee_no)
     except svc.RuleSetNotFound:
         msg = f"rule-set 不存在：{code}"
-        raise NotFoundError(msg, detail={"code": ErrorCode.NOT_FOUND, "_compat_detail": msg}) from None
+        raise NotFoundError(msg, detail={"code": ErrorCode.NOT_FOUND, "resource": "rule_set", "rule_set_code": str(code), "_compat_detail": msg}) from None
     except svc.NotEditable as e:
         msg = str(e)
         raise ConflictError(msg, detail={"code": ErrorCode.CONFLICT, "_compat_detail": msg}) from None
@@ -227,7 +227,7 @@ async def activate(code: str, session: AsyncSession = Depends(get_db_session, sc
         return await svc.activate(session, code, actor=user.employee_no)
     except svc.RuleSetNotFound:
         msg = f"rule-set 不存在：{code}"
-        raise NotFoundError(msg, detail={"code": ErrorCode.NOT_FOUND, "_compat_detail": msg}) from None
+        raise NotFoundError(msg, detail={"code": ErrorCode.NOT_FOUND, "resource": "rule_set", "rule_set_code": str(code), "_compat_detail": msg}) from None
     except svc.NotEditable as e:
         msg = str(e)
         raise BadRequestError(msg, detail={"code": ErrorCode.BAD_REQUEST, "_compat_detail": msg}) from None
@@ -247,7 +247,7 @@ async def retire(code: str, session: AsyncSession = Depends(get_db_session, scop
         return await svc.retire(session, code, actor=user.employee_no)
     except svc.RuleSetNotFound:
         msg = f"rule-set 不存在：{code}"
-        raise NotFoundError(msg, detail={"code": ErrorCode.NOT_FOUND, "_compat_detail": msg}) from None
+        raise NotFoundError(msg, detail={"code": ErrorCode.NOT_FOUND, "resource": "rule_set", "rule_set_code": str(code), "_compat_detail": msg}) from None
     except svc.NotEditable as e:
         msg = str(e)
         raise BadRequestError(msg, detail={"code": ErrorCode.BAD_REQUEST, "_compat_detail": msg}) from None
@@ -268,7 +268,7 @@ async def unretire(code: str, session: AsyncSession = Depends(get_db_session, sc
         return await svc.unretire(session, code, actor=user.employee_no)
     except svc.RuleSetNotFound:
         msg = f"rule-set 不存在：{code}"
-        raise NotFoundError(msg, detail={"code": ErrorCode.NOT_FOUND, "_compat_detail": msg}) from None
+        raise NotFoundError(msg, detail={"code": ErrorCode.NOT_FOUND, "resource": "rule_set", "rule_set_code": str(code), "_compat_detail": msg}) from None
     except svc.NotEditable as e:
         compat = {"code": "RULE_SET_NOT_RETIRED", "message": str(e)}
         raise ConflictError(compat["message"], detail={**compat, "_compat_detail": compat}) from None
@@ -295,7 +295,7 @@ async def delete_rule_set(code: str, session: AsyncSession = Depends(get_db_sess
         return await svc.delete_rule_set(session, code, actor=user.employee_no)
     except svc.RuleSetNotFound:
         msg = f"rule-set 不存在：{code}"
-        raise NotFoundError(msg, detail={"code": ErrorCode.NOT_FOUND, "_compat_detail": msg}) from None
+        raise NotFoundError(msg, detail={"code": ErrorCode.NOT_FOUND, "resource": "rule_set", "rule_set_code": str(code), "_compat_detail": msg}) from None
     except svc.CertifiedImmutable as e:
         compat = {"code": "CERTIFIED_IMMUTABLE", "message": str(e)}
         raise ConflictError(compat["message"], detail={**compat, "_compat_detail": compat}) from None
@@ -350,13 +350,13 @@ def option_http_error(exc: Exception) -> DomainError:
         return ConflictError(compat["message"], detail={**compat, "_compat_detail": compat})
     if isinstance(exc, svc.RuleSetNotFound):
         msg = f"rule-set 不存在：{exc}"
-        return NotFoundError(msg, detail={"code": ErrorCode.NOT_FOUND, "_compat_detail": msg})
+        return NotFoundError(msg, detail={"code": ErrorCode.NOT_FOUND, "resource": "rule_set", "rule_set_code": str(exc), "_compat_detail": msg})
     if isinstance(exc, opt_svc.OptionNotFound):
         msg = f"選項不存在：{exc}"
-        return NotFoundError(msg, detail={"code": ErrorCode.NOT_FOUND, "_compat_detail": msg})
+        return NotFoundError(msg, detail={"code": ErrorCode.NOT_FOUND, "resource": "option", "id": str(exc), "_compat_detail": msg})
     if isinstance(exc, opt_svc.OptionExists):
         msg = f"選項代碼已存在：{exc}"
-        return ConflictError(msg, detail={"code": ErrorCode.CONFLICT, "_compat_detail": msg})
+        return ConflictError(msg, detail={"code": ErrorCode.CONFLICT, "resource": "option", "id": str(exc), "_compat_detail": msg})
     if isinstance(exc, (SectionRequired, SectionInvalid, ParamInvalid)):
         msg = str(exc)
         return BadRequestError(msg, detail={"code": ErrorCode.BAD_REQUEST, "_compat_detail": msg})
