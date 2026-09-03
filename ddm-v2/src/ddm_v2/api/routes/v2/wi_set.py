@@ -16,13 +16,15 @@ from __future__ import annotations
 
 import uuid
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
 from ddm_v2.auth.deps import CurrentUser, current_user, require_role
 from ddm_v2.database import get_db_session
+from ddm_v2.errors.registry import ErrorCode
+from ddm_v2.exceptions import ConflictError, NotFoundError, ValidationError
 from ddm_v2.models.v2.motion_module import MotionModule, MotionModuleVersion
 from ddm_v2.models.v2.wi_set import WiSetItem, WiSetProject
 from ddm_v2.schemas.v2.wi_set import (
@@ -51,9 +53,8 @@ async def _resolve_template_snapshots(
     """
     module = await session.get(MotionModule, wi_template_id)
     if module is None:
-        raise HTTPException(
-            status_code=404, detail=f"組件模組不存在：{wi_template_id}"
-        )
+        msg = f"組件模組不存在：{wi_template_id}"
+        raise NotFoundError(msg, detail={"code": ErrorCode.NOT_FOUND, "_compat_detail": msg})
     version: MotionModuleVersion | None = None
     if module.current_version > 0:
         version = (
@@ -87,7 +88,8 @@ async def _get_project_or_404(
     )
     project = result.scalar_one_or_none()
     if project is None:
-        raise HTTPException(status_code=404, detail=f"專案不存在：{project_id}")
+        msg = f"專案不存在：{project_id}"
+        raise NotFoundError(msg, detail={"code": ErrorCode.NOT_FOUND, "_compat_detail": msg})
     return project
 
 
@@ -126,9 +128,8 @@ async def create_project(
         )
     ).scalar_one_or_none()
     if existing is not None:
-        raise HTTPException(
-            status_code=409, detail=f"project_code 已存在：{payload.project_code}"
-        )
+        msg = f"project_code 已存在：{payload.project_code}"
+        raise ConflictError(msg, detail={"code": ErrorCode.CONFLICT, "_compat_detail": msg})
     project = WiSetProject(
         project_code=payload.project_code,
         name=payload.name,
@@ -182,10 +183,8 @@ async def update_project(
             )
         ).scalar_one_or_none()
         if clash is not None:
-            raise HTTPException(
-                status_code=409,
-                detail=f"project_code 已存在：{payload.project_code}",
-            )
+            msg = f"project_code 已存在：{payload.project_code}"
+            raise ConflictError(msg, detail={"code": ErrorCode.CONFLICT, "_compat_detail": msg})
 
     for field, value in payload.model_dump(exclude_unset=True).items():
         setattr(project, field, value)
@@ -206,10 +205,8 @@ async def delete_project(
 ) -> None:
     project = await _get_project_or_404(session, project_id)
     if project.status != "draft":
-        raise HTTPException(
-            status_code=409,
-            detail=f"只有 draft 狀態的專案可以刪除（目前：{project.status}）",
-        )
+        msg = f"只有 draft 狀態的專案可以刪除（目前：{project.status}）"
+        raise ConflictError(msg, detail={"code": ErrorCode.CONFLICT, "_compat_detail": msg})
     await session.delete(project)
     await session.flush()
 
@@ -240,7 +237,8 @@ async def add_item(
         select(WiSetProject).where(WiSetProject.id == project_id)
     )
     if result.scalar_one_or_none() is None:
-        raise HTTPException(status_code=404, detail=f"專案不存在：{project_id}")
+        msg = f"專案不存在：{project_id}"
+        raise NotFoundError(msg, detail={"code": ErrorCode.NOT_FOUND, "_compat_detail": msg})
 
     # 快照解析
     if payload.wi_template_id is not None:
@@ -296,9 +294,8 @@ async def remove_item(
     )
     item = result.scalar_one_or_none()
     if item is None:
-        raise HTTPException(
-            status_code=404, detail=f"條目不存在：{item_id}（專案 {project_id}）"
-        )
+        msg = f"條目不存在：{item_id}（專案 {project_id}）"
+        raise NotFoundError(msg, detail={"code": ErrorCode.NOT_FOUND, "_compat_detail": msg})
     await session.delete(item)
     await session.flush()
 
@@ -321,7 +318,8 @@ async def reorder_items(
         select(WiSetProject).where(WiSetProject.id == project_id)
     )
     if result.scalar_one_or_none() is None:
-        raise HTTPException(status_code=404, detail=f"專案不存在：{project_id}")
+        msg = f"專案不存在：{project_id}"
+        raise NotFoundError(msg, detail={"code": ErrorCode.NOT_FOUND, "_compat_detail": msg})
 
     # 取出屬於此專案的全部條目
     existing = (
@@ -334,10 +332,8 @@ async def reorder_items(
     # 驗證 ordered_ids 完整性
     requested_ids = set(payload.ordered_ids)
     if requested_ids != existing_ids:
-        raise HTTPException(
-            status_code=422,
-            detail="ordered_ids 必須包含且僅包含此專案的所有條目 ID",
-        )
+        msg = "ordered_ids 必須包含且僅包含此專案的所有條目 ID"
+        raise ValidationError(msg, detail={"code": ErrorCode.VALIDATION_ERROR, "_compat_detail": msg})
 
     id_to_item = {item.id: item for item in existing}
     for new_seq, item_id in enumerate(payload.ordered_ids, start=1):
@@ -428,9 +424,11 @@ async def instantiate_project(
             session, project_id, payload, user.employee_no
         )
     except wi_set_service.WiSetInstantiationError as error:
-        status_code = 404 if error.code == "PROJECT_NOT_FOUND" else 422
-        raise HTTPException(
-            status_code=status_code,
-            detail={"code": error.code, "message": error.message},
-        ) from error
+        # service 顯式 code 動態攜帶（PROJECT_NOT_FOUND→404，其餘→422）；
+        # _compat_detail 保留原 {code,message} dict（維持既有契約，I3 不更名）。
+        compat = {"code": error.code, "message": error.message}
+        detail = {"code": error.code, "_compat_detail": compat}
+        if error.code == "PROJECT_NOT_FOUND":
+            raise NotFoundError(error.message, detail=detail) from error
+        raise ValidationError(error.message, detail=detail) from error
     return WiSetInstantiateOut.model_validate(result)

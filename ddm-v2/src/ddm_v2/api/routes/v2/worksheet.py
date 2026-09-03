@@ -3,11 +3,13 @@ from __future__ import annotations
 
 import uuid
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from ddm_v2.auth.deps import CurrentUser, current_user, require_role
 from ddm_v2.database import get_db_session
+from ddm_v2.errors.registry import ErrorCode
+from ddm_v2.exceptions import ConflictError, NotFoundError, ValidationError
 from ddm_v2.most_engine import SequenceError
 from ddm_v2.most_engine.rule_set_data import RuleSetIncomplete
 from ddm_v2.schemas.v2.worksheet import WorksheetReadOut, WorksheetSaveIn
@@ -24,24 +26,33 @@ async def save_worksheet(worksheet_id: uuid.UUID, payload: WorksheetSaveIn, sess
             session, worksheet_id, payload, edited_by=user.employee_no
         )
     except svc.WorksheetNotFound:
-        raise HTTPException(status_code=404, detail=f"worksheet 不存在：{worksheet_id}")
+        msg = f"worksheet 不存在：{worksheet_id}"
+        raise NotFoundError(msg, detail={"code": ErrorCode.NOT_FOUND, "_compat_detail": msg})
     except svc.RuleSetNotFound as e:
-        raise HTTPException(status_code=404, detail=f"rule-set 不存在：{e}")
+        msg = f"rule-set 不存在：{e}"
+        raise NotFoundError(msg, detail={"code": ErrorCode.NOT_FOUND, "_compat_detail": msg})
     except svc.NotEditable as e:
-        raise HTTPException(status_code=409, detail=str(e))
+        msg = str(e)
+        raise ConflictError(msg, detail={"code": ErrorCode.CONFLICT, "_compat_detail": msg})
     except svc.SimoPairInvalid as e:
-        raise HTTPException(status_code=422, detail={"code": "SIMO_PAIR_INVALID", "message": str(e)})
+        compat = {"code": "SIMO_PAIR_INVALID", "message": str(e)}
+        raise ValidationError(
+            str(e),
+            detail={"code": ErrorCode.SIMO_PAIR_INVALID, "_compat_detail": compat},
+        )
     except RuleSetIncomplete as e:
-        raise HTTPException(status_code=409, detail=str(e))
+        msg = str(e)
+        raise ConflictError(msg, detail={"code": ErrorCode.RULE_SET_INCOMPLETE, "_compat_detail": msg})
     except SequenceError as e:
         # `svc.RowSequenceError` 會多掛 seq_no／row_id（存檔迴圈裡指得出是哪一列）；
         # 其他 SequenceError 沒有這兩個屬性 → 維持原本的兩鍵 detail。
-        detail: dict = {"code": e.code, "message": str(e)}
+        # I1：engine e.code 動態讀取，不常數化、不碰 engine（ADR-034 §3）。
+        compat: dict = {"code": e.code, "message": str(e)}
         row_id = getattr(e, "row_id", None)
         if row_id is not None:
-            detail["seq_no"] = getattr(e, "seq_no", None)
-            detail["row_id"] = str(row_id)
-        raise HTTPException(status_code=422, detail=detail)
+            compat["seq_no"] = getattr(e, "seq_no", None)
+            compat["row_id"] = str(row_id)
+        raise ValidationError(str(e), detail={"code": e.code, "_compat_detail": compat})
     return WorksheetReadOut(**result)
 
 
@@ -52,7 +63,8 @@ async def read_worksheet(worksheet_id: uuid.UUID, session: AsyncSession = Depend
     try:
         result = await svc.read_worksheet(session, worksheet_id)
     except svc.WorksheetNotFound:
-        raise HTTPException(status_code=404, detail=f"worksheet 不存在：{worksheet_id}")
+        msg = f"worksheet 不存在：{worksheet_id}"
+        raise NotFoundError(msg, detail={"code": ErrorCode.NOT_FOUND, "_compat_detail": msg})
     return WorksheetReadOut(**result)
 
 
@@ -63,7 +75,8 @@ async def worksheet_versions(worksheet_id: uuid.UUID, session: AsyncSession = De
     try:
         return await svc.list_versions(session, worksheet_id)
     except svc.WorksheetNotFound:
-        raise HTTPException(status_code=404, detail=f"worksheet 不存在：{worksheet_id}")
+        msg = f"worksheet 不存在：{worksheet_id}"
+        raise NotFoundError(msg, detail={"code": ErrorCode.NOT_FOUND, "_compat_detail": msg})
 
 
 @router.post("/worksheets/{worksheet_id}/level/validate")
@@ -80,7 +93,8 @@ async def validate_worksheet_level(
             session, worksheet_id, trigger="interactive", actor=user.employee_no
         )
     except svc.WorksheetNotFound:
-        raise HTTPException(status_code=404, detail=f"worksheet 不存在：{worksheet_id}")
+        msg = f"worksheet 不存在：{worksheet_id}"
+        raise NotFoundError(msg, detail={"code": ErrorCode.NOT_FOUND, "_compat_detail": msg})
     # ConflictError → main.py（LEVEL_POLICY_MISMATCH 等）
 
 
@@ -90,9 +104,11 @@ async def publish_worksheet(worksheet_id: uuid.UUID, session: AsyncSession = Dep
     try:
         return await svc.publish_worksheet(session, worksheet_id, actor=user.employee_no)
     except svc.WorksheetNotFound:
-        raise HTTPException(status_code=404, detail=f"worksheet 不存在：{worksheet_id}")
+        msg = f"worksheet 不存在：{worksheet_id}"
+        raise NotFoundError(msg, detail={"code": ErrorCode.NOT_FOUND, "_compat_detail": msg})
     except svc.NotEditable as e:
-        raise HTTPException(status_code=409, detail=str(e))
+        msg = str(e)
+        raise ConflictError(msg, detail={"code": ErrorCode.CONFLICT, "_compat_detail": msg})
     # ConflictError / ValidationError → main.py（LEVEL_VALIDATION_* / LEVEL_POLICY_MISMATCH）
 
 
@@ -102,7 +118,8 @@ async def clone_worksheet(worksheet_id: uuid.UUID, session: AsyncSession = Depen
     try:
         return await svc.clone_worksheet(session, worksheet_id, actor=user.employee_no)
     except svc.WorksheetNotFound:
-        raise HTTPException(status_code=404, detail=f"worksheet 不存在：{worksheet_id}")
+        msg = f"worksheet 不存在：{worksheet_id}"
+        raise NotFoundError(msg, detail={"code": ErrorCode.NOT_FOUND, "_compat_detail": msg})
 
 
 @router.post("/worksheets/{worksheet_id}/retire")
@@ -111,6 +128,8 @@ async def retire_worksheet(worksheet_id: uuid.UUID, session: AsyncSession = Depe
     try:
         return await svc.retire_worksheet(session, worksheet_id, actor=user.employee_no)
     except svc.WorksheetNotFound:
-        raise HTTPException(status_code=404, detail=f"worksheet 不存在：{worksheet_id}")
+        msg = f"worksheet 不存在：{worksheet_id}"
+        raise NotFoundError(msg, detail={"code": ErrorCode.NOT_FOUND, "_compat_detail": msg})
     except svc.NotEditable as e:
-        raise HTTPException(status_code=409, detail=str(e))
+        msg = str(e)
+        raise ConflictError(msg, detail={"code": ErrorCode.CONFLICT, "_compat_detail": msg})
