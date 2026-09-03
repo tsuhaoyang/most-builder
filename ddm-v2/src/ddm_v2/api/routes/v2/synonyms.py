@@ -12,12 +12,14 @@ DELETE /api/v2/rule-sets/{code}/synonyms/{syn_id} → 204（analyst+）
 """
 from __future__ import annotations
 
-from fastapi import APIRouter, Depends, HTTPException, Response
+from fastapi import APIRouter, Depends, Response
 from pydantic import BaseModel, Field
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from ddm_v2.auth.deps import CurrentUser, current_user, require_role
 from ddm_v2.database import get_db_session
+from ddm_v2.errors.registry import ErrorCode
+from ddm_v2.exceptions import ConflictError, NotFoundError, ValidationError
 from ddm_v2.services.v2 import synonym_service as svc
 
 router = APIRouter(prefix="/api/v2", tags=["v2-synonyms"])
@@ -39,7 +41,11 @@ async def list_synonyms(
     try:
         return await svc.list_synonyms(session, code)
     except svc.RuleSetNotFound:
-        raise HTTPException(status_code=404, detail=f"rule-set 不存在：{code}")
+        msg = f"rule-set 不存在：{code}"
+        raise NotFoundError(
+            msg,
+            detail={"code": ErrorCode.NOT_FOUND, "resource": "rule_set", "rule_set_code": code, "_compat_detail": msg},
+        ) from None
 
 
 @router.post("/rule-sets/{code}/synonyms", status_code=201)
@@ -57,38 +63,50 @@ async def create_synonym(
             created_by=user.employee_no,
         )
     except svc.RuleSetNotFound:
-        raise HTTPException(status_code=404, detail=f"rule-set 不存在：{code}")
+        msg = f"rule-set 不存在：{code}"
+        raise NotFoundError(
+            msg,
+            detail={"code": ErrorCode.NOT_FOUND, "resource": "rule_set", "rule_set_code": code, "_compat_detail": msg},
+        ) from None
     except svc.RuleSetRetired:
-        raise HTTPException(
-            status_code=409,
-            detail={"code": "RULE_SET_RETIRED", "message": f"rule-set {code} 已下架（終態），不可增刪同義詞"},
-        )
+        compat = {"code": "RULE_SET_RETIRED", "message": f"rule-set {code} 已下架（終態），不可增刪同義詞"}
+        raise ConflictError(
+            compat["message"],
+            detail={**compat, "_compat_detail": compat},
+        ) from None
     except svc.OptionCodeNotFound as e:
-        raise HTTPException(
-            status_code=422,
-            detail={"code": "OPTION_CODE_NOT_FOUND", "parameter": e.parameter, "option_code": e.option_code},
-        )
+        compat = {"code": "OPTION_CODE_NOT_FOUND", "parameter": e.parameter, "option_code": e.option_code}
+        raise ValidationError(
+            f"option_code 不存在：{e.option_code}",
+            detail={**compat, "_compat_detail": compat},
+        ) from None
     except ValueError as e:
-        raise HTTPException(status_code=422, detail={"code": "VALIDATION_ERROR", "message": str(e)})
+        compat = {"code": "VALIDATION_ERROR", "message": str(e)}
+        raise ValidationError(
+            str(e),
+            detail={**compat, "_compat_detail": compat},
+        ) from e
     except svc.SynonymConflict as e:
-        raise HTTPException(
-            status_code=409,
-            detail={"code": "SYNONYM_CONFLICT", "existing": e.existing},
-        )
+        compat = {"code": "SYNONYM_CONFLICT", "existing": e.existing}
+        raise ConflictError(
+            "同義詞已存在",
+            detail={**compat, "_compat_detail": compat},
+        ) from None
     except svc.SynonymPriorityCollision as e:
-        raise HTTPException(
-            status_code=409,
-            detail={
-                "code": "SYNONYM_PRIORITY_COLLISION",
-                "message": (
-                    f"「{payload.synonym_raw}」在參數 {payload.parameter} 已映射到 "
-                    f"{e.existing.get('option_code')}（priority {e.priority}）——"
-                    "一面多 code 需以不同 priority 顯式宣告偏好序"
-                    "（數字小者優先，0＝預設）"
-                ),
-                "existing": e.existing,
-            },
-        )
+        compat = {
+            "code": "SYNONYM_PRIORITY_COLLISION",
+            "message": (
+                f"「{payload.synonym_raw}」在參數 {payload.parameter} 已映射到 "
+                f"{e.existing.get('option_code')}（priority {e.priority}）——"
+                "一面多 code 需以不同 priority 顯式宣告偏好序"
+                "（數字小者優先，0＝預設）"
+            ),
+            "existing": e.existing,
+        }
+        raise ConflictError(
+            compat["message"],
+            detail={**compat, "_compat_detail": compat},
+        ) from None
 
 
 @router.delete("/rule-sets/{code}/synonyms/{syn_id}", status_code=204)
@@ -101,12 +119,21 @@ async def delete_synonym(
     try:
         await svc.delete_synonym(session, syn_id, code)
     except svc.RuleSetNotFound:
-        raise HTTPException(status_code=404, detail=f"rule-set 不存在：{code}")
+        msg = f"rule-set 不存在：{code}"
+        raise NotFoundError(
+            msg,
+            detail={"code": ErrorCode.NOT_FOUND, "resource": "rule_set", "rule_set_code": code, "_compat_detail": msg},
+        ) from None
     except svc.RuleSetRetired:
-        raise HTTPException(
-            status_code=409,
-            detail={"code": "RULE_SET_RETIRED", "message": f"rule-set {code} 已下架（終態），不可增刪同義詞"},
-        )
+        compat = {"code": "RULE_SET_RETIRED", "message": f"rule-set {code} 已下架（終態），不可增刪同義詞"}
+        raise ConflictError(
+            compat["message"],
+            detail={**compat, "_compat_detail": compat},
+        ) from None
     except svc.SynonymNotFound:
-        raise HTTPException(status_code=404, detail=f"同義詞不存在：{syn_id}")
+        msg = f"同義詞不存在：{syn_id}"
+        raise NotFoundError(
+            msg,
+            detail={"code": ErrorCode.NOT_FOUND, "resource": "synonym", "synonym_id": syn_id, "_compat_detail": msg},
+        ) from None
     return Response(status_code=204)

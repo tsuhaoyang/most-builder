@@ -9,13 +9,15 @@ options 下拉清單暫讀 seed labels（FE-1 正式版改讀 DB labels）。
 """
 from __future__ import annotations
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends
 from sqlalchemy import select
 from sqlalchemy.exc import NoResultFound
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from ddm_v2.auth.deps import CurrentUser, current_user
 from ddm_v2.database import get_db_session
+from ddm_v2.errors.registry import ErrorCode
+from ddm_v2.exceptions import ConflictError, NotFoundError, ValidationError
 from ddm_v2.models.v2.auth import AppUser
 from ddm_v2.most_engine import RuleSetData, SequenceError, compute_cycle, load_rule_set_from_db
 from ddm_v2.most_engine import level as level_engine
@@ -69,7 +71,11 @@ async def _load_rule_set(session: AsyncSession, code: str) -> RuleSetData:
     try:
         rs = await load_rule_set_from_db(session, code)
     except NoResultFound as e:
-        raise HTTPException(status_code=404, detail=f"rule-set 不存在：{code}") from e
+        msg = f"rule-set 不存在：{code}"
+        raise NotFoundError(
+            msg,
+            detail={"code": ErrorCode.NOT_FOUND, "resource": "rule_set", "rule_set_code": code, "_compat_detail": msg},
+        ) from e
     rs.validate_complete()
     return rs
 
@@ -79,7 +85,11 @@ async def rule_set_options(code: str, session: AsyncSession = Depends(get_db_ses
     """下拉用：含 label（中/英）的選項清單，從 DB 載（FE-1 正式版，與 calculate 同源）。"""
     opts = await load_options_from_db(session, code)
     if opts is None:
-        raise HTTPException(status_code=404, detail=f"rule-set 不存在：{code}")
+        msg = f"rule-set 不存在：{code}"
+        raise NotFoundError(
+            msg,
+            detail={"code": ErrorCode.NOT_FOUND, "resource": "rule_set", "rule_set_code": code, "_compat_detail": msg},
+        )
     return opts
 
 
@@ -90,11 +100,20 @@ async def calculate(cycle: CycleIn, session: AsyncSession = Depends(get_db_sessi
     try:
         rs = await _load_rule_set(session, code)
     except RuleSetIncomplete as e:
-        raise HTTPException(status_code=409, detail=str(e)) from e
+        msg = str(e)
+        raise ConflictError(
+            msg,
+            detail={"code": ErrorCode.RULE_SET_INCOMPLETE, "_compat_detail": msg},
+        ) from e
     try:
         result = compute_cycle(cycle_in_to_engine(cycle), rs)
     except SequenceError as e:
-        raise HTTPException(status_code=422, detail={"code": e.code, "message": str(e)}) from e
+        # I1：engine e.code 動態讀取，不常數化、不碰 engine（ADR-034 §3）。
+        compat = {"code": e.code, "message": str(e)}
+        raise ValidationError(
+            str(e),
+            detail={**compat, "_compat_detail": compat},
+        ) from e
     return CalculateResponse(
         seq=result.seq,
         rule_set_code=rs.code,
@@ -123,8 +142,9 @@ def build_level_output(rows: list[LevelRowIn], _: CurrentUser = Depends(current_
     level_rows = _to_level_rows(rows)
     issues = level_engine.validate(level_rows)
     if issues:
-        raise HTTPException(
-            status_code=422,
-            detail={"message": "Level 驗證未通過，無法輸出", "issues": [{"code": i.code, "row_index": i.row_index, "message": i.message} for i in issues]},
+        compat = {"message": "Level 驗證未通過，無法輸出", "issues": [{"code": i.code, "row_index": i.row_index, "message": i.message} for i in issues]}
+        raise ValidationError(
+            compat["message"],
+            detail={"code": ErrorCode.VALIDATION_ERROR, **compat, "_compat_detail": compat},
         )
     return LevelOutputResponse(**level_engine.build_output(level_rows))

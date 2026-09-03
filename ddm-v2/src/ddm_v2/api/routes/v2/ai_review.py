@@ -7,12 +7,14 @@ from __future__ import annotations
 
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends
 from pydantic import BaseModel, Field
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from ddm_v2.auth.deps import CurrentUser, current_user, require_role
 from ddm_v2.database import get_db_session
+from ddm_v2.errors.registry import ErrorCode
+from ddm_v2.exceptions import NotFoundError, ValidationError
 from ddm_v2.services.v2 import ai_review_service as svc
 
 router = APIRouter(prefix="/api/v2", tags=["v2-ai-review"])
@@ -53,10 +55,16 @@ async def post_reviews(
             ui_version=payload.ui_version,
         )
     except svc.RunNotFound:
-        raise HTTPException(status_code=404, detail=f"parse run 不存在：{run_id}") from None
+        msg = f"parse run 不存在：{run_id}"
+        raise NotFoundError(
+            msg,
+            detail={"code": ErrorCode.NOT_FOUND, "resource": "parse_run", "run_id": str(run_id), "_compat_detail": msg},
+        ) from None
     except svc.ValidationError as exc:
-        raise HTTPException(
-            status_code=422, detail={"code": "VALIDATION_ERROR", "message": exc.message}
+        compat = {"code": "VALIDATION_ERROR", "message": exc.message}
+        raise ValidationError(
+            exc.message,
+            detail={**compat, "_compat_detail": compat},
         ) from None
 
 
@@ -71,5 +79,9 @@ async def get_reviews(
 
     run = await session.get(AiParseRun, run_id)
     if run is None:
-        raise HTTPException(status_code=404, detail=f"parse run 不存在：{run_id}")
+        msg = f"parse run 不存在：{run_id}"
+        raise NotFoundError(
+            msg,
+            detail={"code": ErrorCode.NOT_FOUND, "resource": "parse_run", "run_id": str(run_id), "_compat_detail": msg},
+        )
     return await svc.list_events_for_run(session, run_id)
