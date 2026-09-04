@@ -93,7 +93,7 @@ async def get_full(code: str, session: AsyncSession = Depends(get_db_session, sc
         return await svc.load_full(session, code)
     except svc.RuleSetNotFound:
         msg = f"rule-set 不存在：{code}"
-        raise NotFoundError(msg, detail={"code": ErrorCode.NOT_FOUND, "resource": "rule_set", "rule_set_code": str(code), "_compat_detail": msg}) from None
+        raise NotFoundError(msg, detail={"code": ErrorCode.NOT_FOUND, "resource": "rule_set", "rule_set_code": str(code)}) from None
 
 
 @router.post("/rule-sets/{code}/clone-draft")
@@ -103,10 +103,10 @@ async def clone_draft(code: str, payload: CloneDraftIn, session: AsyncSession = 
         return await svc.clone_draft(session, code, payload.new_code, payload.name_zh, actor=user.employee_no)
     except svc.RuleSetNotFound:
         msg = f"rule-set 不存在：{code}"
-        raise NotFoundError(msg, detail={"code": ErrorCode.NOT_FOUND, "resource": "rule_set", "rule_set_code": str(code), "_compat_detail": msg}) from None
+        raise NotFoundError(msg, detail={"code": ErrorCode.NOT_FOUND, "resource": "rule_set", "rule_set_code": str(code)}) from None
     except svc.RuleSetExists:
         msg = f"code 已存在：{payload.new_code}"
-        raise ConflictError(msg, detail={"code": ErrorCode.CONFLICT, "resource": "rule_set", "rule_set_code": str(payload.new_code), "_compat_detail": msg}) from None
+        raise ConflictError(msg, detail={"code": ErrorCode.CONFLICT, "resource": "rule_set", "rule_set_code": str(payload.new_code)}) from None
 
 
 @router.put("/rule-sets/{code}/full")
@@ -116,14 +116,14 @@ async def put_full(code: str, full: dict[str, Any] = Body(...), session: AsyncSe
         return await svc.replace_children(session, code, full, actor=user.employee_no)
     except svc.RuleSetNotFound:
         msg = f"rule-set 不存在：{code}"
-        raise NotFoundError(msg, detail={"code": ErrorCode.NOT_FOUND, "resource": "rule_set", "rule_set_code": str(code), "_compat_detail": msg}) from None
+        raise NotFoundError(msg, detail={"code": ErrorCode.NOT_FOUND, "resource": "rule_set", "rule_set_code": str(code)}) from None
     except svc.NotEditable as e:
         msg = str(e)
-        raise ConflictError(msg, detail={"code": ErrorCode.CONFLICT, "_compat_detail": msg}) from None
+        raise ConflictError(msg, detail={"code": ErrorCode.CONFLICT}) from None
     except (BandInvalid, svc.PayloadInvalid) as e:
         # 帶界契約與 PUT /bands 同源（D2 HIGH-2）；區塊鍵/欄位型別與 import 同源（D3 HIGH-1/2）
         msg = str(e)
-        raise BadRequestError(msg, detail={"code": ErrorCode.BAD_REQUEST, "_compat_detail": msg}) from e
+        raise BadRequestError(msg, detail={"code": ErrorCode.BAD_REQUEST}) from e
 
 
 @router.get("/rule-sets/{code}/diff")
@@ -149,7 +149,7 @@ async def diff_rule_set(code: str, session: AsyncSession = Depends(get_db_sessio
         return await svc.diff_against_active(session, code)
     except svc.RuleSetNotFound:
         msg = f"rule-set 不存在：{code}"
-        raise NotFoundError(msg, detail={"code": ErrorCode.NOT_FOUND, "resource": "rule_set", "rule_set_code": str(code), "_compat_detail": msg}) from None
+        raise NotFoundError(msg, detail={"code": ErrorCode.NOT_FOUND, "resource": "rule_set", "rule_set_code": str(code)}) from None
 
 
 @router.get("/rule-sets/{code}/export")
@@ -165,7 +165,7 @@ async def export_rule_set(code: str, session: AsyncSession = Depends(get_db_sess
         return await svc.export_full(session, code, exported_by=user.employee_no)
     except svc.RuleSetNotFound:
         msg = f"rule-set 不存在：{code}"
-        raise NotFoundError(msg, detail={"code": ErrorCode.NOT_FOUND, "resource": "rule_set", "rule_set_code": str(code), "_compat_detail": msg}) from None
+        raise NotFoundError(msg, detail={"code": ErrorCode.NOT_FOUND, "resource": "rule_set", "rule_set_code": str(code)}) from None
 
 
 class ImportIn(BaseModel):
@@ -196,10 +196,10 @@ async def import_rule_set(payload: ImportIn = Body(...),
         return await svc.import_draft(session, body, new_code, name_zh, actor=user.employee_no)
     except (svc.PayloadInvalid, BandInvalid) as e:
         msg = str(e)
-        raise BadRequestError(msg, detail={"code": ErrorCode.BAD_REQUEST, "_compat_detail": msg}) from e
+        raise BadRequestError(msg, detail={"code": ErrorCode.BAD_REQUEST}) from e
     except svc.RuleSetExists:
         msg = f"code 已存在：{new_code}"
-        raise ConflictError(msg, detail={"code": ErrorCode.CONFLICT, "resource": "rule_set", "rule_set_code": str(new_code), "_compat_detail": msg}) from None
+        raise ConflictError(msg, detail={"code": ErrorCode.CONFLICT, "resource": "rule_set", "rule_set_code": str(new_code)}) from None
 
 
 @router.post("/rule-sets/{code}/publish")
@@ -209,14 +209,14 @@ async def publish(code: str, session: AsyncSession = Depends(get_db_session, sco
         return await svc.publish(session, code, actor=user.employee_no)
     except svc.RuleSetNotFound:
         msg = f"rule-set 不存在：{code}"
-        raise NotFoundError(msg, detail={"code": ErrorCode.NOT_FOUND, "resource": "rule_set", "rule_set_code": str(code), "_compat_detail": msg}) from None
+        raise NotFoundError(msg, detail={"code": ErrorCode.NOT_FOUND, "resource": "rule_set", "rule_set_code": str(code)}) from None
     except svc.NotEditable as e:
         msg = str(e)
-        raise ConflictError(msg, detail={"code": ErrorCode.CONFLICT, "_compat_detail": msg}) from None
+        raise ConflictError(msg, detail={"code": ErrorCode.CONFLICT}) from None
     except RuleSetIncomplete as e:
         # ADR-023 §3.2：發布前完整性驗證未過 → 409（帶缺表詳情）。
         compat = {"code": "RULE_SET_INCOMPLETE", "message": str(e)}
-        raise ConflictError(compat["message"], detail={**compat, "_compat_detail": compat}) from e
+        raise ConflictError(compat["message"], detail={**compat}) from e
 
 
 @router.post("/rule-sets/{code}/activate")
@@ -227,13 +227,13 @@ async def activate(code: str, session: AsyncSession = Depends(get_db_session, sc
         return await svc.activate(session, code, actor=user.employee_no)
     except svc.RuleSetNotFound:
         msg = f"rule-set 不存在：{code}"
-        raise NotFoundError(msg, detail={"code": ErrorCode.NOT_FOUND, "resource": "rule_set", "rule_set_code": str(code), "_compat_detail": msg}) from None
+        raise NotFoundError(msg, detail={"code": ErrorCode.NOT_FOUND, "resource": "rule_set", "rule_set_code": str(code)}) from None
     except svc.NotEditable as e:
         msg = str(e)
-        raise BadRequestError(msg, detail={"code": ErrorCode.BAD_REQUEST, "_compat_detail": msg}) from None
+        raise BadRequestError(msg, detail={"code": ErrorCode.BAD_REQUEST}) from None
     except RuleSetIncomplete as e:
         compat = {"code": "RULE_SET_INCOMPLETE", "message": str(e)}
-        raise ConflictError(compat["message"], detail={**compat, "_compat_detail": compat}) from e
+        raise ConflictError(compat["message"], detail={**compat}) from e
 
 
 @router.post("/rule-sets/{code}/retire")
@@ -247,10 +247,10 @@ async def retire(code: str, session: AsyncSession = Depends(get_db_session, scop
         return await svc.retire(session, code, actor=user.employee_no)
     except svc.RuleSetNotFound:
         msg = f"rule-set 不存在：{code}"
-        raise NotFoundError(msg, detail={"code": ErrorCode.NOT_FOUND, "resource": "rule_set", "rule_set_code": str(code), "_compat_detail": msg}) from None
+        raise NotFoundError(msg, detail={"code": ErrorCode.NOT_FOUND, "resource": "rule_set", "rule_set_code": str(code)}) from None
     except svc.NotEditable as e:
         msg = str(e)
-        raise BadRequestError(msg, detail={"code": ErrorCode.BAD_REQUEST, "_compat_detail": msg}) from None
+        raise BadRequestError(msg, detail={"code": ErrorCode.BAD_REQUEST}) from None
 
 
 @router.post("/rule-sets/{code}/unretire")
@@ -268,10 +268,10 @@ async def unretire(code: str, session: AsyncSession = Depends(get_db_session, sc
         return await svc.unretire(session, code, actor=user.employee_no)
     except svc.RuleSetNotFound:
         msg = f"rule-set 不存在：{code}"
-        raise NotFoundError(msg, detail={"code": ErrorCode.NOT_FOUND, "resource": "rule_set", "rule_set_code": str(code), "_compat_detail": msg}) from None
+        raise NotFoundError(msg, detail={"code": ErrorCode.NOT_FOUND, "resource": "rule_set", "rule_set_code": str(code)}) from None
     except svc.NotEditable as e:
         compat = {"code": "RULE_SET_NOT_RETIRED", "message": str(e)}
-        raise ConflictError(compat["message"], detail={**compat, "_compat_detail": compat}) from None
+        raise ConflictError(compat["message"], detail={**compat}) from None
 
 
 @router.delete("/rule-sets/{code}")
@@ -295,23 +295,23 @@ async def delete_rule_set(code: str, session: AsyncSession = Depends(get_db_sess
         return await svc.delete_rule_set(session, code, actor=user.employee_no)
     except svc.RuleSetNotFound:
         msg = f"rule-set 不存在：{code}"
-        raise NotFoundError(msg, detail={"code": ErrorCode.NOT_FOUND, "resource": "rule_set", "rule_set_code": str(code), "_compat_detail": msg}) from None
+        raise NotFoundError(msg, detail={"code": ErrorCode.NOT_FOUND, "resource": "rule_set", "rule_set_code": str(code)}) from None
     except svc.CertifiedImmutable as e:
         compat = {"code": "CERTIFIED_IMMUTABLE", "message": str(e)}
-        raise ConflictError(compat["message"], detail={**compat, "_compat_detail": compat}) from None
+        raise ConflictError(compat["message"], detail={**compat}) from None
     except svc.RuleSetActive as e:
         compat = {"code": "RULE_SET_ACTIVE", "message": str(e)}
-        raise ConflictError(compat["message"], detail={**compat, "_compat_detail": compat}) from None
+        raise ConflictError(compat["message"], detail={**compat}) from None
     except svc.NotEditable as e:
         # RuleSetActive/CertifiedImmutable 都是 NotEditable 的子類，已在上面先攔；到這裡只剩「非 draft」。
         compat = {"code": "RULE_SET_NOT_DRAFT", "message": str(e)}
-        raise ConflictError(compat["message"], detail={**compat, "_compat_detail": compat}) from None
+        raise ConflictError(compat["message"], detail={**compat}) from None
     except svc.RuleSetInUse as e:
         compat = {
             "code": "RULE_SET_IN_USE", "message": str(e),
             "references": {k: v for k, v in e.refs.items() if v},
         }
-        raise ConflictError(compat["message"], detail={**compat, "_compat_detail": compat}) from None
+        raise ConflictError(compat["message"], detail={**compat}) from None
 
 
 # ══════════════════════════════════════════════════════════════════
@@ -334,47 +334,47 @@ def option_http_error(exc: Exception) -> DomainError:
     衝突在兩個端點會回不同的狀態碼／錯誤碼。
 
     ADR-034 §A4 batch 5：回傳 DomainError 家族（呼叫端 `raise option_http_error(e) from e`），
-    取代裸 `HTTPException`。每個分支帶顯式 code + `_compat_detail`（dict 型保整包、字串型保
-    原中文字串、pydantic 欄位錯誤保原陣列），維持既有 integration 斷言的頂層 `detail` 形狀。
+    取代裸 `HTTPException`。每個分支帶顯式 code（dict 型 spread 保整包、字串型保原中文字串、
+    pydantic 欄位錯誤保原陣列）。C4 已移除過渡期 `_compat_detail` 相容鍵，收斂為單一 error 信封。
     """
     if isinstance(exc, svc.CertifiedImmutable):
         compat = {"code": "CERTIFIED_IMMUTABLE", "message": str(exc)}
-        return ConflictError(compat["message"], detail={**compat, "_compat_detail": compat})
+        return ConflictError(compat["message"], detail={**compat})
     if isinstance(exc, svc.RuleSetRetired):
         # `_en` 寫入閘的唯一拒絕理由（ADR-032 D4）：終態，且「先建草稿」救不了它，
         # 故不與 RULE_SET_FROZEN 共用 code——前端要能分辨「去建草稿」與「這版已下架」。
         compat = {"code": "RULE_SET_RETIRED", "message": str(exc)}
-        return ConflictError(compat["message"], detail={**compat, "_compat_detail": compat})
+        return ConflictError(compat["message"], detail={**compat})
     if isinstance(exc, svc.NotEditable):
         compat = {"code": "RULE_SET_FROZEN", "message": str(exc)}
-        return ConflictError(compat["message"], detail={**compat, "_compat_detail": compat})
+        return ConflictError(compat["message"], detail={**compat})
     if isinstance(exc, svc.RuleSetNotFound):
         msg = f"rule-set 不存在：{exc}"
-        return NotFoundError(msg, detail={"code": ErrorCode.NOT_FOUND, "resource": "rule_set", "rule_set_code": str(exc), "_compat_detail": msg})
+        return NotFoundError(msg, detail={"code": ErrorCode.NOT_FOUND, "resource": "rule_set", "rule_set_code": str(exc)})
     if isinstance(exc, opt_svc.OptionNotFound):
         msg = f"選項不存在：{exc}"
-        return NotFoundError(msg, detail={"code": ErrorCode.NOT_FOUND, "resource": "option", "id": str(exc), "_compat_detail": msg})
+        return NotFoundError(msg, detail={"code": ErrorCode.NOT_FOUND, "resource": "option", "id": str(exc)})
     if isinstance(exc, opt_svc.OptionExists):
         msg = f"選項代碼已存在：{exc}"
-        return ConflictError(msg, detail={"code": ErrorCode.CONFLICT, "resource": "option", "id": str(exc), "_compat_detail": msg})
+        return ConflictError(msg, detail={"code": ErrorCode.CONFLICT, "resource": "option", "id": str(exc)})
     if isinstance(exc, (SectionRequired, SectionInvalid, ParamInvalid)):
         msg = str(exc)
-        return BadRequestError(msg, detail={"code": ErrorCode.BAD_REQUEST, "_compat_detail": msg})
+        return BadRequestError(msg, detail={"code": ErrorCode.BAD_REQUEST})
     if isinstance(exc, (opt_svc.BandInvalid, opt_svc.BandsNotSupported, opt_svc.OptionConstraintViolation)):
         msg = str(exc)
-        return BadRequestError(msg, detail={"code": ErrorCode.BAD_REQUEST, "_compat_detail": msg})
+        return BadRequestError(msg, detail={"code": ErrorCode.BAD_REQUEST})
     if isinstance(exc, opt_svc.EnLabelNotUnique):
         # I5：同參數內英文標籤必須可辨義（衝突＝資源狀態衝突，不是 payload 格式錯）
         compat = {"code": "EN_LABEL_NOT_UNIQUE", "message": str(exc)}
-        return ConflictError(compat["message"], detail={**compat, "_compat_detail": compat})
+        return ConflictError(compat["message"], detail={**compat})
     if isinstance(exc, opt_svc.EnFieldNotWritable):
         # 白名單外的欄位＝payload 內容不被接受 → 422（與 schema 層的 extra="forbid" 同碼）
         compat = {"code": "EN_FIELD_NOT_WRITABLE", "message": str(exc)}
-        return ValidationError(compat["message"], detail={**compat, "_compat_detail": compat})
+        return ValidationError(compat["message"], detail={**compat})
     if isinstance(exc, PydanticValidationError):
         # payload 與該 (param, section) 的 schema 不符 → 422（欄位級錯誤原樣回傳）
         errors = exc.errors(include_url=False)
-        return ValidationError("payload 驗證失敗", detail={"code": ErrorCode.VALIDATION_ERROR, "_compat_detail": errors})
+        return ValidationError("payload 驗證失敗", detail={"code": ErrorCode.VALIDATION_ERROR})
     raise exc
 
 

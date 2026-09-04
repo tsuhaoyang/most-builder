@@ -85,7 +85,7 @@ async def promote_template(template_id: uuid.UUID, session: AsyncSession = Depen
     """草稿 → 廠標準（approver+）。"""
     t = await session.get(MotionTemplate, template_id)
     if t is None:
-        raise NotFoundError("範本不存在", detail={"code": ErrorCode.NOT_FOUND, "resource": "motion_template", "id": str(template_id), "_compat_detail": "範本不存在"})
+        raise NotFoundError("範本不存在", detail={"code": ErrorCode.NOT_FOUND, "resource": "motion_template", "id": str(template_id)})
     prev_status = t.status
     t.status = "standard"
     t.owner = None
@@ -106,9 +106,9 @@ async def promote_template(template_id: uuid.UUID, session: AsyncSession = Depen
 async def patch_template(template_id: uuid.UUID, payload: MotionTemplatePatchIn, session: AsyncSession = Depends(get_db_session, scope="function"), user: CurrentUser = Depends(require_role("analyst"))) -> MotionTemplateOut:
     t = await session.get(MotionTemplate, template_id)
     if t is None:
-        raise NotFoundError("範本不存在", detail={"code": ErrorCode.NOT_FOUND, "resource": "motion_template", "id": str(template_id), "_compat_detail": "範本不存在"})
+        raise NotFoundError("範本不存在", detail={"code": ErrorCode.NOT_FOUND, "resource": "motion_template", "id": str(template_id)})
     if not _can_modify(t, user):
-        raise ForbiddenError("標準範本需 approver+；草稿僅擁有者可改", detail={"code": ErrorCode.FORBIDDEN, "resource": "motion_template", "action": "modify", "_compat_detail": "標準範本需 approver+；草稿僅擁有者可改"})
+        raise ForbiddenError("標準範本需 approver+；草稿僅擁有者可改", detail={"code": ErrorCode.FORBIDDEN, "resource": "motion_template", "action": "modify"})
     if payload.name_zh is not None:
         t.name_zh = payload.name_zh
     if payload.name_en is not None:
@@ -133,7 +133,7 @@ async def delete_template(template_id: uuid.UUID, session: AsyncSession = Depend
     if t is None:
         return
     if not _can_modify(t, user):
-        raise ForbiddenError("標準範本需 approver+；草稿僅擁有者可刪", detail={"code": ErrorCode.FORBIDDEN, "resource": "motion_template", "action": "delete", "_compat_detail": "標準範本需 approver+；草稿僅擁有者可刪"})
+        raise ForbiddenError("標準範本需 approver+；草稿僅擁有者可刪", detail={"code": ErrorCode.FORBIDDEN, "resource": "motion_template", "action": "delete"})
     await session.delete(t)
     await session.flush()
 

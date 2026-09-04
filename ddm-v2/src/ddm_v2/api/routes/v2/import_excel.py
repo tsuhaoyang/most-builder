@@ -63,7 +63,6 @@ async def upload(file: UploadFile = File(...), worksheet_id: uuid.UUID | None = 
             detail={
                 "code": ErrorCode.PAYLOAD_TOO_LARGE,
                 "max_bytes": _MAX_UPLOAD_BYTES,
-                "_compat_detail": msg,
             },
         )
     try:
@@ -72,12 +71,12 @@ async def upload(file: UploadFile = File(...), worksheet_id: uuid.UUID | None = 
         msg = f"無法解析 Excel：{e}"
         raise ValidationError(
             msg,
-            detail={"code": ErrorCode.VALIDATION_ERROR, "_compat_detail": msg},
+            detail={"code": ErrorCode.VALIDATION_ERROR},
         ) from e
     if not raw["sheets"]:
         raise ValidationError(
             "檔案沒有可讀的分頁",
-            detail={"code": ErrorCode.VALIDATION_ERROR, "_compat_detail": "檔案沒有可讀的分頁"},
+            detail={"code": ErrorCode.VALIDATION_ERROR},
         )
 
     rec = ExcelImport(id=uuid.uuid4(), worksheet_id=worksheet_id, source_name=file.filename,
@@ -102,7 +101,7 @@ async def map_columns(import_id: uuid.UUID, payload: MapIn, session: AsyncSessio
     if rec is None:
         raise NotFoundError(
             "匯入批次不存在",
-            detail={"code": ErrorCode.NOT_FOUND, "resource": "import", "import_id": str(import_id), "_compat_detail": "匯入批次不存在"},
+            detail={"code": ErrorCode.NOT_FOUND, "resource": "import", "import_id": str(import_id)},
         )
     rows, warnings = import_service.apply_mapping(rec.raw_payload, payload.sheet, payload.header_row,
                                                   payload.column_map, payload.time_unit)
@@ -123,7 +122,7 @@ async def get_import(import_id: uuid.UUID, session: AsyncSession = Depends(get_d
     if rec is None:
         raise NotFoundError(
             "匯入批次不存在",
-            detail={"code": ErrorCode.NOT_FOUND, "resource": "import", "import_id": str(import_id), "_compat_detail": "匯入批次不存在"},
+            detail={"code": ErrorCode.NOT_FOUND, "resource": "import", "import_id": str(import_id)},
         )
     rows = rec.staged_rows or []
     # ADR-025 D10：match 以「現在」的 active 重算，不持久化 → GET 每次重新計算（避免 stale TMU）。
@@ -203,37 +202,37 @@ async def submit_import(
         if code == "import_not_found":
             raise NotFoundError(
                 "匯入批次不存在",
-                detail={"code": ErrorCode.NOT_FOUND, "resource": "import", "import_id": str(import_id), "_compat_detail": "匯入批次不存在"},
+                detail={"code": ErrorCode.NOT_FOUND, "resource": "import", "import_id": str(import_id)},
             ) from None
         if code == "already_submitted":
             # Fix-H2：已提交批次不得重複提交
             raise ConflictError(
                 "此匯入批次已完成提交，如需再次匯入請重新上傳",
-                detail={"code": ErrorCode.CONFLICT, "_compat_detail": "此匯入批次已完成提交，如需再次匯入請重新上傳"},
+                detail={"code": ErrorCode.CONFLICT},
             ) from None
         if code == "import_not_mapped":
             raise ConflictError(
                 "匯入批次尚未完成欄位對應（status 須為 mapped）",
-                detail={"code": ErrorCode.CONFLICT, "_compat_detail": "匯入批次尚未完成欄位對應（status 須為 mapped）"},
+                detail={"code": ErrorCode.CONFLICT},
             ) from None
         if code == "worksheet_not_found":
             raise NotFoundError(
                 "工序表不存在",
-                detail={"code": ErrorCode.NOT_FOUND, "resource": "worksheet", "worksheet_id": str(payload.worksheet_id), "_compat_detail": "工序表不存在"},
+                detail={"code": ErrorCode.NOT_FOUND, "resource": "worksheet", "worksheet_id": str(payload.worksheet_id)},
             ) from None
         if code == "worksheet_not_draft":
             # Fix-H3：只允許提交到 draft 工序表
             raise ConflictError(
                 "工序表已發布或退役，無法新增列（須為 draft 狀態）",
-                detail={"code": ErrorCode.CONFLICT, "_compat_detail": "工序表已發布或退役，無法新增列（須為 draft 狀態）"},
+                detail={"code": ErrorCode.CONFLICT},
             ) from None
         if code == "no_staged_rows":
             raise ValidationError(
                 "無暫存列可提交",
-                detail={"code": ErrorCode.VALIDATION_ERROR, "_compat_detail": "無暫存列可提交"},
+                detail={"code": ErrorCode.VALIDATION_ERROR},
             ) from None
         raise ValidationError(
             str(e),
-            detail={"code": ErrorCode.VALIDATION_ERROR, "_compat_detail": str(e)},
+            detail={"code": ErrorCode.VALIDATION_ERROR},
         ) from None
     return SubmitOut(**result)

@@ -27,32 +27,33 @@ async def save_worksheet(worksheet_id: uuid.UUID, payload: WorksheetSaveIn, sess
         )
     except svc.WorksheetNotFound:
         msg = f"worksheet 不存在：{worksheet_id}"
-        raise NotFoundError(msg, detail={"code": ErrorCode.NOT_FOUND, "resource": "worksheet", "worksheet_id": str(worksheet_id), "_compat_detail": msg})
+        raise NotFoundError(msg, detail={"code": ErrorCode.NOT_FOUND, "resource": "worksheet", "worksheet_id": str(worksheet_id)})
     except svc.RuleSetNotFound as e:
         msg = f"rule-set 不存在：{e}"
-        raise NotFoundError(msg, detail={"code": ErrorCode.NOT_FOUND, "resource": "rule_set", "rule_set_code": str(e), "_compat_detail": msg})
+        raise NotFoundError(msg, detail={"code": ErrorCode.NOT_FOUND, "resource": "rule_set", "rule_set_code": str(e)})
     except svc.NotEditable as e:
         msg = str(e)
-        raise ConflictError(msg, detail={"code": ErrorCode.CONFLICT, "_compat_detail": msg})
+        raise ConflictError(msg, detail={"code": ErrorCode.CONFLICT})
     except svc.SimoPairInvalid as e:
         compat = {"code": "SIMO_PAIR_INVALID", "message": str(e)}
         raise ValidationError(
             str(e),
-            detail={"code": ErrorCode.SIMO_PAIR_INVALID, "_compat_detail": compat},
+            detail={**compat},
         )
     except RuleSetIncomplete as e:
         msg = str(e)
-        raise ConflictError(msg, detail={"code": ErrorCode.RULE_SET_INCOMPLETE, "_compat_detail": msg})
+        raise ConflictError(msg, detail={"code": ErrorCode.RULE_SET_INCOMPLETE})
     except SequenceError as e:
         # `svc.RowSequenceError` 會多掛 seq_no／row_id（存檔迴圈裡指得出是哪一列）；
-        # 其他 SequenceError 沒有這兩個屬性 → 維持原本的兩鍵 detail。
+        # 其他 SequenceError 沒有這兩個屬性 → detail 僅含 code/message。
         # I1：engine e.code 動態讀取，不常數化、不碰 engine（ADR-034 §3）。
+        # C4：detail={**compat} 結構化 spread，error.detail 仍含 code/message/seq_no/row_id。
         compat: dict = {"code": e.code, "message": str(e)}
         row_id = getattr(e, "row_id", None)
         if row_id is not None:
             compat["seq_no"] = getattr(e, "seq_no", None)
             compat["row_id"] = str(row_id)
-        raise ValidationError(str(e), detail={"code": e.code, "_compat_detail": compat})
+        raise ValidationError(str(e), detail={**compat})
     return WorksheetReadOut(**result)
 
 
@@ -64,7 +65,7 @@ async def read_worksheet(worksheet_id: uuid.UUID, session: AsyncSession = Depend
         result = await svc.read_worksheet(session, worksheet_id)
     except svc.WorksheetNotFound:
         msg = f"worksheet 不存在：{worksheet_id}"
-        raise NotFoundError(msg, detail={"code": ErrorCode.NOT_FOUND, "resource": "worksheet", "worksheet_id": str(worksheet_id), "_compat_detail": msg})
+        raise NotFoundError(msg, detail={"code": ErrorCode.NOT_FOUND, "resource": "worksheet", "worksheet_id": str(worksheet_id)})
     return WorksheetReadOut(**result)
 
 
@@ -76,7 +77,7 @@ async def worksheet_versions(worksheet_id: uuid.UUID, session: AsyncSession = De
         return await svc.list_versions(session, worksheet_id)
     except svc.WorksheetNotFound:
         msg = f"worksheet 不存在：{worksheet_id}"
-        raise NotFoundError(msg, detail={"code": ErrorCode.NOT_FOUND, "resource": "worksheet", "worksheet_id": str(worksheet_id), "_compat_detail": msg})
+        raise NotFoundError(msg, detail={"code": ErrorCode.NOT_FOUND, "resource": "worksheet", "worksheet_id": str(worksheet_id)})
 
 
 @router.post("/worksheets/{worksheet_id}/level/validate")
@@ -94,7 +95,7 @@ async def validate_worksheet_level(
         )
     except svc.WorksheetNotFound:
         msg = f"worksheet 不存在：{worksheet_id}"
-        raise NotFoundError(msg, detail={"code": ErrorCode.NOT_FOUND, "resource": "worksheet", "worksheet_id": str(worksheet_id), "_compat_detail": msg})
+        raise NotFoundError(msg, detail={"code": ErrorCode.NOT_FOUND, "resource": "worksheet", "worksheet_id": str(worksheet_id)})
     # ConflictError → main.py（LEVEL_POLICY_MISMATCH 等）
 
 
@@ -105,10 +106,10 @@ async def publish_worksheet(worksheet_id: uuid.UUID, session: AsyncSession = Dep
         return await svc.publish_worksheet(session, worksheet_id, actor=user.employee_no)
     except svc.WorksheetNotFound:
         msg = f"worksheet 不存在：{worksheet_id}"
-        raise NotFoundError(msg, detail={"code": ErrorCode.NOT_FOUND, "resource": "worksheet", "worksheet_id": str(worksheet_id), "_compat_detail": msg})
+        raise NotFoundError(msg, detail={"code": ErrorCode.NOT_FOUND, "resource": "worksheet", "worksheet_id": str(worksheet_id)})
     except svc.NotEditable as e:
         msg = str(e)
-        raise ConflictError(msg, detail={"code": ErrorCode.CONFLICT, "_compat_detail": msg})
+        raise ConflictError(msg, detail={"code": ErrorCode.CONFLICT})
     # ConflictError / ValidationError → main.py（LEVEL_VALIDATION_* / LEVEL_POLICY_MISMATCH）
 
 
@@ -119,7 +120,7 @@ async def clone_worksheet(worksheet_id: uuid.UUID, session: AsyncSession = Depen
         return await svc.clone_worksheet(session, worksheet_id, actor=user.employee_no)
     except svc.WorksheetNotFound:
         msg = f"worksheet 不存在：{worksheet_id}"
-        raise NotFoundError(msg, detail={"code": ErrorCode.NOT_FOUND, "resource": "worksheet", "worksheet_id": str(worksheet_id), "_compat_detail": msg})
+        raise NotFoundError(msg, detail={"code": ErrorCode.NOT_FOUND, "resource": "worksheet", "worksheet_id": str(worksheet_id)})
 
 
 @router.post("/worksheets/{worksheet_id}/retire")
@@ -129,7 +130,7 @@ async def retire_worksheet(worksheet_id: uuid.UUID, session: AsyncSession = Depe
         return await svc.retire_worksheet(session, worksheet_id, actor=user.employee_no)
     except svc.WorksheetNotFound:
         msg = f"worksheet 不存在：{worksheet_id}"
-        raise NotFoundError(msg, detail={"code": ErrorCode.NOT_FOUND, "resource": "worksheet", "worksheet_id": str(worksheet_id), "_compat_detail": msg})
+        raise NotFoundError(msg, detail={"code": ErrorCode.NOT_FOUND, "resource": "worksheet", "worksheet_id": str(worksheet_id)})
     except svc.NotEditable as e:
         msg = str(e)
-        raise ConflictError(msg, detail={"code": ErrorCode.CONFLICT, "_compat_detail": msg})
+        raise ConflictError(msg, detail={"code": ErrorCode.CONFLICT})

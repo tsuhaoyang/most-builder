@@ -58,13 +58,13 @@ async def post_reviews(
         msg = f"parse run 不存在：{run_id}"
         raise NotFoundError(
             msg,
-            detail={"code": ErrorCode.NOT_FOUND, "resource": "parse_run", "run_id": str(run_id), "_compat_detail": msg},
+            detail={"code": ErrorCode.NOT_FOUND, "resource": "parse_run", "run_id": str(run_id)},
         ) from None
     except svc.ValidationError as exc:
         compat = {"code": "VALIDATION_ERROR", "message": exc.message}
         raise ValidationError(
             exc.message,
-            detail={**compat, "_compat_detail": compat},
+            detail={**compat},
         ) from None
 
 
@@ -82,6 +82,6 @@ async def get_reviews(
         msg = f"parse run 不存在：{run_id}"
         raise NotFoundError(
             msg,
-            detail={"code": ErrorCode.NOT_FOUND, "resource": "parse_run", "run_id": str(run_id), "_compat_detail": msg},
+            detail={"code": ErrorCode.NOT_FOUND, "resource": "parse_run", "run_id": str(run_id)},
         )
     return await svc.list_events_for_run(session, run_id)

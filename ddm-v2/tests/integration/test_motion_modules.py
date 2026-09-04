@@ -610,7 +610,7 @@ async def test_update_non_draft_rejected(client, db_session):
 
     up = await client.put(f"/api/v2/motion-modules/{mid}", json={"name_zh": "should-be-rejected"})
     assert up.status_code == 409, up.text
-    assert "detail" in up.json()
+    assert "error" in up.json()
 
 
 # ── T-1：DELETE 系列 ─────────────────────────────────────────────────────────
@@ -648,7 +648,7 @@ async def test_delete_standard_module_rejected(client, db_session):
 
     d = await client.delete(f"/api/v2/motion-modules/{mid}")
     assert d.status_code == 409, d.text
-    assert "detail" in d.json()
+    assert "error" in d.json()
 
 
 async def test_delete_other_personal_module_blocked(client):
@@ -738,7 +738,7 @@ async def test_clone_other_personal_module_blocked(client):
         headers={"X-Username": ie_user},
     )
     assert c.status_code == 404, c.text
-    assert "detail" in c.json()
+    assert "error" in c.json()
 
 
 # ── T-3：instantiate（worksheets from-module）系列 ─────────────────────────────
@@ -844,7 +844,7 @@ async def test_instantiate_retired_module_rejected(client, db_session):
         json={"module_id": mid},
     )
     assert inst.status_code == 409, inst.text
-    assert "detail" in inst.json()
+    assert "error" in inst.json()
 
 
 async def test_instantiate_to_other_worksheet_blocked(client):
@@ -969,7 +969,7 @@ async def test_update_scope_escalation_blocked(client):
         headers=h,
     )
     assert up.status_code == 403, up.text
-    assert "detail" in up.json()
+    assert "error" in up.json()
 
 
 # ── T-3d：provenance read-back ──────────────────────────────────────────────
@@ -1235,7 +1235,7 @@ async def _make_simo_module(client, prefix: str) -> str:
 
 def _assert_simo_pair_invalid(resp) -> None:
     assert resp.status_code == 422, resp.text
-    detail = resp.json()["detail"]
+    detail = resp.json()["error"]["detail"]
     assert detail["code"] == "SIMO_PAIR_INVALID", detail
 
 
@@ -1385,7 +1385,7 @@ async def test_worksheet_put_mutual_simo_pair_422(client):
         "rows": [_ws_row(r1_id, 1, r2_id), _ws_row(r2_id, 2, r1_id)],
     })
     assert r.status_code == 422, r.text
-    assert r.json()["detail"]["code"] == "SIMO_PAIR_INVALID"
+    assert r.json()["error"]["code"] == "SIMO_PAIR_INVALID"
 
 
 async def test_list_summary_none_for_unpublished(client):

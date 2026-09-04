@@ -70,7 +70,7 @@ async def test_create_synonym_on_retired_returns_409(client, db_session):
     code = await _throwaway(db_session, "retired")
     r = await client.post(_url(code), json=_payload())
     assert r.status_code == 409, r.text
-    detail = r.json()["detail"]
+    detail = r.json()["error"]["detail"]
     assert isinstance(detail, dict) and detail["code"] == "RULE_SET_RETIRED", detail
     # 被拒不得有副作用：清單仍為空
     assert (await client.get(_url(code))).json() == []
@@ -90,7 +90,7 @@ async def test_delete_synonym_on_retired_returns_409(client, db_session):
 
     r = await client.delete(f"{_url(code)}/{syn_id}")
     assert r.status_code == 409, r.text
-    detail = r.json()["detail"]
+    detail = r.json()["error"]["detail"]
     assert isinstance(detail, dict) and detail["code"] == "RULE_SET_RETIRED", detail
     # 被拒的刪除不得有副作用：同義詞仍在
     listed = (await client.get(_url(code))).json()

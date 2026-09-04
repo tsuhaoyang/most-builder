@@ -44,7 +44,7 @@ async def list_synonyms(
         msg = f"rule-set 不存在：{code}"
         raise NotFoundError(
             msg,
-            detail={"code": ErrorCode.NOT_FOUND, "resource": "rule_set", "rule_set_code": code, "_compat_detail": msg},
+            detail={"code": ErrorCode.NOT_FOUND, "resource": "rule_set", "rule_set_code": code},
         ) from None
 
 
@@ -66,31 +66,31 @@ async def create_synonym(
         msg = f"rule-set 不存在：{code}"
         raise NotFoundError(
             msg,
-            detail={"code": ErrorCode.NOT_FOUND, "resource": "rule_set", "rule_set_code": code, "_compat_detail": msg},
+            detail={"code": ErrorCode.NOT_FOUND, "resource": "rule_set", "rule_set_code": code},
         ) from None
     except svc.RuleSetRetired:
         compat = {"code": "RULE_SET_RETIRED", "message": f"rule-set {code} 已下架（終態），不可增刪同義詞"}
         raise ConflictError(
             compat["message"],
-            detail={**compat, "_compat_detail": compat},
+            detail={**compat},
         ) from None
     except svc.OptionCodeNotFound as e:
         compat = {"code": "OPTION_CODE_NOT_FOUND", "parameter": e.parameter, "option_code": e.option_code}
         raise ValidationError(
             f"option_code 不存在：{e.option_code}",
-            detail={**compat, "_compat_detail": compat},
+            detail={**compat},
         ) from None
     except ValueError as e:
         compat = {"code": "VALIDATION_ERROR", "message": str(e)}
         raise ValidationError(
             str(e),
-            detail={**compat, "_compat_detail": compat},
+            detail={**compat},
         ) from e
     except svc.SynonymConflict as e:
         compat = {"code": "SYNONYM_CONFLICT", "existing": e.existing}
         raise ConflictError(
             "同義詞已存在",
-            detail={**compat, "_compat_detail": compat},
+            detail={**compat},
         ) from None
     except svc.SynonymPriorityCollision as e:
         compat = {
@@ -105,7 +105,7 @@ async def create_synonym(
         }
         raise ConflictError(
             compat["message"],
-            detail={**compat, "_compat_detail": compat},
+            detail={**compat},
         ) from None
 
 
@@ -122,18 +122,18 @@ async def delete_synonym(
         msg = f"rule-set 不存在：{code}"
         raise NotFoundError(
             msg,
-            detail={"code": ErrorCode.NOT_FOUND, "resource": "rule_set", "rule_set_code": code, "_compat_detail": msg},
+            detail={"code": ErrorCode.NOT_FOUND, "resource": "rule_set", "rule_set_code": code},
         ) from None
     except svc.RuleSetRetired:
         compat = {"code": "RULE_SET_RETIRED", "message": f"rule-set {code} 已下架（終態），不可增刪同義詞"}
         raise ConflictError(
             compat["message"],
-            detail={**compat, "_compat_detail": compat},
+            detail={**compat},
         ) from None
     except svc.SynonymNotFound:
         msg = f"同義詞不存在：{syn_id}"
         raise NotFoundError(
             msg,
-            detail={"code": ErrorCode.NOT_FOUND, "resource": "synonym", "synonym_id": syn_id, "_compat_detail": msg},
+            detail={"code": ErrorCode.NOT_FOUND, "resource": "synonym", "synonym_id": syn_id},
         ) from None
     return Response(status_code=204)

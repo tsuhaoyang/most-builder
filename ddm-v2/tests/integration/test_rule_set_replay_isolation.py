@@ -228,7 +228,7 @@ async def test_publish_incomplete_draft_returns_409(client, db_session):
 
     r = await client.post(f"/api/v2/rule-sets/{code}/publish")
     assert r.status_code == 409, r.text
-    assert r.json()["detail"]["code"] == "RULE_SET_INCOMPLETE"
+    assert r.json()["error"]["code"] == "RULE_SET_INCOMPLETE"
     assert (await _rule_set(db_session, code)).status == "draft", "驗證失敗不得留下半發布狀態"
 
 

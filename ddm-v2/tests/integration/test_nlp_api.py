@@ -88,9 +88,9 @@ async def test_create_synonym_duplicate_returns_409(client):
     second = await client.post(f"/api/v2/rule-sets/{code}/synonyms", json=payload)
     assert second.status_code == 409, second.text
     body = second.json()
-    assert "detail" in body
-    assert body["detail"]["code"] == "SYNONYM_CONFLICT"
-    assert "existing" in body["detail"]
+    assert "error" in body
+    assert body["error"]["code"] == "SYNONYM_CONFLICT"
+    assert "existing" in body["error"]["detail"]
 
 
 async def test_create_synonym_same_norm_two_codes_variant_group(client):
@@ -127,8 +127,8 @@ async def test_create_synonym_same_norm_two_codes_variant_group(client):
         json={"parameter": "P", "option_code": "p_place_none", "synonym_raw": raw, "priority": 2},
     )
     assert dup.status_code == 409, dup.text
-    assert dup.json()["detail"]["code"] == "SYNONYM_CONFLICT"
-    assert dup.json()["detail"]["existing"]["option_code"] == "p_place_none"
+    assert dup.json()["error"]["code"] == "SYNONYM_CONFLICT"
+    assert dup.json()["error"]["detail"]["existing"]["option_code"] == "p_place_none"
 
     # 清理（不污染 dev DB 詞典——變體測試面不留在正式詞典裡）
     for s in mine:
@@ -160,7 +160,7 @@ async def test_create_synonym_same_norm_same_priority_other_code_rejected(client
         json={"parameter": "G", "option_code": "g_touch", "synonym_raw": raw, "priority": 0},
     )
     assert clash.status_code == 409, clash.text
-    detail = clash.json()["detail"]
+    detail = clash.json()["error"]["detail"]
     assert detail["code"] == "SYNONYM_PRIORITY_COLLISION"
     assert "priority" in detail["message"] and "偏好序" in detail["message"]
     assert detail["existing"]["option_code"] == "g_grasp"
@@ -233,7 +233,7 @@ async def test_create_synonym_invalid_option_code_returns_422(client):
         },
     )
     assert resp.status_code == 422, resp.text
-    assert resp.json()["detail"]["code"] == "OPTION_CODE_NOT_FOUND"
+    assert resp.json()["error"]["code"] == "OPTION_CODE_NOT_FOUND"
 
 
 async def test_create_synonym_empty_after_normalize_returns_422(client):

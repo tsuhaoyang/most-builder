@@ -74,7 +74,7 @@ async def _load_rule_set(session: AsyncSession, code: str) -> RuleSetData:
         msg = f"rule-set 不存在：{code}"
         raise NotFoundError(
             msg,
-            detail={"code": ErrorCode.NOT_FOUND, "resource": "rule_set", "rule_set_code": code, "_compat_detail": msg},
+            detail={"code": ErrorCode.NOT_FOUND, "resource": "rule_set", "rule_set_code": code},
         ) from e
     rs.validate_complete()
     return rs
@@ -88,7 +88,7 @@ async def rule_set_options(code: str, session: AsyncSession = Depends(get_db_ses
         msg = f"rule-set 不存在：{code}"
         raise NotFoundError(
             msg,
-            detail={"code": ErrorCode.NOT_FOUND, "resource": "rule_set", "rule_set_code": code, "_compat_detail": msg},
+            detail={"code": ErrorCode.NOT_FOUND, "resource": "rule_set", "rule_set_code": code},
         )
     return opts
 
@@ -103,7 +103,7 @@ async def calculate(cycle: CycleIn, session: AsyncSession = Depends(get_db_sessi
         msg = str(e)
         raise ConflictError(
             msg,
-            detail={"code": ErrorCode.RULE_SET_INCOMPLETE, "_compat_detail": msg},
+            detail={"code": ErrorCode.RULE_SET_INCOMPLETE},
         ) from e
     try:
         result = compute_cycle(cycle_in_to_engine(cycle), rs)
@@ -112,7 +112,7 @@ async def calculate(cycle: CycleIn, session: AsyncSession = Depends(get_db_sessi
         compat = {"code": e.code, "message": str(e)}
         raise ValidationError(
             str(e),
-            detail={**compat, "_compat_detail": compat},
+            detail={**compat},
         ) from e
     return CalculateResponse(
         seq=result.seq,
@@ -145,6 +145,6 @@ def build_level_output(rows: list[LevelRowIn], _: CurrentUser = Depends(current_
         compat = {"message": "Level 驗證未通過，無法輸出", "issues": [{"code": i.code, "row_index": i.row_index, "message": i.message} for i in issues]}
         raise ValidationError(
             compat["message"],
-            detail={"code": ErrorCode.VALIDATION_ERROR, **compat, "_compat_detail": compat},
+            detail={"code": ErrorCode.VALIDATION_ERROR, **compat},
         )
     return LevelOutputResponse(**level_engine.build_output(level_rows))

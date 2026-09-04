@@ -325,7 +325,7 @@ async def test_instantiate_empty_project_does_not_create_worksheet(client):
         json={"sku_id": skus[0]["id"]},
     )
     assert response.status_code == 422, response.text
-    assert response.json()["detail"]["code"] == "EMPTY_PROJECT"
+    assert response.json()["error"]["code"] == "EMPTY_PROJECT"
     after = (await client.get(f"/api/v2/skus/{skus[0]['id']}/worksheets")).json()
     assert len(after) == len(before)
 
@@ -361,7 +361,7 @@ async def test_instantiate_runtime_failure_rolls_back_worksheet_and_prior_rows(c
         json={"sku_id": sku_id, "model_label": "ROLLBACK-MID-LOOP"},
     )
     assert response.status_code == 422, response.text
-    assert response.json()["detail"]["code"] == "VOCAB_REF_INVALID"
+    assert response.json()["error"]["code"] == "VOCAB_REF_INVALID"
 
     after = (await client.get(f"/api/v2/skus/{sku_id}/worksheets")).json()
     assert len(after) == len(before)

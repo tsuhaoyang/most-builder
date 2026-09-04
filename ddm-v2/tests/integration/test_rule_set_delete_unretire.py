@@ -80,7 +80,7 @@ async def _row(db_session, code: str) -> RuleSet:
 
 
 async def _detail(resp) -> dict:
-    body = resp.json()["detail"]
+    body = resp.json()["error"]["detail"]
     assert isinstance(body, dict), f"錯誤形狀應為 {{code, message}}，收到 {body!r}"
     return body
 

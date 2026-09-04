@@ -64,7 +64,7 @@ async def test_calculate_a_return_component_422(client):
     cyc = dict(GM_GOLD, a6={"reach_cm": 25, "twist_deg": 90})
     r = await _calc(client, cyc)
     assert r.status_code == 422
-    assert r.json()["detail"]["code"] == "A_RETURN_COMPONENT"
+    assert r.json()["error"]["code"] == "A_RETURN_COMPONENT"
 
 
 async def test_calculate_p_addon_conflict_422(client):
@@ -72,7 +72,7 @@ async def test_calculate_p_addon_conflict_422(client):
     cyc = dict(GM_GOLD, p5={"p_base_code": "p_place_none", "p_addon_codes": ["a_insert", "a_snap"]})
     r = await _calc(client, cyc)
     assert r.status_code == 422
-    assert r.json()["detail"]["code"] == "P_ADDON_CONFLICT"
+    assert r.json()["error"]["code"] == "P_ADDON_CONFLICT"
 
 
 async def test_calculate_override_invalid_422(client):
@@ -81,7 +81,7 @@ async def test_calculate_override_invalid_422(client):
         cyc = dict(GM_GOLD, g2={"g_code": "g_grasp", "manual_override": bad})
         r = await _calc(client, cyc)
         assert r.status_code == 422, r.text
-        assert r.json()["detail"]["code"] == "OVERRIDE_INVALID"
+        assert r.json()["error"]["code"] == "OVERRIDE_INVALID"
 
 
 async def test_calculate_repeat_invalid_422(client):
@@ -95,7 +95,7 @@ async def test_calculate_repeat_invalid_422(client):
         cyc = dict(GM_GOLD, g2={"g_code": "g_grasp", "repeat_count": bad})
         r = await _calc(client, cyc)
         assert r.status_code == 422, f"repeat_count={bad!r} 應 422，得 {r.status_code}"
-        assert r.json()["detail"]["code"] == "REPEAT_INVALID"
+        assert r.json()["error"]["code"] == "REPEAT_INVALID"
 
 
 async def test_calculate_repeat_on_a_slot_422(client):
@@ -103,7 +103,7 @@ async def test_calculate_repeat_on_a_slot_422(client):
     cyc = dict(GM_GOLD, a0={"reach_cm": 20, "repeat_count": 2})
     r = await _calc(client, cyc)
     assert r.status_code == 422, r.text
-    assert r.json()["detail"]["code"] == "REPEAT_INVALID"
+    assert r.json()["error"]["code"] == "REPEAT_INVALID"
 
 
 async def test_calculate_x_seconds_required_422(client):
@@ -115,19 +115,19 @@ async def test_calculate_x_seconds_required_422(client):
     cyc_zero = dict(base_cm, x4={"x_code": "x_press", "x_seconds": 0})
     r = await _calc(client, cyc_zero)
     assert r.status_code == 422, r.text
-    assert r.json()["detail"]["code"] == "X_SECONDS_REQUIRED"
+    assert r.json()["error"]["code"] == "X_SECONDS_REQUIRED"
 
     # x_seconds 未填（預設 0）→ X_SECONDS_REQUIRED
     cyc_missing = dict(base_cm, x4={"x_code": "x_press"})
     r = await _calc(client, cyc_missing)
     assert r.status_code == 422, r.text
-    assert r.json()["detail"]["code"] == "X_SECONDS_REQUIRED"
+    assert r.json()["error"]["code"] == "X_SECONDS_REQUIRED"
 
     # x_seconds=-1 → X_NEGATIVE（語意區分：方向/符號錯誤 ≠ 必填未填）
     cyc_neg = dict(base_cm, x4={"x_code": "x_press", "x_seconds": -1})
     r = await _calc(client, cyc_neg)
     assert r.status_code == 422, r.text
-    assert r.json()["detail"]["code"] == "X_NEGATIVE"
+    assert r.json()["error"]["code"] == "X_NEGATIVE"
 
 
 async def test_calculate_override_applies_and_marks_star(client):
@@ -152,7 +152,7 @@ async def test_calculate_m_companion_without_verb_422(client):
     cyc = dict(CM_GOLD, m3={"m_components": [{"verb_code": "m_hand", "angle_deg": 90}]})
     r = await _calc(client, cyc)
     assert r.status_code == 422, r.text
-    body = r.json()["detail"]
+    body = r.json()["error"]["detail"]
     assert body["code"] == "M_COMPANION_WITHOUT_VERB"
     assert "m_hand" in body["message"]
 

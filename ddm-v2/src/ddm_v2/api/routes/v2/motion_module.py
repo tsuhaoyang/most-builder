@@ -80,7 +80,7 @@ async def create_module(
         return await svc.create_module(session, payload, user.employee_no, user.level)
     except svc.ScopePermissionError as e:
         msg = str(e)
-        raise ForbiddenError(msg, detail={"code": ErrorCode.FORBIDDEN, "resource": "module", "action": "create", "_compat_detail": msg}) from None
+        raise ForbiddenError(msg, detail={"code": ErrorCode.FORBIDDEN, "resource": "module", "action": "create"}) from None
 
 
 # ── 取詳情 ───────────────────────────────────────────────────────────
@@ -96,7 +96,7 @@ async def get_module(
         return await svc.get_module(session, module_id, user.employee_no)
     except svc.ModuleNotFound:
         msg = f"模組不存在：{module_id}"
-        raise NotFoundError(msg, detail={"code": ErrorCode.NOT_FOUND, "resource": "module", "module_id": str(module_id), "_compat_detail": msg}) from None
+        raise NotFoundError(msg, detail={"code": ErrorCode.NOT_FOUND, "resource": "module", "module_id": str(module_id)}) from None
 
 
 # ── 排序（stub）─────────────────────────────────────────────────────
@@ -127,13 +127,13 @@ async def update_module(
         return await svc.update_module(session, module_id, payload, user.employee_no, user.level)
     except svc.ModuleNotFound:
         msg = f"模組不存在：{module_id}"
-        raise NotFoundError(msg, detail={"code": ErrorCode.NOT_FOUND, "resource": "module", "module_id": str(module_id), "_compat_detail": msg}) from None
+        raise NotFoundError(msg, detail={"code": ErrorCode.NOT_FOUND, "resource": "module", "module_id": str(module_id)}) from None
     except svc.ModuleNotEditable as e:
         msg = str(e)
-        raise ConflictError(msg, detail={"code": ErrorCode.CONFLICT, "_compat_detail": msg}) from None
+        raise ConflictError(msg, detail={"code": ErrorCode.CONFLICT}) from None
     except svc.ScopePermissionError as e:
         msg = str(e)
-        raise ForbiddenError(msg, detail={"code": ErrorCode.FORBIDDEN, "resource": "module", "action": "modify", "_compat_detail": msg}) from None
+        raise ForbiddenError(msg, detail={"code": ErrorCode.FORBIDDEN, "resource": "module", "action": "modify"}) from None
 
 
 # ── 刪除 ─────────────────────────────────────────────────────────────
@@ -148,13 +148,13 @@ async def delete_module(
         await svc.delete_module(session, module_id, user.employee_no)
     except svc.ModuleNotFound:
         msg = f"模組不存在：{module_id}"
-        raise NotFoundError(msg, detail={"code": ErrorCode.NOT_FOUND, "resource": "module", "module_id": str(module_id), "_compat_detail": msg}) from None
+        raise NotFoundError(msg, detail={"code": ErrorCode.NOT_FOUND, "resource": "module", "module_id": str(module_id)}) from None
     except svc.ScopePermissionError as e:
         msg = str(e)
-        raise ForbiddenError(msg, detail={"code": ErrorCode.FORBIDDEN, "resource": "module", "action": "delete", "_compat_detail": msg}) from None
+        raise ForbiddenError(msg, detail={"code": ErrorCode.FORBIDDEN, "resource": "module", "action": "delete"}) from None
     except svc.ModuleIsStandard as e:
         msg = str(e)
-        raise ConflictError(msg, detail={"code": ErrorCode.CONFLICT, "_compat_detail": msg}) from None
+        raise ConflictError(msg, detail={"code": ErrorCode.CONFLICT}) from None
 
 
 # ── 複製 ─────────────────────────────────────────────────────────────
@@ -173,7 +173,7 @@ async def clone_module(
         return await svc.clone_module(session, module_id, user.employee_no)
     except svc.ModuleNotFound:
         msg = f"模組不存在：{module_id}"
-        raise NotFoundError(msg, detail={"code": ErrorCode.NOT_FOUND, "resource": "module", "module_id": str(module_id), "_compat_detail": msg}) from None
+        raise NotFoundError(msg, detail={"code": ErrorCode.NOT_FOUND, "resource": "module", "module_id": str(module_id)}) from None
 
 
 # ── 發布新版本 ───────────────────────────────────────────────────────
@@ -193,24 +193,24 @@ async def publish_version(
         return await svc.publish_version(session, module_id, payload, user.employee_no)
     except svc.ModuleNotFound:
         msg = f"模組不存在：{module_id}"
-        raise NotFoundError(msg, detail={"code": ErrorCode.NOT_FOUND, "resource": "module", "module_id": str(module_id), "_compat_detail": msg}) from None
+        raise NotFoundError(msg, detail={"code": ErrorCode.NOT_FOUND, "resource": "module", "module_id": str(module_id)}) from None
     except svc.ModuleNotEditable as e:
         msg = str(e)
-        raise ConflictError(msg, detail={"code": ErrorCode.CONFLICT, "_compat_detail": msg}) from None
+        raise ConflictError(msg, detail={"code": ErrorCode.CONFLICT}) from None
     except svc.ScopePermissionError as e:
         # SM-5：publish 時的 ownership guard → 403
         msg = str(e)
-        raise ForbiddenError(msg, detail={"code": ErrorCode.FORBIDDEN, "resource": "module", "action": "publish", "_compat_detail": msg}) from None
+        raise ForbiddenError(msg, detail={"code": ErrorCode.FORBIDDEN, "resource": "module", "action": "publish"}) from None
     except svc.RuleSetNotFound as e:
         msg = f"rule-set 不存在：{e}"
-        raise NotFoundError(msg, detail={"code": ErrorCode.NOT_FOUND, "resource": "rule_set", "rule_set_code": str(e), "_compat_detail": msg}) from None
+        raise NotFoundError(msg, detail={"code": ErrorCode.NOT_FOUND, "resource": "rule_set", "rule_set_code": str(e)}) from None
     except svc.PublishValidationError as e:
         compat = {"code": e.code, "row_index": e.row_index, "message": e.message}
-        raise ValidationError(e.message, detail={**compat, "_compat_detail": compat}) from e
+        raise ValidationError(e.message, detail={**compat}) from e
     except SequenceError as e:
         # I1：engine SequenceError 的 code 維持動態讀取（不常數化、不碰 engine）。
         compat = {"code": e.code, "message": str(e)}
-        raise ValidationError(compat["message"], detail={**compat, "_compat_detail": compat}) from e
+        raise ValidationError(compat["message"], detail={**compat}) from e
 
 
 # ── apply-back：從工序表列同步回模組庫（SM-7）────────────────────────
@@ -231,23 +231,23 @@ async def create_version_from_rows(
         return await svc.create_version_from_rows(session, module_id, payload, user.employee_no)
     except svc.ModuleNotFound:
         msg = f"模組不存在：{module_id}"
-        raise NotFoundError(msg, detail={"code": ErrorCode.NOT_FOUND, "resource": "module", "module_id": str(module_id), "_compat_detail": msg}) from None
+        raise NotFoundError(msg, detail={"code": ErrorCode.NOT_FOUND, "resource": "module", "module_id": str(module_id)}) from None
     except svc.ModuleNotEditable as e:
         msg = str(e)
-        raise ConflictError(msg, detail={"code": ErrorCode.CONFLICT, "_compat_detail": msg}) from None
+        raise ConflictError(msg, detail={"code": ErrorCode.CONFLICT}) from None
     except svc.ScopePermissionError as e:
         msg = str(e)
-        raise ForbiddenError(msg, detail={"code": ErrorCode.FORBIDDEN, "resource": "module", "action": "publish", "_compat_detail": msg}) from None
+        raise ForbiddenError(msg, detail={"code": ErrorCode.FORBIDDEN, "resource": "module", "action": "publish"}) from None
     except svc.RuleSetNotFound as e:
         msg = f"rule-set 不存在：{e}"
-        raise NotFoundError(msg, detail={"code": ErrorCode.NOT_FOUND, "resource": "rule_set", "rule_set_code": str(e), "_compat_detail": msg}) from None
+        raise NotFoundError(msg, detail={"code": ErrorCode.NOT_FOUND, "resource": "rule_set", "rule_set_code": str(e)}) from None
     except svc.PublishValidationError as e:
         compat = {"code": e.code, "row_index": e.row_index, "message": e.message}
-        raise ValidationError(e.message, detail={**compat, "_compat_detail": compat}) from e
+        raise ValidationError(e.message, detail={**compat}) from e
     except SequenceError as e:
         # I1：engine SequenceError 的 code 維持動態讀取（不常數化、不碰 engine）。
         compat = {"code": e.code, "message": str(e)}
-        raise ValidationError(compat["message"], detail={**compat, "_compat_detail": compat}) from e
+        raise ValidationError(compat["message"], detail={**compat}) from e
 
 
 # ── row 級操作（ADR-022 A-2：WI 微調 = Inspector 後端）───────────────
@@ -258,29 +258,29 @@ async def _run_row_op(coro) -> MotionModuleVersionResponse:
         return await coro
     except svc.ModuleNotFound as e:
         msg = f"模組不存在：{e}"
-        raise NotFoundError(msg, detail={"code": ErrorCode.NOT_FOUND, "resource": "module", "module_id": str(e), "_compat_detail": msg}) from None
+        raise NotFoundError(msg, detail={"code": ErrorCode.NOT_FOUND, "resource": "module", "module_id": str(e)}) from None
     except svc.ModuleVersionNotFound as e:
         msg = str(e)
-        raise NotFoundError(msg, detail={"code": ErrorCode.NOT_FOUND, "resource": "module_version", "id": str(e), "_compat_detail": msg}) from None
+        raise NotFoundError(msg, detail={"code": ErrorCode.NOT_FOUND, "resource": "module_version", "id": str(e)}) from None
     except svc.ModuleRowNotFound as e:
         msg = str(e)
-        raise NotFoundError(msg, detail={"code": ErrorCode.NOT_FOUND, "resource": "module_row", "id": str(e), "_compat_detail": msg}) from None
+        raise NotFoundError(msg, detail={"code": ErrorCode.NOT_FOUND, "resource": "module_row", "id": str(e)}) from None
     except svc.ModuleNotEditable as e:
         msg = str(e)
-        raise ConflictError(msg, detail={"code": ErrorCode.CONFLICT, "_compat_detail": msg}) from None
+        raise ConflictError(msg, detail={"code": ErrorCode.CONFLICT}) from None
     except svc.ScopePermissionError as e:
         msg = str(e)
-        raise ForbiddenError(msg, detail={"code": ErrorCode.FORBIDDEN, "resource": "module", "action": "publish", "_compat_detail": msg}) from None
+        raise ForbiddenError(msg, detail={"code": ErrorCode.FORBIDDEN, "resource": "module", "action": "publish"}) from None
     except svc.RuleSetNotFound as e:
         msg = f"rule-set 不存在：{e}"
-        raise NotFoundError(msg, detail={"code": ErrorCode.NOT_FOUND, "resource": "rule_set", "rule_set_code": str(e), "_compat_detail": msg}) from None
+        raise NotFoundError(msg, detail={"code": ErrorCode.NOT_FOUND, "resource": "rule_set", "rule_set_code": str(e)}) from None
     except svc.PublishValidationError as e:
         compat = {"code": e.code, "row_index": e.row_index, "message": e.message}
-        raise ValidationError(e.message, detail={**compat, "_compat_detail": compat}) from e
+        raise ValidationError(e.message, detail={**compat}) from e
     except SequenceError as e:
         # I1：engine SequenceError 的 code 維持動態讀取（不常數化、不碰 engine）。
         compat = {"code": e.code, "message": str(e)}
-        raise ValidationError(compat["message"], detail={**compat, "_compat_detail": compat}) from e
+        raise ValidationError(compat["message"], detail={**compat}) from e
 
 
 @router.put(
@@ -363,7 +363,7 @@ async def get_versions(
         return await svc.get_versions(session, module_id, user.employee_no)
     except svc.ModuleNotFound:
         msg = f"模組不存在：{module_id}"
-        raise NotFoundError(msg, detail={"code": ErrorCode.NOT_FOUND, "resource": "module", "module_id": str(module_id), "_compat_detail": msg}) from None
+        raise NotFoundError(msg, detail={"code": ErrorCode.NOT_FOUND, "resource": "module", "module_id": str(module_id)}) from None
 
 
 # ── 實體化至工序表 ───────────────────────────────────────────────────
@@ -385,26 +385,26 @@ async def instantiate_to_worksheet(
         )
     except svc.WorksheetNotFound:
         msg = f"工序表不存在：{worksheet_id}"
-        raise NotFoundError(msg, detail={"code": ErrorCode.NOT_FOUND, "resource": "worksheet", "worksheet_id": str(worksheet_id), "_compat_detail": msg}) from None
+        raise NotFoundError(msg, detail={"code": ErrorCode.NOT_FOUND, "resource": "worksheet", "worksheet_id": str(worksheet_id)}) from None
     except svc.WorksheetPermissionError as e:
         msg = str(e)
-        raise ForbiddenError(msg, detail={"code": ErrorCode.FORBIDDEN, "resource": "worksheet", "action": "instantiate", "_compat_detail": msg}) from None
+        raise ForbiddenError(msg, detail={"code": ErrorCode.FORBIDDEN, "resource": "worksheet", "action": "instantiate"}) from None
     except svc.ModuleNotFound:
         msg = f"模組不存在：{payload.module_id}"
-        raise NotFoundError(msg, detail={"code": ErrorCode.NOT_FOUND, "resource": "module", "module_id": str(payload.module_id), "_compat_detail": msg}) from None
+        raise NotFoundError(msg, detail={"code": ErrorCode.NOT_FOUND, "resource": "module", "module_id": str(payload.module_id)}) from None
     except svc.ModuleRetired as e:
         msg = str(e)
-        raise ConflictError(msg, detail={"code": ErrorCode.CONFLICT, "_compat_detail": msg}) from None
+        raise ConflictError(msg, detail={"code": ErrorCode.CONFLICT}) from None
     except svc.ModuleVersionNotFound as e:
         msg = str(e)
-        raise NotFoundError(msg, detail={"code": ErrorCode.NOT_FOUND, "resource": "module_version", "id": str(e), "_compat_detail": msg}) from None
+        raise NotFoundError(msg, detail={"code": ErrorCode.NOT_FOUND, "resource": "module_version", "id": str(e)}) from None
     except svc.RuleSetNotFound as e:
         msg = str(e)
-        raise ConflictError(msg, detail={"code": ErrorCode.CONFLICT, "_compat_detail": msg}) from None
+        raise ConflictError(msg, detail={"code": ErrorCode.CONFLICT}) from None
     except svc.PublishValidationError as e:
         # 版本快照內 simo_pair_index 非法（舊資料/手改 DB）→ 明確報錯，不靜默當主列
         compat = {"code": e.code, "row_index": e.row_index, "message": e.message}
-        raise ValidationError(e.message, detail={**compat, "_compat_detail": compat}) from e
+        raise ValidationError(e.message, detail={**compat}) from e
 
     return InstantiateResponse(
         new_rows=result["new_rows"],

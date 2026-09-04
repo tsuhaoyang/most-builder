@@ -22,11 +22,11 @@ router = APIRouter(prefix="/api/v2", tags=["v2-export"])
 def _worksheet_not_found(worksheet_id: uuid.UUID) -> NotFoundError:
     """ADR-034 §D3/A4：裸 404 → NotFoundError 統一信封。
 
-    detail 帶結構化 resource/id 供階段 B 前端在地化組句；
-    ``_compat_detail`` = 歷史頂層 detail 字串（I2 中文語意位元級等價，維持既有斷言）。
+    detail 帶結構化 resource/id 供前端在地化組句；error.message 保留原中文字串
+    （I2 語意位元級等價）。C4 已移除過渡期 ``_compat_detail`` 相容鍵。
     """
     msg = f"worksheet 不存在：{worksheet_id}"
-    return NotFoundError(msg, detail={"code": ErrorCode.NOT_FOUND, "resource": "worksheet", "worksheet_id": str(worksheet_id), "_compat_detail": msg})
+    return NotFoundError(msg, detail={"code": ErrorCode.NOT_FOUND, "resource": "worksheet", "worksheet_id": str(worksheet_id)})
 
 
 # ADR-019 Option A: read=viewer+ intentional; do NOT add ownership/created_by checks — see ADR-019

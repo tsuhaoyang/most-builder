@@ -107,7 +107,7 @@ async def test_certified_import_option_write_returns_409(client, db_session, par
 
     r = await client.post(base, params=q, json=NEW_OPTION[(param, section)])
     assert r.status_code == 409, r.text
-    assert r.json()["detail"]["code"] == "CERTIFIED_IMMUTABLE", r.text
+    assert r.json()["error"]["code"] == "CERTIFIED_IMMUTABLE", r.text
 
     # 讀一筆真實存在的 code 來打 PATCH/DELETE/duplicate——若 gate 漏掛，這些會真的改到值權威。
     lst = await client.get(base, params=q)
@@ -120,7 +120,7 @@ async def test_certified_import_option_write_returns_409(client, db_session, par
     ):
         resp = await call
         assert resp.status_code == 409, resp.text
-        assert resp.json()["detail"]["code"] == "CERTIFIED_IMMUTABLE", resp.text
+        assert resp.json()["error"]["code"] == "CERTIFIED_IMMUTABLE", resp.text
 
     after = await client.get(base, params=q)
     assert after.json()["items"] == lst.json()["items"], "409 後值權威不得有任何變動"
@@ -138,7 +138,7 @@ async def test_certified_import_band_write_returns_409(client, db_session, param
 
     r = await client.put(url, params=q, json={"items": NEW_BANDS[(param, section)]})
     assert r.status_code == 409, r.text
-    assert r.json()["detail"]["code"] == "CERTIFIED_IMMUTABLE", r.text
+    assert r.json()["error"]["code"] == "CERTIFIED_IMMUTABLE", r.text
 
     after = await client.get(f"/api/v2/rule-sets/{CERTIFIED}/params/{param}/options", params=q)
     assert after.json()["items"] == before.json()["items"], "409 後帶界不得有任何變動"
@@ -151,7 +151,7 @@ async def test_certified_import_put_full_returns_409(client, db_session):
     full = (await client.get(f"/api/v2/rule-sets/{CERTIFIED}/full")).json()
     r = await client.put(f"/api/v2/rule-sets/{CERTIFIED}/full", json=full)
     assert r.status_code == 409, r.text
-    assert "認證匯入" in r.json()["detail"]
+    assert "認證匯入" in r.json()["error"]["message"]
 
 
 async def test_published_non_certified_write_returns_409(client, db_session, draft_rs):
@@ -168,8 +168,8 @@ async def test_published_non_certified_write_returns_409(client, db_session, dra
         f"/api/v2/rule-sets/{draft_rs}/params/B/options", json=NEW_OPTION[("B", None)]
     )
     assert r.status_code == 409, r.text
-    assert r.json()["detail"]["code"] == "RULE_SET_FROZEN", r.text
-    assert "請先建立草稿" in r.json()["detail"]["message"]
+    assert r.json()["error"]["code"] == "RULE_SET_FROZEN", r.text
+    assert "請先建立草稿" in r.json()["error"]["message"]
 
 
 async def test_option_write_requires_analyst(client, db_session, draft_rs):
@@ -206,9 +206,9 @@ async def test_section_missing_returns_400_with_allowed_values(client, db_sessio
     r = await client.get(f"/api/v2/rule-sets/{CERTIFIED}/params/{param}/options")
     assert r.status_code == 400, r.text
     for value in allowed:
-        assert value in r.json()["detail"], r.text
+        assert value in r.json()["error"]["message"], r.text
     # A 的查詢參數名是 component（規格用語），P/M 是 section
-    assert ("component" if param == "A" else "section") in r.json()["detail"]
+    assert ("component" if param == "A" else "section") in r.json()["error"]["message"]
 
 
 async def test_band_section_rejects_single_option_crud(client, draft_rs):
@@ -218,7 +218,7 @@ async def test_band_section_rejects_single_option_crud(client, draft_rs):
         params={"section": "ladder"}, json={"max_cm": 10.0, "tmu": 6},
     )
     assert r.status_code == 400, r.text
-    assert "整組替換" in r.json()["detail"]
+    assert "整組替換" in r.json()["error"]["message"]
 
 
 # ══════════════════════════════════════════════════════════════════
@@ -299,7 +299,7 @@ async def test_p_addon_max_select_must_be_uniform(client, draft_rs):
 
     bad = await client.post(base, params=q, json={**NEW_OPTION[("P", "addon")], "max_select": 1})
     assert bad.status_code == 400, bad.text
-    assert "max_select" in bad.json()["detail"]
+    assert "max_select" in bad.json()["error"]["message"]
 
     ok = await client.post(base, params=q, json={**NEW_OPTION[("P", "addon")], "max_select": 2})
     assert ok.status_code == 200, ok.text
@@ -338,7 +338,7 @@ async def test_a_bands_non_ascending_returns_400(client, draft_rs):
         json={"items": [{"max_value": 20.0, "index_value": 6}, {"max_value": 5.0, "index_value": 1}]},
     )
     assert r.status_code == 400, r.text
-    assert "未遞增" in r.json()["detail"]
+    assert "未遞增" in r.json()["error"]["message"]
 
 
 async def test_a_bands_overlap_returns_400(client, draft_rs):
@@ -348,7 +348,7 @@ async def test_a_bands_overlap_returns_400(client, draft_rs):
         json={"items": [{"max_value": 5.0, "index_value": 1}, {"max_value": 5.0, "index_value": 3}]},
     )
     assert r.status_code == 400, r.text
-    assert "重疊" in r.json()["detail"]
+    assert "重疊" in r.json()["error"]["message"]
 
 
 async def test_a_bands_open_ended_must_be_last(client, draft_rs):
@@ -358,7 +358,7 @@ async def test_a_bands_open_ended_must_be_last(client, draft_rs):
         json={"items": [{"max_value": None, "index_value": 24}, {"max_value": 5.0, "index_value": 1}]},
     )
     assert r.status_code == 400, r.text
-    assert "最後一帶" in r.json()["detail"]
+    assert "最後一帶" in r.json()["error"]["message"]
 
 
 async def test_m_rotation_bands_validated_per_revolution(client, draft_rs):
@@ -378,7 +378,7 @@ async def test_m_rotation_bands_validated_per_revolution(client, draft_rs):
         {"max_diameter_cm": 5.0, "revolutions": 1, "tmu": 12},   # 同組回頭 → 400
     ]})
     assert bad.status_code == 400, bad.text
-    assert "revolutions=1" in bad.json()["detail"]
+    assert "revolutions=1" in bad.json()["error"]["message"]
 
 
 # ══════════════════════════════════════════════════════════════════
@@ -411,8 +411,8 @@ async def test_publish_blocked_when_all_options_of_a_param_inactive(client, draf
 
     blocked = await client.post(f"/api/v2/rule-sets/{fresh}/publish")
     assert blocked.status_code == 409, blocked.text
-    assert blocked.json()["detail"]["code"] == "RULE_SET_INCOMPLETE", blocked.text
-    assert "b_options" in blocked.json()["detail"]["message"], blocked.text
+    assert blocked.json()["error"]["code"] == "RULE_SET_INCOMPLETE", blocked.text
+    assert "b_options" in blocked.json()["error"]["message"], blocked.text
 
 
 async def test_clone_draft_preserves_m_foot_bands(client, db_session, draft_rs):
@@ -504,7 +504,7 @@ async def test_put_full_rejects_bad_rotation_band_order(client, db_session, draf
     ]
     r = await client.put(f"/api/v2/rule-sets/{draft_rs}/full", json=full)
     assert r.status_code == 400, r.text
-    assert "最後一帶" in r.json()["detail"], r.text
+    assert "最後一帶" in r.json()["error"]["message"], r.text
 
     after = (await client.get(f"/api/v2/rule-sets/{draft_rs}/full")).json()["m_rotation"]
     assert after == before, "400 後不得留下任何寫入副作用"
@@ -520,7 +520,7 @@ async def test_put_full_rejects_non_ascending_a_bands(client, draft_rs):
     ] + [b for b in full["a_bands"] if b["component"] != "reach"]
     r = await client.put(f"/api/v2/rule-sets/{draft_rs}/full", json=full)
     assert r.status_code == 400, r.text
-    assert "未遞增" in r.json()["detail"], r.text
+    assert "未遞增" in r.json()["error"]["message"], r.text
 
 
 @pytest.mark.parametrize("component", ["reach", "foot"])
@@ -536,7 +536,7 @@ async def test_a_bands_unbounded_component_requires_open_ended_last_band(client,
         json={"items": [{"max_value": 5.0, "index_value": 1}, {"max_value": 20.0, "index_value": 6}]},
     )
     assert r.status_code == 400, r.text
-    assert "open-ended" in r.json()["detail"] and "靜默夾取" in r.json()["detail"], r.text
+    assert "open-ended" in r.json()["error"]["message"] and "靜默夾取" in r.json()["error"]["message"], r.text
 
 
 async def test_a_twist_may_end_with_finite_band(client, draft_rs):

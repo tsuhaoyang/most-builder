@@ -165,7 +165,7 @@ async def test_ordinary_option_patch_on_certified_rule_set_is_still_409(client, 
         json={"label_en": "should not pass"},
     )
     assert r.status_code == 409, r.text
-    assert r.json()["detail"]["code"] == "CERTIFIED_IMMUTABLE"
+    assert r.json()["error"]["code"] == "CERTIFIED_IMMUTABLE"
 
 
 @pytest.mark.parametrize(
@@ -225,7 +225,7 @@ async def test_en_gate_rejects_retired_rule_set(client, db_session, retired_rs):
         json={"label_en": "Should be rejected"},
     )
     assert r.status_code == 409, r.text
-    assert r.json()["detail"]["code"] == "RULE_SET_RETIRED"
+    assert r.json()["error"]["code"] == "RULE_SET_RETIRED"
 
 
 async def test_en_gate_allows_published_non_active_rule_set(client, db_session, seeded):
@@ -264,7 +264,7 @@ async def test_en_gate_enforces_i5_uniqueness(client, db_session, seeded):
         json={"label_en": touch_en},
     )
     assert r.status_code == 409, r.text
-    assert r.json()["detail"]["code"] == "EN_LABEL_NOT_UNIQUE"
+    assert r.json()["error"]["code"] == "EN_LABEL_NOT_UNIQUE"
 
     _zh2, grasp_en = await _label_zh_en(db_session, CERTIFIED, "g_grasp")
     assert grasp_en != touch_en
@@ -1007,14 +1007,14 @@ async def test_ordinary_option_create_and_update_enforce_i5(client, db_session, 
               "label_en": touch_en, "base_tmu": 3},
     )
     assert r.status_code == 409, r.text
-    assert r.json()["detail"]["code"] == "EN_LABEL_NOT_UNIQUE"
+    assert r.json()["error"]["code"] == "EN_LABEL_NOT_UNIQUE"
 
     r = await client.patch(
         f"/api/v2/rule-sets/{draft_rs}/params/G/options/g_grasp",
         json={"label_en": touch_en},
     )
     assert r.status_code == 409, r.text
-    assert r.json()["detail"]["code"] == "EN_LABEL_NOT_UNIQUE"
+    assert r.json()["error"]["code"] == "EN_LABEL_NOT_UNIQUE"
 
     db_session.expire_all()
     _zh2, grasp_en = await _label_zh_en(db_session, draft_rs, "g_grasp")

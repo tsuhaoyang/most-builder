@@ -73,7 +73,6 @@ async def nl_draft(
                 "code": ErrorCode.NOT_FOUND,
                 "resource": "rule_set",
                 "rule_set_code": payload.rule_set_code,
-                "_compat_detail": msg,
             },
         ) from None
     except RuntimeError as exc:
@@ -81,7 +80,7 @@ async def nl_draft(
         msg = str(exc)
         raise ServiceUnavailableError(
             msg,
-            detail={"code": ErrorCode.SERVICE_UNAVAILABLE, "_compat_detail": msg},
+            detail={"code": ErrorCode.SERVICE_UNAVAILABLE},
         ) from exc
 
     multi_action = len(result.plan.actions) > 1

@@ -32,8 +32,7 @@ def _check_roles(roles: list[str]) -> None:
     if bad:
         msg = f"未知角色：{sorted(bad)}（合法 {sorted(_VALID_ROLES)}）"
         raise ValidationError(msg, detail={"code": ErrorCode.VALIDATION_ERROR, "field": "roles",
-                                           "unknown": sorted(bad), "valid": sorted(_VALID_ROLES),
-                                           "_compat_detail": msg})
+                                           "unknown": sorted(bad), "valid": sorted(_VALID_ROLES)})
 
 
 @router.get("/users", response_model=list[AppUserOut])
@@ -64,14 +63,13 @@ async def patch_user(employee_no: str, payload: AppUserPatchIn, session: AsyncSe
     if u is None:
         msg = f"使用者不存在：{employee_no}"
         raise NotFoundError(msg, detail={"code": ErrorCode.NOT_FOUND, "resource": "app_user",
-                                         "id": employee_no, "_compat_detail": msg})
+                                         "id": employee_no})
     if payload.roles is not None:
         _check_roles(payload.roles)
         # 防呆：不可移除自己的 admin（避免鎖死）
         if u.employee_no == actor.employee_no and "admin" not in payload.roles:
             raise ConflictError("不可移除自己的 admin 角色", detail={"code": ErrorCode.CONFLICT,
-                                                              "reason": "cannot_remove_own_admin",
-                                                              "_compat_detail": "不可移除自己的 admin 角色"})
+                                                              "reason": "cannot_remove_own_admin"})
         u.roles = payload.roles
     if payload.site_ids is not None:
         u.site_ids = payload.site_ids
@@ -80,8 +78,7 @@ async def patch_user(employee_no: str, payload: AppUserPatchIn, session: AsyncSe
     if payload.is_active is not None:
         if u.employee_no == actor.employee_no and payload.is_active is False:
             raise ConflictError("不可停用自己", detail={"code": ErrorCode.CONFLICT,
-                                                    "reason": "cannot_deactivate_self",
-                                                    "_compat_detail": "不可停用自己"})
+                                                    "reason": "cannot_deactivate_self"})
         u.is_active = payload.is_active
     await session.flush()
     return _out(u)

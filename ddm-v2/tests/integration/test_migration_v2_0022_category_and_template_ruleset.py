@@ -228,7 +228,7 @@ async def test_create_module_without_category_is_422(client):
     assert r.status_code == 422, r.text
     # 具鑑別力：確認 422 真的是 category 缺漏造成，而不是碰巧別的欄位不合法
     assert any(
-        "category" in str(e.get("loc", "")) for e in r.json()["detail"]
+        "category" in str(e.get("loc", "")) for e in r.json()["error"]["detail"]["errors"]
     ), r.text
 
 
@@ -244,7 +244,7 @@ async def test_create_module_with_illegal_category_is_422(client, bad):
         },
     )
     assert r.status_code == 422, r.text
-    assert any("category" in str(e.get("loc", "")) for e in r.json()["detail"]), r.text
+    assert any("category" in str(e.get("loc", "")) for e in r.json()["error"]["detail"]["errors"]), r.text
 
 
 async def test_create_module_with_null_category_is_422(client):

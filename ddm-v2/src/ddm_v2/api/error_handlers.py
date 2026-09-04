@@ -36,26 +36,16 @@ from ddm_v2.services.v2.rule_set_service import NoActiveRuleSet
 
 
 def _envelope(code: str, message: str, detail: dict | None, status_code: int) -> JSONResponse:
-    """共用信封收尾 + 過渡期相容鍵處理（ADR-034 §D1 + §7 KI-034-1 B 方案）。
+    """共用信封收尾（ADR-034 §D1；§7 KI-034-1 已於階段 C4 收斂）。
 
     5 個 DomainError 家族 handler（NotFound/Validation/Conflict/Forbidden/Unauthorized）
-    共用同一條收尾路徑，確保新信封 ``{error:{code,message,detail}}`` 形狀一致。
+    共用同一條收尾路徑，確保信封 ``{error:{code,message,detail}}`` 形狀一致。
 
-    **相容鍵機制（維持既有 integration 斷言不破壞）**：raise 點若在 ``detail`` 內放保留鍵
-    ``"_compat_detail"``（值＝該端點歷史上頂層 ``detail`` 的內容，中文字串或 dict 皆可），
-    本函式收尾時：
-      1. ``payload = ErrorResponse(...).model_dump()`` 先產出新信封；
-      2. ``compat = (detail or {}).get("_compat_detail")``；
-      3. 若 ``compat`` 非 None，則把頂層 ``payload["detail"]`` 設為 ``compat``（還原歷史形狀），
-         並從 ``payload["error"]["detail"]`` pop 掉 ``"_compat_detail"``——新信封不外露相容鍵。
-
-    待階段 C 前端全數遷移到 ``error`` 信封後，移除相容鍵（追蹤見 ADR-034 §7 KI-034-1）。
+    階段 C4（本次）移除過渡期頂層相容鍵機制（原 ``_compat_detail`` → 頂層 ``detail``）：
+    前端於 C1-C3 已全數改讀 ``error`` 信封，錯誤契約徹底收斂為單一信封，不再外露頂層
+    ``detail``（追蹤見 ADR-034 §7 KI-034-1，已 resolved）。
     """
     payload = ErrorResponse(error=ErrorDetail(code=code, message=message, detail=detail or {})).model_dump()
-    compat = (detail or {}).get("_compat_detail")
-    if compat is not None:
-        payload["detail"] = compat
-        payload["error"]["detail"].pop("_compat_detail", None)
     return JSONResponse(status_code=status_code, content=payload)
 
 
@@ -160,12 +150,9 @@ def register_exception_handlers(app: FastAPI) -> None:
         統一為 code=VALIDATION_ERROR；原始 loc/msg/type 陣列**原封不動**放進 detail.errors，
         供前端依 code + 結構化參數重組在地化訊息（§D1）。
 
-        **過渡期向後相容（ADR-034 §5 + KNOWN-ISSUE KI-034-1）**：本 handler 改變了
-        Pydantic request 驗證 422 的形狀——既有 integration 測試與前端呼叫點多處把頂層
-        ``detail`` 當**陣列**讀（`for e in resp.json()["detail"]`）。為避免破壞既有契約，
-        回應**同時保留頂層 ``detail`` 為原始 errors 陣列**（與 FastAPI 預設等價），
-        與新的 ``error`` 信封並存。待 A4／前端 catalog 完成、呼叫點全數遷移到 ``error``
-        後，於後續階段移除此頂層相容欄位（追蹤見 ADR-034 §7 KI-034-1）。
+        階段 C4（本次）移除過渡期頂層 ``detail`` 相容欄位：前端於 C1-C3 已全數改讀
+        ``error`` 信封（原始 errors 陣列位於 ``error.detail.errors``，形狀不變），
+        錯誤契約徹底收斂為單一信封（追蹤見 ADR-034 §7 KI-034-1，已 resolved）。
         """
         errors = jsonable_encoder(exc.errors())
         content = ErrorResponse(
@@ -175,8 +162,6 @@ def register_exception_handlers(app: FastAPI) -> None:
                 detail={"errors": errors},
             )
         ).model_dump()
-        # 過渡期相容欄位：頂層 detail = 原始 errors 陣列（FastAPI 預設形狀）。
-        content["detail"] = errors
         return JSONResponse(
             status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
             content=content,

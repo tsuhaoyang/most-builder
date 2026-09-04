@@ -190,7 +190,7 @@ async def test_update_row_invalid_simo_422(client):
         json=_gm28_row(simo_pair_index=0),   # 自指
     )
     assert resp.status_code == 422, resp.text
-    assert resp.json()["detail"]["code"] == "SIMO_PAIR_INVALID"
+    assert resp.json()["error"]["code"] == "SIMO_PAIR_INVALID"
 
 
 async def test_update_row_module_not_found_404(client):
@@ -271,7 +271,7 @@ async def test_reorder_invalid_permutation_422(client):
             "ordered_indexes": bad,
         })
         assert resp.status_code == 422, (bad, resp.text)
-        assert resp.json()["detail"]["code"] == "REORDER_INVALID", bad
+        assert resp.json()["error"]["code"] == "REORDER_INVALID", bad
 
 
 # ═════════ A-2：DELETE rows/{i} ═════════
@@ -301,7 +301,7 @@ async def test_delete_last_row_422(client):
     mid = await _make_published_module(client, rs_id, [_gm28_row()], "A2-Del-Last")
     resp = await client.delete(f"/api/v2/motion-modules/{mid}/rows/0")
     assert resp.status_code == 422, resp.text
-    assert resp.json()["detail"]["code"] == "EMPTY_ROWS"
+    assert resp.json()["error"]["code"] == "EMPTY_ROWS"
 
 
 async def test_delete_simo_target_row_422(client):
@@ -315,7 +315,7 @@ async def test_delete_simo_target_row_422(client):
     ], "A2-Del-SIMO")
     resp = await client.delete(f"/api/v2/motion-modules/{mid}/rows/0")
     assert resp.status_code == 422, resp.text
-    assert resp.json()["detail"]["code"] == "SIMO_PAIR_INVALID"
+    assert resp.json()["error"]["code"] == "SIMO_PAIR_INVALID"
 
     # 刪從屬列本身則允許
     resp2 = await client.delete(f"/api/v2/motion-modules/{mid}/rows/1")

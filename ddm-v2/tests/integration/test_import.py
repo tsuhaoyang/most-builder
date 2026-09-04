@@ -305,7 +305,7 @@ async def test_submit_rejects_non_standard_template_422(client):
         "worksheet_id": _WS_SEEDED,
         "row_adoptions": [{"row_index": 0, "template_id": draft["id"]}]})
     assert r.status_code == 422
-    assert "非啟用中的標準範本" in r.json()["detail"]
+    assert "非啟用中的標準範本" in r.json()["error"]["message"]
 
     # 不存在的 id
     iid2, _ = await _map_zh(client)
@@ -313,7 +313,7 @@ async def test_submit_rejects_non_standard_template_422(client):
         "worksheet_id": _WS_SEEDED,
         "row_adoptions": [{"row_index": 0, "template_id": str(_uuid.uuid4())}]})
     assert r2.status_code == 422
-    assert "非啟用中的標準範本" in r2.json()["detail"]
+    assert "非啟用中的標準範本" in r2.json()["error"]["message"]
 
 
 async def test_submit_rejects_row_index_out_of_range_422(client):
@@ -324,7 +324,7 @@ async def test_submit_rejects_row_index_out_of_range_422(client):
         "worksheet_id": _WS_SEEDED,
         "row_adoptions": [{"row_index": 9, "template_id": t["id"]}]})
     assert r.status_code == 422
-    assert "超出暫存列範圍" in r.json()["detail"]
+    assert "超出暫存列範圍" in r.json()["error"]["message"]
 
 
 async def test_submit_adopted_cycle_records_active_rule_set_code(client, db_session):
@@ -386,7 +386,7 @@ async def test_upload_over_size_limit_413(client, monkeypatch):
                      "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")}
     r = await client.post("/api/v2/imports/upload", files=junk)
     assert r.status_code == 413, r.text
-    assert "上限" in r.json()["detail"]
+    assert "上限" in r.json()["error"]["message"]
 
 
 async def test_upload_at_size_limit_not_rejected(client, monkeypatch):

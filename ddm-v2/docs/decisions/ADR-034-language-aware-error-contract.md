@@ -215,7 +215,7 @@ User 於 2026-09-03 裁決：**「中英文切換務必以最業界標準來做�
 
 ## 7. 已知問題（Known Issues，不可忽略）
 
-### KI-034-1：階段 A2 改變 Pydantic request 驗證 422 的回應形狀（契約變更）
+### KI-034-1：階段 A2 改變 Pydantic request 驗證 422 的回應形狀（契約變更）— ✅ 已收斂（resolved，階段 C4，2026-09-04）
 
 **發現時間**：2026-09-03（階段 A1-A3 實作複核，審核員實跑 integration 測試佐證）。
 
@@ -244,3 +244,31 @@ integration 層可見，正是「1570 passed 綠燈」掩蓋契約變更的典�
 
 **風險若不處置**：頂層 `detail` 與 `error` 兩個真相長期並存 → 前端可能各自依賴不同欄位，
 形成 ADR-024 事後剖析所述「同一件事兩個答案」的漂移。故 KI-034-1 必須在階段 C 收斂，不得長存。
+
+**收斂處置（階段 C4，2026-09-04，已完成）**：C1-C3 前端已全數改讀 `error` 信封（不依賴頂層
+`detail`），本階段一次移除後端所有過渡期相容欄位，錯誤契約徹底收斂為單一
+`{error:{code,message,detail}}` 信封（**破壞性契約變更**）。
+
+- **`error_handlers.py`**：(a) `_envelope` 移除 `_compat_detail` → 頂層 `detail` 的還原分支；
+  (b) `RequestValidationError` handler 移除 `content["detail"]=errors` 頂層相容行（原始 errors
+  陣列續存於 `error.detail.errors`，形狀不變）。
+- **route 檔移除 `_compat_detail`**（15 檔、~148 處），分三形狀：(A) 純字串型直接刪鍵
+  （`error.detail` 保 code/resource/id，`error.message` 已載訊息）；(B) `{**compat, "_compat_detail":
+  compat}` → `{**compat}`（巢狀鍵已 spread）；(C) **compat-only 結構化 spread**（worksheet.py
+  兩處 SimoPairInvalid／RowSequenceError、wi_set.py instantiate 一處）改為 `detail={**compat}`，
+  確保 `error.detail` 仍含 `seq_no/row_id/message/code`——這是最高風險點（R1），未只刪鍵。
+- **治理紅線守住**：I1 未碰 `most_engine`/TMU/lexicon，engine `SequenceError.e.code` 維持動態讀取；
+  I2 `error.message` 中文 f-string 位元級不退化；I3 `code` 未更名。
+- **測試遷移（77 斷言、15 檔）**：字串子串 → `error.message`；`detail.code` → `error.code`（更穩定）；
+  巢狀 `existing`/`references`/`seq_no`/`row_id` 及 helper → `error.detail[...]`；422 陣列
+  `for e in json()["detail"]` → `for e in json()["error"]["detail"]["errors"]`。附帶修正 5 處
+  `"detail" in resp.json()` 存在性斷言為 `"error" in ...`。**註**：`require_role`／`current_user`
+  的 401/403 走 FastAPI 原生 `HTTPException`（頂層 `{detail:str}`，非 DomainError 信封，屬 auth 層
+  非本 ADR 契約），該類斷言（如 export_import「analyst」403）維持讀頂層 `detail`。
+- **回歸閘證據**：`pytest tests/unit` 1577 passed；`pytest tests/integration`（全量、需 DB，port
+  15432）**600 passed, 1 skipped, 0 failed**；`scripts/core_logic/run_all.py` 全通過（88+26+60，
+  證 I1）；前端 `npm run typecheck` + `npm run build` 皆綠（C1-C3 已遷移，不受影響）；
+  `grep -rn _compat_detail src/` 於程式碼 0 命中（僅餘 docstring 描述本次移除）。
+
+**Follow-up（不阻擋 C4）**：`error.detail.code` 相對 `error.code` 為冗餘（dict-spread 型會兩處都有
+code）；可於後續收斂 `error.detail` 只留非-code 的結構化參數，屬純加法/減法整理，另案處理。

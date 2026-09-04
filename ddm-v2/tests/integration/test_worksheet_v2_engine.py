@@ -65,7 +65,7 @@ async def test_simo_pair_to_missing_row_422(client):
     row = _gm_row(1, simo_with_row_id=str(uuid.uuid4()))  # 指向不存在列
     r = await client.put(f"/api/v2/worksheets/{new}", json={"rows": [row]})
     assert r.status_code == 422, r.text
-    assert r.json()["detail"]["code"] == "SIMO_PAIR_INVALID"
+    assert r.json()["error"]["code"] == "SIMO_PAIR_INVALID"
 
 
 async def test_simo_pair_self_reference_422(client):
@@ -74,7 +74,7 @@ async def test_simo_pair_self_reference_422(client):
     row["simo_with_row_id"] = row["id"]  # 自指
     r = await client.put(f"/api/v2/worksheets/{new}", json={"rows": [row]})
     assert r.status_code == 422, r.text
-    assert r.json()["detail"]["code"] == "SIMO_PAIR_INVALID"
+    assert r.json()["error"]["code"] == "SIMO_PAIR_INVALID"
 
 
 # ── E4/E7：repeat + 覆寫 經 CycleIn 存→讀回全程走通 ──
@@ -133,7 +133,7 @@ async def test_worksheet_save_engine_reject_names_the_offending_row(client):
                     "x4": {"x_code": "x_none"}, "i5": {"i_code": "i_none"}}
     r = await client.put(f"/api/v2/worksheets/{new}", json={"rows": [ok1, ok2, bad]})
     assert r.status_code == 422, r.text
-    detail = r.json()["detail"]
+    detail = r.json()["error"]["detail"]
     assert detail["code"] == "M_HAND_RANGE"          # code 不變
     assert detail["seq_no"] == 3
     assert detail["row_id"] == bad["id"]

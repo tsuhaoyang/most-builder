@@ -290,7 +290,7 @@ async def test_import_rejects_negative_base_tmu_with_field_level_detail(client, 
     r = await client.post("/api/v2/rule-sets/import",
                           json={**_with_negative_g_tmu(export), "new_code": new_code})
     assert r.status_code == 400, r.text
-    detail = r.json()["detail"]
+    detail = r.json()["error"]["message"]
     # 只斷言 400 會空洞通過：本端點有 6 種 400（schema_version、缺區塊、multiplier、帶界…）。
     assert "g[0]" in detail, detail
     assert "base_tmu" in detail, detail
@@ -310,7 +310,7 @@ async def test_put_full_rejects_negative_base_tmu_without_touching_stored_values
     r = await client.put(f"/api/v2/rule-sets/{draft}/full",
                          json=_with_negative_g_tmu(before))
     assert r.status_code == 400, r.text
-    detail = r.json()["detail"]
+    detail = r.json()["error"]["message"]
     assert "g[0]" in detail and "base_tmu" in detail, detail
 
     # 零寫入：12 張子表逐一比對，不是只看 g（DELETE 是整批的）。
@@ -330,7 +330,7 @@ async def test_put_full_rejects_negative_band_tmu(client, draft):
 
     r = await client.put(f"/api/v2/rule-sets/{draft}/full", json=full)
     assert r.status_code == 400, r.text
-    assert "m_ladder[1]" in r.json()["detail"], r.json()["detail"]
+    assert "m_ladder[1]" in r.json()["error"]["message"], r.json()["error"]["message"]
 
 
 async def test_put_full_rejects_negative_p_addon_delta(client, draft):
@@ -340,7 +340,7 @@ async def test_put_full_rejects_negative_p_addon_delta(client, draft):
 
     r = await client.put(f"/api/v2/rule-sets/{draft}/full", json=full)
     assert r.status_code == 400, r.text
-    detail = r.json()["detail"]
+    detail = r.json()["error"]["message"]
     assert "p_addons[0]" in detail and "delta_tmu" in detail, detail
 
 

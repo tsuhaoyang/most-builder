@@ -322,7 +322,7 @@ async def test_import_bad_schema_version_returns_400(client, db_session, exporte
 
     r = await client.post("/api/v2/rule-sets/import", json=payload)
     assert r.status_code == 400, r.text
-    assert "schema_version" in r.json()["detail"]
+    assert "schema_version" in r.json()["error"]["message"]
     assert await _rule_set_count(db_session) == before, "400 後不得建出版本"
     assert await _child_row_count(db_session, new_code) == 0
 
@@ -346,7 +346,7 @@ async def test_import_bad_rotation_band_order_returns_400_and_rolls_back(client,
 
     r = await client.post("/api/v2/rule-sets/import", json=payload)
     assert r.status_code == 400, r.text
-    assert "最後一帶" in r.json()["detail"], r.text
+    assert "最後一帶" in r.json()["error"]["message"], r.text
     assert await _rule_set_count(db_session) == before, "400 後不得建出版本"
     assert await _child_row_count(db_session, new_code) == 0, "400 後不得留下任何子表列"
 
@@ -365,7 +365,7 @@ async def test_import_missing_required_section_returns_400(client, db_session, e
 
     r = await client.post("/api/v2/rule-sets/import", json=payload)
     assert r.status_code == 400, r.text
-    assert "g" in r.json()["detail"] and "缺少區塊" in r.json()["detail"], r.text
+    assert "g" in r.json()["error"]["message"] and "缺少區塊" in r.json()["error"]["message"], r.text
     assert await _rule_set_count(db_session) == before
     assert await _child_row_count(db_session, new_code) == 0
 
@@ -380,7 +380,7 @@ async def test_import_missing_a_component_returns_400(client, db_session, export
 
     r = await client.post("/api/v2/rule-sets/import", json=payload)
     assert r.status_code == 400, r.text
-    assert "a_bands[foot]" in r.json()["detail"], r.text
+    assert "a_bands[foot]" in r.json()["error"]["message"], r.text
     # 兩者都要驗：_child_row_count 回 0 分不出「沒建版本」與「建了空殼版本」（LOW-4）
     assert await _rule_set_count(db_session) == before, "400 後不得留下空殼版本"
     assert await _child_row_count(db_session, new_code) == 0
@@ -409,7 +409,7 @@ async def test_import_duplicate_code_returns_409(client, db_session, exported, d
     before_rows = await _child_row_count(db_session, draft_rs)
     r = await client.post("/api/v2/rule-sets/import", json={**exported, "new_code": draft_rs})
     assert r.status_code == 409, r.text
-    assert draft_rs in r.json()["detail"]
+    assert draft_rs in r.json()["error"]["message"]
     assert await _child_row_count(db_session, draft_rs) == before_rows, "409 不得動到既有版本"
 
 
@@ -444,7 +444,7 @@ async def test_import_certified_source_still_needs_publish_to_be_usable(client, 
         "/api/v2/rule-sets/import", json={**exported, "new_code": new_code})).status_code == 200
     r = await client.post(f"/api/v2/rule-sets/{new_code}/activate")
     assert r.status_code == 400, r.text
-    assert "僅 published 版本可啟用" in r.json()["detail"], r.text
+    assert "僅 published 版本可啟用" in r.json()["error"]["message"], r.text
 
 
 # ══════════════════════════════════════════════════════════════════
@@ -469,7 +469,7 @@ async def test_import_missing_m_foot_key_returns_400(client, db_session, exporte
 
     r = await client.post("/api/v2/rule-sets/import", json=payload)
     assert r.status_code == 400, r.text
-    detail = r.json()["detail"]
+    detail = r.json()["error"]["message"]
     assert "m_foot" in detail and "缺少區塊" in detail, r.text
     assert await _rule_set_count(db_session) == before, "400 後不得建出版本"
 
@@ -520,7 +520,7 @@ async def test_import_empty_required_section_returns_400(client, db_session, exp
 
     r = await client.post("/api/v2/rule-sets/import", json=payload)
     assert r.status_code == 400, r.text
-    assert "g" in r.json()["detail"] and "空的" in r.json()["detail"], r.text
+    assert "g" in r.json()["error"]["message"] and "空的" in r.json()["error"]["message"], r.text
     assert await _rule_set_count(db_session) == before
 
 
@@ -534,7 +534,7 @@ async def test_put_full_missing_section_returns_400(client, db_session, draft_rs
     body.pop("m_foot")
     r = await client.put(f"/api/v2/rule-sets/{draft_rs}/full", json=body)
     assert r.status_code == 400, r.text
-    assert "m_foot" in r.json()["detail"], r.text
+    assert "m_foot" in r.json()["error"]["message"], r.text
 
 
 # ══════════════════════════════════════════════════════════════════
@@ -584,7 +584,7 @@ async def test_import_malformed_a_band_row_returns_400(client, db_session, expor
 
     r = await client.post("/api/v2/rule-sets/import", json=payload)
     assert r.status_code == 400, r.text
-    assert "帶" in r.json()["detail"], r.text
+    assert "帶" in r.json()["error"]["message"], r.text
     assert await _rule_set_count(db_session) == before
     assert await _child_row_count(db_session, new_code) == 0
 
@@ -611,7 +611,7 @@ async def test_import_invalid_multiplier_returns_400(client, db_session, exporte
 
     r = await client.post("/api/v2/rule-sets/import", json=payload)
     assert r.status_code == 400, r.text
-    assert "multiplier" in r.json()["detail"], r.text
+    assert "multiplier" in r.json()["error"]["message"], r.text
     assert await _rule_set_count(db_session) == before
 
 

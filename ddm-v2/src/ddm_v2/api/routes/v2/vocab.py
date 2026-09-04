@@ -25,7 +25,7 @@ router = APIRouter(prefix="/api/v2", tags=["v2-vocab"])
 def _vocab_not_found(item_id: uuid.UUID) -> NotFoundError:
     """ADR-034 §D3/A4：詞彙 404 → NotFoundError 統一信封（結構化 detail + 相容鍵）。"""
     msg = f"詞彙不存在：{item_id}"
-    return NotFoundError(msg, detail={"code": ErrorCode.NOT_FOUND, "resource": "vocab", "id": str(item_id), "_compat_detail": msg})
+    return NotFoundError(msg, detail={"code": ErrorCode.NOT_FOUND, "resource": "vocab", "id": str(item_id)})
 
 
 def _out(v: WorkVocabItem) -> VocabItemOut:

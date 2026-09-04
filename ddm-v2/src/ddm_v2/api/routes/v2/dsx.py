@@ -48,6 +48,6 @@ async def a3_distance(
         msg = str(exc)
         raise ServiceUnavailableError(
             msg,
-            detail={"code": ErrorCode.SERVICE_UNAVAILABLE, "_compat_detail": msg},
+            detail={"code": ErrorCode.SERVICE_UNAVAILABLE},
         ) from exc
     return A3DistanceOut(**result)
