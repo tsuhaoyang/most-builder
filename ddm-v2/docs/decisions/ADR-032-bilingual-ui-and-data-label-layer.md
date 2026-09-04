@@ -592,6 +592,12 @@ M 格 `pricing_kind` ∈ {`hand`,`foot`}（`m_hand`／`m_foot`）的分量**兩�
 > **觸發條件**：(a) 有英文語系的一般使用者回報看不懂錯誤；或 (b) 需要對外開放 API 給第三方
 > （屆時錯誤 code 化本來就是必要條件，i18n 順帶完成）。
 
+> **已被 [ADR-034](ADR-034-language-aware-error-contract.md) 承接（2026-09-04）**：觸發條件 (a)
+> 成立（User 裁決：未來有外國語系一般使用者），本項（(3) 錯誤訊息／API i18n）已改由 ADR-034
+> 完成——單一 `{error:{code,message,detail}}` 信封（對齊 RFC 9457）＋中央錯誤碼 registry＋
+> route 層裸 `HTTPException` 收斂＋錯誤參數結構化＋前端 code+參數 i18n catalog。**本段「本輪不做」
+> 的敘述至此過期，以 ADR-034 為準。**
+
 **(4) 度量單位不在本輪**：`cm`／`TMU`／秒維持原樣，不做 inch 轉換。單位轉換會動到引擎輸入，
 與「語言只影響字串」的不變式（I1）直接衝突，必須是獨立決策。
 

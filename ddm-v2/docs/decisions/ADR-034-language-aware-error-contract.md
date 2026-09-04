@@ -209,7 +209,7 @@ User 於 2026-09-03 裁決：**「中英文切換務必以最業界標準來做�
 2. 階段 B：逐 code 把變數移入 `detail`；補後設測試（每個 code 的參數完整性）。
 3. 階段 C：前端 `errorCatalog` 對照層、單一取訊息入口、補裸露點、雙語 ICU catalog、key 一致性測試。
 4. 每階段：`PYTHONPATH=src pytest`（後端）＋ `npm run typecheck`／`build`／`typecheck:e2e`／相關 Playwright（前端）作回歸閘。
-5. 於 ADR-032 D9(3) 加一行交叉引用指向本 ADR（標記該項已由 ADR-034 承接）。
+5. 於 ADR-032 D9(3) 加一行交叉引用指向本 ADR（標記該項已由 ADR-034 承接）。✅ 已完成（2026-09-04）。
 
 ---
 
