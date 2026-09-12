@@ -1,12 +1,17 @@
-"""TmuDecomposer：把一個 motion 的 TMU 分解為 acquire / use_once / release（Spec §3.3）。
+"""TmuDecomposer：tool-held motion 的 TMU 分桶分解（Spec §3.3，2026-09-12 分桶裁決）。
 
-鐵則（實作書 §6#1）：投影層**不做 TMU 加減乘除以外的推導**；單次工時只能來自
-- 引擎重算（`decompose_engine`：`compute_cycle(strip_repeats(slot_inputs, slots 3–5))`），或
-- fixture 靜態值（`decompose_static`：Σslot_tmus[3..5] / N）。
-兩路徑對同一 motion 必須相等（`test_lb_projection_engine_path.py`）。
+七格分三桶，切點是 use 段（slot 3–5）的**重複區塊 R**，不是固定 slot 界線：
+- `setup_pre`  = Σ slot_tmus[0..2] + R 之前的（非零）use 格            # 每 episode 一次
+- `use_once`   = Σ_{s∈R} once_slot_tmu(s)                              # 每件一次
+- `setup_post` = R 之後的（非零）use 格 + slot_tmus[6]                 # 每 episode 一次
+斷言（Spec §3.3、§7.1）：setup_pre + N×use_once + setup_post == total_tmu（|Δ|≤1e-6），否則 E_TMU_DECOMPOSITION。
 
-守恆斷言（Spec §3.3、§7.1）：`acquire + N×use_once + release == total_tmu`（|Δ| ≤ 1e-6），
-否則 `E_TMU_DECOMPOSITION`。M 格含伴隨維度（手度/腳步）且 N>1 → 不可線性拆，`E_REPEAT_NONLINEAR`。
+連續性只看**非零工時格**（零工時格夾在重複格間不算斷開）。R 內 repeat 不一致→E_REPEAT_MIXED；
+R 不連續（夾心）→E_REPEAT_NONCONTIGUOUS；slot 0–2 有 repeat→E_TOOL_ACQUIRE_REPEAT。
+
+單次工時只能來自引擎重算或 fixture 靜態值（實作書 §6#1）：
+- 引擎路徑（有 slot_inputs 必走）：compute_cycle(strip_repeats(slot_inputs, slots=R)).slot_tmus[s]
+- 靜態路徑（fixture）：slot_tmus[s] / N（逐格除，非 Σslot[3..5]/N）
 """
 from __future__ import annotations
 
@@ -16,12 +21,12 @@ from typing import Any
 
 from ddm_v2.lb_projection.errors import (
     E_REPEAT_MIXED,
+    E_REPEAT_NONCONTIGUOUS,
     E_TMU_DECOMPOSITION,
     E_TOOL_ACQUIRE_REPEAT,
     ProjectionError,
 )
 
-# slot index：0–2 = acquire 段（A B G）；3–5 = use 段（GM: A B P／CM: M X I）；6 = release（返回 A）。
 _ACQUIRE_SLOTS = (0, 1, 2)
 _USE_SLOTS = (3, 4, 5)
 _RELEASE_SLOT = 6
@@ -37,66 +42,103 @@ class TmuDecompositionError(Exception):
 
 
 @dataclass(frozen=True)
+class RepeatBlock:
+    """use 段的重複區塊 R：格 index tuple、N、R 前/後的（非零）use 格。R 空時 slots=()、n=1。"""
+
+    slots: tuple[int, ...]
+    n: int
+    pre: tuple[int, ...]
+    post: tuple[int, ...]
+
+
+@dataclass(frozen=True)
 class Decomposed:
-    acquire_tmu: float
+    setup_pre_tmu: float
     use_once_tmu: float
-    release_tmu: float
+    setup_post_tmu: float
     n: int
     total_tmu: float
+    block: RepeatBlock
 
 
-def repeat_n(repeat_counts: dict[str, int], wi_row_id: str | None = None) -> int:
-    """slot 3–5 非零格的共同 repeat 值；無 → 1。
+def repeat_block(slot_tmus: list[float], repeat_counts: dict[str, int], wi_row_id: str | None = None) -> RepeatBlock:
+    """從 use 段（slot 3–5）解析重複區塊 R（Spec §3.3 分桶）。
 
-    - slot 0–2（acquire 段）有 repeat → E_TOOL_ACQUIRE_REPEAT（取得只做一次，Spec §3.2）。
-    - slot 3–5 非零格 repeat 不一致 → E_REPEAT_MIXED（Spec §3.2）。
+    連續性只看非零工時格；零工時格不參與判定、不算斷開。
     """
+    # slot 0–2 不得有 repeat
     for si in _ACQUIRE_SLOTS:
         if repeat_counts.get(str(si), 1) not in (None, 1):
             raise TmuDecompositionError(
                 ProjectionError(E_TOOL_ACQUIRE_REPEAT, wi_row_id, f"slot {si}（取得段）不可帶 repeat_count")
             )
-    use_reps = {repeat_counts[str(si)] for si in _USE_SLOTS if str(si) in repeat_counts and repeat_counts[str(si)] not in (None, 1)}
-    if len(use_reps) > 1:
+    # use 段非零格，依 slot 順序
+    nonzero_use = [si for si in _USE_SLOTS if slot_tmus[si] not in (0, 0.0)]
+    repeated = [si for si in nonzero_use if repeat_counts.get(str(si), 1) not in (None, 1)]
+    if not repeated:
+        return RepeatBlock(slots=(), n=1, pre=(), post=())
+    # R 內 repeat 值一致
+    reps = {repeat_counts[str(si)] for si in repeated}
+    if len(reps) > 1:
         raise TmuDecompositionError(
-            ProjectionError(E_REPEAT_MIXED, wi_row_id, f"slot 3–5 的 repeat_count 不一致：{sorted(use_reps)}")
+            ProjectionError(E_REPEAT_MIXED, wi_row_id, f"重複區塊內 repeat_count 不一致：{sorted(reps)}")
         )
-    return next(iter(use_reps)) if use_reps else 1
+    n = next(iter(reps))
+    # 連續性（只看非零格）：repeated 必須是 nonzero_use 中的連續一段
+    first, last = nonzero_use.index(repeated[0]), nonzero_use.index(repeated[-1])
+    if nonzero_use[first : last + 1] != repeated:
+        raise TmuDecompositionError(
+            ProjectionError(
+                E_REPEAT_NONCONTIGUOUS,
+                wi_row_id,
+                f"重複格不連續（夾心）：非零 use 格 {nonzero_use}，重複格 {repeated}",
+            )
+        )
+    pre = tuple(nonzero_use[:first])
+    post = tuple(nonzero_use[last + 1 :])
+    return RepeatBlock(slots=tuple(repeated), n=n, pre=pre, post=post)
 
 
 def _assert_conservation(dec: Decomposed, wi_row_id: str | None) -> Decomposed:
-    lhs = dec.acquire_tmu + dec.n * dec.use_once_tmu + dec.release_tmu
+    lhs = dec.setup_pre_tmu + dec.n * dec.use_once_tmu + dec.setup_post_tmu
     if abs(lhs - dec.total_tmu) > _TMU_EPS:
         raise TmuDecompositionError(
             ProjectionError(
                 E_TMU_DECOMPOSITION,
                 wi_row_id,
-                f"分解不守恆：{dec.acquire_tmu} + {dec.n}×{dec.use_once_tmu} + {dec.release_tmu} "
+                f"分解不守恆：{dec.setup_pre_tmu} + {dec.n}×{dec.use_once_tmu} + {dec.setup_post_tmu} "
                 f"= {lhs} != total {dec.total_tmu}",
             )
         )
     return dec
 
 
+def _assemble(slot_tmus: list[float], block: RepeatBlock, once_use: dict[int, float], total_tmu: float, wi_row_id: str | None) -> Decomposed:
+    """依分桶把 slot_tmus 組成 (setup_pre, use_once, setup_post)。once_use：R 內每格的單次工時。"""
+    setup_pre = sum(slot_tmus[i] for i in _ACQUIRE_SLOTS) + sum(slot_tmus[i] for i in block.pre)
+    use_once = sum(once_use[i] for i in block.slots)
+    setup_post = sum(slot_tmus[i] for i in block.post) + slot_tmus[_RELEASE_SLOT]
+    return _assert_conservation(Decomposed(setup_pre, use_once, setup_post, block.n, total_tmu, block), wi_row_id)
+
+
 def decompose_static(slot_tmus: list[float], repeat_counts: dict[str, int], total_tmu: float, wi_row_id: str | None = None) -> Decomposed:
-    """fixture 路徑：slot_tmus 已含 repeat（Σslot[3..5] 是 N 次的總和）→ use_once = Σslot[3..5] / N。"""
-    n = repeat_n(repeat_counts, wi_row_id)
-    acquire = sum(slot_tmus[i] for i in _ACQUIRE_SLOTS)
-    use_total = sum(slot_tmus[i] for i in _USE_SLOTS)
-    release = slot_tmus[_RELEASE_SLOT]
-    use_once = use_total / n if n else use_total
-    return _assert_conservation(Decomposed(acquire, use_once, release, n, total_tmu), wi_row_id)
+    """fixture 路徑：R 內每格 once = slot_tmus[s] / N（逐格除，Spec §3.3）。"""
+    block = repeat_block(slot_tmus, repeat_counts, wi_row_id)
+    if not block.slots:
+        # R 空：無重複，use_once = Σ use 段（三列時 use 列 Q=1）
+        setup_pre = sum(slot_tmus[i] for i in _ACQUIRE_SLOTS)
+        use_once = sum(slot_tmus[i] for i in _USE_SLOTS)
+        setup_post = slot_tmus[_RELEASE_SLOT]
+        return _assert_conservation(Decomposed(setup_pre, use_once, setup_post, 1, total_tmu, block), wi_row_id)
+    once_use = {s: slot_tmus[s] / block.n for s in block.slots}
+    return _assemble(slot_tmus, block, once_use, total_tmu, wi_row_id)
 
 
-def strip_repeats(slot_inputs: dict[str, Any], slots: tuple[int, ...] = _USE_SLOTS) -> dict[str, Any]:
-    """把 slot_inputs 的指定格 repeat_count 歸 1（用於引擎重算單次工時，Spec §3.3）。
-
-    slot_inputs 形狀＝`compute_cycle` 的 `{"seq":..., "slots": {i: {...}}}`。深拷貝，不改原輸入。
-    """
+def strip_repeats(slot_inputs: dict[str, Any], slots: tuple[int, ...]) -> dict[str, Any]:
+    """把 slot_inputs 指定格的 repeat_count 歸 1（引擎重算單次工時用；Spec §3.3）。深拷貝。"""
     out = copy.deepcopy(slot_inputs)
     slot_map = out.get("slots") or {}
     for si in slots:
-        # slots key 可能是 int 或 str（JSON）——兩種都清
         for key in (si, str(si)):
             if key in slot_map and isinstance(slot_map[key], dict) and "repeat_count" in slot_map[key]:
                 slot_map[key]["repeat_count"] = 1
@@ -104,25 +146,24 @@ def strip_repeats(slot_inputs: dict[str, Any], slots: tuple[int, ...] = _USE_SLO
 
 
 def decompose_engine(slot_inputs: dict[str, Any], total_tmu: float, rs: Any, wi_row_id: str | None = None) -> Decomposed:
-    """權威路徑：以 repeat 歸 1 重算單次工時（Spec §3.3）。
-
-    `compute_cycle(strip_repeats(slot_inputs))` 的 slot_tmus[3..5] 即單次；N 由原 slot_inputs 取。
-    M 格伴隨維度＋N>1 由 compute_cycle 的 max 語義自然反映；守恆斷言會擋線性不成立的情形。
-    """
+    """權威路徑：R 內每格 once = compute_cycle(strip_repeats(slot_inputs, slots=R)).slot_tmus[s]（Spec §3.3）。"""
     from ddm_v2.most_engine.calculate import compute_cycle
 
-    repeat_counts = _repeat_counts_from_slot_inputs(slot_inputs)
-    n = repeat_n(repeat_counts, wi_row_id)
     full = compute_cycle(slot_inputs, rs)
-    once = compute_cycle(strip_repeats(slot_inputs), rs)
-    acquire = sum(full.slot_tmus[i] for i in _ACQUIRE_SLOTS)
-    use_once = sum(once.slot_tmus[i] for i in _USE_SLOTS)
-    release = full.slot_tmus[_RELEASE_SLOT]
-    return _assert_conservation(Decomposed(acquire, use_once, release, n, total_tmu), wi_row_id)
+    slot_tmus = list(full.slot_tmus)
+    repeat_counts = _repeat_counts_from_slot_inputs(slot_inputs)
+    block = repeat_block(slot_tmus, repeat_counts, wi_row_id)
+    if not block.slots:
+        setup_pre = sum(slot_tmus[i] for i in _ACQUIRE_SLOTS)
+        use_once = sum(slot_tmus[i] for i in _USE_SLOTS)
+        setup_post = slot_tmus[_RELEASE_SLOT]
+        return _assert_conservation(Decomposed(setup_pre, use_once, setup_post, 1, total_tmu, block), wi_row_id)
+    once = compute_cycle(strip_repeats(slot_inputs, block.slots), rs)
+    once_use = {s: once.slot_tmus[s] for s in block.slots}
+    return _assemble(slot_tmus, block, once_use, total_tmu, wi_row_id)
 
 
 def _repeat_counts_from_slot_inputs(slot_inputs: dict[str, Any]) -> dict[str, int]:
-    """從 slot_inputs.slots[i].repeat_count 取出 {str(i): N}。"""
     out: dict[str, int] = {}
     for key, slot in (slot_inputs.get("slots") or {}).items():
         if isinstance(slot, dict):
@@ -132,4 +173,12 @@ def _repeat_counts_from_slot_inputs(slot_inputs: dict[str, Any]) -> dict[str, in
     return out
 
 
-__all__ = ["Decomposed", "TmuDecompositionError", "decompose_static", "decompose_engine", "strip_repeats", "repeat_n"]
+__all__ = [
+    "RepeatBlock",
+    "Decomposed",
+    "TmuDecompositionError",
+    "repeat_block",
+    "decompose_static",
+    "decompose_engine",
+    "strip_repeats",
+]

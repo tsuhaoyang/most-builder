@@ -28,9 +28,13 @@ def _assert_two_paths_equal(cyc: dict, repeat_counts: dict) -> None:
     full = compute_cycle(cyc, rs)
     de = decompose_engine(cyc, full.total_tmu, rs, "t")
     ds = decompose_static(list(full.slot_tmus), repeat_counts, full.total_tmu, "t")
-    assert de == ds, f"engine {de} != static {ds}"
+    # 兩路徑數學相等；以容差比較（Spec §3.3 守恆判準 |Δ|≤1e-6，非位元相等——浮點運算順序不同）
+    assert de.n == ds.n and de.block.slots == ds.block.slots
+    assert de.setup_pre_tmu == pytest.approx(ds.setup_pre_tmu, abs=1e-6)
+    assert de.use_once_tmu == pytest.approx(ds.use_once_tmu, abs=1e-6)
+    assert de.setup_post_tmu == pytest.approx(ds.setup_post_tmu, abs=1e-6)
     # 守恆（Spec §3.3）
-    assert de.acquire_tmu + de.n * de.use_once_tmu + de.release_tmu == pytest.approx(full.total_tmu, abs=1e-6)
+    assert de.setup_pre_tmu + de.n * de.use_once_tmu + de.setup_post_tmu == pytest.approx(full.total_tmu, abs=1e-6)
 
 
 def test_engine_equals_static_tool_cm_with_repeat() -> None:
@@ -87,3 +91,21 @@ def test_engine_equals_static_all_use_slots_repeat() -> None:
         },
     }
     _assert_two_paths_equal(cyc, {"3": 12, "4": 12, "5": 12})
+
+
+def test_engine_equals_static_partial_block_m_once() -> None:
+    """分桶合法案例：M 一次（不 repeat）＋ X/I ×8 → R={4,5}，M 進 setup_pre。
+    引擎路徑 strip_repeats 只歸 1 slot 4,5；兩路徑相等且守恆（Spec §3.3 分桶）。"""
+    cyc = {
+        "seq": "CM",
+        "slots": {
+            0: {"reach_cm": 20},
+            1: {},
+            2: {"g_code": "g_tap"},
+            3: {"m_components": [{"verb_code": "m_screw"}]},  # M fixed 3, no repeat
+            4: {"x_code": "x_press", "x_seconds": 1.0, "repeat_count": 8},
+            5: {"i_code": "i_check", "repeat_count": 8},
+            6: {"reach_cm": 20},
+        },
+    }
+    _assert_two_paths_equal(cyc, {"4": 8, "5": 8})
