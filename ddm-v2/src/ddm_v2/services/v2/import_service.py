@@ -394,6 +394,7 @@ async def submit_to_worksheet(
             object_vocab_id=vocab.id,
             hand=hand,
             frequency=frequency,
+            wi_group=((row.get("wi_group") or "").strip() or None),  # ADR-035 D10：Excel 對應欄
             provenance="imported",
             source_import_id=import_id,
         )

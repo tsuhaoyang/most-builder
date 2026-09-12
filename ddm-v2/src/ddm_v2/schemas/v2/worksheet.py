@@ -4,7 +4,7 @@ from __future__ import annotations
 import uuid
 from typing import Any
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
 
 from ddm_v2.schemas.v2.most import CycleIn
 
@@ -45,8 +45,18 @@ class WiRowSaveIn(BaseModel):
     simo_group_id: str | None = None            # SIMO 標記＋配對資訊（ADR-020：非空＝該列貢獻 0；主列不標記）
     simo_with_row_id: uuid.UUID | None = None   # 輸入形式（E5 配對，service 僅標記從屬列）
     narrative: str | None = None        # 敘述（前端合成；存 most_cycles.narrative_zh，供匯出 METHOD）
+    wi_group: str | None = Field(default=None, max_length=200)  # 作業名稱（ADR-035 D10）
     cycle: CycleIn
     level: LevelFieldsIn = Field(default_factory=LevelFieldsIn)
+
+    @field_validator("wi_group", mode="before")
+    @classmethod
+    def _norm_wi_group(cls, v: Any) -> str | None:
+        """strip；空字串一律正規化為 None（§3.1）。"""
+        if v is None:
+            return None
+        s = str(v).strip()
+        return s or None
 
 
 class WorksheetSaveIn(BaseModel):

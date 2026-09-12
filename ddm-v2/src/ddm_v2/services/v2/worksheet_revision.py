@@ -89,6 +89,7 @@ def content_hash_from_read(payload: dict[str, Any]) -> str:
                 "tool_vocab_id": r.get("tool_vocab_id"),
                 "frequency": r.get("frequency"),
                 "simo_group_id": r.get("simo_group_id"),
+                "wi_group": r.get("wi_group"),
                 "cycle": (r.get("cycle") or {}).get("slot_inputs"),
                 "level": r.get("level"),
             }

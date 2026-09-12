@@ -118,6 +118,7 @@ class WiRow(Base, TimestampMixin):
     tool_vocab_id: Mapped[UUID | None] = mapped_column(PG_UUID(as_uuid=True), ForeignKey("work_vocab_items.id", ondelete="RESTRICT"))
     frequency: Mapped[float] = mapped_column(Numeric(10, 3), nullable=False, server_default=text("1"))
     simo_group_id: Mapped[str | None] = mapped_column(Text)
+    wi_group: Mapped[str | None] = mapped_column(Text)  # 作業名稱（ADR-035 D10；同名＝同作業候選成員）
     provenance: Mapped[str] = mapped_column(Text, nullable=False, server_default=text("'manual'"))
     source_row_id: Mapped[UUID | None] = mapped_column(PG_UUID(as_uuid=True))  # clone 血緣
     # impl-04：模組實體化追溯（同 NULL 或同非 NULL）

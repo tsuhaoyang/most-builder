@@ -197,7 +197,8 @@ async def save_worksheet(
             sub_activity=r.sub_activity, key_parts=r.key_parts, hand=r.hand,
             object_vocab_id=r.object_vocab_id, from_vocab_id=r.from_vocab_id,
             to_vocab_id=r.to_vocab_id, tool_vocab_id=r.tool_vocab_id,
-            frequency=r.frequency, simo_group_id=simo_group_of.get(r.id, r.simo_group_id), provenance="manual",
+            frequency=r.frequency, simo_group_id=simo_group_of.get(r.id, r.simo_group_id),
+            wi_group=r.wi_group, provenance="manual",
         ))
         session.add(MostCycle(
             id=uuid.uuid4(), wi_row_id=r.id, seq_kind=result.seq, rule_set_id=rs_row.id,
@@ -263,6 +264,7 @@ async def read_worksheet(session: AsyncSession, worksheet_id: uuid.UUID) -> dict
             "tool_vocab_id": str(wr.tool_vocab_id) if wr.tool_vocab_id else None,
             "frequency": float(wr.frequency),
             "simo_group_id": wr.simo_group_id,
+            "wi_group": wr.wi_group,
             # F-03b §2 provenance（軟參考，非 FK）
             "source_module_id": str(wr.source_module_id) if wr.source_module_id else None,
             "source_module_version": wr.source_module_version,
@@ -385,6 +387,7 @@ async def clone_worksheet(session: AsyncSession, worksheet_id: uuid.UUID, actor:
                           object_vocab_id=wr.object_vocab_id, from_vocab_id=wr.from_vocab_id,
                           to_vocab_id=wr.to_vocab_id, tool_vocab_id=wr.tool_vocab_id,
                           frequency=wr.frequency, simo_group_id=wr.simo_group_id,
+                          wi_group=wr.wi_group,
                           provenance=wr.provenance, source_row_id=wr.id))
         cyc = (await session.execute(select(MostCycle).where(MostCycle.wi_row_id == wr.id))).scalar_one_or_none()
         if cyc:

@@ -7,7 +7,7 @@ from typing import Any
 from pydantic import BaseModel, Field
 
 # 可對應的「我們的欄位」（小而可擴）。description 必填。
-TARGET_FIELDS: list[str] = ["description", "part_no", "hand", "seconds", "quantity", "element_class", "notes"]
+TARGET_FIELDS: list[str] = ["description", "part_no", "hand", "seconds", "quantity", "element_class", "notes", "wi_group"]
 REQUIRED_FIELDS: list[str] = ["description"]
 
 

@@ -1267,6 +1267,7 @@ async def instantiate_to_worksheet(
             tool_vocab_id=tool_vid,
             frequency=freq,
             simo_group_id=simo_gid,
+            wi_group=m.name_zh,   # ADR-035 D10：模組實體化的列同名＝該模組名
             provenance="manual",   # TODO: 加 'module' 到 provenance CHECK 後改
             source_module_id=data.module_id,
             source_module_version=target_ver_no,
