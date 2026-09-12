@@ -9,6 +9,7 @@
 from __future__ import annotations
 
 import uuid
+from dataclasses import dataclass
 from datetime import datetime, timezone
 from typing import Any
 
@@ -73,6 +74,123 @@ class RowSequenceError(SequenceError):
         self.row_id = row_id
 
 
+@dataclass
+class ComputedRow:
+    """一列的計算結果（純計算，不碰 DB 寫入）。save 與 preview 共用（ADR-035 D10 B3）。"""
+
+    row_in: Any                 # WiRowSaveIn
+    result: Any                 # compute_cycle 回傳（seq/letters/slot_tmus/total_tmu/total_seconds/tech_line）
+    narrative_zh: str
+    narrative_en: str
+    cycle_json: dict[str, Any]
+    simo_group_id: str | None   # 正規化後（SIMO 標記）
+
+
+@dataclass
+class ComputeContext:
+    """compute_rows_for_save 的共用上下文（rule-set 快照等）。"""
+
+    code: str
+    rs_row: Any                 # RuleSet
+    rsdata: Any                 # RuleSetData
+
+
+async def compute_rows_for_save(
+    session: AsyncSession, ws: MostWorksheet, payload: WorksheetSaveIn
+) -> tuple[list[ComputedRow], ComputeContext]:
+    """逐列計算（rule-set／vocab／引擎／敘述／SIMO 正規化）。**不 session.add／flush**；只讀。
+
+    save_worksheet 與 lb_preview_report（dry-run）共用同一套計算，保證兩路徑逐位元一致。
+    engine 例外 → RowSequenceError（與存檔相同）。
+    """
+    # ── rule-set 解析（同 save_worksheet）──
+    code = (payload.rows[0].cycle.rule_set_code if payload.rows else None) or await get_active_rule_set_code(session)
+    rs_row = (await session.execute(select(RuleSet).where(RuleSet.code == code))).scalar_one_or_none()
+    if rs_row is None:
+        raise RuleSetNotFound(code)
+    rsdata = await load_rule_set_from_db(session, code)
+    rsdata.validate_complete()
+    opts = await load_options_from_db(session, code)
+    labels = build_label_map(opts)
+
+    # ── SIMO 正規化（同 save_worksheet）──
+    row_ids = {r.id for r in payload.rows}
+    parent: dict[Any, Any] = {}
+
+    def _find(k):
+        parent.setdefault(k, k)
+        while parent[k] != k:
+            parent[k] = parent[parent[k]]
+            k = parent[k]
+        return k
+
+    def _union(a, b):
+        ra, rb = _find(a), _find(b)
+        if ra != rb:
+            parent[rb] = ra
+
+    dependents: list[Any] = []
+    pair_targets: set[Any] = set()
+    for r in payload.rows:
+        pid = getattr(r, "simo_with_row_id", None)
+        if pid is None:
+            continue
+        if pid == r.id or pid not in row_ids:
+            raise SimoPairInvalid(f"列 {r.id} 的 SIMO 配對無效：{pid}")
+        dependents.append(r.id)
+        pair_targets.add(pid)
+        _union(r.id, pid)
+    mutual = pair_targets & set(dependents)
+    if mutual:
+        raise SimoPairInvalid(
+            f"SIMO 配對無效：列 {sorted(str(x) for x in mutual)} 被指為主列、卻又自身宣告配對（主列不得標記）")
+    simo_group_of: dict[Any, str] = {}
+    if dependents:
+        roots: dict[Any, list] = {}
+        for rid in dependents:
+            roots.setdefault(_find(rid), []).append(rid)
+        for n, (_root, members) in enumerate(sorted(roots.items(), key=lambda kv: str(kv[0])), start=1):
+            gid = f"SIMO-{n}"
+            for m in members:
+                simo_group_of[m] = gid
+
+    # ── vocab 名（同 save_worksheet）──
+    vids = {vid for r in payload.rows for vid in (r.object_vocab_id, r.from_vocab_id, r.to_vocab_id) if vid}
+    vname: dict[uuid.UUID, str] = {}
+    vname_en: dict[uuid.UUID, str] = {}
+    if vids:
+        for v in (await session.execute(select(WorkVocabItem).where(WorkVocabItem.id.in_(vids)))).scalars().all():
+            vname[v.id] = v.name_zh
+            vname_en[v.id] = v.name_en or v.name_zh
+
+    # ── 逐列計算 ──
+    computed: list[ComputedRow] = []
+    for r in payload.rows:
+        resolve_cycle_rule_set(r.cycle, code)  # 就地寫入 rule_set_code（同 save）
+        engine_cycle = cycle_in_to_engine(r.cycle)
+        try:
+            result = compute_cycle(engine_cycle, rsdata)
+        except SequenceError as exc:
+            raise RowSequenceError(exc, seq_no=r.seq_no, row_id=r.id) from exc
+        voc = {"object": vname.get(r.object_vocab_id, ""),
+               "from": vname.get(r.from_vocab_id, "") if r.from_vocab_id else "",
+               "to": vname.get(r.to_vocab_id, "") if r.to_vocab_id else "",
+               "hand": HAND_NAMES.get(r.hand or "", "")}
+        voc_en = {"object": vname_en.get(r.object_vocab_id, ""),
+                  "from": vname_en.get(r.from_vocab_id, "") if r.from_vocab_id else "",
+                  "to": vname_en.get(r.to_vocab_id, "") if r.to_vocab_id else "",
+                  "hand": r.hand or ""}
+        cycle_json = r.cycle.model_dump(mode="json")
+        computed.append(ComputedRow(
+            row_in=r, result=result,
+            narrative_zh=build_narrative(cycle_json, labels, voc),
+            narrative_en=build_narrative_en(cycle_json, labels, voc_en),
+            cycle_json=cycle_json,
+            simo_group_id=simo_group_of.get(r.id, r.simo_group_id),
+        ))
+    return computed, ComputeContext(code=code, rs_row=rs_row, rsdata=rsdata)
+
+
 async def save_worksheet(
     session: AsyncSession,
     worksheet_id: uuid.UUID,
@@ -101,111 +219,32 @@ async def save_worksheet(
     if "allowance_percent" in payload.model_fields_set:
         ws.allowance_percent = payload.allowance_percent
 
-    # ADR-023 §3.5：規則版本以 payload 的 cycle 為準；未指定（空 rows 或 client 未帶）→ 目前 active。
-    code = (payload.rows[0].cycle.rule_set_code if payload.rows else None) or await get_active_rule_set_code(session)
-    rs_row = (await session.execute(select(RuleSet).where(RuleSet.code == code))).scalar_one_or_none()
-    if rs_row is None:
-        raise RuleSetNotFound(code)
-    rsdata = await load_rule_set_from_db(session, code)
-    rsdata.validate_complete()  # 完整性 gating
-
-    # 後端敘事（FE-2/E6）：rule-set 標籤/句字/display_rule + vocab 名 → METHOD 句（單一權威）
-    opts = await load_options_from_db(session, code)
-
-    labels = build_label_map(opts)
-
-    # E5（ADR-020）：SIMO 正規化 — simo_group_id＝SIMO 標記（該列貢獻 0，時間由主列吸收）。
-    # 配對輸入 simo_with_row_id：僅「宣告配對的從屬列」被標記，被指向的主列不標記；
-    # 同一配對鏈的從屬列共用一個 gid（附配對資訊）。顯式 simo_group_id 輸入＝已標記，原值保留。
-    row_ids = {r.id for r in payload.rows}
-    parent: dict[Any, Any] = {}
-
-    def _find(k):
-        parent.setdefault(k, k)
-        while parent[k] != k:
-            parent[k] = parent[parent[k]]
-            k = parent[k]
-        return k
-
-    def _union(a, b):
-        ra, rb = _find(a), _find(b)
-        if ra != rb:
-            parent[rb] = ra
-
-    dependents: list[Any] = []  # 宣告配對的從屬列（僅這些列被標記）
-    pair_targets: set[Any] = set()  # 被指為配對目標的主列
-    for r in payload.rows:
-        pid = getattr(r, "simo_with_row_id", None)
-        if pid is None:
-            continue
-        if pid == r.id or pid not in row_ids:
-            raise SimoPairInvalid(f"列 {r.id} 的 SIMO 配對無效：{pid}")
-        dependents.append(r.id)
-        pair_targets.add(pid)
-        _union(r.id, pid)
-    # ADR-020 寫入守門：被指為配對目標（主列）的列不得自身宣告配對——
-    # 否則互指/鏈式配對會讓整組都被標記 → 全部貢獻 0（靜默歸零）。
-    mutual = pair_targets & set(dependents)
-    if mutual:
-        raise SimoPairInvalid(
-            f"SIMO 配對無效：列 {sorted(str(x) for x in mutual)} 被指為主列、卻又自身宣告配對（主列不得標記）")
-    simo_group_of: dict[Any, str] = {}
-    if dependents:
-        roots: dict[Any, list] = {}
-        for rid in dependents:
-            roots.setdefault(_find(rid), []).append(rid)
-        for n, (_root, members) in enumerate(sorted(roots.items(), key=lambda kv: str(kv[0])), start=1):
-            gid = f"SIMO-{n}"
-            for m in members:
-                simo_group_of[m] = gid
-    vids = {vid for r in payload.rows for vid in (r.object_vocab_id, r.from_vocab_id, r.to_vocab_id) if vid}
-    vname: dict[uuid.UUID, str] = {}
-    vname_en: dict[uuid.UUID, str] = {}
-    if vids:
-        for v in (await session.execute(select(WorkVocabItem).where(WorkVocabItem.id.in_(vids)))).scalars().all():
-            vname[v.id] = v.name_zh
-            vname_en[v.id] = v.name_en or v.name_zh  # 未翻譯的詞彙回退中文，不留空受詞
+    # ── 逐列計算（rule-set／vocab／引擎／敘述／SIMO 正規化）：與 preview 共用（ADR-035 D10 B3）──
+    computed, ctx = await compute_rows_for_save(session, ws, payload)
+    rs_row = ctx.rs_row
 
     # 整份取代（cascade 連帶刪 cycle/level）
     await session.execute(delete(WiRow).where(WiRow.worksheet_id == worksheet_id))
     await session.flush()
 
     now = datetime.now(timezone.utc)
-    for r in payload.rows:
-        # slot_inputs 是回放的權威原始輸入 → 必須自帶解析後的規則版本，不可留 None（ADR-023 §3.4）
-        resolve_cycle_rule_set(r.cycle, code)
-        engine_cycle = cycle_in_to_engine(r.cycle)
-        try:
-            result = compute_cycle(engine_cycle, rsdata)
-        except SequenceError as exc:      # 整份取代的迴圈：不補列位置，使用者只知道「某一列錯了」
-            raise RowSequenceError(exc, seq_no=r.seq_no, row_id=r.id) from exc
-        voc = {"object": vname.get(r.object_vocab_id, ""),
-               "from": vname.get(r.from_vocab_id, "") if r.from_vocab_id else "",
-               "to": vname.get(r.to_vocab_id, "") if r.to_vocab_id else "",
-               "hand": HAND_NAMES.get(r.hand or "", "")}
-        # 英文 vocab 與中文分開組：hand 給的是**原始代碼**（narrative_en 以 "RH:" 當
-        # 祈使句前綴），不是 HAND_NAMES 轉出來的顯示字串。
-        voc_en = {"object": vname_en.get(r.object_vocab_id, ""),
-                  "from": vname_en.get(r.from_vocab_id, "") if r.from_vocab_id else "",
-                  "to": vname_en.get(r.to_vocab_id, "") if r.to_vocab_id else "",
-                  "hand": r.hand or ""}
-        cycle_json = r.cycle.model_dump(mode="json")
-        narrative = build_narrative(cycle_json, labels, voc)
-        narrative_en = build_narrative_en(cycle_json, labels, voc_en)
+    for cr in computed:
+        r = cr.row_in
+        result = cr.result
         session.add(WiRow(
             id=r.id, worksheet_id=worksheet_id, seq_no=r.seq_no,
             sub_activity=r.sub_activity, key_parts=r.key_parts, hand=r.hand,
             object_vocab_id=r.object_vocab_id, from_vocab_id=r.from_vocab_id,
             to_vocab_id=r.to_vocab_id, tool_vocab_id=r.tool_vocab_id,
-            frequency=r.frequency, simo_group_id=simo_group_of.get(r.id, r.simo_group_id),
+            frequency=r.frequency, simo_group_id=cr.simo_group_id,
             wi_group=r.wi_group, provenance="manual",
         ))
         session.add(MostCycle(
             id=uuid.uuid4(), wi_row_id=r.id, seq_kind=result.seq, rule_set_id=rs_row.id,
-            slot_inputs=r.cycle.model_dump(mode="json"),  # 權威原始輸入
+            slot_inputs=cr.cycle_json,  # 權威原始輸入
             computed={"breakdown": [{"letter": L, "tmu": t} for L, t in zip(result.letters, result.slot_tmus)],
                       "tech_line": result.tech_line},
-            narrative_zh=narrative, narrative_en=narrative_en,
+            narrative_zh=cr.narrative_zh, narrative_en=cr.narrative_en,
             total_tmu=result.total_tmu, total_seconds=result.total_seconds, computed_at=now,
         ))
         lv = r.level

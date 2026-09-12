@@ -150,22 +150,20 @@ async def _load_rs_by_row(session: AsyncSession, ws_id: uuid.UUID) -> dict[str, 
     return out
 
 
-async def _project(session: AsyncSession, ws_id: uuid.UUID) -> ProjectionResult:
-    """組裝 vocab＋rs（service 層）→ 呼叫投影層 project_rows。投影層不碰 DB。"""
+async def _project(session: AsyncSession, ws_id: uuid.UUID) -> tuple[ProjectionResult, list]:
+    """組裝 vocab＋rs（service 層）→ 呼叫投影層 project_rows。回 (result, proj_rows)。投影層不碰 DB。"""
     from ddm_v2.lb_projection.adapter import rows_from_worksheet
 
     data = await read_worksheet(session, ws_id)
     vocab = await _load_vocab(session)
     proj_rows = rows_from_worksheet(data, vocab)
-    # rs 逐列（同 worksheet 多版本）；slot_inputs 逐列供引擎路徑分解
     rs_by_row = await _load_rs_by_row(session, ws_id)
     slot_inputs_by_row = {
         pr.wi_row_id: pr.cycle.slot_inputs for pr in proj_rows if pr.cycle.slot_inputs
     }
-    # 單一 rs：project_rows 現簽名收單一 rs；多版本時逐列 rs 交給投影層（此處傳 map 的第一個作預設，
-    # 引擎路徑分解在 tmu 以 slot_inputs_by_row 帶列級語意；rs 版本差異由 slot_inputs 的 rule_set_code 承載）。
     default_rs = next(iter(rs_by_row.values()), None)
-    return project_rows(proj_rows, vocab, rs=default_rs, slot_inputs_by_row=slot_inputs_by_row)
+    result = project_rows(proj_rows, vocab, rs=default_rs, slot_inputs_by_row=slot_inputs_by_row)
+    return result, proj_rows
 
 
 async def to_lb_csv(session: AsyncSession, ws_id: uuid.UUID) -> str:
@@ -173,43 +171,54 @@ async def to_lb_csv(session: AsyncSession, ws_id: uuid.UUID) -> str:
 
     移除 machine_count／manpower 與所有 Level dump 欄（D16）：改由 project_rows 產出契約 CSV。
     """
-    result = await _project(session, ws_id)
+    result, _rows = await _project(session, ws_id)
     if result.errors:
         raise LbExportBlocked(result.errors, result.warnings)
     return result.csv_text
 
 
-async def lb_export_report(session: AsyncSession, ws_id: uuid.UUID) -> dict[str, Any]:
-    """匯出報告（不擋，永遠回；含 E 與 W；Spec §8.2）。"""
-    result = await _project(session, ws_id)
-    groups: dict[str, list[int]] = {}
-    atomic: dict[str, list[int]] = {}
-    tool_episodes: list[dict[str, Any]] = []
-    for t in result.tasks:
-        if t.group is not None:
-            groups.setdefault(str(t.group), []).append(t.task_id)
-        if t.atomic_group is not None:
-            atomic.setdefault(str(t.atomic_group), []).append(t.task_id)
-    return {
-        "contract_version": CONTRACT_VERSION,
-        "worksheet_id": str(ws_id),
-        "tasks_out": len(result.tasks),
-        "groups": groups,
-        "atomic_groups": atomic,
-        "tool_episodes": tool_episodes,
-        "errors": [{"code": e.code, "wi_row_id": e.wi_row_id, "message": e.message} for e in result.errors],
-        "warnings": [{"code": w.code, "wi_row_id": w.wi_row_id, "message": w.message} for w in result.warnings],
-    }
+async def lb_export_report(session: AsyncSession, ws_id: uuid.UUID, *, include_tasks: bool = False) -> dict[str, Any]:
+    """匯出報告（不擋，永遠回；含 E 與 W；Spec §8.2）。走 build_report（B5）。"""
+    from ddm_v2.lb_projection.report import build_report
+
+    result, proj_rows = await _project(session, ws_id)
+    report = build_report(result, proj_rows, include_tasks=include_tasks)
+    report["worksheet_id"] = str(ws_id)
+    return report
+
+
+async def lb_preview_report(
+    session: AsyncSession, ws_id: uuid.UUID, payload, *, include_tasks: bool = False
+) -> dict[str, Any]:
+    """未存檔預覽（dry-run，ADR-035 D10 B3）：與存檔後 lb-report 同一投影路徑、同一 builder。不寫 DB。"""
+    from ddm_v2.lb_projection.adapter import rows_from_save_payload
+    from ddm_v2.lb_projection.report import build_report
+    from ddm_v2.services.v2.worksheet_service import compute_rows_for_save
+
+    ws = await session.get(MostWorksheet, ws_id)
+    if ws is None:
+        raise WorksheetNotFound(str(ws_id))
+    computed, _ctx = await compute_rows_for_save(session, ws, payload)  # 純計算，不寫 DB
+    vocab = await _load_vocab(session)
+    proj_rows = rows_from_save_payload(computed, vocab)
+    slot_inputs_by_row = {pr.wi_row_id: pr.cycle.slot_inputs for pr in proj_rows if pr.cycle.slot_inputs}
+    rs_by_row = await _load_rs_by_row(session, ws_id)
+    default_rs = next(iter(rs_by_row.values()), None)
+    result = project_rows(proj_rows, vocab, rs=default_rs, slot_inputs_by_row=slot_inputs_by_row)
+    report = build_report(result, proj_rows, include_tasks=include_tasks)
+    report["worksheet_id"] = str(ws_id)
+    report["preview"] = True
+    return report
 
 
 async def lb_api_payload(session: AsyncSession, ws_id: uuid.UUID) -> dict[str, Any]:
     """LB API adapter：回 {contract_version, csv, tasks, report}（不再直送 build_output；保守邊不可沿用）。"""
-    result = await _project(session, ws_id)
+    from ddm_v2.lb_projection.emit import to_row
+
+    result, _rows = await _project(session, ws_id)
     if result.errors:
         raise LbExportBlocked(result.errors, result.warnings)
     report = await lb_export_report(session, ws_id)
-    from ddm_v2.lb_projection.emit import to_row
-
     return {
         "status": "interface-ready",
         "contract_version": CONTRACT_VERSION,

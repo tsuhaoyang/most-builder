@@ -610,6 +610,40 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v2/worksheets/{worksheet_id}/export/lb-report": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Export Lb Report */
+        get: operations["export_lb_report_api_v2_worksheets__worksheet_id__export_lb_report_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v2/worksheets/{worksheet_id}/export/lb-report/preview": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Export Lb Report Preview */
+        post: operations["export_lb_report_preview_api_v2_worksheets__worksheet_id__export_lb_report_preview_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v2/worksheets/{worksheet_id}/export/report.xlsx": {
         parameters: {
             query?: never;
@@ -3443,6 +3477,8 @@ export interface components {
             simo_with_row_id?: string | null;
             /** Narrative */
             narrative?: string | null;
+            /** Wi Group */
+            wi_group?: string | null;
             cycle: components["schemas"]["CycleIn"];
             level?: components["schemas"]["LevelFieldsIn"];
         };
@@ -5102,6 +5138,80 @@ export interface operations {
             cookie?: never;
         };
         requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    export_lb_report_api_v2_worksheets__worksheet_id__export_lb_report_get: {
+        parameters: {
+            query?: {
+                include_tasks?: boolean;
+            };
+            header?: never;
+            path: {
+                worksheet_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    export_lb_report_preview_api_v2_worksheets__worksheet_id__export_lb_report_preview_post: {
+        parameters: {
+            query?: {
+                include_tasks?: boolean;
+            };
+            header?: never;
+            path: {
+                worksheet_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["WorksheetSaveIn"];
+            };
+        };
         responses: {
             /** @description Successful Response */
             200: {

@@ -56,65 +56,108 @@ def rows_from_worksheet(data: dict[str, Any], vocab: dict[str, ProjectionVocab])
         breakdown = cyc.get("breakdown") or (cyc.get("computed") or {}).get("breakdown") or []
         slot_tmus = [float(b.get("tmu", 0) or 0) for b in breakdown] if breakdown else [0.0] * 7
         slot_inputs = cyc.get("slot_inputs") or {}
-        repeat_counts: dict[str, int] = {}
-        # slot index 對映：g2→"1"?（依 Spec §3.1 的 g2/p5/m3/x4/i5，slot index 由引擎 breakdown 位置定）。
-        # WP2 只做結構搬運；實際 slot index 對映與 x_seconds 取值在 WP3 tmu.py 依 Spec §3.3 精確處理。
         x4 = slot_inputs.get("x4") or {}
         x_seconds = float(x4.get("x_seconds", 0) or 0)
         lv = r.get("level") or {}
-        # lb_tags：fixture 與 read_worksheet（WP1）都在 row 頂層放 "lb_tags"；舊資料可能仍在 level 內 → fallback。
         tags = r.get("lb_tags") or {}
-
-        def _tag(key: str, default: Any = None) -> Any:
-            return tags.get(key, lv.get(key, default))
-        out.append(
-            ProjectionRow.model_validate(
-                {
-                    "wi_row_id": str(r.get("wi_row_id") or r.get("id") or ""),
-                    "seq_no": r.get("seq_no"),
-                    "sub_activity": r.get("sub_activity"),
-                    "key_parts": r.get("key_parts"),
-                    "hand": r.get("hand"),
-                    "object_vocab": r.get("object_vocab_id") or r.get("object_vocab"),
-                    "tool_vocab": r.get("tool_vocab_id") or r.get("tool_vocab"),
-                    "frequency": float(r.get("frequency", 1) or 1),
-                    "simo_group_id": r.get("simo_group_id"),
-                    "cycle": {
-                        "seq_kind": cyc.get("seq_kind", "GM"),
-                        "slot_tmus": slot_tmus,
-                        "repeat_counts": repeat_counts,
-                        "x_seconds": x_seconds,
-                        "total_tmu": float(cyc.get("total_tmu", 0) or 0),
-                        "tech_line": cyc.get("tech_line"),
-                        "narrative_en": cyc.get("narrative_en"),
-                        "narrative_zh": cyc.get("narrative_zh"),
-                        "slot_inputs": slot_inputs or None,
-                        "rule_set_code": cyc.get("rule_set_code"),
-                    },
-                    "level": {
-                        "ascription": lv.get("ascription"),
-                        "level": lv.get("level"),
-                        "countersignature": lv.get("countersignature"),
-                        "parent_countersignature": lv.get("parent_countersignature"),
-                        "order": lv.get("order"),
-                        "number": lv.get("number"),
-                        "number_count": lv.get("number_count"),
-                    },
-                    "lb_tags": {
-                        "is_general": bool(_tag("is_general", False)),
-                        "general_role": _tag("general_role"),
-                        "action_type": _tag("action_type"),
-                        "offline": bool(_tag("offline", False)),
-                        "worker_cub": _tag("worker_cub"),
-                        "segment": _tag("segment"),
-                        "station_pin": _tag("station_pin"),
-                        "merge_lock": bool(_tag("merge_lock", False)),
-                        "splittable": bool(_tag("splittable", False)),
-                    },
-                }
-            )
-        )
+        out.append(_build_projection_row(
+            wi_row_id=str(r.get("wi_row_id") or r.get("id") or ""),
+            seq_no=r.get("seq_no"),
+            sub_activity=r.get("sub_activity"), key_parts=r.get("key_parts"), hand=r.get("hand"),
+            object_vocab=r.get("object_vocab_id") or r.get("object_vocab"),
+            tool_vocab=r.get("tool_vocab_id") or r.get("tool_vocab"),
+            frequency=float(r.get("frequency", 1) or 1),
+            simo_group_id=r.get("simo_group_id"),
+            seq_kind=cyc.get("seq_kind", "GM"), slot_tmus=slot_tmus, x_seconds=x_seconds,
+            total_tmu=float(cyc.get("total_tmu", 0) or 0), tech_line=cyc.get("tech_line"),
+            narrative_en=cyc.get("narrative_en"), narrative_zh=cyc.get("narrative_zh"),
+            slot_inputs=slot_inputs or None, rule_set_code=cyc.get("rule_set_code"),
+            level=lv, lb_tags=tags,
+        ))
     return out
 
 
-__all__ = ["load_fixture", "rows_from_worksheet", "parse_vocab", "rows_from_fixture_dicts"]
+def _build_projection_row(
+    *, wi_row_id: str, seq_no: Any, sub_activity: Any, key_parts: Any, hand: Any,
+    object_vocab: Any, tool_vocab: Any, frequency: float, simo_group_id: Any,
+    seq_kind: str, slot_tmus: list[float], x_seconds: float, total_tmu: float,
+    tech_line: Any, narrative_en: Any, narrative_zh: Any, slot_inputs: Any, rule_set_code: Any,
+    level: dict[str, Any], lb_tags: dict[str, Any],
+) -> ProjectionRow:
+    """唯一對映規則（read_worksheet 與 save payload 兩路徑共用；避免兩份漂移）。
+
+    level 六欄 ← level dict；lb_tags ← 頂層 lb_tags（缺 key 時 fallback 到 level dict，相容舊資料）。
+    slot 級 repeat_count 在 WP3 tmu.py 依 slot_inputs 精確處理，此處 repeat_counts 留空（結構搬運）。
+    """
+    def _tag(key: str, default: Any = None) -> Any:
+        return lb_tags.get(key, level.get(key, default))
+
+    return ProjectionRow.model_validate({
+        "wi_row_id": wi_row_id, "seq_no": seq_no,
+        "sub_activity": sub_activity, "key_parts": key_parts, "hand": hand,
+        "object_vocab": object_vocab, "tool_vocab": tool_vocab,
+        "frequency": frequency, "simo_group_id": simo_group_id,
+        "cycle": {
+            "seq_kind": seq_kind, "slot_tmus": slot_tmus, "repeat_counts": {},
+            "x_seconds": x_seconds, "total_tmu": total_tmu, "tech_line": tech_line,
+            "narrative_en": narrative_en, "narrative_zh": narrative_zh,
+            "slot_inputs": slot_inputs, "rule_set_code": rule_set_code,
+        },
+        "level": {
+            "ascription": level.get("ascription"), "level": level.get("level"),
+            "countersignature": level.get("countersignature"),
+            "parent_countersignature": level.get("parent_countersignature"),
+            "order": level.get("order"), "number": level.get("number"),
+            "number_count": level.get("number_count"),
+        },
+        "lb_tags": {
+            "is_general": bool(_tag("is_general", False)),
+            "general_role": _tag("general_role"),
+            "action_type": _tag("action_type"),
+            "offline": bool(_tag("offline", False)),
+            "worker_cub": _tag("worker_cub"),
+            "segment": _tag("segment"),
+            "station_pin": _tag("station_pin"),
+            "merge_lock": bool(_tag("merge_lock", False)),
+            "splittable": bool(_tag("splittable", False)),
+        },
+    })
+
+
+def rows_from_save_payload(computed: list[Any], vocab: dict[str, ProjectionVocab]) -> list[ProjectionRow]:
+    """WorksheetSaveIn 的 ComputedRow（worksheet_service.compute_rows_for_save）→ list[ProjectionRow]（dry-run）。
+
+    與 rows_from_worksheet 共用 _build_projection_row（同一對映規則）。slot_tmus 直接取引擎回傳
+    （非經 DB breakdown）；slot_inputs=row_in.cycle.model_dump；level/lb_tags 來自 row_in.level。
+    """
+    out: list[ProjectionRow] = []
+    for cr in computed:
+        r = cr.row_in           # WiRowSaveIn
+        res = cr.result         # compute_cycle 回傳
+        lv = r.level
+        lb = {
+            "is_general": lv.is_general, "general_role": lv.general_role, "action_type": lv.action_type,
+            "offline": lv.offline, "worker_cub": lv.worker_cub, "segment": lv.segment,
+            "station_pin": lv.station_pin, "merge_lock": lv.merge_lock,
+        }
+        level_d = {
+            "ascription": lv.ascription, "level": lv.level, "countersignature": lv.countersignature,
+            "parent_countersignature": lv.parent_countersignature, "order": lv.order,
+            "number": lv.number, "number_count": lv.number_count,
+        }
+        out.append(_build_projection_row(
+            wi_row_id=str(r.id), seq_no=r.seq_no,
+            sub_activity=r.sub_activity, key_parts=r.key_parts, hand=r.hand,
+            object_vocab=str(r.object_vocab_id) if r.object_vocab_id else None,
+            tool_vocab=str(r.tool_vocab_id) if r.tool_vocab_id else None,
+            frequency=float(r.frequency or 1), simo_group_id=cr.simo_group_id,
+            seq_kind=res.seq, slot_tmus=list(res.slot_tmus), x_seconds=float(getattr(r.cycle, "x_seconds", 0) or 0),
+            total_tmu=float(res.total_tmu), tech_line=res.tech_line,
+            narrative_en=cr.narrative_en, narrative_zh=cr.narrative_zh,
+            slot_inputs=cr.cycle_json, rule_set_code=r.cycle.rule_set_code,
+            level=level_d, lb_tags=lb,
+        ))
+    return out
+
+
+__all__ = ["load_fixture", "rows_from_worksheet", "rows_from_save_payload", "parse_vocab", "rows_from_fixture_dicts"]
