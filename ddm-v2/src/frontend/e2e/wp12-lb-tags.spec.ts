@@ -24,70 +24,86 @@ const GM_CYCLE = {
   p5: { p_base_code: 'p_place_none' },
 }
 
-function row(seq: number, freq = 1) {
-  return {
-    id: crypto.randomUUID(),
-    seq_no: seq,
-    hand: 'RH',
-    object_vocab_id: OBJ,
-    frequency: freq,
-    narrative: `列 ${seq}`,
-    cycle: GM_CYCLE,
-    level: { ascription: 'main', level: '1', action_type: 'place' },
-  }
-}
-
 async function demoSeeded(request: APIRequestContext): Promise<boolean> {
   const r = await request.get(`/api/v2/worksheets/${WS}/export/wi-preview`, { headers: AUTH })
   return r.status() === 200
 }
 
-async function cloneAndSave(request: APIRequestContext, rows: ReturnType<typeof row>[]): Promise<string> {
-  const clone = await request.post(`/api/v2/worksheets/${WS}/clone`, { headers: AUTH })
-  expect(clone.status(), await clone.text()).toBe(200)
-  const wsId = ((await clone.json()) as { new_worksheet_id: string }).new_worksheet_id
-  const saved = await request.put(`/api/v2/worksheets/${wsId}`, { headers: AUTH, data: { rows } })
-  expect(saved.status(), await saved.text()).toBe(200)
-  return wsId
-}
-
 test.describe('WP12 LB projection tags UI', () => {
-  test('main line: wcub group → offline propagation → save → lb-report warnings → export', async ({ page, request }) => {
+  test('main line: wcub group + offline → save → lb-report atomic_groups contains the three rows', async ({ page, request }) => {
     test.skip(!(await demoSeeded(request)), 'demo worksheet 未種（先跑 dev_seed_v2.py）')
-    const rows = [row(1), row(2), row(3)]
-    const wsId = await cloneAndSave(request, rows)
+    // 三列同一 wcub（wcub20）、皆 offline、freq=1；action_type 標籤讓投影乾淨
+    const ids = [crypto.randomUUID(), crypto.randomUUID(), crypto.randomUUID()]
+    const rows = ids.map((id, k) => ({
+      id, seq_no: k + 1, hand: 'RH', object_vocab_id: OBJ, frequency: 1,
+      narrative: `列 ${k + 1}`, cycle: GM_CYCLE,
+      level: { ascription: 'main', level: '1', action_type: 'place', worker_cub: 'wcub20', offline: true },
+    }))
+    const clone = await request.post(`/api/v2/worksheets/${WS}/clone`, { headers: AUTH })
+    expect(clone.status(), await clone.text()).toBe(200)
+    const wsId = ((await clone.json()) as { new_worksheet_id: string }).new_worksheet_id
+    const saved = await request.put(`/api/v2/worksheets/${wsId}`, { headers: AUTH, data: { rows } })
+    expect(saved.status(), await saved.text()).toBe(200)
 
-    // 直接以 lb-report 驗投影可用（UI 預覽讀的是同一端點）
+    // lb-report 讀已儲存 worksheet：atomic_groups 含這三列（wcub20 → atomic_group 20）
     const rep = await request.get(`/api/v2/worksheets/${wsId}/export/lb-report`, { headers: AUTH })
     expect(rep.status(), await rep.text()).toBe(200)
-    const report = (await rep.json()) as { errors: unknown[]; warnings: unknown[]; tasks_out: number }
-    expect(report.tasks_out).toBeGreaterThan(0)
-    expect(Array.isArray(report.warnings)).toBe(true)
+    const report = (await rep.json()) as {
+      tasks_out: number; atomic_groups: Record<string, number[]>; errors: unknown[]; warnings: unknown[]
+    }
+    expect(report.tasks_out).toBe(3)
+    expect(report.atomic_groups['20']).toBeDefined()
+    expect([...report.atomic_groups['20']].sort((a, b) => a - b)).toEqual([1, 2, 3])
 
-    // 進 Level System UI（case 頁 → Level System tab；選擇器依現有 app 路由）
-    await page.goto(`/?ws=${wsId}#level-system`)
-    // wcub 指派入口存在（data-testid=wcub-assign）
-    const assign = page.getByTestId('wcub-assign').first()
-    if (await assign.count()) {
-      await expect(assign).toBeVisible()
-    }
-    // 預覽按鈕存在
-    const preview = page.getByTestId('preview-button').first()
-    if (await preview.count()) {
-      await expect(preview).toBeVisible()
-    }
+    // UI smoke：切到 Level System tab（元件掛載）
+    await page.goto('/')
+    await page.evaluate(() => window.dispatchEvent(new CustomEvent('ddm:switch-tab', { detail: 'level' })))
   })
 
-  test('reverse: freq>1 row assigned to wcub is blocked client-side', async ({ page, request }) => {
-    test.skip(!(await demoSeeded(request)), 'demo worksheet 未種')
-    const rows = [row(1), row(2, 8)] // 第 2 列 freq=8（lot）
-    const wsId = await cloneAndSave(request, rows)
-    await page.goto(`/?ws=${wsId}#level-system`)
-    // 對 freq>1 列指派 wcub → wcubError 亮起（UI 不指派）。此處以 data-testid 存在性作 smoke，
-    // 完整互動待 preview_server 場景（見檔頭）。
-    const assign = page.getByTestId('wcub-assign')
-    if (await assign.count()) {
-      await expect(assign.first()).toBeVisible()
-    }
+  test('deep: toggleOffline propagates across same wcub members (DEV store hook)', async ({ page }) => {
+    await page.goto('/')
+    const hasHook = await page.evaluate(() => !!(window as unknown as Record<string, unknown>).__ddmTest)
+    test.skip(!hasHook, '需 dev server（import.meta.env.DEV）暴露 __ddmTest；preview build 不掛')
+    const result = await page.evaluate(() => {
+      const t = (window as unknown as { __ddmTest: { wiStore: { getState: () => Record<string, unknown> }; levelStore: { getState: () => Record<string, unknown> } } }).__ddmTest
+      const wi = t.wiStore.getState() as { setRows: (r: unknown[]) => void }
+      const mkRow = (id: string) => ({ id, seq: 'GM', handCode: 'RH', freq: 1, simoGroup: '', nv: { obj: '', from: '', to: '' }, narr: `r${id}`, narrEn: null, tmu: 10, seconds: 0.36, payload: {} })
+      wi.setRows([mkRow('a'), mkRow('b'), mkRow('c')])
+      const lv = t.levelStore.getState() as {
+        sync: () => void; assignWcub: (id: string, l: string) => void; toggleOffline: (id: string) => void
+        levelMap: Record<string, { workerCub: string; offline: boolean }>
+      }
+      lv.sync()
+      ;['a', 'b', 'c'].forEach(id => lv.assignWcub(id, 'wcub9'))
+      ;(t.levelStore.getState() as typeof lv).toggleOffline('a')
+      const m = (t.levelStore.getState() as typeof lv).levelMap
+      return { a: m['a']?.offline, b: m['b']?.offline, c: m['c']?.offline, aw: m['a']?.workerCub }
+    })
+    expect(result.aw).toBe('wcub9')
+    expect(result.a).toBe(true)
+    expect(result.b).toBe(true)
+    expect(result.c).toBe(true)
+  })
+
+  test('reverse: freq>1 row assigned to wcub is blocked client-side (DEV store hook)', async ({ page }) => {
+    await page.goto('/')
+    const hasHook = await page.evaluate(() => !!(window as unknown as Record<string, unknown>).__ddmTest)
+    test.skip(!hasHook, '需 dev server 暴露 __ddmTest；preview build 不掛')
+    const result = await page.evaluate(() => {
+      const t = (window as unknown as { __ddmTest: { wiStore: { getState: () => Record<string, unknown> }; levelStore: { getState: () => Record<string, unknown> } } }).__ddmTest
+      const wi = t.wiStore.getState() as { setRows: (r: unknown[]) => void }
+      // freq=8 的 lot 列
+      wi.setRows([{ id: 'lot', seq: 'GM', handCode: 'RH', freq: 8, simoGroup: '', nv: { obj: '', from: '', to: '' }, narr: 'lot', narrEn: null, tmu: 10, seconds: 0.36, payload: {} }])
+      const lv = t.levelStore.getState() as {
+        sync: () => void; assignWcub: (id: string, l: string) => void
+        levelMap: Record<string, { workerCub: string }>; wcubError: string
+      }
+      lv.sync()
+      ;(t.levelStore.getState() as typeof lv).assignWcub('lot', 'wcub9')
+      const s = t.levelStore.getState() as typeof lv
+      return { assigned: s.levelMap['lot']?.workerCub || '', err: s.wcubError }
+    })
+    expect(result.assigned).toBe('')      // 未指派（被擋）
+    expect(result.err).toBe('lot')        // wcubError 指向被擋的列
   })
 })

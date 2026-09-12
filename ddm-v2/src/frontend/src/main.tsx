@@ -7,6 +7,22 @@ import './index.css'
 
 const qc = new QueryClient({ defaultOptions: { queries: { staleTime: 30_000, retry: 1 } } })
 
+// DEV-only 測試掛勾（ADR-035 WP12 E2E）：僅 dev build 暴露 store，正式 build（import.meta.env.DEV=false）不掛。
+if (import.meta.env.DEV) {
+  void (async () => {
+    const [{ useWorkspace }, ws, lv] = await Promise.all([
+      import('./shared/workspace'),
+      import('./features/wi-workbench/store'),
+      import('./features/level-system/store'),
+    ])
+    ;(window as unknown as Record<string, unknown>).__ddmTest = {
+      workspace: useWorkspace,
+      wiStore: ws.useWiStore,
+      levelStore: lv.useLevelStore,
+    }
+  })()
+}
+
 ReactDOM.createRoot(document.getElementById('root')!).render(
   <React.StrictMode>
     <QueryClientProvider client={qc}>
