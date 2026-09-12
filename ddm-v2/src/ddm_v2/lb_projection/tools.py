@@ -61,7 +61,7 @@ def tool_id_of(vocab: ProjectionVocab | None, key: str) -> tuple[str, list[Proje
     warns: list[ProjectionError] = []
     name_en = (vocab.name_en if vocab else None) or ""
     if not name_en.strip():
-        warns.append(ProjectionError(W_TOOL_NAME_EN_MISSING, None, f"工具詞彙 {key} 無 name_en"))
+        warns.append(ProjectionError(W_TOOL_NAME_EN_MISSING, None, f"工具詞彙 {key} 無 name_en", params={"tool_id": f"tool_{key[:8]}"}))
         return f"tool_{key[:8]}", warns
     snake = re.sub(r"[^a-z0-9]+", "_", name_en.strip().lower()).strip("_")
     return snake, warns
@@ -101,7 +101,8 @@ def resolve_chain(chain: list[ProjectionRow], vocab: dict[str, ProjectionVocab])
         if row.lb_tags.is_general:
             warns = []
             if tool_is_tool or obj_is_tool:
-                warns.append(ProjectionError(W_GENERAL_WITH_TOOL, row.wi_row_id, "general motion 持工具，工具欄丟棄"))
+                _tk = tool if tool_is_tool else obj
+                warns.append(ProjectionError(W_GENERAL_WITH_TOOL, row.wi_row_id, "general motion 持工具，工具欄丟棄", params={"tool_id": _tk}))
             plans.append(MotionPlan(row=row, parts=["use"], warnings=warns))
             continue
 

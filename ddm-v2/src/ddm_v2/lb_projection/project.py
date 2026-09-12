@@ -28,6 +28,9 @@ class ProjectionResult:
     tasks: list[LbTask]
     errors: list[ProjectionError] = field(default_factory=list)
     warnings: list[ProjectionError] = field(default_factory=list)
+    # 加法（ADR-035 D10 B4）：報告 builder 需要；既有建構呼叫不動（預設空）
+    plans: list = field(default_factory=list)   # list[MotionPlan]
+    chains: list = field(default_factory=list)  # list[Chain]
 
 
 def _chain_key(r: ProjectionRow) -> str:
@@ -84,9 +87,9 @@ def project_rows(
         for tool in sorted(held):
             other = [c for c, tools in release_chains.items() if tool in tools and c != key]
             if other:
-                errors.append(ProjectionError(E_TOOL_CROSS_CHAIN, None, f"工具 {tool} 於 chain {key} 取得、chain {other[0]} 釋放"))
+                errors.append(ProjectionError(E_TOOL_CROSS_CHAIN, None, f"工具 {tool} 於 chain {key} 取得、chain {other[0]} 釋放", params={"tool_id": tool}))
             else:
-                errors.append(ProjectionError(E_TOOL_NOT_RELEASED, None, f"chain {key} 結束仍持有 {tool}"))
+                errors.append(ProjectionError(E_TOOL_NOT_RELEASED, None, f"chain {key} 結束仍持有 {tool}", params={"tool_id": tool}))
 
     # ── precedence：task_id 編號 ──
     # level gate（E_LEVEL_INVALID）與離散 level（E_LEVEL_DISCRETE_UNSUPPORTED）對編號是致命的
@@ -97,7 +100,7 @@ def project_rows(
         task_id_map, prec_warns = project_precedence(rows, plans)
     except PrecedenceError as pe:
         errors.append(pe.err)
-        return ProjectionResult(csv_text="", tasks=[], errors=errors, warnings=warnings)
+        return ProjectionResult(csv_text="", tasks=[], errors=errors, warnings=warnings, plans=plans)
     warnings.extend(prec_warns)
 
     # ── 逐 motion 逐 part 組 LbTask ──
@@ -160,7 +163,12 @@ def project_rows(
     warnings.extend(v_warnings)
 
     csv_text = write_csv(tasks)
-    return ProjectionResult(csv_text=csv_text, tasks=tasks, errors=errors, warnings=warnings)
+    from ddm_v2.lb_projection.precedence import build_chains
+
+    return ProjectionResult(
+        csv_text=csv_text, tasks=tasks, errors=errors, warnings=warnings,
+        plans=plans, chains=build_chains(rows),
+    )
 
 
 def _action_for(row: ProjectionRow, part: str, plan: MotionPlan) -> str:

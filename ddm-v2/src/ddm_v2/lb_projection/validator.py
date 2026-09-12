@@ -104,10 +104,10 @@ def _check_tool_equal_duration(tasks, errors) -> None:
             rel[t.tool_id].add(t.duration)
     for tid, durs in acq.items():
         if len(durs) > 1:
-            errors.append(ProjectionError(E_TOOL_ACQUIRE_DURATION_MISMATCH, None, f"{tid} acquire duration 不一致：{sorted(durs)} ms"))
+            errors.append(ProjectionError(E_TOOL_ACQUIRE_DURATION_MISMATCH, None, f"{tid} acquire duration 不一致：{sorted(durs)} ms", params={"tool_id": tid}))
     for tid, durs in rel.items():
         if len(durs) > 1:
-            errors.append(ProjectionError(E_TOOL_RELEASE_DURATION_MISMATCH, None, f"{tid} release duration 不一致：{sorted(durs)} ms"))
+            errors.append(ProjectionError(E_TOOL_RELEASE_DURATION_MISMATCH, None, f"{tid} release duration 不一致：{sorted(durs)} ms", params={"tool_id": tid}))
 
 
 def _check_tool_shared_across_lot(tasks, errors) -> None:
@@ -123,7 +123,7 @@ def _check_tool_shared_across_lot(tasks, errors) -> None:
             q_eq1[t.tool_id] = True
     for tid in set(q_gt1) & set(q_eq1):
         if q_gt1[tid] and q_eq1[tid]:
-            errors.append(ProjectionError(E_TOOL_ID_SHARED_ACROSS_LOT, None, f"{tid} 同時用於 Q>1 與 Q=1 episode"))
+            errors.append(ProjectionError(E_TOOL_ID_SHARED_ACROSS_LOT, None, f"{tid} 同時用於 Q>1 與 Q=1 episode", params={"tool_id": tid}))
 
 
 def _check_segment_atomic_offline(tasks, row_by_id, errors) -> None:

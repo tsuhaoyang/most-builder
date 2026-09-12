@@ -6,6 +6,7 @@ E＝擋匯出；W＝放行、進報告（Spec §8.1）。
 from __future__ import annotations
 
 from dataclasses import dataclass
+from typing import Any
 
 
 @dataclass(frozen=True)
@@ -15,6 +16,9 @@ class ProjectionError:
     code: str
     wi_row_id: str | None
     message: str
+    # 加法（ADR-035 D10 B4）：使用者語言模板的插值參數（tool_id/frequency/counts…）；
+    # 既有位置引數建構不受影響（預設 None）。既有 message 字串一字不改。
+    params: dict[str, Any] | None = None
 
 
 # ── E 碼（擋匯出，Spec §8.1）──

@@ -64,7 +64,7 @@ def _plan_non_tool(plan: MotionPlan, dec: Decomposed | None, freq: float, warns:
     total = row.cycle.total_tmu
     # 非整數 frequency → 燙進 duration，Q=1
     if not _is_int(freq):
-        warns.append(ProjectionError(W_FRACTIONAL_FREQUENCY_BAKED, row.wi_row_id, f"非整數 frequency {freq} 燙進 duration"))
+        warns.append(ProjectionError(W_FRACTIONAL_FREQUENCY_BAKED, row.wi_row_id, f"非整數 frequency {freq} 燙進 duration", params={"frequency": freq}))
         return QuantityPlan([PartQuantity("single", 1, None, None, total * freq)], warns)
     f = int(round(freq))
     if f > 1:
@@ -80,7 +80,7 @@ def _plan_tool(plan: MotionPlan, dec: Decomposed | None, freq: float, warns: lis
     n = dec.n
     # 非整數 frequency 拒絕
     if not _is_int(freq):
-        raise QuantityError(ProjectionError(E_TOOL_FRACTIONAL_FREQUENCY, row.wi_row_id, f"持工具非整數 frequency {freq}"))
+        raise QuantityError(ProjectionError(E_TOOL_FRACTIONAL_FREQUENCY, row.wi_row_id, f"持工具非整數 frequency {freq}", params={"frequency": freq}))
     f = int(round(freq))
     # F>1 且 N>1 拒絕
     if f > 1 and n > 1:
@@ -92,7 +92,7 @@ def _plan_tool(plan: MotionPlan, dec: Decomposed | None, freq: float, warns: lis
         return _tool_parts(plan, dec, q=n, use_scope="cyclic", basis="once", warns=warns)
     if f > 1:
         # frequency F>1：三列全 cyclic（字面拿 F 次），Q=F、once ＋ W
-        warns.append(ProjectionError(W_TOOL_FREQ_ALL_CYCLIC, row.wi_row_id, f"持工具 frequency F={f}，三列全 cyclic"))
+        warns.append(ProjectionError(W_TOOL_FREQ_ALL_CYCLIC, row.wi_row_id, f"持工具 frequency F={f}，三列全 cyclic", params={"frequency": f}))
         return _tool_parts(plan, dec, q=f, use_scope="cyclic", basis="once", all_cyclic=True, warns=warns)
     # N=1、F=1：Q=1
     return _tool_parts(plan, dec, q=1, use_scope=None, basis=None, warns=warns)

@@ -82,7 +82,8 @@ def repeat_block(slot_tmus: list[float], repeat_counts: dict[str, int], wi_row_i
     reps = {repeat_counts[str(si)] for si in repeated}
     if len(reps) > 1:
         raise TmuDecompositionError(
-            ProjectionError(E_REPEAT_MIXED, wi_row_id, f"重複區塊內 repeat_count 不一致：{sorted(reps)}")
+            ProjectionError(E_REPEAT_MIXED, wi_row_id, f"重複區塊內 repeat_count 不一致：{sorted(reps)}",
+                            params={"counts": {str(si): repeat_counts[str(si)] for si in repeated}})
         )
     n = next(iter(reps))
     # 連續性（只看非零格）：repeated 必須是 nonzero_use 中的連續一段
@@ -93,6 +94,7 @@ def repeat_block(slot_tmus: list[float], repeat_counts: dict[str, int], wi_row_i
                 E_REPEAT_NONCONTIGUOUS,
                 wi_row_id,
                 f"重複格不連續（夾心）：非零 use 格 {nonzero_use}，重複格 {repeated}",
+                params={"counts": {str(si): repeat_counts.get(str(si)) for si in nonzero_use}},
             )
         )
     pre = tuple(nonzero_use[:first])
