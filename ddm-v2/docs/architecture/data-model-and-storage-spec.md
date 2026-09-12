@@ -207,8 +207,18 @@ erDiagram
 | `level` | text | 歸屬層級；支援 `1` / `1~2` / `1/3`（變動層級） |
 | `countersignature` | text | 從屬名稱（`sub*`/`cub*`） |
 | `order_in_group` | int | 群組內順序（1=頭列） |
-| `machine_count` | int | 機台數（≥1） |
-| `manpower` | int | 人力（≥1） |
+| `machine_count` | int | 機台數（≥1）｜**純儲存、不匯出（ADR-035 D16）** |
+| `manpower` | int | 人力（≥1）｜**純儲存、不匯出（ADR-035 D16）** |
+| `worker_cub` | text | LB 標記（ADR-035 D7）：wcub*（同人＋跨站排他）→ LB `atomic_group` |
+| `offline` | bool | LB 標記：離線節點（LB 橋接）→ `offline_flag` |
+| `segment` | text | LB 標記：Q>1 lot 段標籤（同 segment 必同 cub） |
+| `station_pin` | int | LB 標記：固定站（1-based）→ `fixed_station` |
+| `is_general` | bool | LB 標記：general motion（`part_id=General`、無邊） |
+| `general_role` | text | LB 標記：`take_unit`/`scanner`/`transport`（§5.7；enum check） |
+| `merge_lock` | bool | LB 標記：鎖合併 → acquire/release 列 `adjustable=0` |
+| `action_type` | text | LB 標記：IE 選填顯示標籤（ruling B；投影 §6 第③級來源） |
+
+> **更新（ADR-035，2026-09-12 已落地，migration v2_0046）**：加上述 8 個 LB 標記欄（加法演進 ADR-011）。`general_role` 帶 CHECK（NULL 或三值）。`LevelFieldsIn`／`read_worksheet`（nested `lb_tags`）／`api.d.ts` 同步。
 
 > 驗證規則 R1–R9 見 level 規格 §8.1，由後端引擎執行。
 

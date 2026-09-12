@@ -150,6 +150,9 @@
 ## 8. 對 Line Balance 的輸出合約（系統邊界）
 
 LB 為獨立 project。本系統輸出（`/level/build-output`）：
+
+> ⚠️ **已被 ADR-035 取代（2026-09-12 已落地）**：LB 對接改為 `lb_projection` 依 `docs/lb-integration/MOST_LB_DATA_CONTRACT_SPEC.md` 產出的 **24 欄 task CSV**（`most-lb-csv-v1.1`）。`/export/lb-csv` 回該 CSV；`/export/lb-api` payload 改為 `{contract_version, csv, tasks, report}`；新增 `GET /export/lb-report`。下方 `build_output` JSON 僅供人看視圖／歷史參照，**不再是 LB 匯出來源**（`precedence_edges` 尤其不可沿用）。
+
 ```json
 {
   "nodes": [{"content","second","ascription","level","countersignature","order","number","number_count"}],

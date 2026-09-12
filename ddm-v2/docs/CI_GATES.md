@@ -150,6 +150,7 @@
 |---|---|---|
 | MOST 引擎 | GM=28 / CM=29 黃金；TMU=Σindex×1；邊界 | `tests/unit/test_most_engine.py`、`scripts/core_logic/run_all.py` |
 | Level System | R1–R9 填表規則；巢狀；變動度 | `tests/unit/test_level_engine.py` |
+| **LB 投影（ADR-035）** | **golden 逐位元**（fixture 24 motions → 34 tasks CSV == expected，`most-lb-csv-v1.1`）與 **24 欄表頭凍結** 兩測**必綠**——任一紅代表投影語意或契約漂移；改 `COLUMNS` 須同步升 `CONTRACT_VERSION` | `tests/unit/test_lb_projection_golden.py`、`tests/unit/test_lb_projection_contract_freeze.py` |
 | 身分/RBAC | `/me` 身分；viewer 打 IE 端點→403；**locale 解析（ADR-032 D3.1）**——「未設定（`app_users.locale IS NULL`）→ 回解析後的系統預設」與「顯式存了非預設值 → 回那個值」兩條對照（少了對照組就證不到 `zh-TW` 是解析出來的而非寫死），且「未設定」由測試自己 UPDATE 成 NULL 再斷言、並回查原始欄位確認讀取端解析**不回寫**欄位（硬性規則 7 第一則） | `tests/integration/test_v2_api.py` |
 | 計算 | `POST /minimost/calculate` GM 黃金 | `tests/integration/test_v2_api.py` |
 | 範本庫 | CRUD + 治理(promote) + `/match`；RBAC | `tests/integration/test_v2_api.py` |

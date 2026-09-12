@@ -321,6 +321,8 @@ CM：  從 + "從哪裡" + (A+B) + G + 對象/目標物 + M + X + I + A + "到�
   舊語義「同一 SIMO 群組取群組內最大 TMU」已由 ADR-020 廢止（該語義對應 v3 舊層實作，非現行認證版）。
 - 配對輸入 `simo_with_row_id`（E5）由 service 正規化：僅宣告配對的從屬列標記 `simo_group_id`，被指向的主列不標記。
 
+> **LB 投影語意（更新（ADR-035），2026-09-12 已落地）**：`frequency`＝整 motion 乘數 → LB `quantity`（非持工具列，`qty_scope=cyclic`）；slot `repeat_count`＝持工具動作的 cyclic 乘數 → LB use 列 `quantity`，acquire／release 為 setup（`qty_scope=setup`）。單次工時由引擎以 repeat 歸 1（`strip_repeats`）重算，投影層**不做 TMU 算術**（只搬移／守恆斷言）。完整投影矩陣見 `docs/lb-integration/MOST_LB_DATA_CONTRACT_SPEC.md` §3；實作＝`src/ddm_v2/lb_projection/`（`tmu.py` 分桶、`quantity.py` §3.2 矩陣）。
+
 ---
 
 ## 7. 完整教學範例（驗收基準）

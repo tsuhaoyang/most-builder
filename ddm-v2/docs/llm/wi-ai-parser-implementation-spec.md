@@ -809,7 +809,7 @@ fallback 觸發條件：`wi_ai_enabled=False`、LLM timeout/連線失敗、schem
 | `acquire` | GM | G=候選；A0=distance（from_location 有距離時）；P5=無（p_base 留 None→partial 或 default，見 9.3） |
 | `move_place` | GM | G=候選（若前段已 acquire 同 object 則 G 可為「已持有」型候選）；P5=放置候選；A3=移動距離 |
 | `controlled_move` | CM | M3 verb=候選、distance/angle 由抽取值；X4/I5 預設 None |
-| `process` | CM | X4=製程候選（x_seconds 若原文有秒數）；M3 視 verb 候選存在與否 |
+| `process` | CM | X4=製程候選（x_seconds 若原文有秒數）；M3 視 verb 候選存在與否；**持工具 quantity=N>1 → X4/M3/I5.repeat_count=N、frequency=1（QuantityPolicyV2，見下方 ADR-035 D4 段）** |
 | `inspect` | CM | I5=候選；若上一 action 是 CM 且 policy 允許可併入其 I5（v1 **不併**，一律獨立 cycle，留待 modeling policy 決策） |
 | `release_return` | GM | 只有 plan 明確含此 action 才編（policy：不自動生成） |
 | `composite_unknown` | — | 不編譯；draft.complete=False、routing=abstain |

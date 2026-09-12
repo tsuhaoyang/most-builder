@@ -221,6 +221,8 @@ Second（動作時長） = 原始秒數 × 系數（寬放係數）
 
 匯出載體：**Excel** 在 MOST 七格後附「主序Level／角色（主/屬）／群組／巢狀母組／組內序／不可同站nb／nb上限」欄（人看得懂關係）；**lb-csv** 含上述全欄＋`level_min/level_max/variable`；**lb-api** 直送 `build_output`（待 LB request model 對映）。
 
+> **更新（ADR-035，2026-09-12 已落地）**：`lb-csv` 改由 `src/ddm_v2/lb_projection` 依 `docs/lb-integration/MOST_LB_DATA_CONTRACT_SPEC.md` 產出 **24 欄 LB task CSV**（`most-lb-csv-v1.1`）；上述 `build_output().precedence_edges`（`level_min` 相鄰鏈）**不再是** LB 匯出來源，僅供人看。層間邊改為 `hi_Y < lo_X` 偏序的**傳遞縮減**（Y 的 sink → X 的 source）；巢狀 cub 區塊位置以成員最小 `seq_no` 定（§5.3）；`a/b` 離散跳號不支援（`E_LEVEL_DISCRETE_UNSUPPORTED`）；nb 暫不輸出（`W_NB_UNSUPPORTED`）。`lb-api` payload 改為 `{contract_version, csv, tasks, report}`（不再直送 `build_output`）。此段之上的 `build_output` 說明保留供 Excel／人看視圖與歷史參照。
+
 需求清單第 1 點亦要求：**「都一定產出一個 LB ＋限制線」**、第 2 點「**需要指出超過限制的列數**」。
 
 ---
