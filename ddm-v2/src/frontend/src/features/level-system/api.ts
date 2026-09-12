@@ -28,6 +28,9 @@ export interface LbReportRow {
   duration_ms_total: number
 }
 export interface LbHint { kind: string; key: string; wi_row_ids: string[]; params: Record<string, unknown> }
+// ADR-035 D10 F5：dev grid 用的原始 task 列（24 欄 dict，順序＝後端 emit.COLUMNS）。
+// include_tasks=1 才有；一般預覽為 undefined。
+export type LbTaskRow = Record<string, unknown>
 export interface LbReport {
   contract_version: string
   tasks_out: number
@@ -37,6 +40,7 @@ export interface LbReport {
   warnings: LbReportDiag[]
   rows: LbReportRow[]
   hints: LbHint[]
+  tasks?: LbTaskRow[]
 }
 
 // v1：只有存檔後才啟用預覽（enabled 由呼叫端在存檔後開啟）。
@@ -50,8 +54,12 @@ export const useLbReport = (worksheetId: string, enabled: boolean) =>
 
 // 作業版預覽（dry-run，ADR-035 D10 B3）：POST 未存檔 rows → 同一投影路徑的 report。
 // 不寫 DB、不另建前端投影（後端權威）。呼叫端以 debounce + latest-wins 節流（F6）。
-export const useLbPreview = (worksheetId: string) =>
+// includeTasks=true → 帶 include_tasks=1（F5 dev grid 要 report.tasks[]）。
+export const useLbPreview = (worksheetId: string, includeTasks = false) =>
   useMutation({
     mutationFn: (body: unknown) =>
-      apiPost<LbReport>(`/api/v2/worksheets/${worksheetId}/export/lb-report/preview`, body),
+      apiPost<LbReport>(
+        `/api/v2/worksheets/${worksheetId}/export/lb-report/preview${includeTasks ? '?include_tasks=1' : ''}`,
+        body,
+      ),
   })
