@@ -3,12 +3,18 @@ import type { Row } from '../wi-workbench/store'
 export interface LevelCell {
   coefficient: number; number: string; number_count: number | ''
   level: string; countersignature: string; machine_count: number; manpower: number
+  // WP12（ADR-035）LB projection tags。worker_cub 與 countersignature（sub/cub）正交，
+  // 絕不入 groupMeta/countersignature（那會被送進 R1–R9/level 引擎當 sub/cub — 禁止）。
+  workerCub: string; offline: boolean; segment: string; stationPin: number | ''
+  isGeneral: boolean; generalRole: string; mergeLock: boolean; actionType: string
 }
 export interface GroupMeta { type: 'sub' | 'cub'; parent: string; seq: number }
 
 export const blankCell = (i: number): LevelCell => ({
   coefficient: 1, number: '', number_count: '', level: String(i + 1),
   countersignature: '', machine_count: 1, manpower: 1,
+  workerCub: '', offline: false, segment: '', stationPin: '',
+  isGeneral: false, generalRole: '', mergeLock: false, actionType: '',
 })
 
 export const wiIndex = (rows: Row[], id: string) => rows.findIndex(r => r.id === id)
@@ -17,6 +23,24 @@ export const rowsIn = (rows: Row[], lm: Record<string, LevelCell>, label: string
   rows.filter(r => cs(lm, r.id) === label)
 export const subGroupsOf = (gm: Record<string, GroupMeta>, label: string) =>
   Object.keys(gm).filter(g => (gm[g].parent || '') === label)
+
+// worker_cub（同人）標籤讀取；與 countersignature（sub/cub 同站）正交。
+export const wcub = (lm: Record<string, LevelCell>, id: string) => (lm[id]?.workerCub || '').trim()
+export const rowsInWcub = (rows: Row[], lm: Record<string, LevelCell>, label: string) =>
+  rows.filter(r => wcub(lm, r.id) === label)
+
+// worker_cub 指派前置條件（ADR-035）：freq>1 或工具持握列不可入同人組。
+// Row.nv 無 tool 欄、CycleIn payload 也不帶 tool，故 tool-held 為 best-effort 防禦性偵測。
+export function isToolHeld(row: Row): boolean {
+  const nv = row.nv as unknown as Record<string, unknown>
+  if (nv && typeof nv.tool === 'string' && (nv.tool as string).trim()) return true
+  const p = row.payload as Record<string, unknown> | null
+  if (p && typeof p === 'object' && typeof p.tool_vocab_id === 'string' && p.tool_vocab_id) return true
+  return false
+}
+export function canAssignWcub(row: Row): boolean {
+  return (row.freq || 1) <= 1 && !isToolHeld(row)
+}
 
 export function firstIdx(rows: Row[], lm: Record<string, LevelCell>, gm: Record<string, GroupMeta>, label: string) {
   let mn = Infinity
@@ -32,6 +56,9 @@ export interface LevelPayloadRow {
   number: string | null; number_count: number | null
   ascription: string | null; level: string | null
   countersignature: string | null; parent_countersignature: string | null; order: number | null
+  // WP12（ADR-035）LB projection tags
+  worker_cub: string | null; offline: boolean; segment: string | null; station_pin: number | null
+  is_general: boolean; general_role: string | null; merge_lock: boolean; action_type: string | null
 }
 
 // 由分組推導 ascription/order/level/parent（IE 不手填）；空母群組的子 cub 自動攤平 parent
@@ -60,6 +87,15 @@ export function derive(
       number: m.number?.trim() ? m.number.trim() : null,
       number_count: m.number_count === '' || m.number_count == null ? null : Number(m.number_count),
       ascription, level, countersignature: c || null, parent_countersignature: parOk ? par : null, order,
+      // WP12（ADR-035）LB projection tags — 字串 trimmed-or-null、stationPin or null、bool 直傳
+      worker_cub: m.workerCub?.trim() ? m.workerCub.trim() : null,
+      offline: !!m.offline,
+      segment: m.segment?.trim() ? m.segment.trim() : null,
+      station_pin: m.stationPin === '' || m.stationPin == null ? null : Number(m.stationPin),
+      is_general: !!m.isGeneral,
+      general_role: m.generalRole?.trim() ? m.generalRole.trim() : null,
+      merge_lock: !!m.mergeLock,
+      action_type: m.actionType?.trim() ? m.actionType.trim() : null,
     }
   })
 }

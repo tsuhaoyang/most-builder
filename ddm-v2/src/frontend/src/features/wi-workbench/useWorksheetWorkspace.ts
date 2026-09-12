@@ -52,6 +52,10 @@ export function useWorksheetWorkspace(worksheetId: string) {
         countersignature: level?.countersignature ?? '',
         machine_count: 1,
         manpower: 1,
+        // WP12（ADR-035）LB projection tags：後端才是投影權威，載入時以預設值起始
+        // （WsReadRow.level 目前未回傳這些欄；wcub 為純 client UX 維度，載入不還原）。
+        workerCub: '', offline: false, segment: '', stationPin: '',
+        isGeneral: false, generalRole: '', mergeLock: false, actionType: '',
       }
       const countersignature = (level?.countersignature ?? '').trim()
       if (countersignature && !groupMeta[countersignature]) {

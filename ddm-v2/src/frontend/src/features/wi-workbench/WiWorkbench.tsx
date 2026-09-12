@@ -596,6 +596,10 @@ export function WiWorkbench() {
             countersignature: e.countersignature ?? null, parent_countersignature: e.parent_countersignature ?? null,
             order: e.order ?? null, number: e.number ?? null, number_count: e.number_count ?? null,
             machine_count: 1, manpower: 1,
+            // WP12（ADR-035）LB projection tags — 預設對齊 LevelFieldsIn（字串 ?? null、bool ?? false）
+            worker_cub: e.worker_cub ?? null, offline: e.offline ?? false, segment: e.segment ?? null,
+            station_pin: e.station_pin ?? null, is_general: e.is_general ?? false, general_role: e.general_role ?? null,
+            merge_lock: e.merge_lock ?? false, action_type: e.action_type ?? null,
           },
         }
       }),
