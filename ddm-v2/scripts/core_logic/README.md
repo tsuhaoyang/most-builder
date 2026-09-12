@@ -17,6 +17,13 @@ python3 scripts/core_logic/level_system_validator.py
 
 兩者皆無第三方相依，純 stdlib。exit code 0 = 全部通過，非 0 = 有失敗。
 
+## 跨 repo：LB 投影驗證（ADR-035 / WP10）
+
+`scripts/lb_projection_check.py --csv <path> [--lb-repo <path>]`：把投影層產出的 task CSV 餵給 LB 端真程式
+（reader → `validate_quantity_contract(MULTI_LINE)` → `GroupValidator` → `is_general_candidate` → merge 候選偵測），
+印 groups／atomic／general／merge。LB repo 不存在 → SKIP、exit 0（跨 repo，CI 不強制）。
+golden 預期：groups {30,40,10,11}、atomic {20,21}、general [1]→TAKE_UNIT、merge 恰 1 組 scanner（acquire 4/8、release 6/10）。
+
 ## 設計原則
 
 - **權威來源＝`docs/core-logic/`＋accepted ADR＋IE 認證字典**；`html_con/` 僅為封存 UI 原型。
