@@ -25,7 +25,8 @@
 - **不新增 `splittable`／`divisible` 的 DB 欄與 UI**：LB 端審計已判 `divisible` 與 quantity 是「兩機制一概念」，ADR-023 §4 明列「MOST 不輸出 `divisible`；收斂到 quantity 另立 ADR」。產品路徑恆輸出 0（§3.2）。
 
 ### 0.4 完成定義（DoD）
-1. 黃金 fixture 對應的作業編排（附錄 A.5，11 個作業）在作業版 UI 操作後存檔 → `GET .../export/lb-report` 的 `errors=[]`、`tasks_out=34`；`GET .../export/lb-csv` 與 `server_node_tasks.expected.csv` **除 `divisible` 欄外逐位元相等**（透過 E2E 用 API 建立 worksheet 驗證，見 §8.3；`divisible` 欄的差異只允許 task 31 由 1 變 0——黃金 fixture 為覆蓋 24 欄而在 O 列標了 `lb_tags.splittable`，產品路徑無此來源，§3.2）。
+1. 黃金 fixture 對應的作業編排（附錄 A.5，11 個作業）在作業版 UI 操作後存檔 → `GET .../export/lb-report` 的 `errors=[]`、`tasks_out=34`；`GET .../export/lb-csv` 與 `server_node_tasks.expected.csv` **除 `duration`、`divisible` 兩欄外逐欄相等**（csv 解析後逐欄比，見 §8.3）。
+   - **修訂（2026-09-12）**：黃金 fixture 走投影層靜態路徑、**沒有 `slot_inputs`**，無法原樣經 API 重放；E2E 改用「黃金複本」——以真實 `CycleIn`（同 rule-set、同 vocab kind／`name_en`、同 tool、同 frequency、同 repeat 格位、同 `x_seconds`、同 level／lb_tags）經 API 建 24 列。複本的 TMU 與黃金不同，故 `duration` 欄排除；`duration` 的正確性由投影層黃金（fixture 路徑，`test_lb_projection_golden`）保證。`divisible` 排除理由見 §3.2（task 31 1→0）。其餘 22 欄（含 predecessors／group／atomic_group／quantity／qty_scope／tool_id／tool_action／segment／fixed_station／offline_flag／role_type／general_role）逐欄相等——這才是作業版要證明的事：UI 操作產生正確的結構。
 2. `POST .../export/lb-report/preview`（未存檔）與存檔後 `GET .../export/lb-report` 對同一份 rows 回傳相同的 `errors／warnings／tasks_out／groups／atomic_groups／hints`（§8.2 整合測試）。
 3. 所有新 UI 字串走 i18n（zh-TW／en 兩份齊全），`e2e/i18n-hardcoded-zh.spec.ts` 綠；34 個 E／W 碼＋4 種提示各有一句使用者語言（§6.3、§6.4）。
 4. `npm run typecheck && npm run build` 綠；`PYTHONPATH=src pytest tests/unit -q` 綠；`ruff check` 我方檔案乾淨；`scripts/core_logic/run_all.py` 全綠（不該動引擎）。
@@ -519,7 +520,7 @@
 | `e2e/level-jobs-logic.spec.ts`（純 node） | (1) 黃金形狀 store fixture（由 `fixtures/server_node_worksheet.json` 的 `rows[].level/lb_tags` 轉成 levelMap/groupMeta）→ `jobsFromStore` 得 **11 個作業**，名稱／排／sameStation／samePerson／stepTags 與附錄 A.5 表逐項相等；(2) 對 (1) 的結果做「無操作」→ `derive()` 輸出與原 fixture 的 level 六欄＋lb_tags 逐列相等（反投影不失真）；(3) 每個 A.2 動作各一案例（前後 `jobsFromStore` 的差異恰為預期；I-1／I-2 不變量成立）；(4) `normalizeLayers`：`[1,1,3,5]→[1,1,2,3]`、含 rowHi；(5) `proposeBaseline`：無群組＋wiGroup 連續同名 → 成 sub、各自一排；已有群組 → null；(6) `plainDiag` 對 34 碼各能產句（zh-TW／en 都不含 `levelSystem.plain` 字樣） |
 | `e2e/level-hydrate-tags.spec.ts` | F1 |
 | `e2e/level-jobs-ui.spec.ts`（preview_server） | clone demo ws → API PUT 6 列（`wi_group`「裝 HDD」×3、「鎖螺絲」×3，皆 freq 1，第 4–6 列 object＝OBJ）→ 開 level tab → 兩張作業卡、兩排（baseline）→ 點「◀ 跟上一排一起做」→ 同一排 → 開「裝 HDD」抽屜 → 勾「同一個工站」→ 等預覽（`preview.updating` 消失）→ 「儲存並交給產線平衡」→ `GET lb-report` 的 `groups` 有 1 組含 3 個 task；`errors=[]`。反例：勾「同一個人」於含 freq>1 的作業 → 勾選框 disabled 且顯示 `q.personBlocked`。i18n：`PATCH /me/locale` 攔截為 en（沿用 `locale-switcher.spec.ts` 手法）→ 卡片按鈕文字為英文、通知句為英文。 |
-| `e2e/level-jobs-golden.spec.ts` | API 建 24 列 worksheet（由黃金 fixture 轉 `WiRowSaveIn`；vocab 用 demo 種子或測試內建立；若 demo vocab 不足則 `test.skip` 並回報）→ 不經 UI 直接 PUT 附錄 A.5 的 level 欄 → UI 開啟 → `jobsFromStore` 11 作業（透過 `__ddmTest`）→ 「儲存並交給產線平衡」→ `lb-csv` 與 expected **除 `divisible` 欄外逐位元相等**，且差異只在 task 31（1→0）（**DoD-1**，§0.4；比對用 csv 解析後逐欄，不用字串 replace） |
+| `e2e/level-jobs-golden.spec.ts` | **黃金複本**（§0.4 修訂）：`e2e/support/goldenReplica.ts` 以真實 `CycleIn` 建 24 列（vocab 經 API 建立或重用：object 類＋ tool 類 `scanner`／`electric_driver`／`torque_driver` 帶 `name_en`；GM／CM 依 fixture `seq_kind`；I 列 use 格 `repeat_count=8`；G／H `frequency=8`；L2／N2／P2 `x_seconds` 3／2／20；tool 列帶 `tool_vocab_id`；level／lb_tags／`wi_group` 照附錄 A.5）→ PUT → UI 開啟 → `jobsFromStore` 11 作業（透過 `__ddmTest`）→ 「儲存並交給產線平衡」→ `lb-csv` 與 expected **除 `duration`、`divisible` 外逐欄相等**（csv 解析後逐欄，不用字串 replace；`divisible` 差異只允許 task 31）。另斷言 `tasks_out==34`、`errors==[]`（**DoD-1**） |
 | `e2e/level-jobs-screenshot.spec.ts` | 三張 zh-TW＋一張 en |
 
 ---
@@ -666,8 +667,11 @@
 - **I-4** `jobsFromStore(derive⁻¹(derive(state)))` 與 `jobsFromStore(state)` 相等（反投影對 derive 輸出不失真；用 fixture 轉換驗證）。
 - **I-5** cub 內無 cub；wcub 成員 `canAssignWcub`。
 
-### A.4 `proposeBaseline(rows, lm)`
-條件：所有列 `cs==''`（沒有任何群組）**且**至少一列 `wiGroup` 非空。動作：依 rows 序掃描，「連續且 `wiGroup` 相同非空、皆非通用」的極大段長度 ≥2 → `createGroup('sub','')`＋`moveTo`；然後每個 Job（含單列）依出現順序 `setLayer(job, k)`（k 遞增，各自一排）。回傳可還原的動作清單（還原＝`dissolveGroup` 全部＋ level 回原值）。不符條件 → `null`。
+### A.4 `proposeBaseline(rows, lm)`（2026-09-12 修訂：分「全新」與「部分」兩種）
+- **候選段**：依 rows 序掃描，「連續、`wiGroup` 相同非空、皆非通用、皆未分組（`cs==''`）」的極大段，長度 ≥2。沒有任何候選段 → `null`。
+- **全新（pristine）**：所有列 `cs==''`。動作：每個候選段 `createGroup('sub','')`＋`moveTo`；然後**每個 Job（含單列）依出現順序 `setLayer(job, k)`**（k 遞增，各自一排）。
+- **部分（partial）**：已有任何群組（IE 在進階檢視排過、或載入舊資料）。動作：只把候選段成 sub，**不重排任何 layer**（新 sub 的 level＝其第一列現有 level），已分組的列與其 level 一律不碰。
+- 回傳可還原的動作清單（還原＝`dissolveGroup` 新建的群組＋ level 回原值）。**F3 必須在 hydrate 後呼叫並套用**，通知條 `baseline.applied`＋`baseline.undo`（§5 F3、§13-1）；未套用＝缺陷（同名連續列會顯示成「名稱 (1)(2)(3)」）。
 
 ### A.5 黃金 fixture 的作業編排（`server_node_worksheet.json`，24 列 A…P，11 個作業；F2 測試的期望表）
 | 作業 id（chainKey） | 名稱（wiGroup） | 排 | steps | sameStation | samePerson | offline | pin | stepTags |
