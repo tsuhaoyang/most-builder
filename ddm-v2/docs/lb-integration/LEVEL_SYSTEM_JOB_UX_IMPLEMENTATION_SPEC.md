@@ -12,7 +12,7 @@
 把現在的 Level System（sub／cub／wcub／offline／segment／pin／general／merge_lock 的 IE 詞彙）包成一個**只講「作業、步驟、順序」**的畫面：使用者把作業排好先後、對每個作業回答最多四個是非題、對「系統看出來的事」按是／否，產線平衡需要的 24 欄就自動準備好。**這一層不接 LLM**；所有句子都是確定性規則＋模板（§7）。
 
 ### 0.2 範圍（做）
-1. 後端：`wi_rows.wi_group`（作業名稱，四條輸入路徑都填）、**未存檔投影預覽端點**（dry-run，與存檔後 `lb-report` 同一條投影路徑）、報告加法欄位 `rows[]`／`hints[]`／`params`。
+1. 後端：`wi_rows.wi_group`（作業名稱，四條輸入路徑都填）、**未存檔投影預覽端點**（dry-run，與存檔後 `lb-report` 同一條投影路徑）、報告加法欄位 `rows[]`／`hints[]`／`params`、`level_entries.machine_unattended`（第 9 個 LB 標記，三態；§3.4、B7；2026-09-12 Howard 裁決）。
 2. 前端：`level-system` 新增「作業版」視圖（預設）；既有 WP12 視圖保留為「進階檢視」；`hydrate` 還原 `lb_tags`（現況缺失，§5 F1）；四條輸入路徑帶 `wi_group`；完整 zh-TW／en i18n；E2E 與純邏輯測試。
 3. 文件：ADR-035 D10 追記（已由架構師寫入）、Spec §8.2 報告加法欄位追記、`frontend-data-flow-spec.md` §7 追記、DOC_REGISTRY。
 
@@ -25,7 +25,7 @@
 - **不新增 `splittable`／`divisible` 的 DB 欄與 UI**：LB 端審計已判 `divisible` 與 quantity 是「兩機制一概念」，ADR-023 §4 明列「MOST 不輸出 `divisible`；收斂到 quantity 另立 ADR」。產品路徑恆輸出 0（§3.2）。
 
 ### 0.4 完成定義（DoD）
-1. 黃金 fixture 對應的作業編排（附錄 A.5，12 個作業）在作業版 UI 操作後存檔 → `GET .../export/lb-report` 的 `errors=[]`、`tasks_out=34`；`GET .../export/lb-csv` 與 `server_node_tasks.expected.csv` **除 `divisible` 欄外逐位元相等**（透過 E2E 用 API 建立 worksheet 驗證，見 §8.3；`divisible` 欄的差異只允許 task 31 由 1 變 0——黃金 fixture 為覆蓋 24 欄而在 O 列標了 `lb_tags.splittable`，產品路徑無此來源，§3.2）。
+1. 黃金 fixture 對應的作業編排（附錄 A.5，11 個作業）在作業版 UI 操作後存檔 → `GET .../export/lb-report` 的 `errors=[]`、`tasks_out=34`；`GET .../export/lb-csv` 與 `server_node_tasks.expected.csv` **除 `divisible` 欄外逐位元相等**（透過 E2E 用 API 建立 worksheet 驗證，見 §8.3；`divisible` 欄的差異只允許 task 31 由 1 變 0——黃金 fixture 為覆蓋 24 欄而在 O 列標了 `lb_tags.splittable`，產品路徑無此來源，§3.2）。
 2. `POST .../export/lb-report/preview`（未存檔）與存檔後 `GET .../export/lb-report` 對同一份 rows 回傳相同的 `errors／warnings／tasks_out／groups／atomic_groups／hints`（§8.2 整合測試）。
 3. 所有新 UI 字串走 i18n（zh-TW／en 兩份齊全），`e2e/i18n-hardcoded-zh.spec.ts` 綠；34 個 E／W 碼＋4 種提示各有一句使用者語言（§6.3、§6.4）。
 4. `npm run typecheck && npm run build` 綠；`PYTHONPATH=src pytest tests/unit -q` 綠；`ruff check` 我方檔案乾淨；`scripts/core_logic/run_all.py` 全綠（不該動引擎）。
@@ -113,6 +113,13 @@
 
 ---
 
+### 3.4 B7 `level_entries.machine_unattended`（第 9 個 LB 標記，2026-09-12 Howard 裁決）
+- `Boolean NULL`，**三態**：`null`＝未回答、`false`＝人要顧、`true`＝人不用顧。`LevelFieldsIn.machine_unattended: bool | None = None`；`read_worksheet().rows[].lb_tags.machine_unattended`；`ProjectionTags.machine_unattended: bool | None = None`；adapter `_tag("machine_unattended")`。
+- 語意：契約 Spec §6 `role_type` 修訂——`machine` ⇔ CM ∧ `x_seconds ≥ 1` ∧ `machine_unattended == true`；其餘 `human`。`mappers.role_type` 依此改。**事實在 MOST、政策在 LB**（LB 求解參數 `unattended_machine_policy`，ADR-023 D9 追記）。
+- 與 §3.2 被否決的 `splittable` 不同：本欄是 solver 消費的物理事實，沒有別的欄能表達。
+- migration：`v2_0048_level_entries_machine_unattended.py`。
+- 黃金 fixture 必須跟著改（契約驗收物，兩 repo 各有副本）：L2（seq 15）、P2（seq 23）加 `lb_tags.machine_unattended: true`；N2（seq 19，「握著擋板」）加 `false`。expected CSV **只有 task 29 `role_type` machine→human**，其餘逐位元不變。hints 快照：`H_MACHINE_TIME` 三條全部消失（三列都已回答）→ 快照剩 3 條 `H_TOOL_DECOMPOSED`。LB 端副本由 LB agent 在 WP-L9 同步。
+
 ## 4. 後端工作包
 
 ### B1 `wi_group` 全路徑
@@ -180,6 +187,14 @@
 
 ---
 
+### B7 `machine_unattended` 全路徑（§3.4）
+1. model／schema／read／save／clone 五處對稱加欄（比照 WP1 八欄，型別 `bool | None`）；migration v2_0048。
+2. `lb_projection/models.py::ProjectionTags.machine_unattended`、`adapter.py` 兩條路徑（`rows_from_worksheet`／`rows_from_save_payload`）帶入。
+3. `mappers.role_type`：`"machine" if seq_kind=="CM" and x_seconds>=1 and lb_tags.machine_unattended is True else "human"`。
+4. `hints.py` `H_MACHINE_TIME`：改為 **ask**，條件加 `lb_tags.machine_unattended is None`（§7.2）；params 加 `{"x_seconds": …}`。
+5. 黃金：fixture 三列加 tag（§3.4）；重跑投影更新 `server_node_tasks.expected.csv`（差異必須只有 task 29 `role_type`——用 csv 逐欄 diff 證明，貼在回報）；`server_node_hints.expected.json` 更新為 3 條；`fixtures/README.md` 註記。
+6. 測試：`tests/integration/test_worksheet_lb_tags_roundtrip.py` 加三態 roundtrip（null／false／true 各一）；`tests/unit/test_lb_projection_mappers.py` 加 role_type 三案（x≥1 ∧ true → machine；x≥1 ∧ null → human；x≥1 ∧ false → human）；hints 測試加「已回答不再問」；golden 測試更新後全綠。
+
 ## 5. 前端工作包
 
 > 目錄：`src/frontend/src/features/level-system/`。新檔以 `jobs*.ts(x)` 命名；既有 `LevelSystem.tsx` 的內容搬到 `AdvancedView.tsx`（進階檢視），`LevelSystem.tsx` 變成外殼（視圖切換）。`store.ts`／`logic.ts`／`derive()` 的既有介面不變（只加）。
@@ -241,7 +256,8 @@
 - 資料來源：預覽報告（F6 hook）的 `hints[]`、`errors[]`、`warnings[]`＋`useValidateLevel` 的 R1–R9 issues（作業版動作應使其恆為空；若出現，型別 err、原文顯示）。
 - 排序：ask → err → warn → info。每條：句子、按鈕（ask：是／否；有列的：去看＝開該作業抽屜並勾該步；warn／info：知道了）。已回答／知道了的 key 進 `dismissed`（session 記憶，切 worksheet 清空；❓§13-7）。
 - 句子產生：§7.3／§7.4 模板，`t('levelSystem.plain.<CODE>', {step, steps, tool, freq, n})`；缺模板 → 後端 `message`。`HIDDEN_W = ['W_AUTO_GROUP_FOR_LOT','W_ACTION_TYPE_FALLBACK','W_NB_UNSUPPORTED','W_SIMO_COLLAPSED','W_TOOL_NAME_EN_MISSING']`（不顯示；進階檢視仍列）。
-- 「是」的動作（§7.2 第 4 欄）呼叫 `jobsActions`。
+- 「是」的動作（§7.2 第 4 欄）呼叫 `jobsActions`。`H_MACHINE_TIME` 是唯一「否」也要寫回的提示：是＝`setMachineUnattended(id, true)`、否＝`setMachineUnattended(id, false)`；兩者都會讓該提示消失（三態變非 null），不走 `dismissed`。
+- **F10（併入本 WP）**：`LevelCell.machineUnattended: boolean | null`（`blankCell` 為 `null`）；`derive()` 輸出 `machine_unattended`；hydrate 還原；`store.setMachineUnattended(id, v)`；抽屜步驟 chip 三態文案（§6.1 `chip.machineUnknown／machineAttended／machineUnattended`）；步驟進階區可改答案（下拉：未回答／要顧／不用顧）。
 - `data-testid`：`notice-<key>`、`notice-yes`、`notice-no`、`notice-goto`。
 
 ### F6 預覽 hook、產線視角、開發者表、交出
@@ -310,7 +326,13 @@
 | chip.splitParts | 🔧 {{tool}}：拿起／使用／放回（拆 {{count}} 步） | 🔧 {{tool}}: pick up / use / put down (split into {{count}}) |
 | chip.repeatN | 拿一次做 {{n}} 次 | Pick once, do {{n}} times |
 | chip.freq | 做 {{n}} 次 | Done {{n}} times |
-| chip.machine | 機台 {{seconds}} 秒，人不用顧 | Machine {{seconds}} s, no operator needed |
+| chip.machineUnknown | 機台 {{seconds}} 秒（還沒回答人要不要顧） | Machine {{seconds}} s (attendance not answered) |
+| chip.machineAttended | 機台 {{seconds}} 秒，人要顧 | Machine {{seconds}} s, operator stays |
+| chip.machineUnattended | 機台 {{seconds}} 秒，人不用顧 | Machine {{seconds}} s, no operator needed |
+| adv.machineAttendance | 機台跑的時候人要在旁邊嗎？ | Must the operator stay during the machine time? |
+| adv.machineUnknown | 未回答 | Not answered |
+| adv.machineAttendedOpt | 要顧 | Stays |
+| adv.machineUnattendedOpt | 不用顧 | Can leave |
 | chip.discrete | 進階層級 {{level}} | Advanced level {{level}} |
 | drawer.empty | 點左邊的作業卡，回答幾個問題。大多數作業什麼都不用勾。 | Click a job card on the left and answer a few questions. Most jobs need nothing ticked. |
 | drawer.rename | 改名 | Rename |
@@ -425,7 +447,7 @@
 | H_TOOL_EPISODE_SAME_STATION | {{steps}} 是拿起、使用、放回同一把工具（{{tool}}）——這通常在同一個地方做。要標成「同一工站」嗎？ | {{steps}} pick up, use and put down the same tool ({{tool}}) — usually done in one place. Mark them “same station”? | 標成同一工站／Mark same station |
 | H_LOT_RUN_SEGMENT | {{steps}} 都做 {{freq}} 次——是同一批人接著做嗎（每人做幾個就扣幾個）？ | {{steps}} are all done {{freq}} times — is it the same crew, one after another (each person's count is deducted)? | 是同一批人／Same crew |
 | H_TOOL_DECOMPOSED | {{steps}} 用到 {{tool}}：系統會自動當成「拿起 → 使用 → 放回」三個動作交給產線平衡，你不用另外拆。 | {{steps}} use {{tool}}: the system hands them to line balancing as “pick up → use → put down”; no need to split them yourself. | —（info） |
-| H_MACHINE_TIME | {{steps}} 是機台時間（人不用顧），產線平衡會算進節拍但不算人力。 | {{steps}} are machine time (no operator needed); line balancing counts them in takt but not in manpower. | —（info） |
+| H_MACHINE_TIME（ask，2026-09-12 改） | {{step}} 有 {{seconds}} 秒機台時間——機台跑的時候，人要在旁邊顧著嗎？（要顧＝這段時間算人力；不用顧＝人可以去做別的，只算節拍） | {{step}} has {{seconds}} s of machine time — must the operator stay while it runs? (Stays = counts as manpower; can leave = counts toward takt only) | yes＝「不用顧」→ `machine_unattended=true`；no＝「要顧」→ `false`（按鈕文案用 `hints.H_MACHINE_TIME.yes`＝不用顧／Can leave、`.no`＝要顧／Stays，不用通用的是／否） |
 
 ### 6.5 其他
 | key | zh-TW | en |
@@ -453,7 +475,7 @@
 | H_TOOL_EPISODE_SAME_STATION | 同一 chain 內，Pattern A 的一個工具 episode（`acquire` 列 → 0..n 個 `use` 列 → `release` 列，同 `tool_id`）跨 **≥2 個不同列**，且這些列**不全在同一個 cub**（`countersignature` 相同且為 cub） | `{tool_id}` | 這些列若＝作業全部非通用步驟 → `setSameStation(job,true)`；否則 `setSameStation(job,true,subset)`（巢狀 cub） |
 | H_LOT_RUN_SEGMENT | 同一 chain 內，chain 順序上**連續**的列，`frequency>1`、整數、彼此相等，長度 ≥2，且至少一列 `segment` 為空 | `{frequency}` | 若不全在同一 cub → 先 `setSameStation(job,true,subset)`；再 `setSegment(ids, 'batch'+k)`（k＝現有 segment 名數＋1） |
 | H_TOOL_DECOMPOSED（info） | `plan.parts` 長度 >1 的列，依 `tool_id` 分組 | `{tool_id}` | — |
-| H_MACHINE_TIME（info） | `seq_kind=='CM'` 且 `x_seconds ≥ 1` | `{}` | — |
+| H_MACHINE_TIME（**ask**） | `seq_kind=='CM'` ∧ `x_seconds ≥ 1` ∧ `lb_tags.machine_unattended is None`（已回答者不再問） | `{x_seconds}` | 「不用顧」→ `setMachineUnattended(id,true)`；「要顧」→ `setMachineUnattended(id,false)`。未回答＝契約送 `human`（保守） |
 
 `key = f"{kind}:{','.join(sorted(wi_row_ids))}"`。同一 key 只出一條。順序：依第一個列的 seq_no。
 
@@ -481,6 +503,7 @@
 | `test_lb_projection_hints.py` | 每規則正／反例（合成 3–5 列 fixture）；黃金 hints 快照 `fixtures/server_node_hints.expected.json`（首次產出需 User 過目） |
 | `test_lb_projection_errors_params.py` | §4 B4-4 表每碼反例 `params` 非空且鍵正確 |
 | `test_import_excel_wi_group.py` | B1 |
+| `test_lb_projection_mappers.py`（追加）、hints「已回答不再問」、golden 更新（task 29 human；hints 3 條） | B7 |
 | `test_lb_projection_adapter.py`（追加） | `rows_from_save_payload` 與 `rows_from_worksheet` 對同一份資料產出相等的 `ProjectionRow`（用黃金 worksheet 轉成 save payload） |
 
 ### 8.2 後端 integration（有 DB）
@@ -493,10 +516,10 @@
 ### 8.3 前端
 | 檔 | 內容 |
 |---|---|
-| `e2e/level-jobs-logic.spec.ts`（純 node） | (1) 黃金形狀 store fixture（由 `fixtures/server_node_worksheet.json` 的 `rows[].level/lb_tags` 轉成 levelMap/groupMeta）→ `jobsFromStore` 得 **12 個作業**，名稱／排／sameStation／samePerson／stepTags 與附錄 A.5 表逐項相等；(2) 對 (1) 的結果做「無操作」→ `derive()` 輸出與原 fixture 的 level 六欄＋lb_tags 逐列相等（反投影不失真）；(3) 每個 A.2 動作各一案例（前後 `jobsFromStore` 的差異恰為預期；I-1／I-2 不變量成立）；(4) `normalizeLayers`：`[1,1,3,5]→[1,1,2,3]`、含 rowHi；(5) `proposeBaseline`：無群組＋wiGroup 連續同名 → 成 sub、各自一排；已有群組 → null；(6) `plainDiag` 對 34 碼各能產句（zh-TW／en 都不含 `levelSystem.plain` 字樣） |
+| `e2e/level-jobs-logic.spec.ts`（純 node） | (1) 黃金形狀 store fixture（由 `fixtures/server_node_worksheet.json` 的 `rows[].level/lb_tags` 轉成 levelMap/groupMeta）→ `jobsFromStore` 得 **11 個作業**，名稱／排／sameStation／samePerson／stepTags 與附錄 A.5 表逐項相等；(2) 對 (1) 的結果做「無操作」→ `derive()` 輸出與原 fixture 的 level 六欄＋lb_tags 逐列相等（反投影不失真）；(3) 每個 A.2 動作各一案例（前後 `jobsFromStore` 的差異恰為預期；I-1／I-2 不變量成立）；(4) `normalizeLayers`：`[1,1,3,5]→[1,1,2,3]`、含 rowHi；(5) `proposeBaseline`：無群組＋wiGroup 連續同名 → 成 sub、各自一排；已有群組 → null；(6) `plainDiag` 對 34 碼各能產句（zh-TW／en 都不含 `levelSystem.plain` 字樣） |
 | `e2e/level-hydrate-tags.spec.ts` | F1 |
 | `e2e/level-jobs-ui.spec.ts`（preview_server） | clone demo ws → API PUT 6 列（`wi_group`「裝 HDD」×3、「鎖螺絲」×3，皆 freq 1，第 4–6 列 object＝OBJ）→ 開 level tab → 兩張作業卡、兩排（baseline）→ 點「◀ 跟上一排一起做」→ 同一排 → 開「裝 HDD」抽屜 → 勾「同一個工站」→ 等預覽（`preview.updating` 消失）→ 「儲存並交給產線平衡」→ `GET lb-report` 的 `groups` 有 1 組含 3 個 task；`errors=[]`。反例：勾「同一個人」於含 freq>1 的作業 → 勾選框 disabled 且顯示 `q.personBlocked`。i18n：`PATCH /me/locale` 攔截為 en（沿用 `locale-switcher.spec.ts` 手法）→ 卡片按鈕文字為英文、通知句為英文。 |
-| `e2e/level-jobs-golden.spec.ts` | API 建 24 列 worksheet（由黃金 fixture 轉 `WiRowSaveIn`；vocab 用 demo 種子或測試內建立；若 demo vocab 不足則 `test.skip` 並回報）→ 不經 UI 直接 PUT 附錄 A.5 的 level 欄 → UI 開啟 → `jobsFromStore` 12 作業（透過 `__ddmTest`）→ 「儲存並交給產線平衡」→ `lb-csv` 與 expected **除 `divisible` 欄外逐位元相等**，且差異只在 task 31（1→0）（**DoD-1**，§0.4；比對用 csv 解析後逐欄，不用字串 replace） |
+| `e2e/level-jobs-golden.spec.ts` | API 建 24 列 worksheet（由黃金 fixture 轉 `WiRowSaveIn`；vocab 用 demo 種子或測試內建立；若 demo vocab 不足則 `test.skip` 並回報）→ 不經 UI 直接 PUT 附錄 A.5 的 level 欄 → UI 開啟 → `jobsFromStore` 11 作業（透過 `__ddmTest`）→ 「儲存並交給產線平衡」→ `lb-csv` 與 expected **除 `divisible` 欄外逐位元相等**，且差異只在 task 31（1→0）（**DoD-1**，§0.4；比對用 csv 解析後逐欄，不用字串 replace） |
 | `e2e/level-jobs-screenshot.spec.ts` | 三張 zh-TW＋一張 en |
 
 ---
@@ -510,14 +533,15 @@
 | 3 | B4 | — | report／hints／params unit 綠；黃金 hints 快照交 User |
 | 4 | B3 + B5 | B4 | preview 整合測試綠；舊 `lb-report` 回歸綠 |
 | 5 | （B2 取消，§3.2） | — | — |
-| 6 | F2 | F1 | `level-jobs-logic` 全綠（含 12 作業、反投影不失真） |
-| 7 | F3–F6 | F2, B3 | 手動走通黃金 12 作業；`level-jobs-ui` 綠 |
+| 6 | F2 | F1 | `level-jobs-logic` 全綠（含 11 作業、反投影不失真） |
+| 6b | B7 | B3 | migration up/down；三態 roundtrip；role_type 三案；黃金 csv diff 只有 task 29；hints 快照 3 條（貼給 Howard） |
+| 7 | F3–F6 | F2, B3 | 手動走通黃金 11 作業；`level-jobs-ui` 綠 |
 | 8 | F7 | F1 | 四路徑 UI 帶 wiGroup；AI 草稿 sourceText |
 | 9 | F8 | 全程 | `i18n-hardcoded-zh`／`i18n-review` 綠；en 截圖 |
 | 10 | F9 | 7 | `level-jobs-golden` 綠（DoD-1）；截圖入 docs |
 | 11 | 文件（§11） | 全部 | DOC_REGISTRY 狀態更新 |
 
-**F2 的 12 作業測試不綠不得進 F3**（避免把錯的反投影做成 UI）。
+**F2 的 11 作業測試不綠不得進 F3**（避免把錯的反投影做成 UI）。
 
 ---
 
@@ -526,6 +550,9 @@
 | 路徑 | 動作 | WP |
 |---|---|---|
 | `migrations/versions_v2/v2_0047_wi_rows_wi_group.py` | 新增 | B1 |
+| `migrations/versions_v2/v2_0048_level_entries_machine_unattended.py` | 新增 | B7 |
+| `src/ddm_v2/lb_projection/{models,adapter,mappers,hints}.py`、`models/v2/worksheet.py`、`schemas/v2/worksheet.py`、`services/v2/worksheet_service.py`（第 9 標記五處） | 改 | B7 |
+| `docs/lb-integration/fixtures/{server_node_worksheet.json,server_node_tasks.expected.csv,server_node_hints.expected.json,README.md}` | 改：三列 tag、task 29 human、hints 3 條 | B7 |
 | `src/ddm_v2/models/v2/worksheet.py` | 改：`WiRow.wi_group` | B1 |
 | `src/ddm_v2/schemas/v2/worksheet.py` | 改：`WiRowSaveIn.wi_group` | B1 |
 | `src/ddm_v2/schemas/v2/import_excel.py` | 改：`TARGET_FIELDS` + `wi_group` | B1 |
@@ -586,6 +613,7 @@
 | 6 | Excel 未對應 `wi_group` 時是否有 fallback（例如用 `element_class`）？ | 無（留 NULL） |
 | 7 | 「知道了／否」的紀錄是否持久化 | 否（session 內） |
 | 8 | 模組實體化的作業名用 `name_zh`（en 使用者亦同） | `name_zh` |
+| 9 | 機台時間人力歸屬 | **已裁（2026-09-12 Howard）**：事實在 MOST（`machine_unattended` 三態，未回答＝要顧→human）、政策在 LB（`unattended_machine_policy`）；§3.4／B7／F10 |
 
 ---
 
@@ -641,7 +669,7 @@
 ### A.4 `proposeBaseline(rows, lm)`
 條件：所有列 `cs==''`（沒有任何群組）**且**至少一列 `wiGroup` 非空。動作：依 rows 序掃描，「連續且 `wiGroup` 相同非空、皆非通用」的極大段長度 ≥2 → `createGroup('sub','')`＋`moveTo`；然後每個 Job（含單列）依出現順序 `setLayer(job, k)`（k 遞增，各自一排）。回傳可還原的動作清單（還原＝`dissolveGroup` 全部＋ level 回原值）。不符條件 → `null`。
 
-### A.5 黃金 fixture 的作業編排（`server_node_worksheet.json`，24 列 A…Q；F2 測試的期望表）
+### A.5 黃金 fixture 的作業編排（`server_node_worksheet.json`，24 列 A…P，11 個作業；F2 測試的期望表）
 | 作業 id（chainKey） | 名稱（wiGroup） | 排 | steps | sameStation | samePerson | offline | pin | stepTags |
 |---|---|---|---|---|---|---|---|---|
 | gen:A | 把機箱放上輸送帶 | 1 | — / general A | — | — | — | — | A: generalRole take_unit |
@@ -651,10 +679,10 @@
 | sub(E–H) | 裝 CPU 與 DIMM | 2 | E,F,G,H | ✗ | ✗ | ✗ | — | G,H: cub cub30 + segment dimm |
 | cub40 | 鎖主板 8 顆螺絲 | 2 | I | ✓ | ✗ | ✗ | — | I: segment screw |
 | sub(J1–K) | 裝 HDD | 2 | J1,J2,J3,K | ✗ | ✗ | ✗ | — | J1–J3: wcub wcub20；K: mergeLock |
-| cub10 | 背板壓合 | 2 | L1,L2,L3,M | ✓ | ✗ | ✗ | — | M: mergeLock |
-| cub11 | I/O 擋板熱熔 | 2 | N1,N2,N3 | ✓ | ✓（wcub21） | ✗ | — | — |
+| cub10 | 背板壓合 | 2 | L1,L2,L3,M | ✓ | ✗ | ✗ | — | L2: machineUnattended true；M: mergeLock |
+| cub11 | I/O 擋板熱熔 | 2 | N1,N2,N3 | ✓ | ✓（wcub21） | ✗ | — | N2: machineUnattended false（握著擋板，人要顧） |
 | row:O | 外觀目檢 | 3 | O | ✗ | ✗ | ✗ | — | —（fixture 的 `lb_tags.splittable` 忽略，§3.2） |
-| sub(P1–P3) | ICT 測試 | 4 | P1,P2,P3 | ✗ | ✗ | ✗ | 6 | — |
+| sub(P1–P3) | ICT 測試 | 4 | P1,P2,P3 | ✗ | ✗ | ✗ | 6 | P2: machineUnattended true |
 （Q1–Q3「鎖風扇支架」不在 24 列黃金內；`prototypes/level-jobs/jobs.js::example()` 有第 12 個作業供 UI 手測。）
 sub 的實際 label 以 fixture 內 `countersignature` 為準（測試從 fixture 讀，不寫死）。`wiGroup` 名稱：fixture 目前無 `wi_group` 欄 → 測試以 `jobs.js::example()` 的名稱建立 store（或 agent 在 fixture 加 `wi_group`——**加欄需回報**，因 fixture 是契約驗收物；建議測試端自行注入，不動 fixture）。
 

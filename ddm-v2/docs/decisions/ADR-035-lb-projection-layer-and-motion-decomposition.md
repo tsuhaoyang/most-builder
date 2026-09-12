@@ -72,6 +72,8 @@
 ### D7 資料模型：`level_entries` 加 8 個 LB 標記欄（加法演進）
 `worker_cub text`、`offline bool`、`segment text`、`station_pin int`、`is_general bool`、`general_role text`（take_unit／scanner／transport；Spec §5.7）、`merge_lock bool`、`action_type text`（IE 選填顯示標籤，Spec §6；2026-09-12 WP6 裁決：結構碼推不出 remove／test 等語意，標籤優先、附錄 A 為 fallback）（＋對應 `LevelFieldsIn`／`read_worksheet`／`api.d.ts`）。`machine_count`／`manpower` **停止匯出**（D16），欄位保留另議。`role_type` 由 X 格推導，不落欄。
 
+> **D7 追記（2026-09-12，Howard 裁決）**：第 9 個 LB 標記 `machine_unattended boolean NULL`（三態：null＝未回答、false＝人要顧、true＝人不用顧）。它是 solver 消費的物理事實（Spec §6 `role_type` 修訂：只有 true 才送 `machine`），與被否決的 `splittable` 不同（那是 LB 結果頁 what-if 許可位，且與 quantity 重疊）。作業版 UI 以「人要在旁邊顧著嗎？」提問，未回答＝要顧。實作：`LEVEL_SYSTEM_JOB_UX_IMPLEMENTATION_SPEC.md` §3.4／B7／F10。
+
 ### D8 MOST 端匯出前 Fail-Fast（E 碼擋、W 碼報）＋匯出報告
 錯誤碼表 Spec §8.1；報告形狀 §8.2。E 碼經 ADR-034 信封（`code=LB_EXPORT_BLOCKED`，`detail.errors[]`）。**不因為 LB 也會擋就不擋**——在 IE 還看得到 motion 的地方報錯，比送到 LB 變 500 好。
 
@@ -92,6 +94,7 @@
 > 3. **「系統看出來的事」不接 LLM**：提示（同站建議、批量建議、工具自動拆列說明、機台時間說明）由後端投影資料以確定性規則產生（`lb_projection/hints.py`），E／W 碼由前端 i18n 模板轉成使用者語言；不做敘述關鍵字猜測。
 > 4. **未存檔預覽**：新增 `POST …/export/lb-report/preview`（dry-run，與存檔後 `lb-report` 同一投影路徑、同一報告 builder）；報告加法欄位 `rows[]`／`hints[]`／`params`，CSV 與 `CONTRACT_VERSION` 不變。
 > 5. `divisible`／`splittable` **不加 DB 欄、不加 UI**：LB 端 ADR-023 §4 明列「MOST 不輸出 `divisible`；與 quantity 收斂另立 ADR」。產品路徑恆 0；黃金 fixture O 列的 `lb_tags.splittable` 僅為覆蓋 24 欄，投影層對應保留。
+> 6. **機台時間「事實在 MOST、政策在 LB」**（2026-09-12 Howard 裁決）：作業版把 `H_MACHINE_TIME` 從說明改為提問「人要在旁邊顧著嗎？」→ 第 9 標記 `machine_unattended`（D7 追記）→ 契約 `role_type`；LB 端以求解參數 `unattended_machine_policy`（free／busy）決定不佔人的機台時間是否真的釋放人力（ADR-023 D9 追記）。節拍永遠含機台時間，兩邊都不可改。
 > 實作書：`docs/lb-integration/LEVEL_SYSTEM_JOB_UX_IMPLEMENTATION_SPEC.md`（含反投影形式定義、動作→store 變更表、i18n 全目錄、規則表）。設計原型：`docs/lb-integration/prototypes/level-jobs/`。
 
 ---

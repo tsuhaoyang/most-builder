@@ -216,7 +216,7 @@ Kahn 拓撲排序，就緒集合以 `(seq_no, part_index)` 最小者優先（par
 | `qty_scope` | setup/cyclic | §3.2；**不輸出 `auto`** | Q=1 空 |
 | `duration_basis` | `once` | Q>1 恆 `once` | Q=1 空 |
 | `source_wi_row_id` | UUID | `wi_rows.id`（D13 對應鍵；同 motion 三列相同） | 必填 |
-| `role_type` | human/machine | CM 的 X 格 `x_seconds ≥ 1`（機台製程）→ `machine`；其餘 `human`（D17；LB 現況忽略） | 必填 |
+| `role_type` | human/machine | ~~CM 的 X 格 `x_seconds ≥ 1`（機台製程）→ `machine`；其餘 `human`（D17；LB 現況忽略）~~ **修訂（2026-09-12，Howard 裁決）**：`machine` ⇔ CM ∧ `x_seconds ≥ 1` ∧ `lb_tags.machine_unattended == true`（IE 明確斷言「人不用顧」）；其餘一律 `human`（含 `machine_unattended` 為 null／false）。理由：X 格只有秒數，不知道人走不走得開（黃金 N2「握著擋板熱熔」即為看顧中的機台時間）；保守預設避免 LB 人力偏樂觀。LB 端另有求解政策 `unattended_machine_policy`（free／busy，ADR-023 D9 追記）決定 `machine` 是否真的不佔人——**事實在 MOST、政策在 LB**。v1 已知近似：`machine` 列的 A B G M I 人工格（黃金三列 0.11–0.65 s）併入機台時間、不佔人；拆列見 §11。 | 必填 |
 | `general_role` | take_unit/scanner/transport | `lb_tags.general_role`；僅 general 列有值（§5.7；LB 現況忽略，Phase 2 改讀） | 非 general 空 |
 
 ---
@@ -312,7 +312,8 @@ Kahn 拓撲排序，就緒集合以 `(seq_no, part_index)` 最小者優先（par
 | 欄／概念 | 狀態 | 對接 |
 |---|---|---|
 | `source_wi_row_id` | v1 已輸出 | LB 需保留並在回寫（D13）帶回 |
-| `role_type` | v1 已輸出 | LB 需在人力平衡時排除 `machine`（D17） |
+| `role_type` | v1 已輸出；2026-09-12 規則修訂為需 `machine_unattended` 斷言（§6） | LB Phase 2 WP-L9 消費：`machine` 不佔 worker、仍進站 makespan；求解政策 `unattended_machine_policy` 可整批降級為 busy（ADR-023 D9 追記） |
+| `machine` 列拆成「人工前段（A B G M）／X／人工後段（I A）」 | 未做（v1 近似：整列不佔人） | Phase 3：沿工具拆列的分桶機制（§3.3）新增 machine 分解；黃金 task 數會變 |
 | `general_role` | v1.1 已輸出 | LB Phase 2 以此取代 `part_id=General` ∧ 無 pred ∧ `action` 關鍵字三欄魔術值 |
 | `simo_group` | 未輸出 | LB 加欄＋max 計算後，MOST 從屬列改為輸出（D15） |
 | `nb`（不可同站） | 丟棄＋W | LB 加 `max_per_station` 類約束 |

@@ -10,7 +10,7 @@
 1. `docs/lb-integration/MOST_LB_DATA_CONTRACT_SPEC.md`——資料契約，所有投影語意的唯一權威。本次**不改投影語意、不改 CSV、不升版本**。
 2. `docs/decisions/ADR-035-lb-projection-layer-and-motion-decomposition.md`——決策邊界；D10 的 2026-09-12 追記是本次的決策依據。ADR 沒涵蓋的：**停下來問 User**，不要自行決定。
 3. `docs/lb-integration/LEVEL_SYSTEM_JOB_UX_IMPLEMENTATION_SPEC.md`——工作包、簽名、規則表、i18n 文案、測試、順序。照 §9 順序做，關卡不過不進下一個。
-4. `docs/lb-integration/fixtures/`——黃金驗收。實作書 DoD-1：作業版操作後匯出的 CSV 與 `server_node_tasks.expected.csv` 逐位元相等。
+4. `docs/lb-integration/fixtures/`——黃金驗收。實作書 DoD-1：作業版操作後匯出的 CSV 與 `server_node_tasks.expected.csv` 除 `divisible` 欄外逐位元相等（§0.4）。
 5. 專案既有規範：`.kiro/steering/*.md`、`docs/DOC_REGISTRY.md`、ADR-011（加法演進）、ADR-032（雙語 UI）、ADR-034（錯誤信封）、`docs/architecture/frontend-ux-spec.md` §8（不可改動的 UX 規則）。
 
 ## 開工前必讀（依序，讀完再動手）
@@ -22,7 +22,7 @@
 ## 工作方式
 - **一個 WP 一個（或一組）commit**，訊息：`implements ADR-035 D10: <WP代號> <一句話>`（例 `implements ADR-035 D10: B3 lb-report preview (dry-run)`），body 逐檔列變更。
 - 每個 WP 結束跑：`PYTHONPATH=src pytest tests/unit -q`、`ruff check src tests scripts`、（有 DB）`PYTHONPATH=src pytest tests/integration -q`；前端變更跑 `npm run typecheck && npm run build`；E2E 用 `preview_server`（`E2E_BASE_URL`）跑指定 spec。`python3 scripts/core_logic/run_all.py` 必須維持全綠（你不該動引擎）。
-- **F2 的 12 作業測試（`e2e/level-jobs-logic.spec.ts`）不綠不得進 F3**。
+- **F2 的 11 作業測試（`e2e/level-jobs-logic.spec.ts`）不綠不得進 F3**。
 - 黃金 hints 快照（`fixtures/server_node_hints.expected.json`）首次產出時，把內容貼在回報中請 User 過目，過目前不視為鎖定。
 - 遇到實作書／ADR 沒說清楚的：在回覆中用「❓需 User 裁決」列出問題、你的預設選項與理由，**先照預設繼續做可獨立的部分**。實作書 §13 已列各題的預設值（#2 `splittable` 已裁定不做），照預設做、在回報中標明。
 - `divisible`／`splittable`：**不加 DB 欄、不加 UI、不改黃金 fixture**（實作書 §3.2、ADR-023 §4）。DoD-1 的黃金比對排除 `divisible` 欄，差異只允許 task 31 由 1 變 0；不要為了逐位元相等去補這個欄位。
