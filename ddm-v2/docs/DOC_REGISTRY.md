@@ -60,7 +60,7 @@ MOST→LB 匯出的語意以 [MOST_LB_DATA_CONTRACT_SPEC.md](lb-integration/MOST
 
 | 文件 | 用途 | 狀態 |
 |------|------|------|
-| [MOST↔LB 資料契約 Spec](lb-integration/MOST_LB_DATA_CONTRACT_SPEC.md) | **最高原則**：`most-lb-csv-v1` 23 欄、motion→task 粒度、兩個乘數矩陣、工具生命週期狀態機、分層 DAG、不變量、E/W 碼 | ✅ 2026-09-11 |
+| [MOST↔LB 資料契約 Spec](lb-integration/MOST_LB_DATA_CONTRACT_SPEC.md) | **最高原則**：`most-lb-csv-v1.1` 24 欄、motion→task 粒度、兩個乘數矩陣、工具生命週期狀態機、分層 DAG、不變量、E/W 碼 | ✅ 2026-09-11 |
 | [ADR-035](decisions/ADR-035-lb-projection-layer-and-motion-decomposition.md) | 投影層決策與邊界（拆列、repeat_count、compiler 目的地、資料模型、過渡守衛、UI） | 🟡 proposed（待 User 核可） |
 | [LB 投影層實作書](lb-integration/LB_PROJECTION_IMPLEMENTATION_PLAN.md) | WP0–WP12、檔案變更總表、關卡、禁止事項 | 🔄 實作中 |
 | [Agent Brief](lb-integration/AGENT_BRIEF_LB_PROJECTION.md) | 執行 agent 的工作方式與交付格式 | 🔄 |

@@ -251,7 +251,7 @@ Kahn 拓撲排序，就緒集合以 `(seq_no, part_index)` 最小者優先（par
 ### 8.2 匯出報告（與 CSV 同時產出）
 
 ```json
-{ "contract_version": "most-lb-csv-v1", "worksheet_id": "...", "revision_no": 7, "rule_set_code": "MINIMOST_FACTORY_V2",
+{ "contract_version": "most-lb-csv-v1.1", "worksheet_id": "...", "revision_no": 7, "rule_set_code": "MINIMOST_FACTORY_V2",
   "rows_in": 24, "rows_simo_collapsed": [], "tasks_out": 34,
   "tmu_total_most": 2603.445, "ms_total_lb_one_worker": 93724,
   "groups": {"30": [11,12], "40": [13,14,15], "10": [22,23,24,25,26,27], "11": [28,29,30]},
@@ -275,7 +275,7 @@ Kahn 拓撲排序，就緒集合以 `(seq_no, part_index)` 最小者優先（par
 
 ## 10. 版本規則
 
-- `contract_version` 字串進匯出報告；CSV 本體無 metadata。
+- `contract_version` 字串進匯出報告；CSV 本體無 metadata。**版本字串的唯一權威是本檔 §0 的標題**（現為 `most-lb-csv-v1.1`）；`emit.CONTRACT_VERSION`、§8.2 報告、fixture `contract_version`、freeze test 四處必須與之相等。
 - **加欄**（尾端、LB 忽略）＝ minor（v1.x），仍須同步 LB 契約「保留欄位」表。**改名／改序／改語意／刪欄**＝ major（v2），須新 ADR ＋ LB 端同步落地後才切換。
 - 表頭凍結測試（實作書 WP10）是升版的唯一開關。
 

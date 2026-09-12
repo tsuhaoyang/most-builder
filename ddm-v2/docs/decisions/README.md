@@ -58,7 +58,7 @@
 | [`docs/architecture/domain-evolution-and-ai-readiness-spec.md`](../architecture/domain-evolution-and-ai-readiness-spec.md) | 核心持續演進下的 revision、policy version、method context、AI/batch 資料地基 | ADR-011、ADR-027 |
 | [`docs/core-logic/minimost-sequence-model-core-logic-spec.md`](../core-logic/minimost-sequence-model-core-logic-spec.md) | MiniMOST Sequence Model 核心邏輯 | ADR-014、ADR-020 |
 | [`docs/core-logic/level-system-core-logic-spec.md`](../core-logic/level-system-core-logic-spec.md) | Level System 核心邏輯（含對 LB 輸出合約） | — |
-| [`docs/lb-integration/MOST_LB_DATA_CONTRACT_SPEC.md`](../lb-integration/MOST_LB_DATA_CONTRACT_SPEC.md) | MOST→LB 資料契約 `most-lb-csv-v1`（最高原則） | ADR-035 |
+| [`docs/lb-integration/MOST_LB_DATA_CONTRACT_SPEC.md`](../lb-integration/MOST_LB_DATA_CONTRACT_SPEC.md) | MOST→LB 資料契約 `most-lb-csv-v1.1`（最高原則） | ADR-035 |
 | [`docs/CI_GATES.md`](../CI_GATES.md)〈依賴鎖版與安全稽核〉 | 鎖檔形狀、更新時機、pip-audit 豁免政策與 nightly | ADR-029 |
 
 ---

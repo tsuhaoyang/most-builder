@@ -6,7 +6,7 @@
 > 不一定 MOST 對或 LB 對，討論出標準 SOP 與規範。
 > **狀態**：討論進行中（2026-09-06 起），逐題定案累積。所有結論以實讀 code 為據。
 > **LB 演算法**：CP-SAT + RCPSP（資源受限排程）；站/worker 是 LB 的**輸出**，MOST 提供帶屬性的 DAG 作**輸入**。
-> **正式化（2026-09-11 晚）**：核心規範已收斂為 [`MOST_LB_DATA_CONTRACT_SPEC.md`](MOST_LB_DATA_CONTRACT_SPEC.md)（**最高原則**，`most-lb-csv-v1`）＋ [ADR-035](../decisions/ADR-035-lb-projection-layer-and-motion-decomposition.md)（決策邊界）＋ [`LB_PROJECTION_IMPLEMENTATION_PLAN.md`](LB_PROJECTION_IMPLEMENTATION_PLAN.md)（實作書）＋ [`fixtures/`](fixtures/README.md)（黃金驗收）。本文件自此為**討論紀錄**；D1／D7 有追記、新增 D18；與 Spec 衝突以 Spec 為準。
+> **正式化（2026-09-11 晚）**：核心規範已收斂為 [`MOST_LB_DATA_CONTRACT_SPEC.md`](MOST_LB_DATA_CONTRACT_SPEC.md)（**最高原則**，`most-lb-csv-v1.1`）＋ [ADR-035](../decisions/ADR-035-lb-projection-layer-and-motion-decomposition.md)（決策邊界）＋ [`LB_PROJECTION_IMPLEMENTATION_PLAN.md`](LB_PROJECTION_IMPLEMENTATION_PLAN.md)（實作書）＋ [`fixtures/`](fixtures/README.md)（黃金驗收）。本文件自此為**討論紀錄**；D1／D7 有追記、新增 D18；與 Spec 衝突以 Spec 為準。
 > **狀態更新（2026-09-11 定稿）**：核心對齊 D1–D16 已定案並收斂為下方 **§0 正式 SOP**。中低風險項與待 LB 端資訊列於文末。
 
 ---

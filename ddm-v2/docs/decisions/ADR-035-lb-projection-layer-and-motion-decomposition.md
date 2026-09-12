@@ -3,7 +3,7 @@
 - **狀態**：🟡 **proposed**（內容依 2026-09-11 User 整合討論裁決撰寫；**請 User 核可後改 🟢 accepted**。實作 agent 在核可前即以本 ADR 為邊界，遇本 ADR 未涵蓋處停下詢問，不得自行擴張）
 - **日期**：2026-09-11
 - **決策者**：Howard（IE／兩系統 owner）＋ 整合架構師（論證與規格）
-- **最高原則**：[`docs/lb-integration/MOST_LB_DATA_CONTRACT_SPEC.md`](../lb-integration/MOST_LB_DATA_CONTRACT_SPEC.md)（`most-lb-csv-v1`）。本 ADR 記錄「為什麼」，Spec 記錄「是什麼」；衝突時 Spec 為準並回修本 ADR。
+- **最高原則**：[`docs/lb-integration/MOST_LB_DATA_CONTRACT_SPEC.md`](../lb-integration/MOST_LB_DATA_CONTRACT_SPEC.md)（`most-lb-csv-v1.1`）。本 ADR 記錄「為什麼」，Spec 記錄「是什麼」；衝突時 Spec 為準並回修本 ADR。
 - **關聯**：
   - [`MOST_LB_CONTRACT.md`](../lb-integration/MOST_LB_CONTRACT.md) D1／D2／D3／D7／D8（本 ADR 修訂 D1 的 1:1、精確化 D3／D7／D8，新增 D18）
   - [ADR-011](ADR-011-schema-evolution-and-contract-stability.md)（加法演進：level_entries 加欄、CSV 尾端加欄）

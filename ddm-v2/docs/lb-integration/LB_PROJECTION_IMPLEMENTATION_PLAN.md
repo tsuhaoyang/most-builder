@@ -56,7 +56,7 @@ src/ddm_v2/lb_projection/
 - 新建 `src/ddm_v2/lb_projection/` 上述檔案（可先空實作）。
 - `emit.py`：
   ```python
-  CONTRACT_VERSION = "most-lb-csv-v1"
+  CONTRACT_VERSION = "most-lb-csv-v1.1"   # Spec §0 標題為版本權威；報告 §8.2 同字串
   COLUMNS: tuple[str, ...] = ("task_id","action","part_id","group","atomic_group","duration","predecessors",
       "station_name","action_type","complexity_level","adjustable","fixed_station","offline_flag","tool_id",
       "tool_action","divisible","p2","quantity","segment","qty_scope","duration_basis","source_wi_row_id","role_type","general_role")
