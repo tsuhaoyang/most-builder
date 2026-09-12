@@ -22,6 +22,7 @@ from typing import Any
 from ddm_v2.lb_projection.errors import (
     E_REPEAT_MIXED,
     E_REPEAT_NONCONTIGUOUS,
+    E_REPEAT_NONLINEAR,
     E_TMU_DECOMPOSITION,
     E_TOOL_ACQUIRE_REPEAT,
     ProjectionError,
@@ -153,6 +154,7 @@ def decompose_engine(slot_inputs: dict[str, Any], total_tmu: float, rs: Any, wi_
     slot_tmus = list(full.slot_tmus)
     repeat_counts = _repeat_counts_from_slot_inputs(slot_inputs)
     block = repeat_block(slot_tmus, repeat_counts, wi_row_id)
+    _assert_m_linear(slot_inputs, block, wi_row_id)
     if not block.slots:
         setup_pre = sum(slot_tmus[i] for i in _ACQUIRE_SLOTS)
         use_once = sum(slot_tmus[i] for i in _USE_SLOTS)
@@ -161,6 +163,22 @@ def decompose_engine(slot_inputs: dict[str, Any], total_tmu: float, rs: Any, wi_
     once = compute_cycle(strip_repeats(slot_inputs, block.slots), rs)
     once_use = {s: once.slot_tmus[s] for s in block.slots}
     return _assemble(slot_tmus, block, once_use, total_tmu, wi_row_id)
+
+
+def _assert_m_linear(slot_inputs: dict[str, Any], block: RepeatBlock, wi_row_id: str | None) -> None:
+    """M（slot 3）∈ R 且 M 含伴隨維度（hand_cm／foot_cm）→ E_REPEAT_NONLINEAR（Spec §3.3）。
+
+    M = max(verb×N, hand, foot) 非線性，不可逐格線性拆。
+    """
+    if 3 not in block.slots:
+        return
+    slots = slot_inputs.get("slots") or {}
+    m = slots.get(3) or slots.get("3") or {}
+    for comp in m.get("m_components") or []:
+        if any(comp.get(k) for k in ("hand_cm", "foot_cm")):
+            raise TmuDecompositionError(
+                ProjectionError(E_REPEAT_NONLINEAR, wi_row_id, "M 含伴隨維度（手度／腳步）且 M∈R，不可線性拆")
+            )
 
 
 def _repeat_counts_from_slot_inputs(slot_inputs: dict[str, Any]) -> dict[str, int]:

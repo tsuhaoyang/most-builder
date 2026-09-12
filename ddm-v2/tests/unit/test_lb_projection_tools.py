@@ -95,3 +95,14 @@ def test_tool_id_missing_name_en() -> None:
     tid, warns = tool_id_of(ProjectionVocab(kind="tool", name_en=None), "abcdef12ghij")
     assert tid == "tool_abcdef12"
     assert warns and warns[0].code == "W_TOOL_NAME_EN_MISSING"
+
+
+def test_general_with_tool_warns_and_single_row() -> None:
+    """general motion 持工具 → W_GENERAL_WITH_TOOL，單列輸出、工具欄丟棄（Spec §4）。"""
+    from ddm_v2.lb_projection.errors import W_GENERAL_WITH_TOOL
+
+    chain = [_row(1, tool="scanner", general=True, slot_tmus=[16, 0, 0, 22, 0, 0, 10], total=48)]
+    plans, _held = resolve_chain(chain, _VOCAB)
+    assert plans[0].parts == ["use"]
+    assert plans[0].tool_id is None  # 工具欄丟棄
+    assert W_GENERAL_WITH_TOOL in {w.code for w in plans[0].warnings}

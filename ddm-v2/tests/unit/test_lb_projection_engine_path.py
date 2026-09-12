@@ -109,3 +109,27 @@ def test_engine_equals_static_partial_block_m_once() -> None:
         },
     }
     _assert_two_paths_equal(cyc, {"4": 8, "5": 8})
+
+
+def test_m_nonlinear_with_accompanying_dim_rejected() -> None:
+    """M∈R 且含伴隨維度（hand_cm）→ E_REPEAT_NONLINEAR（Spec §3.3；引擎路徑偵測）。"""
+    from ddm_v2.lb_projection.errors import E_REPEAT_NONLINEAR
+    from ddm_v2.lb_projection.tmu import TmuDecompositionError
+
+    cyc = {
+        "seq": "CM",
+        "slots": {
+            0: {"reach_cm": 10},
+            1: {},
+            2: {"g_code": "g_tap"},
+            3: {"m_components": [{"verb_code": "m_screw", "hand_cm": 30}], "repeat_count": 8},
+            4: {"x_code": "x_press", "x_seconds": 1.0, "repeat_count": 8},
+            5: {"i_code": "i_check", "repeat_count": 8},
+            6: {"reach_cm": 10},
+        },
+    }
+    rs = _rs()
+    full = compute_cycle(cyc, rs)
+    with pytest.raises(TmuDecompositionError) as ei:
+        decompose_engine(cyc, full.total_tmu, rs, "t")
+    assert ei.value.err.code == E_REPEAT_NONLINEAR

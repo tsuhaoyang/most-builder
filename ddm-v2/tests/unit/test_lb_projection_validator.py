@@ -209,3 +209,52 @@ def test_atomic_on_tool_direct() -> None:
     ]
     errors, _w = validate(tasks, [], [])
     assert E_ATOMIC_ON_TOOL_MOTION in {e.code for e in errors}
+
+
+def test_auto_group_for_lot_warning() -> None:
+    """Q>1（frequency=8）無 cub → W_AUTO_GROUP_FOR_LOT（mappers 擁有；project_rows 邊界）。"""
+    from ddm_v2.lb_projection.errors import W_AUTO_GROUP_FOR_LOT
+
+    r = _row(2, frequency=8, total=22)
+    result = project_rows([r], _VOCAB)
+    _e, w = _codes(result)
+    assert W_AUTO_GROUP_FOR_LOT in w
+    # 合成 group = 9000 + seq_no
+    assert result.tasks[0].group == 9002
+
+
+def test_level_invalid_gate() -> None:
+    """level.validate 有 issue → E_LEVEL_INVALID（precedence gate 擁有；project_rows 邊界）。"""
+    from ddm_v2.lb_projection.errors import E_LEVEL_INVALID
+    from ddm_v2.lb_projection.precedence import PrecedenceError
+
+    # cub 群組但成員 ascription 結構不合 R 規則 → level 引擎報 issue
+    a = _row(5, level={"countersignature": "cub7", "order": 1, "level": "1", "ascription": "sub"})
+    with pytest.raises(PrecedenceError) as ei:
+        project_rows([a], _VOCAB)
+    assert ei.value.err.code == E_LEVEL_INVALID
+
+
+def test_simo_collapsed_warning() -> None:
+    """SIMO 從屬列略過 → W_SIMO_COLLAPSED（validator 擁有）。"""
+    from ddm_v2.lb_projection.errors import W_SIMO_COLLAPSED
+
+    r = _row(2)
+    r2 = r.model_copy(update={"simo_group_id": "simo1"})
+    _e, w = validate([], [r2], [])
+    assert W_SIMO_COLLAPSED in {x.code for x in w}
+
+
+def test_cross_chain_hold() -> None:
+    """工具於 chain A（sub2）取得、chain B（sub3）釋放 → E_TOOL_CROSS_CHAIN。"""
+    from ddm_v2.lb_projection.errors import E_TOOL_CROSS_CHAIN
+
+    # sub2：GM 取 scanner（object=scanner），不放 → held
+    acq = _row(5, level={"countersignature": "sub2", "order": 1, "level": "2"})
+    acq = acq.model_copy(update={"object_vocab": "scanner", "cycle": acq.cycle.model_copy(update={"seq_kind": "GM"})})
+    # sub3：GM 放 scanner（object=scanner）
+    rel = _row(6, level={"countersignature": "sub3", "order": 1, "level": "2"})
+    rel = rel.model_copy(update={"object_vocab": "scanner", "cycle": rel.cycle.model_copy(update={"seq_kind": "GM"})})
+    result = project_rows([acq, rel], _VOCAB)
+    e, _w = _codes(result)
+    assert E_TOOL_CROSS_CHAIN in e

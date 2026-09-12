@@ -39,6 +39,19 @@ def _chain_key(r: ProjectionRow) -> str:
     return cs or f"__standalone__{r.seq_no}"
 
 
+def _release_events_by_chain(groups: dict, vocab: dict) -> dict[str, set[str]]:
+    """每個 chain 內的 Pattern A release 事件（GM 且 object_vocab 指向工具）對應的工具集合。"""
+    out: dict[str, set[str]] = {}
+    for key, members in groups.items():
+        tools: set[str] = set()
+        for r in members:
+            obj = r.object_vocab
+            if obj and obj in vocab and vocab[obj].kind == "tool" and r.cycle.seq_kind == "GM":
+                tools.add(obj)
+        out[key] = tools
+    return out
+
+
 def project_rows(
     rows: list[ProjectionRow],
     vocab: dict[str, ProjectionVocab],
@@ -54,19 +67,26 @@ def project_rows(
     for r in rows:
         groups[_chain_key(r)].append(r)
     plans: list[MotionPlan] = []
-    for _key, members in groups.items():
+    held_by_chain: dict[str, set[str]] = {}
+    for key, members in groups.items():
         members.sort(key=lambda m: (m.level.order or 0, m.seq_no))
         chain_plans, held = resolve_chain(members, vocab)
-        if held:
-            errors.append(ProjectionError(E_TOOL_NOT_RELEASED, None, f"chain 結束仍持有：{sorted(held)}"))
+        held_by_chain[key] = held
         plans.extend(chain_plans)
         for p in chain_plans:
             warnings.extend(p.warnings)
     plans.sort(key=lambda p: p.row.seq_no)
 
-    # 跨 chain 持有偵測：同 tool 出現在多個 chain 的 acquire 但無同 chain release —— resolve_chain 已 per-chain，
-    # 此處保守檢查（held 已在上面收）；跨 chain 由 held 非空體現，E_TOOL_CROSS_CHAIN 交由 validator（WP7）細分。
-    _ = E_TOOL_CROSS_CHAIN
+    # held-at-end 細分（Spec §4.2）：某 chain 持有的工具若在**別的 chain** 出現 release 事件 → E_TOOL_CROSS_CHAIN；
+    # 否則（無處釋放）→ E_TOOL_NOT_RELEASED。release 事件＝GM 且 object_vocab 指向工具（Pattern A）。
+    release_chains = _release_events_by_chain(groups, vocab)
+    for key, held in held_by_chain.items():
+        for tool in sorted(held):
+            other = [c for c, tools in release_chains.items() if tool in tools and c != key]
+            if other:
+                errors.append(ProjectionError(E_TOOL_CROSS_CHAIN, None, f"工具 {tool} 於 chain {key} 取得、chain {other[0]} 釋放"))
+            else:
+                errors.append(ProjectionError(E_TOOL_NOT_RELEASED, None, f"chain {key} 結束仍持有 {tool}"))
 
     # ── precedence：task_id 編號 ──
     task_id_map, prec_warns = project_precedence(rows, plans)
