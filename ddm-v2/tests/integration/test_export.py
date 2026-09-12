@@ -137,6 +137,43 @@ async def test_export_lb_csv_blocked_422(client):
     assert "wi_row_id" in errs[0]  # 每筆帶 wi_row_id 欄（跨列不變量可為 None）
 
 
+async def test_export_lb_csv_narrative_null_blocked_422(client, db_session):
+    """舊資料／匯入列 narrative_en=NULL（ADR-032 fill-then-fix；backfill_narrative_en.py 的對象）→
+    422、detail.errors[].code == E_NARRATIVE_EN_MISSING、帶 wi_row_id；lb-report 回同一筆。
+
+    save 一律合成 narrative_en，故以 raw UPDATE 模擬 NULL 真實狀態（db_session 與 client 同 connection/savepoint）。
+    """
+    if not await _seeded(client):
+        pytest.skip("demo worksheet 未種")
+    from sqlalchemy import text as _sql
+
+    new = (await client.post(f"/api/v2/worksheets/{WS}/clone")).json()["new_worksheet_id"]
+    row = _gm_row_en()
+    wi_row_id = row["id"]
+    r = await client.put(f"/api/v2/worksheets/{new}", json={"rows": [row]})
+    assert r.status_code == 200, r.text
+    # 模擬舊資料：把 narrative_en 清成 NULL
+    await db_session.execute(
+        _sql("UPDATE most_cycles SET narrative_en = NULL WHERE wi_row_id = :rid"), {"rid": wi_row_id}
+    )
+    await db_session.commit()
+
+    csv_r = await client.get(f"/api/v2/worksheets/{new}/export/lb-csv")
+    assert csv_r.status_code == 422, csv_r.text
+    body = csv_r.json()
+    assert body["error"]["code"] == "LB_EXPORT_BLOCKED"
+    errs = body["error"]["detail"]["errors"]
+    hit = [e for e in errs if e["code"] == "E_NARRATIVE_EN_MISSING"]
+    assert hit, f"expected E_NARRATIVE_EN_MISSING, got {[e['code'] for e in errs]}"
+    assert hit[0]["wi_row_id"] == wi_row_id
+
+    # lb-report 回同一筆
+    rep = await client.get(f"/api/v2/worksheets/{new}/export/lb-report")
+    assert rep.status_code == 200
+    rep_errs = rep.json()["errors"]
+    assert any(e["code"] == "E_NARRATIVE_EN_MISSING" and e["wi_row_id"] == wi_row_id for e in rep_errs)
+
+
 async def test_export_lb_report_200_with_warnings(client):
     """lb-report 永遠 200（不擋），回 tasks_out/groups/atomic/errors/warnings（Spec §8.2）。"""
     if not await _seeded(client):

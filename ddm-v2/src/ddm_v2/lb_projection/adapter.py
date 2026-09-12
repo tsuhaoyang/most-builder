@@ -86,7 +86,7 @@ def rows_from_worksheet(data: dict[str, Any], vocab: dict[str, ProjectionVocab])
                         "x_seconds": x_seconds,
                         "total_tmu": float(cyc.get("total_tmu", 0) or 0),
                         "tech_line": cyc.get("tech_line"),
-                        "narrative_en": cyc.get("narrative_en") or cyc.get("narrative"),
+                        "narrative_en": cyc.get("narrative_en"),
                         "narrative_zh": cyc.get("narrative_zh"),
                         "slot_inputs": slot_inputs or None,
                         "rule_set_code": cyc.get("rule_set_code"),
