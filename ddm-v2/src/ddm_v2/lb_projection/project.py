@@ -89,7 +89,15 @@ def project_rows(
                 errors.append(ProjectionError(E_TOOL_NOT_RELEASED, None, f"chain {key} 結束仍持有 {tool}"))
 
     # ── precedence：task_id 編號 ──
-    task_id_map, prec_warns = project_precedence(rows, plans)
+    # level gate（E_LEVEL_INVALID）與離散 level（E_LEVEL_DISCRETE_UNSUPPORTED）對編號是致命的
+    # （無法產 task_id）→ 收進 errors 後早返（此時 tasks 為空）。其餘 E 走「收齊再擋」。
+    from ddm_v2.lb_projection.precedence import PrecedenceError
+
+    try:
+        task_id_map, prec_warns = project_precedence(rows, plans)
+    except PrecedenceError as pe:
+        errors.append(pe.err)
+        return ProjectionResult(csv_text="", tasks=[], errors=errors, warnings=warnings)
     warnings.extend(prec_warns)
 
     # ── 逐 motion 逐 part 組 LbTask ──

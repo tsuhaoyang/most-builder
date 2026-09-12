@@ -270,6 +270,8 @@ async def read_worksheet(session: AsyncSession, worksheet_id: uuid.UUID) -> dict
                       "tech_line": (cyc.computed or {}).get("tech_line"), "narrative": cyc.narrative_zh,
                       # 回應語言中立（ADR-032 D3.3）：兩語並列，由前端依 locale 挑欄
                       "narrative_en": cyc.narrative_en,
+                      # LB 投影需 per-slot tmu（ADR-035 WP1/WP2 加法擴充）：由 computed.breakdown 帶出
+                      "breakdown": (cyc.computed or {}).get("breakdown"),
                       "rule_set_id": str(cyc.rule_set_id), "slot_inputs": cyc.slot_inputs} if cyc else None,
             "level": {"second": float(lv.second), "coefficient": float(lv.coefficient),
                       "ascription": lv.ascription, "level": lv.level, "countersignature": lv.countersignature,

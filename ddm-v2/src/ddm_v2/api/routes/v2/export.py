@@ -74,6 +74,15 @@ async def export_lb_api(worksheet_id: uuid.UUID, session: AsyncSession = Depends
         raise _worksheet_not_found(worksheet_id)
 
 
+# ADR-019 Option A: read=viewer+ intentional. lb-report 永遠回報告（不擋），含 E/W（Spec §8.2）
+@router.get("/worksheets/{worksheet_id}/export/lb-report")
+async def export_lb_report(worksheet_id: uuid.UUID, session: AsyncSession = Depends(get_db_session, scope="function"), _: CurrentUser = Depends(current_user)) -> dict:
+    try:
+        return await exp.lb_export_report(session, worksheet_id)
+    except wsvc.WorksheetNotFound:
+        raise _worksheet_not_found(worksheet_id)
+
+
 # ADR-019 Option A: read=viewer+ intentional; do NOT add ownership/created_by checks — see ADR-019
 @router.get("/worksheets/{worksheet_id}/export/report.xlsx")
 async def export_report_xlsx(worksheet_id: uuid.UUID, session: AsyncSession = Depends(get_db_session, scope="function"), _: CurrentUser = Depends(current_user)) -> Response:

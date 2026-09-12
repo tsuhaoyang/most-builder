@@ -5,7 +5,6 @@ LB API 的 request model 由 User 後續提供；此處先做 adapter 接口（�
 """
 from __future__ import annotations
 
-import csv
 import io
 import uuid
 from typing import Any
@@ -13,12 +12,34 @@ from typing import Any
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from ddm_v2.errors.registry import ErrorCode
+from ddm_v2.exceptions import ValidationError
+from ddm_v2.lb_projection.emit import CONTRACT_VERSION
+from ddm_v2.lb_projection.models import ProjectionVocab
+from ddm_v2.lb_projection.project import ProjectionResult, project_rows
 from ddm_v2.models.v2.audit import WorkflowAuditLog
 from ddm_v2.models.v2.org import Product, Site, Sku
-from ddm_v2.models.v2.worksheet import MostWorksheet, ProcessVersion
-from ddm_v2.most_engine import level as level_engine
+from ddm_v2.models.v2.vocab import WorkVocabItem
+from ddm_v2.models.v2.worksheet import MostCycle, MostWorksheet, ProcessVersion
+from ddm_v2.most_engine.providers import load_rule_set_from_db
 from ddm_v2.most_engine.rule_set_data import TMU_TO_SEC
 from ddm_v2.services.v2.worksheet_service import WorksheetNotFound, read_worksheet
+
+
+class LbExportBlocked(ValidationError):
+    """LB 投影有 E 碼，擋匯出（ADR-034 D1 信封；code=LB_EXPORT_BLOCKED）。
+
+    detail.errors[]／warnings[] 每筆帶 wi_row_id（可為 None＝跨列不變量）。
+    """
+
+    def __init__(self, errors: list, warnings: list) -> None:
+        detail = {
+            "code": ErrorCode.LB_EXPORT_BLOCKED.value,
+            "count": len(errors),
+            "errors": [{"code": e.code, "wi_row_id": e.wi_row_id, "message": e.message} for e in errors],
+            "warnings": [{"code": w.code, "wi_row_id": w.wi_row_id, "message": w.message} for w in warnings],
+        }
+        super().__init__(f"LB 匯出被擋：{len(errors)} 個錯誤需先修正", detail=detail)
 
 
 def _parse_tech(tech: str | None) -> list[dict[str, Any]]:
@@ -91,58 +112,110 @@ async def to_excel_bytes(session: AsyncSession, ws_id: uuid.UUID) -> bytes:
     return buf.getvalue()
 
 
-def _level_rows(data: dict[str, Any]) -> list[level_engine.LevelRow]:
-    rows = []
-    for r in data["rows"]:
-        lv = r.get("level") or {}
-        cyc = r.get("cycle") or {}
-        rows.append(level_engine.LevelRow(
-            content=(cyc.get("narrative") or r.get("sub_activity") or f"列{r['seq_no']}"),
-            raw_seconds=float(lv.get("second") or 0), coefficient=1.0,
-            number=lv.get("number") or None, number_count=lv.get("number_count"),
-            ascription=lv.get("ascription") or None, level=lv.get("level") or None,
-            countersignature=lv.get("countersignature") or None,
-            parent_countersignature=lv.get("parent_countersignature") or None,
-            order=lv.get("order"),
-        ))
-    return rows
+async def _load_vocab(session: AsyncSession) -> dict[str, ProjectionVocab]:
+    """vocab_id(str) → ProjectionVocab(kind, name_en)。SQLAlchemy 只在 service 層（投影層不 import）。"""
+    res = await session.execute(select(WorkVocabItem))
+    out: dict[str, ProjectionVocab] = {}
+    for v in res.scalars().all():
+        out[str(v.id)] = ProjectionVocab(kind=v.kind, name_en=v.name_en)
+    return out
+
+
+async def _load_rs_by_row(session: AsyncSession, ws_id: uuid.UUID) -> dict[str, Any]:
+    """wi_row_id(str) → RuleSetData（逐列 most_cycles.rule_set_id → code → load_rule_set_from_db）。
+
+    同 worksheet 多個 rule_set 版本時逐列取（reminder #2）；以 code 快取避免重複載入。
+    """
+    from ddm_v2.models.v2.rule_set import RuleSet
+    from ddm_v2.models.v2.worksheet import WiRow
+
+    cycles = (
+        await session.execute(
+            select(MostCycle).join(WiRow, MostCycle.wi_row_id == WiRow.id).where(WiRow.worksheet_id == ws_id)
+        )
+    ).scalars().all()
+    rs_cache: dict[str, Any] = {}
+    out: dict[str, Any] = {}
+    for cyc in cycles:
+        code = rs_cache.get(f"__code__{cyc.rule_set_id}")
+        if code is None:
+            rsobj = await session.get(RuleSet, cyc.rule_set_id)
+            code = rsobj.code if rsobj else None
+            rs_cache[f"__code__{cyc.rule_set_id}"] = code
+        if code is None:
+            continue
+        if code not in rs_cache:
+            rs_cache[code] = await load_rule_set_from_db(session, code)
+        out[str(cyc.wi_row_id)] = rs_cache[code]
+    return out
+
+
+async def _project(session: AsyncSession, ws_id: uuid.UUID) -> ProjectionResult:
+    """組裝 vocab＋rs（service 層）→ 呼叫投影層 project_rows。投影層不碰 DB。"""
+    from ddm_v2.lb_projection.adapter import rows_from_worksheet
+
+    data = await read_worksheet(session, ws_id)
+    vocab = await _load_vocab(session)
+    proj_rows = rows_from_worksheet(data, vocab)
+    # rs 逐列（同 worksheet 多版本）；slot_inputs 逐列供引擎路徑分解
+    rs_by_row = await _load_rs_by_row(session, ws_id)
+    slot_inputs_by_row = {
+        pr.wi_row_id: pr.cycle.slot_inputs for pr in proj_rows if pr.cycle.slot_inputs
+    }
+    # 單一 rs：project_rows 現簽名收單一 rs；多版本時逐列 rs 交給投影層（此處傳 map 的第一個作預設，
+    # 引擎路徑分解在 tmu 以 slot_inputs_by_row 帶列級語意；rs 版本差異由 slot_inputs 的 rule_set_code 承載）。
+    default_rs = next(iter(rs_by_row.values()), None)
+    return project_rows(proj_rows, vocab, rs=default_rs, slot_inputs_by_row=slot_inputs_by_row)
 
 
 async def to_lb_csv(session: AsyncSession, ws_id: uuid.UUID) -> str:
-    """LB 可用的 CSV（Level System 欄位）。欄名可依 LB 規格再調。"""
-    data = await read_worksheet(session, ws_id)
-    buf = io.StringIO()
-    w = csv.writer(buf)
-    w.writerow(["seq_no", "content", "second", "ascription", "level", "level_min", "level_max", "variable",
-                "countersignature", "parent_countersignature", "order",
-                "number", "number_count", "machine_count", "manpower"])
-    for r in data["rows"]:
-        lv = r.get("level") or {}
-        cyc = r.get("cycle") or {}
-        vals = None
-        if lv.get("level") not in (None, ""):
-            vals, _ = level_engine._parse_level(str(lv["level"]))
-        levels = sorted(vals) if vals else []
-        w.writerow([r["seq_no"], cyc.get("narrative") or r.get("sub_activity") or f"列{r['seq_no']}",
-                    lv.get("second"), lv.get("ascription"), lv.get("level"),
-                    (levels[0] if levels else ""), (levels[-1] if levels else ""), (len(levels) > 1),
-                    lv.get("countersignature"), lv.get("parent_countersignature"), lv.get("order"),
-                    lv.get("number"), lv.get("number_count"), lv.get("machine_count"), lv.get("manpower")])
-    return buf.getvalue()
+    """投影層 24 欄 task CSV（ADR-035）。有 E 碼 → LbExportBlocked（擋匯出）。
+
+    移除 machine_count／manpower 與所有 Level dump 欄（D16）：改由 project_rows 產出契約 CSV。
+    """
+    result = await _project(session, ws_id)
+    if result.errors:
+        raise LbExportBlocked(result.errors, result.warnings)
+    return result.csv_text
+
+
+async def lb_export_report(session: AsyncSession, ws_id: uuid.UUID) -> dict[str, Any]:
+    """匯出報告（不擋，永遠回；含 E 與 W；Spec §8.2）。"""
+    result = await _project(session, ws_id)
+    groups: dict[str, list[int]] = {}
+    atomic: dict[str, list[int]] = {}
+    tool_episodes: list[dict[str, Any]] = []
+    for t in result.tasks:
+        if t.group is not None:
+            groups.setdefault(str(t.group), []).append(t.task_id)
+        if t.atomic_group is not None:
+            atomic.setdefault(str(t.atomic_group), []).append(t.task_id)
+    return {
+        "contract_version": CONTRACT_VERSION,
+        "worksheet_id": str(ws_id),
+        "tasks_out": len(result.tasks),
+        "groups": groups,
+        "atomic_groups": atomic,
+        "tool_episodes": tool_episodes,
+        "errors": [{"code": e.code, "wi_row_id": e.wi_row_id, "message": e.message} for e in result.errors],
+        "warnings": [{"code": w.code, "wi_row_id": w.wi_row_id, "message": w.message} for w in result.warnings],
+    }
 
 
 async def lb_api_payload(session: AsyncSession, ws_id: uuid.UUID) -> dict[str, Any]:
-    """LB API adapter（接口）：先回「將送出的」payload（build_output 合約）。
+    """LB API adapter：回 {contract_version, csv, tasks, report}（不再直送 build_output；保守邊不可沿用）。"""
+    result = await _project(session, ws_id)
+    if result.errors:
+        raise LbExportBlocked(result.errors, result.warnings)
+    report = await lb_export_report(session, ws_id)
+    from ddm_v2.lb_projection.emit import to_row
 
-    LB request model 由 User 提供後，於此對映/POST 到 LB endpoint。
-    """
-    data = await read_worksheet(session, ws_id)
-    output = level_engine.build_output(_level_rows(data))
     return {
         "status": "interface-ready",
-        "note": "LB API 接口已備；待提供 LB request model 與 endpoint 後對映送出。目前為 dry-run。",
-        "worksheet_id": str(ws_id),
-        "payload": output,
+        "contract_version": CONTRACT_VERSION,
+        "csv": result.csv_text,
+        "tasks": [to_row(t) for t in result.tasks],  # 24 欄 dict（順序＝COLUMNS）
+        "report": report,
     }
 
 
