@@ -124,6 +124,19 @@ Second（動作時長） = 原始秒數 × 系數（寬放係數）
 
 → **結論（回應前次 Level Q4）：** 當 cub 區塊超過節拍時，**依機台數/人數把動作群組複製成 N 份並行，有效時間除以 N**。這比先前 CODE 的 `effective_cub_ct = adjusted_ct / max(machines, operators)` 更明確：分攤倍數 N＝複製份數（機台/人數）。**確切 N 的定義（機台、人力、或兩者關係）仍需 User 一句話確認**（§13 Q4）。
 
+> **🔴 更新（User 裁決 2026-09-11，此結論已被取代，重要）**：上述「有效時間除以 N」的靜態分攤**不再採用**，且
+> `machine_count`/`manpower` 在 v2 code **從未被任何計算消費**（實讀確認：僅 `worksheet_service`/`export_service` 存取搬運，
+> 無「÷N」實作）。**並行分攤（parallelism）是 Line Balance（CP-SAT/RCPSP）的職責，不是 MOST 端的靜態除法**：
+> - 並行有兩種，皆由 LB solver 動態決定（使用者於 LB 端跑 solver 前設 `max_manpower`）：
+>   1. **DAG fork 平行**（P1）：solver 在 `max_manpower>1` 時把 DAG 分岔分給不同 worker（RCPSP 的本職）。
+>   2. **frequency/quantity 分攤**：一個工序做多次（如插 64 顆硬碟，quantity=64），solver 視情況分給不同 worker。
+>      「除以 N」真正只對應**這種**情況，且由 LB 算（MOST 送 quantity，不預先除）。
+> - 因此：**MOST 不算「時間÷N」、不需要 machine_count/manpower 表達並行**；`§13 Q4`「N 的確切定義」**不用再定**
+>   （N ＝ LB `max_manpower` + solver 決定，不在 MOST 資料裡）。
+> - 落地：v2 `to_lb_csv` 現況仍送的 `machine_count`/`manpower` 兩欄，對齊後應移除（實作階段）；
+>   `level_entries` 這兩欄是純儲存、無計算用途，是否保留欄位另議（廢除或留作他用皆不影響計算）。
+> - 詳見 `docs/lb-integration/MOST_LB_CONTRACT.md` D16。
+
 ---
 
 ## 7. 七個教學範例（逐例，權威驗收集）
@@ -270,7 +283,7 @@ Second（動作時長） = 原始秒數 × 系數（寬放係數）
 | **Q1** | 合法填寫規則／互斥條件 | 資料模型與驗證 | ✅ **已由字符定義推導為 §8.1 規則 R1–R9**（不需外求） |
 | **Q2** | 變動層級語法 `~` vs `/` | jump/OR 實作 | ✅ **已定：兩者皆支援**（`~`＝連續範圍、`/`＝非連續列舉） |
 | **Q3** | 跳號填寫 + 非遞減 | 驗證規則 | ✅ **允許跳號；保留「不可倒退（非遞減）」**（以各列 min level 為比較鍵） |
-| **Q4** | 機台/人力分攤倍數 N | Cub 超節拍分攤 | ⏳ **保留機台數與人數兩者並存；待 User 找 IE 確認** → 列入 §14 |
+| **Q4** | 機台/人力分攤倍數 N | Cub 超節拍分攤 | ✅ **已裁決（User 2026-09-11）：不用定 N。並行分攤是 LB 職責（`max_manpower`＋CP-SAT／RCPSP＋quantity），非 MOST 靜態時間÷N。machine_count/manpower 對 LB 不需要、不送。見 §6.2 更新與 LB 契約 D16** |
 | **Q5** | `order` 欄＝群組內順序？ | 欄位統一 | ✅ **已定：order ＝ 群組內順序（depth order）** |
 | **Q6** | nb 與 cub 並用語意 | 約束組合 | ✅ **已定（R6）：可並用，但 nb 不可與 cub「同站」矛盾**（count 須 ≥ 區塊成員數） |
 | **Q7** | 欄位詞彙統一（見下方說明） | 全系統 | ✅ **以教學檔案欄名為權威**，規格/DB/UI/API 對齊（§12 為對照表） |

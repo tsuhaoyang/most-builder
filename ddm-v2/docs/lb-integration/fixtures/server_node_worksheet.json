@@ -1,0 +1,1257 @@
+{
+ "fixture": "server_node_v1",
+ "contract_version": "most-lb-csv-v1.1",
+ "rule_set_code": "MINIMOST_FACTORY_V2",
+ "tmu_to_ms": 36,
+ "worksheet": {
+  "worksheet_id": "00000000-0000-4000-8000-000000000999",
+  "sku": "SERVER-NODE-DEMO",
+  "allowance_percent": null
+ },
+ "vocab": {
+  "chassis": {
+   "kind": "object",
+   "name_en": "chassis"
+  },
+  "screw": {
+   "kind": "component",
+   "name_en": "screw"
+  },
+  "motherboard": {
+   "kind": "object",
+   "name_en": "motherboard"
+  },
+  "cpu": {
+   "kind": "component",
+   "name_en": "CPU"
+  },
+  "dimm": {
+   "kind": "component",
+   "name_en": "DIMM"
+  },
+  "dimm_latch": {
+   "kind": "component",
+   "name_en": "DIMM retainer latch"
+  },
+  "hdd": {
+   "kind": "component",
+   "name_en": "HDD"
+  },
+  "hdd_bracket_screw": {
+   "kind": "component",
+   "name_en": "HDD bracket screw"
+  },
+  "backplane": {
+   "kind": "component",
+   "name_en": "backplane"
+  },
+  "backplane_bracket_screw": {
+   "kind": "component",
+   "name_en": "backplane bracket screw"
+  },
+  "io_shield": {
+   "kind": "component",
+   "name_en": "I/O shield"
+  },
+  "board": {
+   "kind": "object",
+   "name_en": "assembled board"
+  },
+  "scanner": {
+   "kind": "tool",
+   "name_en": "scanner"
+  },
+  "electric_driver": {
+   "kind": "tool",
+   "name_en": "electric driver"
+  },
+  "torque_driver": {
+   "kind": "tool",
+   "name_en": "torque driver"
+  }
+ },
+ "rows": [
+  {
+   "wi_row_id": "00000000-0000-4000-8000-000000000001",
+   "seq_no": 1,
+   "letter": "A",
+   "sub_activity": "General",
+   "key_parts": "General",
+   "hand": "BH",
+   "object_vocab": "chassis",
+   "tool_vocab": null,
+   "frequency": 1,
+   "simo_group_id": null,
+   "cycle": {
+    "seq_kind": "GM",
+    "slot_tmus": [
+     24,
+     0,
+     6,
+     24,
+     0,
+     6,
+     0
+    ],
+    "repeat_counts": {},
+    "x_seconds": 0,
+    "total_tmu": 60,
+    "tech_line": "A24 B0 G6 A24 B0 P6 A0",
+    "narrative_en": "take chassis from cart onto conveyor",
+    "narrative_zh": null
+   },
+   "level": {
+    "ascription": "main",
+    "level": "1",
+    "countersignature": null,
+    "parent_countersignature": null,
+    "order": null,
+    "number": null,
+    "number_count": null
+   },
+   "lb_tags": {
+    "is_general": true,
+    "general_role": "take_unit",
+    "offline": false,
+    "worker_cub": null,
+    "segment": null,
+    "station_pin": null,
+    "merge_lock": false,
+    "splittable": false
+   }
+  },
+  {
+   "wi_row_id": "00000000-0000-4000-8000-000000000002",
+   "seq_no": 2,
+   "letter": "B",
+   "sub_activity": "Pre-kit",
+   "key_parts": "SCREW",
+   "hand": "BH",
+   "object_vocab": "screw",
+   "tool_vocab": null,
+   "frequency": 1,
+   "simo_group_id": null,
+   "cycle": {
+    "seq_kind": "GM",
+    "slot_tmus": [
+     10,
+     0,
+     24,
+     10,
+     0,
+     6,
+     0
+    ],
+    "repeat_counts": {},
+    "x_seconds": 0,
+    "total_tmu": 50,
+    "tech_line": "A10 B0 G24 A10 B0 P6 A0",
+    "narrative_en": "pre-kit 8 screws into tray",
+    "narrative_zh": null
+   },
+   "level": {
+    "ascription": "main",
+    "level": "1",
+    "countersignature": null,
+    "parent_countersignature": null,
+    "order": null,
+    "number": null,
+    "number_count": null
+   },
+   "lb_tags": {
+    "is_general": false,
+    "general_role": null,
+    "offline": true,
+    "worker_cub": null,
+    "segment": null,
+    "station_pin": null,
+    "merge_lock": false,
+    "splittable": false
+   }
+  },
+  {
+   "wi_row_id": "00000000-0000-4000-8000-000000000003",
+   "seq_no": 3,
+   "letter": "C",
+   "sub_activity": "MB sub-assy",
+   "key_parts": "MB",
+   "hand": "BH",
+   "object_vocab": "motherboard",
+   "tool_vocab": null,
+   "frequency": 1,
+   "simo_group_id": null,
+   "cycle": {
+    "seq_kind": "GM",
+    "slot_tmus": [
+     16,
+     32,
+     6,
+     16,
+     0,
+     24,
+     0
+    ],
+    "repeat_counts": {},
+    "x_seconds": 0,
+    "total_tmu": 94,
+    "tech_line": "A16 B32 G6 A16 B0 P24 A0",
+    "narrative_en": "take motherboard from rack and place into chassis",
+    "narrative_zh": null
+   },
+   "level": {
+    "ascription": "main",
+    "level": "1",
+    "countersignature": null,
+    "parent_countersignature": null,
+    "order": null,
+    "number": null,
+    "number_count": null
+   },
+   "lb_tags": {
+    "is_general": false,
+    "general_role": null,
+    "offline": false,
+    "worker_cub": null,
+    "segment": null,
+    "station_pin": null,
+    "merge_lock": false,
+    "splittable": false
+   }
+  },
+  {
+   "wi_row_id": "00000000-0000-4000-8000-000000000004",
+   "seq_no": 4,
+   "letter": "D",
+   "sub_activity": "MB sub-assy",
+   "key_parts": "MB",
+   "hand": "BH",
+   "object_vocab": "motherboard",
+   "tool_vocab": "scanner",
+   "frequency": 1,
+   "simo_group_id": null,
+   "cycle": {
+    "seq_kind": "CM",
+    "slot_tmus": [
+     10,
+     0,
+     6,
+     6,
+     6,
+     10,
+     10
+    ],
+    "repeat_counts": {},
+    "x_seconds": 0,
+    "total_tmu": 48,
+    "tech_line": "A10 B0 G6 M6 X6 I10 A10",
+    "narrative_en": "scan motherboard SN with scanner",
+    "narrative_zh": null
+   },
+   "level": {
+    "ascription": "main",
+    "level": "2",
+    "countersignature": null,
+    "parent_countersignature": null,
+    "order": null,
+    "number": null,
+    "number_count": null
+   },
+   "lb_tags": {
+    "is_general": false,
+    "general_role": null,
+    "offline": false,
+    "worker_cub": null,
+    "segment": null,
+    "station_pin": null,
+    "merge_lock": false,
+    "splittable": false
+   }
+  },
+  {
+   "wi_row_id": "00000000-0000-4000-8000-000000000005",
+   "seq_no": 5,
+   "letter": "E",
+   "sub_activity": "MB sub-assy",
+   "key_parts": "CPU",
+   "hand": "BH",
+   "object_vocab": "cpu",
+   "tool_vocab": null,
+   "frequency": 1,
+   "simo_group_id": null,
+   "cycle": {
+    "seq_kind": "GM",
+    "slot_tmus": [
+     10,
+     0,
+     10,
+     10,
+     0,
+     40,
+     0
+    ],
+    "repeat_counts": {},
+    "x_seconds": 0,
+    "total_tmu": 70,
+    "tech_line": "A10 B0 G10 A10 B0 P40 A0",
+    "narrative_en": "insert CPU into socket",
+    "narrative_zh": null
+   },
+   "level": {
+    "ascription": "main",
+    "level": "2",
+    "countersignature": "sub2",
+    "parent_countersignature": null,
+    "order": 1,
+    "number": null,
+    "number_count": null
+   },
+   "lb_tags": {
+    "is_general": false,
+    "general_role": null,
+    "offline": false,
+    "worker_cub": null,
+    "segment": null,
+    "station_pin": null,
+    "merge_lock": false,
+    "splittable": false
+   }
+  },
+  {
+   "wi_row_id": "00000000-0000-4000-8000-000000000006",
+   "seq_no": 6,
+   "letter": "F",
+   "sub_activity": "MB sub-assy",
+   "key_parts": "CPU",
+   "hand": "BH",
+   "object_vocab": "cpu",
+   "tool_vocab": "scanner",
+   "frequency": 1,
+   "simo_group_id": null,
+   "cycle": {
+    "seq_kind": "CM",
+    "slot_tmus": [
+     10,
+     0,
+     6,
+     6,
+     6,
+     10,
+     10
+    ],
+    "repeat_counts": {},
+    "x_seconds": 0,
+    "total_tmu": 48,
+    "tech_line": "A10 B0 G6 M6 X6 I10 A10",
+    "narrative_en": "scan CPU label with scanner",
+    "narrative_zh": null
+   },
+   "level": {
+    "ascription": null,
+    "level": null,
+    "countersignature": "sub2",
+    "parent_countersignature": null,
+    "order": 2,
+    "number": null,
+    "number_count": null
+   },
+   "lb_tags": {
+    "is_general": false,
+    "general_role": null,
+    "offline": false,
+    "worker_cub": null,
+    "segment": null,
+    "station_pin": null,
+    "merge_lock": false,
+    "splittable": false
+   }
+  },
+  {
+   "wi_row_id": "00000000-0000-4000-8000-000000000007",
+   "seq_no": 7,
+   "letter": "G",
+   "sub_activity": "MB sub-assy",
+   "key_parts": "DIMM",
+   "hand": "BH",
+   "object_vocab": "dimm",
+   "tool_vocab": null,
+   "frequency": 8,
+   "simo_group_id": null,
+   "cycle": {
+    "seq_kind": "GM",
+    "slot_tmus": [
+     10,
+     0,
+     10,
+     6,
+     0,
+     40,
+     0
+    ],
+    "repeat_counts": {},
+    "x_seconds": 0,
+    "total_tmu": 66,
+    "tech_line": "A10 B0 G10 A6 B0 P40 A0",
+    "narrative_en": "insert DIMM into slot",
+    "narrative_zh": null
+   },
+   "level": {
+    "ascription": "main",
+    "level": "2",
+    "countersignature": "cub30",
+    "parent_countersignature": "sub2",
+    "order": 1,
+    "number": null,
+    "number_count": null
+   },
+   "lb_tags": {
+    "is_general": false,
+    "general_role": null,
+    "offline": false,
+    "worker_cub": null,
+    "segment": "dimm",
+    "station_pin": null,
+    "merge_lock": false,
+    "splittable": false
+   }
+  },
+  {
+   "wi_row_id": "00000000-0000-4000-8000-000000000008",
+   "seq_no": 8,
+   "letter": "H",
+   "sub_activity": "MB sub-assy",
+   "key_parts": "DIMM",
+   "hand": "BH",
+   "object_vocab": "dimm_latch",
+   "tool_vocab": null,
+   "frequency": 8,
+   "simo_group_id": null,
+   "cycle": {
+    "seq_kind": "GM",
+    "slot_tmus": [
+     3,
+     0,
+     3,
+     0,
+     0,
+     22,
+     0
+    ],
+    "repeat_counts": {},
+    "x_seconds": 0,
+    "total_tmu": 28,
+    "tech_line": "A3 B0 G3 A0 B0 P22 A0",
+    "narrative_en": "close DIMM retainer latch",
+    "narrative_zh": null
+   },
+   "level": {
+    "ascription": null,
+    "level": null,
+    "countersignature": "cub30",
+    "parent_countersignature": "sub2",
+    "order": 2,
+    "number": null,
+    "number_count": null
+   },
+   "lb_tags": {
+    "is_general": false,
+    "general_role": null,
+    "offline": false,
+    "worker_cub": null,
+    "segment": "dimm",
+    "station_pin": null,
+    "merge_lock": false,
+    "splittable": false
+   }
+  },
+  {
+   "wi_row_id": "00000000-0000-4000-8000-000000000009",
+   "seq_no": 9,
+   "letter": "I",
+   "sub_activity": "MB sub-assy",
+   "key_parts": "SCREW",
+   "hand": "BH",
+   "object_vocab": "screw",
+   "tool_vocab": "electric_driver",
+   "frequency": 1,
+   "simo_group_id": null,
+   "cycle": {
+    "seq_kind": "CM",
+    "slot_tmus": [
+     16,
+     0,
+     6,
+     24,
+     48,
+     80,
+     16
+    ],
+    "repeat_counts": {
+     "3": 8,
+     "4": 8,
+     "5": 8
+    },
+    "x_seconds": 0.216,
+    "total_tmu": 190,
+    "tech_line": "A16 B0 G6 M24 X48 I80 A16",
+    "narrative_en": "fasten motherboard screw",
+    "narrative_zh": null
+   },
+   "level": {
+    "ascription": "main",
+    "level": "2",
+    "countersignature": "cub40",
+    "parent_countersignature": null,
+    "order": 1,
+    "number": null,
+    "number_count": null
+   },
+   "lb_tags": {
+    "is_general": false,
+    "general_role": null,
+    "offline": false,
+    "worker_cub": null,
+    "segment": "screw",
+    "station_pin": null,
+    "merge_lock": false,
+    "splittable": false
+   }
+  },
+  {
+   "wi_row_id": "00000000-0000-4000-8000-000000000010",
+   "seq_no": 10,
+   "letter": "J1",
+   "sub_activity": "HDD sub-assy",
+   "key_parts": "HDD",
+   "hand": "BH",
+   "object_vocab": "hdd",
+   "tool_vocab": null,
+   "frequency": 1,
+   "simo_group_id": null,
+   "cycle": {
+    "seq_kind": "GM",
+    "slot_tmus": [
+     16,
+     0,
+     6,
+     10,
+     0,
+     3,
+     0
+    ],
+    "repeat_counts": {},
+    "x_seconds": 0,
+    "total_tmu": 35,
+    "tech_line": "A16 B0 G6 A10 B0 P3 A0",
+    "narrative_en": "pick up HDD from rack",
+    "narrative_zh": null
+   },
+   "level": {
+    "ascription": "main",
+    "level": "2",
+    "countersignature": "sub3",
+    "parent_countersignature": null,
+    "order": 1,
+    "number": null,
+    "number_count": null
+   },
+   "lb_tags": {
+    "is_general": false,
+    "general_role": null,
+    "offline": false,
+    "worker_cub": "wcub20",
+    "segment": null,
+    "station_pin": null,
+    "merge_lock": false,
+    "splittable": false
+   }
+  },
+  {
+   "wi_row_id": "00000000-0000-4000-8000-000000000011",
+   "seq_no": 11,
+   "letter": "J2",
+   "sub_activity": "HDD sub-assy",
+   "key_parts": "HDD",
+   "hand": "BH",
+   "object_vocab": "hdd",
+   "tool_vocab": null,
+   "frequency": 1,
+   "simo_group_id": null,
+   "cycle": {
+    "seq_kind": "CM",
+    "slot_tmus": [
+     0,
+     0,
+     0,
+     10,
+     0,
+     16,
+     0
+    ],
+    "repeat_counts": {},
+    "x_seconds": 0,
+    "total_tmu": 26,
+    "tech_line": "A0 B0 G0 M10 X0 I16 A0",
+    "narrative_en": "align and slide HDD into bay",
+    "narrative_zh": null
+   },
+   "level": {
+    "ascription": null,
+    "level": null,
+    "countersignature": "sub3",
+    "parent_countersignature": null,
+    "order": 2,
+    "number": null,
+    "number_count": null
+   },
+   "lb_tags": {
+    "is_general": false,
+    "general_role": null,
+    "offline": false,
+    "worker_cub": "wcub20",
+    "segment": null,
+    "station_pin": null,
+    "merge_lock": false,
+    "splittable": false
+   }
+  },
+  {
+   "wi_row_id": "00000000-0000-4000-8000-000000000012",
+   "seq_no": 12,
+   "letter": "J3",
+   "sub_activity": "HDD sub-assy",
+   "key_parts": "HDD",
+   "hand": "BH",
+   "object_vocab": "hdd",
+   "tool_vocab": null,
+   "frequency": 1,
+   "simo_group_id": null,
+   "cycle": {
+    "seq_kind": "CM",
+    "slot_tmus": [
+     0,
+     0,
+     0,
+     3,
+     0,
+     6,
+     0
+    ],
+    "repeat_counts": {},
+    "x_seconds": 0,
+    "total_tmu": 9,
+    "tech_line": "A0 B0 G0 M3 X0 I6 A0",
+    "narrative_en": "press HDD to seat",
+    "narrative_zh": null
+   },
+   "level": {
+    "ascription": null,
+    "level": null,
+    "countersignature": "sub3",
+    "parent_countersignature": null,
+    "order": 3,
+    "number": null,
+    "number_count": null
+   },
+   "lb_tags": {
+    "is_general": false,
+    "general_role": null,
+    "offline": false,
+    "worker_cub": "wcub20",
+    "segment": null,
+    "station_pin": null,
+    "merge_lock": false,
+    "splittable": false
+   }
+  },
+  {
+   "wi_row_id": "00000000-0000-4000-8000-000000000013",
+   "seq_no": 13,
+   "letter": "K",
+   "sub_activity": "HDD sub-assy",
+   "key_parts": "HDD",
+   "hand": "BH",
+   "object_vocab": "hdd_bracket_screw",
+   "tool_vocab": "torque_driver",
+   "frequency": 1,
+   "simo_group_id": null,
+   "cycle": {
+    "seq_kind": "CM",
+    "slot_tmus": [
+     16,
+     0,
+     6,
+     3,
+     6,
+     10,
+     16
+    ],
+    "repeat_counts": {},
+    "x_seconds": 0.216,
+    "total_tmu": 57,
+    "tech_line": "A16 B0 G6 M3 X6 I10 A16",
+    "narrative_en": "fasten HDD bracket screw to torque",
+    "narrative_zh": null
+   },
+   "level": {
+    "ascription": null,
+    "level": null,
+    "countersignature": "sub3",
+    "parent_countersignature": null,
+    "order": 4,
+    "number": null,
+    "number_count": null
+   },
+   "lb_tags": {
+    "is_general": false,
+    "general_role": null,
+    "offline": false,
+    "worker_cub": null,
+    "segment": null,
+    "station_pin": null,
+    "merge_lock": true,
+    "splittable": false
+   }
+  },
+  {
+   "wi_row_id": "00000000-0000-4000-8000-000000000014",
+   "seq_no": 14,
+   "letter": "L1",
+   "sub_activity": "Backplane",
+   "key_parts": "BACKPLANE",
+   "hand": "BH",
+   "object_vocab": "backplane",
+   "tool_vocab": null,
+   "frequency": 1,
+   "simo_group_id": null,
+   "cycle": {
+    "seq_kind": "GM",
+    "slot_tmus": [
+     16,
+     0,
+     6,
+     16,
+     0,
+     24,
+     0
+    ],
+    "repeat_counts": {},
+    "x_seconds": 0,
+    "total_tmu": 62,
+    "tech_line": "A16 B0 G6 A16 B0 P24 A0",
+    "narrative_en": "place backplane into press fixture",
+    "narrative_zh": null
+   },
+   "level": {
+    "ascription": "main",
+    "level": "2",
+    "countersignature": "cub10",
+    "parent_countersignature": null,
+    "order": 1,
+    "number": null,
+    "number_count": null
+   },
+   "lb_tags": {
+    "is_general": false,
+    "general_role": null,
+    "offline": false,
+    "worker_cub": null,
+    "segment": null,
+    "station_pin": null,
+    "merge_lock": false,
+    "splittable": false
+   }
+  },
+  {
+   "wi_row_id": "00000000-0000-4000-8000-000000000015",
+   "seq_no": 15,
+   "letter": "L2",
+   "sub_activity": "Backplane",
+   "key_parts": "BACKPLANE",
+   "hand": "BH",
+   "object_vocab": "backplane",
+   "tool_vocab": null,
+   "frequency": 1,
+   "simo_group_id": null,
+   "cycle": {
+    "seq_kind": "CM",
+    "slot_tmus": [
+     6,
+     0,
+     3,
+     3,
+     83.333,
+     0,
+     6
+    ],
+    "repeat_counts": {},
+    "x_seconds": 3.0,
+    "total_tmu": 101.333,
+    "tech_line": "A6 B0 G3 M3 X83.333 I0 A6",
+    "narrative_en": "start press cycle (3 s machine time)",
+    "narrative_zh": null
+   },
+   "level": {
+    "ascription": null,
+    "level": null,
+    "countersignature": "cub10",
+    "parent_countersignature": null,
+    "order": 2,
+    "number": null,
+    "number_count": null
+   },
+   "lb_tags": {
+    "is_general": false,
+    "general_role": null,
+    "offline": false,
+    "worker_cub": null,
+    "segment": null,
+    "station_pin": null,
+    "merge_lock": false,
+    "splittable": false
+   }
+  },
+  {
+   "wi_row_id": "00000000-0000-4000-8000-000000000016",
+   "seq_no": 16,
+   "letter": "L3",
+   "sub_activity": "Backplane",
+   "key_parts": "BACKPLANE",
+   "hand": "BH",
+   "object_vocab": "backplane",
+   "tool_vocab": null,
+   "frequency": 1,
+   "simo_group_id": null,
+   "cycle": {
+    "seq_kind": "GM",
+    "slot_tmus": [
+     16,
+     0,
+     6,
+     16,
+     0,
+     6,
+     0
+    ],
+    "repeat_counts": {},
+    "x_seconds": 0,
+    "total_tmu": 44,
+    "tech_line": "A16 B0 G6 A16 B0 P6 A0",
+    "narrative_en": "remove backplane from press fixture",
+    "narrative_zh": null
+   },
+   "level": {
+    "ascription": null,
+    "level": null,
+    "countersignature": "cub10",
+    "parent_countersignature": null,
+    "order": 3,
+    "number": null,
+    "number_count": null
+   },
+   "lb_tags": {
+    "is_general": false,
+    "general_role": null,
+    "offline": false,
+    "worker_cub": null,
+    "segment": null,
+    "station_pin": null,
+    "merge_lock": false,
+    "splittable": false
+   }
+  },
+  {
+   "wi_row_id": "00000000-0000-4000-8000-000000000017",
+   "seq_no": 17,
+   "letter": "M",
+   "sub_activity": "Backplane",
+   "key_parts": "BACKPLANE",
+   "hand": "BH",
+   "object_vocab": "backplane_bracket_screw",
+   "tool_vocab": "torque_driver",
+   "frequency": 1,
+   "simo_group_id": null,
+   "cycle": {
+    "seq_kind": "CM",
+    "slot_tmus": [
+     16,
+     0,
+     6,
+     3,
+     6,
+     10,
+     16
+    ],
+    "repeat_counts": {},
+    "x_seconds": 0.216,
+    "total_tmu": 57,
+    "tech_line": "A16 B0 G6 M3 X6 I10 A16",
+    "narrative_en": "fasten backplane bracket screw to torque",
+    "narrative_zh": null
+   },
+   "level": {
+    "ascription": null,
+    "level": null,
+    "countersignature": "cub10",
+    "parent_countersignature": null,
+    "order": 4,
+    "number": null,
+    "number_count": null
+   },
+   "lb_tags": {
+    "is_general": false,
+    "general_role": null,
+    "offline": false,
+    "worker_cub": null,
+    "segment": null,
+    "station_pin": null,
+    "merge_lock": true,
+    "splittable": false
+   }
+  },
+  {
+   "wi_row_id": "00000000-0000-4000-8000-000000000018",
+   "seq_no": 18,
+   "letter": "N1",
+   "sub_activity": "IO shield",
+   "key_parts": "IO_SHIELD",
+   "hand": "BH",
+   "object_vocab": "io_shield",
+   "tool_vocab": null,
+   "frequency": 1,
+   "simo_group_id": null,
+   "cycle": {
+    "seq_kind": "GM",
+    "slot_tmus": [
+     16,
+     0,
+     6,
+     10,
+     0,
+     24,
+     0
+    ],
+    "repeat_counts": {},
+    "x_seconds": 0,
+    "total_tmu": 56,
+    "tech_line": "A16 B0 G6 A10 B0 P24 A0",
+    "narrative_en": "place I/O shield into heat-stake fixture and hold",
+    "narrative_zh": null
+   },
+   "level": {
+    "ascription": "main",
+    "level": "2",
+    "countersignature": "cub11",
+    "parent_countersignature": null,
+    "order": 1,
+    "number": null,
+    "number_count": null
+   },
+   "lb_tags": {
+    "is_general": false,
+    "general_role": null,
+    "offline": false,
+    "worker_cub": "wcub21",
+    "segment": null,
+    "station_pin": null,
+    "merge_lock": false,
+    "splittable": false
+   }
+  },
+  {
+   "wi_row_id": "00000000-0000-4000-8000-000000000019",
+   "seq_no": 19,
+   "letter": "N2",
+   "sub_activity": "IO shield",
+   "key_parts": "IO_SHIELD",
+   "hand": "BH",
+   "object_vocab": "io_shield",
+   "tool_vocab": null,
+   "frequency": 1,
+   "simo_group_id": null,
+   "cycle": {
+    "seq_kind": "CM",
+    "slot_tmus": [
+     0,
+     0,
+     0,
+     3,
+     55.556,
+     0,
+     0
+    ],
+    "repeat_counts": {},
+    "x_seconds": 2.0,
+    "total_tmu": 58.556,
+    "tech_line": "A0 B0 G0 M3 X55.556 I0 A0",
+    "narrative_en": "start heat stake while holding shield (2 s)",
+    "narrative_zh": null
+   },
+   "level": {
+    "ascription": null,
+    "level": null,
+    "countersignature": "cub11",
+    "parent_countersignature": null,
+    "order": 2,
+    "number": null,
+    "number_count": null
+   },
+   "lb_tags": {
+    "is_general": false,
+    "general_role": null,
+    "offline": false,
+    "worker_cub": "wcub21",
+    "segment": null,
+    "station_pin": null,
+    "merge_lock": false,
+    "splittable": false
+   }
+  },
+  {
+   "wi_row_id": "00000000-0000-4000-8000-000000000020",
+   "seq_no": 20,
+   "letter": "N3",
+   "sub_activity": "IO shield",
+   "key_parts": "IO_SHIELD",
+   "hand": "BH",
+   "object_vocab": "io_shield",
+   "tool_vocab": null,
+   "frequency": 1,
+   "simo_group_id": null,
+   "cycle": {
+    "seq_kind": "GM",
+    "slot_tmus": [
+     0,
+     0,
+     0,
+     6,
+     0,
+     6,
+     6
+    ],
+    "repeat_counts": {},
+    "x_seconds": 0,
+    "total_tmu": 18,
+    "tech_line": "A0 B0 G0 A6 B0 P6 A6",
+    "narrative_en": "withdraw hands from heat-stake fixture",
+    "narrative_zh": null
+   },
+   "level": {
+    "ascription": null,
+    "level": null,
+    "countersignature": "cub11",
+    "parent_countersignature": null,
+    "order": 3,
+    "number": null,
+    "number_count": null
+   },
+   "lb_tags": {
+    "is_general": false,
+    "general_role": null,
+    "offline": false,
+    "worker_cub": "wcub21",
+    "segment": null,
+    "station_pin": null,
+    "merge_lock": false,
+    "splittable": false
+   }
+  },
+  {
+   "wi_row_id": "00000000-0000-4000-8000-000000000021",
+   "seq_no": 21,
+   "letter": "O",
+   "sub_activity": "Final",
+   "key_parts": "MB",
+   "hand": "BH",
+   "object_vocab": "board",
+   "tool_vocab": null,
+   "frequency": 1,
+   "simo_group_id": null,
+   "cycle": {
+    "seq_kind": "CM",
+    "slot_tmus": [
+     6,
+     10,
+     0,
+     0,
+     0,
+     72,
+     0
+    ],
+    "repeat_counts": {
+     "5": 12
+    },
+    "x_seconds": 0,
+    "total_tmu": 88,
+    "tech_line": "A6 B10 G0 M0 X0 I72 A0",
+    "narrative_en": "visual inspection of assembled board (12 check points)",
+    "narrative_zh": null
+   },
+   "level": {
+    "ascription": "main",
+    "level": "3",
+    "countersignature": null,
+    "parent_countersignature": null,
+    "order": null,
+    "number": null,
+    "number_count": null
+   },
+   "lb_tags": {
+    "is_general": false,
+    "general_role": null,
+    "offline": false,
+    "worker_cub": null,
+    "segment": null,
+    "station_pin": null,
+    "merge_lock": false,
+    "splittable": true
+   }
+  },
+  {
+   "wi_row_id": "00000000-0000-4000-8000-000000000022",
+   "seq_no": 22,
+   "letter": "P1",
+   "sub_activity": "Final",
+   "key_parts": "MB",
+   "hand": "BH",
+   "object_vocab": "board",
+   "tool_vocab": null,
+   "frequency": 1,
+   "simo_group_id": null,
+   "cycle": {
+    "seq_kind": "GM",
+    "slot_tmus": [
+     16,
+     0,
+     6,
+     16,
+     0,
+     24,
+     0
+    ],
+    "repeat_counts": {},
+    "x_seconds": 0,
+    "total_tmu": 62,
+    "tech_line": "A16 B0 G6 A16 B0 P24 A0",
+    "narrative_en": "place board into ICT fixture and close lid",
+    "narrative_zh": null
+   },
+   "level": {
+    "ascription": "main",
+    "level": "4",
+    "countersignature": "sub5",
+    "parent_countersignature": null,
+    "order": 1,
+    "number": null,
+    "number_count": null
+   },
+   "lb_tags": {
+    "is_general": false,
+    "general_role": null,
+    "offline": false,
+    "worker_cub": null,
+    "segment": null,
+    "station_pin": 6,
+    "merge_lock": false,
+    "splittable": false
+   }
+  },
+  {
+   "wi_row_id": "00000000-0000-4000-8000-000000000023",
+   "seq_no": 23,
+   "letter": "P2",
+   "sub_activity": "Final",
+   "key_parts": "MB",
+   "hand": "BH",
+   "object_vocab": "board",
+   "tool_vocab": null,
+   "frequency": 1,
+   "simo_group_id": null,
+   "cycle": {
+    "seq_kind": "CM",
+    "slot_tmus": [
+     6,
+     0,
+     3,
+     3,
+     555.556,
+     0,
+     6
+    ],
+    "repeat_counts": {},
+    "x_seconds": 20.0,
+    "total_tmu": 573.556,
+    "tech_line": "A6 B0 G3 M3 X555.556 I0 A6",
+    "narrative_en": "start ICT test (20 s machine time)",
+    "narrative_zh": null
+   },
+   "level": {
+    "ascription": null,
+    "level": null,
+    "countersignature": "sub5",
+    "parent_countersignature": null,
+    "order": 2,
+    "number": null,
+    "number_count": null
+   },
+   "lb_tags": {
+    "is_general": false,
+    "general_role": null,
+    "offline": false,
+    "worker_cub": null,
+    "segment": null,
+    "station_pin": 6,
+    "merge_lock": false,
+    "splittable": false
+   }
+  },
+  {
+   "wi_row_id": "00000000-0000-4000-8000-000000000024",
+   "seq_no": 24,
+   "letter": "P3",
+   "sub_activity": "Final",
+   "key_parts": "MB",
+   "hand": "BH",
+   "object_vocab": "board",
+   "tool_vocab": null,
+   "frequency": 1,
+   "simo_group_id": null,
+   "cycle": {
+    "seq_kind": "GM",
+    "slot_tmus": [
+     16,
+     0,
+     6,
+     16,
+     0,
+     6,
+     0
+    ],
+    "repeat_counts": {},
+    "x_seconds": 0,
+    "total_tmu": 44,
+    "tech_line": "A16 B0 G6 A16 B0 P6 A0",
+    "narrative_en": "remove board from ICT fixture",
+    "narrative_zh": null
+   },
+   "level": {
+    "ascription": null,
+    "level": null,
+    "countersignature": "sub5",
+    "parent_countersignature": null,
+    "order": 3,
+    "number": null,
+    "number_count": null
+   },
+   "lb_tags": {
+    "is_general": false,
+    "general_role": null,
+    "offline": false,
+    "worker_cub": null,
+    "segment": null,
+    "station_pin": 6,
+    "merge_lock": false,
+    "splittable": false
+   }
+  }
+ ]
+}

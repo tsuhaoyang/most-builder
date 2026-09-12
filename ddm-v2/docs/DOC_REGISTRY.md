@@ -13,6 +13,8 @@
 4. **現行 API/schema/tests**：已落地行為的可執行證據。
 5. **Roadmap / reference / archive**：不得覆蓋前四層。
 
+MOST→LB 匯出的語意以 [MOST_LB_DATA_CONTRACT_SPEC.md](lb-integration/MOST_LB_DATA_CONTRACT_SPEC.md) 為最高原則（位階同 Accepted ADR；ADR-035 為其決策紀錄）。
+
 若 accepted ADR 與核心規格出現衝突，必須先完成新決策與 regression tests，不可自行擇一。
 
 ## 狀態
@@ -53,6 +55,19 @@
 | [本機 14B planner 量測報告](llm/eval-reports/local-14b/README.md) | 非設定模型（qwen2.5:14b）的 prompt 迭代原始報告；**不得對 §14.4 門檻** | 🔄 數字與結論見 worklog §8 |
 | [WI Gold Set 擴充覆核工作流](llm/gold-review/README.md) | 預標註草稿的 IE 覆核／轉正流程、自我指涉排除、split 原則（`gold_harvest.py`） | 🔄 P0 覆核中 |
 | [i18n（雙語 UI）交付追蹤](llm/i18n-worklog.md) | ADR-032 Phase A／B／C 交付紀錄、複審修復、**§11 交接：做完了什麼／沒做什麼** | ✅ 三個 Phase 皆完成（2026-08-21）；剩餘缺口見 §11 |
+
+## LB 整合（MOST → Line Balance）
+
+| 文件 | 用途 | 狀態 |
+|------|------|------|
+| [MOST↔LB 資料契約 Spec](lb-integration/MOST_LB_DATA_CONTRACT_SPEC.md) | **最高原則**：`most-lb-csv-v1` 23 欄、motion→task 粒度、兩個乘數矩陣、工具生命週期狀態機、分層 DAG、不變量、E/W 碼 | ✅ 2026-09-11 |
+| [ADR-035](decisions/ADR-035-lb-projection-layer-and-motion-decomposition.md) | 投影層決策與邊界（拆列、repeat_count、compiler 目的地、資料模型、過渡守衛、UI） | 🟡 proposed（待 User 核可） |
+| [LB 投影層實作書](lb-integration/LB_PROJECTION_IMPLEMENTATION_PLAN.md) | WP0–WP12、檔案變更總表、關卡、禁止事項 | 🔄 實作中 |
+| [Agent Brief](lb-integration/AGENT_BRIEF_LB_PROJECTION.md) | 執行 agent 的工作方式與交付格式 | 🔄 |
+| [黃金 fixture](lb-integration/fixtures/README.md) | server node 24 motions → 34 tasks；LB 端實跑通過 | ✅ |
+| [MOST↔LB 整合契約（討論紀錄）](lb-integration/MOST_LB_CONTRACT.md) | D1–D18 逐題裁決史；已由 Spec 正式化 | 📌 討論紀錄 |
+| [LB Task CSV 輸入契約（LB 端提供）](lb-integration/TASK_CSV_INPUT_CONTRACT.md) | LB 讀什麼（以 LB 程式碼為準） | 📌 對接參考 |
+| [IE 審查](lb-integration/IE_REVIEW_MOST_LB_CONTRACT.md) | H1–H6 缺口審查；H2/H3/H6 已解 | 📌 |
 
 ## 架構決策
 

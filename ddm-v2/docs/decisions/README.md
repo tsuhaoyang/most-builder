@@ -34,6 +34,9 @@
 | [ADR-030-in-process-parse-worker-topology.md](ADR-030-in-process-parse-worker-topology.md) | ai_parse_jobs 背景 worker 部署拓撲：in-process 預設開啟＝過渡；per-process 迴圈語意與 dedicated worker 觸發條件 | 🟡 proposed |
 | [ADR-031-spatial-layout-and-distance-acquisition.md](ADR-031-spatial-layout-and-distance-acquisition.md) | 空間佈局與距離取得（2026-08-17 修訂：空間單位＝**工位（站）**，原「佈局跟產線走」作廢）：`stations` 主數據＋站內局部座標擺放表（與詞彙身分分離）＋列級工位綁定 `wi_rows.station_id` → 產生帶出處的 `reach_cm`／`foot_cm`／`distance_cm` 建議；引擎仍是唯一換算權威 | 🟡 proposed |
 | [ADR-032-bilingual-ui-and-data-label-layer.md](ADR-032-bilingual-ui-and-data-label-layer.md) | 雙語（中／英）UI 外殼與資料標籤層：機器翻譯先全灌＋人工後修、使用者個人 `locale`、API 回應語言中立、`i18n_review_state` 側表與待審清單；**修訂 ADR-023 規則 1 矩陣**（`_en` 於 published/active 可後補）；英文敘事為平行樣板系統；AI parser 英文化（第三層）明確不做 | ✅ accepted（2026-08-18） |
+| [ADR-033-llm-planner-scope-narrowing.md](ADR-033-llm-planner-scope-narrowing.md) | LLM planner 範圍收窄（`quantity`／距離不再由模型產出） | 🟢 accepted |
+| [ADR-034-language-aware-error-contract.md](ADR-034-language-aware-error-contract.md) | 語言感知錯誤契約：RFC 9457 對齊、穩定 code＋結構化 detail、前端 catalog 組句 | 🟢 accepted |
+| [ADR-035-lb-projection-layer-and-motion-decomposition.md](ADR-035-lb-projection-layer-and-motion-decomposition.md) | **LB 投影層**：持工具 motion 確定性拆 acquire/use/release、`repeat_count` 為 cyclic 乘數、compiler `resolve_multiplier`、分層 DAG 傳遞縮減、`level_entries` 六個 LB 標記欄、匯出前 E/W 碼；最高原則＝`lb-integration/MOST_LB_DATA_CONTRACT_SPEC.md` | 🟡 proposed（依 2026-09-11 User 裁決撰寫，待核可） |
 
 ## 狀態說明
 
@@ -55,6 +58,7 @@
 | [`docs/architecture/domain-evolution-and-ai-readiness-spec.md`](../architecture/domain-evolution-and-ai-readiness-spec.md) | 核心持續演進下的 revision、policy version、method context、AI/batch 資料地基 | ADR-011、ADR-027 |
 | [`docs/core-logic/minimost-sequence-model-core-logic-spec.md`](../core-logic/minimost-sequence-model-core-logic-spec.md) | MiniMOST Sequence Model 核心邏輯 | ADR-014、ADR-020 |
 | [`docs/core-logic/level-system-core-logic-spec.md`](../core-logic/level-system-core-logic-spec.md) | Level System 核心邏輯（含對 LB 輸出合約） | — |
+| [`docs/lb-integration/MOST_LB_DATA_CONTRACT_SPEC.md`](../lb-integration/MOST_LB_DATA_CONTRACT_SPEC.md) | MOST→LB 資料契約 `most-lb-csv-v1`（最高原則） | ADR-035 |
 | [`docs/CI_GATES.md`](../CI_GATES.md)〈依賴鎖版與安全稽核〉 | 鎖檔形狀、更新時機、pip-audit 豁免政策與 nightly | ADR-029 |
 
 ---
