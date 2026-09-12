@@ -480,10 +480,10 @@ spec §6.2「時間÷N」是教學檔轉述、v2 從未實作，且 §13 Q4「N 
 - **工具生命週期**：chain 內確定性狀態機、Pattern A／B 皆支援、`tool_id` 來自詞彙 `name_en`、acquire 列 `action_type` 恆 `pick`、`adjustable` 預設 1、`merge_lock` 標記（Spec §4）。→ 精確化 D2／D3。
 - **分層 DAG**：Level System 是分層模型；層間邊＝`hi_Y < lo_X` 偏序的傳遞縮減；巢狀 cub 以 seq_no 定位；`a/b` 拒收；general 排除；nb 不輸出（Spec §5）。→ 精確化 D8，並明文 `build_output` edges 不可沿用。
 - **欄位**：24 欄（21 LB 標準 ＋ `source_wi_row_id`、`role_type`、`general_role`）順序凍結；`p2`／`complexity_level` 恆空；`qty_scope` 不輸出 `auto`（Spec §6）。
-- **資料模型**：`level_entries` 加 `worker_cub／offline／segment／station_pin／is_general／merge_lock`（ADR-035 D7）。
+- **資料模型**：`level_entries` 加 8 欄 `worker_cub／offline／segment／station_pin／is_general／general_role／merge_lock／action_type`（ADR-035 D7；migration v2_0046）。
 - **驗證**：MOST 端匯出前 E／W 碼＋報告（Spec §8）；過渡守衛「同 tool_id 不得同時出現於 Q>1 與 Q=1 episode」（LB ADR-001 追記缺口）。
 - **黃金 fixture**：`fixtures/server_node_*`，已實跑 LB 端驗證通過；TMU 守恆 2 603.445 TMU＝93 724 ms。
-- **落地**：`LB_PROJECTION_IMPLEMENTATION_PLAN.md` WP0–WP12；agent prompt `AGENT_BRIEF_LB_PROJECTION.md`。
+- **落地**：`LB_PROJECTION_IMPLEMENTATION_PLAN.md` WP0–WP12；agent prompt `AGENT_BRIEF_LB_PROJECTION.md`。**已落地（feature/lb-projection，`abc259a..d73467f`；WP0–12 全綠、golden 逐位元、unit 1643／integration 603 通過）。**
 
 ### 待處理（IE 審查 2026-09-11 發現，尚未定案）
 

@@ -37,7 +37,7 @@ src/ddm_v2/lb_projection/
 ├── quantity.py          # QuantityProjector：乘數矩陣（Spec §3.2）
 ├── mappers.py           # group/atomic/offline/station/general/action_type/duration_ms
 ├── validator.py         # CsvContractValidator：Spec §7 不變量 + §8.1 碼 → (errors, warnings)
-├── emit.py              # RowEmitter：LbTask → 23 欄 dict；write_csv()（\n、UTF-8、無 BOM）
+├── emit.py              # RowEmitter：LbTask → 24 欄 dict；write_csv()（\n、UTF-8、無 BOM）
 └── project.py           # 編排：adapter → level.validate gate → tools → quantity → precedence → validator → emit → report
 ```
 
@@ -215,21 +215,24 @@ src/ddm_v2/lb_projection/
 
 ## 3. 執行順序與關卡
 
-| 序 | WP | 前置 | 關卡（過了才進下一個） | 完成 |
+| 序 | WP | 前置 | 關卡（過了才進下一個） | 完成（commit） |
 |---|---|---|---|---|
-| 1 | WP0 | — | 表頭凍結測試綠 | ☐ |
-| 2 | WP2 | WP0 | fixture 24 列 validate；adapter 測試綠 | ☐ |
-| 3 | WP3 | WP2 | tmu 測試綠；engine path 與 static 相等 | ☐ |
-| 4 | WP4 | WP2 | tools 測試綠（含 Pattern A／B／2 列） | ☐ |
-| 5 | WP5 | WP2 | precedence 測試綠（golden 38 邊） | ☐ |
-| 6 | WP6 | WP3–5 | **golden 逐位元相等** | ☐ |
-| 7 | WP7 | WP6 | 每個 E／W 碼反例綠 | ☐ |
-| 8 | WP1 | — | migration up/down；roundtrip 測試 | ☐ |
-| 9 | WP8 | WP1, WP7 | 整合測試綠；`lb-csv` 不再輸出 machine_count/manpower | ☐ |
-| 10 | WP9 | — | compiler 測試綠；gold TMU 不變 | ☐ |
-| 11 | WP10 | WP6–9 | `lb_projection_check.py` 對 golden 通過（LB repo 可用時） | ☐ |
-| 12 | WP11 | WP8, WP9 | 文件逐條落地；DOC_REGISTRY 狀態更新 | ☐ |
-| 13 | WP12 | WP1, WP8 | typecheck/build/E2E 綠 | ☐ |
+| 1 | WP0 | — | 表頭凍結測試綠 | ✅ `d194868` |
+| 2 | WP2 | WP0 | fixture 24 列 validate；adapter 測試綠 | ✅ `081e570` |
+| 3 | WP3 | WP2 | tmu 測試綠；engine path 與 static 相等 | ✅ `8e35a5d`→`e475ab7`（分桶重做） |
+| 4 | WP4 | WP2 | tools 測試綠（含 Pattern A／B／2 列） | ✅ `19e3e58` |
+| 5 | WP5 | WP2 | precedence 測試綠（golden **42** 邊，見下註） | ✅ `d91d339`→`247dcca`（裁決 A） |
+| 6 | WP6 | WP3–5 | **golden 逐位元相等** | ✅ `ab913dc` |
+| 7 | WP7 | WP6 | 每個 E／W 碼反例綠（34 碼全覆蓋） | ✅ `e6b16ec`→`87f684d`→`639bce0` |
+| 8 | WP1 | — | migration up/down；roundtrip 測試 | ✅ `3555a03` |
+| 9 | WP8 | WP1, WP7 | 整合測試綠；`lb-csv` 不再輸出 machine_count/manpower | ✅ `3f3dd43`+`d106a85`+`b37cdc1` |
+| 10 | WP9 | — | compiler 測試綠；gold TMU（effective）不變 | ✅ `9f78263`+`61fb5dc` |
+| 11 | WP10 | WP6–9 | `lb_projection_check.py` 對 golden 通過（LB reader/group/general；merge 待 LB WP-L2） | ✅ `e570e2a` |
+| 12 | WP11 | WP8, WP9 | 文件逐條落地；DOC_REGISTRY 狀態更新 | ✅ `7ac2ea3`+`7b9fed3` |
+| 13 | WP12 | WP1, WP8 | typecheck/build/E2E 綠 | ✅ `4ada705`+`d73467f` |
+
+> **邊數訂正**：原「38 邊」為舊估，實際 golden = **42 邊**（WP5 程式驗證，`test_lb_projection_precedence.py` 斷言 42）。
+> **DoD（§0）逐條**：1 ✅（unit 1643 綠、§8.1 每碼反例）；2 ✅（golden 逐位元）；3 ✅（freeze 鎖 24 欄）；4 ✅（LB reader/quantity/group/general 通過，merge 待 LB WP-L2 修 NameError 後可驗）；5 ✅（ruff 我方檔案乾淨、前端 typecheck+build 通過）；6 ✅（§5 文件全落地、D18 指回 Spec）；7 ✅（每 commit `implements ADR-035: WPn …`）。
 
 WP1／WP9 與投影層核心（WP2–7）互不相依，可平行。**WP6 golden 不綠不得進 WP8**（避免把錯的投影接上端點）。
 
@@ -267,7 +270,7 @@ WP1／WP9 與投影層核心（WP2–7）互不相依，可平行。**WP6 golden
    > **LB 投影語意（ADR-035，2026-09-11）**：`frequency`＝整 motion 乘數 → LB `quantity`（非持工具）；slot `repeat_count`＝持工具動作的 cyclic 乘數 → LB use 列 `quantity`，acquire／release 為 setup。單次工時由引擎以 repeat 歸 1 重算，投影層不做 TMU 算術。完整矩陣見 `docs/lb-integration/MOST_LB_DATA_CONTRACT_SPEC.md` §3。
 3. **`docs/core-logic/level-system-core-logic-spec.md` §9**：在「匯出載體」段加
    > **更新（ADR-035）**：`lb-csv` 改由 `lb_projection` 依 `MOST_LB_DATA_CONTRACT_SPEC.md` 產出 24 欄 LB task CSV；`build_output` 的 `precedence_edges`（level_min 相鄰鏈）**不再是** LB 匯出來源，僅供人看。層間邊＝`hi_Y < lo_X` 偏序的傳遞縮減；巢狀 cub 區塊位置以成員最小 `seq_no` 定；`a/b` 離散跳號不支援（E_LEVEL_DISCRETE_UNSUPPORTED）；nb 暫不輸出。
-4. **`docs/architecture/system-architecture-v2-spec.md` §8**：JSON 範例上方加「⚠️ 已被 ADR-035 取代：LB 對接改為 23 欄 task CSV（Spec 連結）；`/export/lb-api` payload 改為 `{contract_version, csv, tasks, report}`」。
+4. **`docs/architecture/system-architecture-v2-spec.md` §8**：JSON 範例上方加「⚠️ 已被 ADR-035 取代：LB 對接改為 24 欄 task CSV（Spec 連結）；`/export/lb-api` payload 改為 `{contract_version, csv, tasks, report}`」。
 5. **`docs/architecture/data-model-and-storage-spec.md` §2.8**：表格加六欄（型別／說明同 WP1），並註 `machine_count`／`manpower`「純儲存、不匯出（D16）」。
 6. **`docs/llm/wi-ai-parser-implementation-spec.md` §9.2**：`frequency` 段落後加「QuantityPolicyV2（ADR-035 D4）：持工具 action 的整數數量落 `repeat_count`（X／M／I），`frequency=1`；非持工具維持 V1。供給端時程仍依 ADR-033。」；§9.2 表 `process` 列補 `X4.repeat_count`。
 7. **`docs/DOC_REGISTRY.md`**：已由架構師新增〈LB 整合〉章節；落地後把實作書狀態改 ✅。
