@@ -127,14 +127,16 @@ async def list_worksheets_by_sku(session: AsyncSession, sku_id: uuid.UUID) -> li
 async def create_worksheet(session: AsyncSession, sku_id: uuid.UUID, payload, actor: str | None) -> dict:
     if await session.get(Sku, sku_id) is None:
         raise NotFoundError(f"sku 不存在：{sku_id}")
-    count = len((await session.execute(select(ProcessVersion).where(ProcessVersion.sku_id == sku_id))).scalars().all())
+    from ddm_v2.services.v2.process_version_service import next_version_no
+
+    version_no = await next_version_no(session, sku_id)
     # ADR-023 §3.5：新建 worksheet 的預設規則版本＝目前 active（不再寫死 V1）。
     # 無 active 直接拋 NoActiveRuleSet（500），不得靜默寫 NULL。
     rs = await get_active_rule_set(session)
     # R2a：同一 transaction snapshot published factory default；缺則 fail closed。
     mp = await get_default_modeling_policy(session)
     lp = await get_default_level_policy(session)
-    pv = ProcessVersion(id=uuid.uuid4(), sku_id=sku_id, version_no=f"v{count + 1}", status="draft", created_by=actor)
+    pv = ProcessVersion(id=uuid.uuid4(), sku_id=sku_id, version_no=version_no, status="draft", created_by=actor)
     ws = MostWorksheet(
         id=uuid.uuid4(),
         process_version_id=pv.id,

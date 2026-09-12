@@ -364,9 +364,11 @@ async def clone_worksheet(session: AsyncSession, worksheet_id: uuid.UUID, actor:
     if ws is None:
         raise WorksheetNotFound(str(worksheet_id))
     pv = await session.get(ProcessVersion, ws.process_version_id)
-    count = len((await session.execute(select(ProcessVersion).where(ProcessVersion.sku_id == pv.sku_id))).scalars().all())
+    from ddm_v2.services.v2.process_version_service import next_version_no
 
-    new_pv = ProcessVersion(id=uuid.uuid4(), sku_id=pv.sku_id, version_no=f"v{count + 1}",
+    version_no = await next_version_no(session, pv.sku_id)
+
+    new_pv = ProcessVersion(id=uuid.uuid4(), sku_id=pv.sku_id, version_no=version_no,
                             status="draft", source_version_id=pv.id, created_by=actor)
     new_ws = MostWorksheet(id=uuid.uuid4(), process_version_id=new_pv.id, model_label=ws.model_label,
                            analyst=ws.analyst, study_date=ws.study_date, default_rule_set_id=ws.default_rule_set_id,

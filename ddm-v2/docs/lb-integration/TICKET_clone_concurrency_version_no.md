@@ -1,6 +1,6 @@
 # TICKET: clone_worksheet 併發產生 process_versions 唯一鍵衝突（500）
 
-- **狀態**：open（不在 ADR-035 D10 作業版 WP 內修；B4 取證分類為 (a) 後端問題）
+- **狀態**：**closed**（fix commit：見 `fix(worksheet): serialize version_no allocation per SKU with advisory lock`）
 - **回報者**：MOST agent（ADR-035 D10 F1 收尾取證，Howard 要求）
 - **嚴重度**：中（正常單人操作不觸發；併發 clone 同一 worksheet 時 500）
 
@@ -26,13 +26,14 @@ asyncpg.exceptions.UniqueViolationError: duplicate key value violates unique con
 `uq_process_versions_sku_id_version_no`。這是 **read-modify-write 的競態**，非測試隔離問題
 （兩 spec 各自 clone、不共享前端 state；證據＝失敗發生在 clone HTTP 呼叫，早於任何前端互動）。
 
-## 建議修法（擇一，另 WP 評估）
+## 修法（已落地：方案 2 advisory lock）
 
-1. `version_no` 改由 DB 序列 / `INSERT ... SELECT COALESCE(max,0)+1 ... ON CONFLICT DO NOTHING` 重試；或
-2. clone 交易對 `(sku_id)` 取 advisory lock（`pg_advisory_xact_lock`）序列化同 SKU 的版本配號；或
-3. 捕捉 `UniqueViolation` → 重讀 max、重試一次（bounded retry）。
+`services/v2/process_version_service.py::next_version_no(session, sku_id)`：同交易
+`SELECT pg_advisory_xact_lock(hashtext(sku_id))` → `COUNT(version_no)+1`；鎖到 commit 釋放，
+與 insert 同交易。`clone_worksheet`、`catalog_service.create_worksheet` 兩處配號改走它。
+測試 `tests/integration/test_process_version_concurrency.py`：兩獨立 session `asyncio.gather`
+同時 clone → 皆 200、`{v2, v3}` 相異連續、DB 三版無重複。
 
-## 對測試的暫行處置（本 WP 已做）
+## 對測試的處置（已修）
 
-E2E 預設 `workers=1`（`playwright.config.ts`）序列跑時不觸發；併發僅在顯式 `--workers=2` 才現形。
-本 WP 不改 clone（超出 D10 作業版範圍）；待此票排程。
+E2E 預設 `workers=1`（不動）；併發 `--workers=2` 現已不觸發（advisory lock 序列化配號）。
