@@ -1,7 +1,10 @@
 # MOST ↔ Line Balance 資料契約 Spec（`most-lb-csv-v1.1`）
 
 > **文件類型**：整合資料契約（Data Contract Spec）——**MOST→LB 整合的最高原則**。
-> **版本**：v1.1（2026-09-11；v1.0 → v1.1：新增第 24 欄 `general_role`，見 §5.7／§6／§10）　**狀態**：✅ 依 2026-09-11 User 裁決撰寫；由 [ADR-035](../decisions/ADR-035-lb-projection-layer-and-motion-decomposition.md) 鎖定邊界。
+> **版本**：v1.1（2026-09-11；v1.0 → v1.1：新增第 24 欄 `general_role`，見 §5.7／§6／§10）
+> **修訂（2026-09-12，WP6 裁決）**：`action_type` 的來源改為「IE 選填標籤優先、附錄 A 推導為 fallback」（§4.4／§6／附錄 A）；`lb_tags` 新增 `action_type`。契約版本不變。
+> **修訂（2026-09-12，WP3 裁決）**：§3.2／§3.3 新增「分桶」規則（use 段部分格 repeat 合法、須連續）、新碼 `E_REPEAT_NONCONTIGUOUS`；§4.3 修正 2 列 Pattern B 在 N>1 時 slot 6 的歸屬。契約版本不變（語意精確化，不改欄位）。
+> **狀態**：✅ 依 2026-09-11 User 裁決撰寫；由 [ADR-035](../decisions/ADR-035-lb-projection-layer-and-motion-decomposition.md) 鎖定邊界。
 > **權威順序**（衝突時）：本 Spec ＞ ADR-035 ＞ `MOST_LB_CONTRACT.md`（討論紀錄）＞ 既有 export／compiler 程式碼。
 > 與 LB 端的關係：LB 的輸入契約 `TASK_CSV_INPUT_CONTRACT.md`（LB 程式碼為準）定義 **LB 讀什麼**；本 Spec 定義 **MOST 產什麼**。兩者不得矛盾；LB 端修正（Phase 2）以本 Spec §11 的保留欄位為對接面。
 > **黃金 fixture**：[`fixtures/server_node_worksheet.json`](fixtures/server_node_worksheet.json) → [`fixtures/server_node_tasks.expected.csv`](fixtures/server_node_tasks.expected.csv)（34 列，已實跑 LB reader／validators／merge detector 通過）。實作必須逐格重現。
@@ -35,7 +38,7 @@
 | 情況 | 產出 | 依據 |
 |---|---|---|
 | 一般 motion（非 tool-held） | **1 列** | D1 |
-| **tool-held motion，工具在本 motion 內取得**（Pattern B） | **3 列**：acquire（slot 0–2）／use（slot 3–5）／release（slot 6）；若工具在後續 motion 才放下（§4.3），則 **2 列**（acquire／use，slot 6 併入 use） | ADR-035 D2 |
+| **tool-held motion，工具在本 motion 內取得**（Pattern B） | **3 列**：acquire（`setup_pre`：slot 0–2 ＋ 重複區塊**前**的不重複 use 格）／use（重複區塊 R；無重複則整個 slot 3–5）／release（`setup_post`：重複區塊**後**的不重複 use 格 ＋ slot 6）；若工具在後續 motion 才放下（§4.3），則 **2 列**（acquire／use；`setup_post` 依 §4.3 歸屬） | ADR-035 D2；§3.3 分桶 |
 | tool-held motion，工具已持有（Pattern A 的中段） | **1 列** `tool_action=use` | §4 |
 | `object` 為工具且未持有（Pattern A 的「拿起工具」GM） | **1 列** `tool_action=acquire` | §4 |
 | `object` 為工具且已持有、GM 放置（Pattern A 的「放下工具」） | **1 列** `tool_action=release` | §4 |
@@ -66,26 +69,42 @@ MiniMOST V2 的「A/B 不准 repeat」本身就是 LB 的 setup/cyclic 分界：
 | 非 tool-held | 整數 F>1 | 任意 | 1 列，`quantity=F`、`qty_scope=cyclic`、`duration_basis=once`、`duration`=單次（含 repeat） | fixture WI-G/H；需 group（§6 `group`） |
 | 非 tool-held | 非整數 | 任意 | 1 列，Q=1，`duration = round(total_tmu × F × 36)` | `W_FRACTIONAL_FREQUENCY_BAKED` |
 | tool-held（Pattern B） | 1 | 全 1 | 3 列（或 2 列），Q=1 | fixture WI-D/F/K/M |
-| tool-held（Pattern B） | 1 | slot 3–5 共同 N>1 | acquire：`setup`；use：`quantity=N`、`cyclic`、`duration`=單次；release：`setup`；三列 `quantity=N`、`duration_basis=once` | fixture WI-I |
+| tool-held（Pattern B） | 1 | use 段**連續區塊 R** 的 repeat = N>1（可為 M/X/I 全部，或其中連續一段） | acquire：`setup`（`setup_pre`）；use：`quantity=N`、`cyclic`、`duration`=單次（只含 R）；release：`setup`（`setup_post`）；三列 `quantity=N`、`duration_basis=once` | fixture WI-I（R={M,X,I}）；「移一次、掃 8 次」＝ R={X,I}，M 進 `setup_pre` |
 | tool-held（Pattern B） | 整數 F>1 | 全 1 | 3 列 `quantity=F`、**全部 `cyclic`**（字面語意：拿 F 次） | `W_TOOL_FREQ_ALL_CYCLIC`（幾乎一定是 IE 想用 repeat） |
 | tool-held | F>1 | N>1 | **拒絕** | `E_TOOL_FREQ_AND_REPEAT`（無法用單一 quantity 表達） |
 | tool-held | 非整數 | — | **拒絕** | `E_TOOL_FRACTIONAL_FREQUENCY` |
 | tool-held | — | slot 0–2 有 repeat（G） | **拒絕** | `E_TOOL_ACQUIRE_REPEAT`（取得段必須一次） |
-| tool-held | — | slot 3–5 非零格 repeat 不一致 | **拒絕** | `E_REPEAT_MIXED` |
+| tool-held | — | R 內 repeat 值不一致 | **拒絕** | `E_REPEAT_MIXED` |
+| tool-held | — | 重複格不連續（如 M×8、X 一次、I×8 的夾心） | **拒絕** | `E_REPEAT_NONCONTIGUOUS`（物理上說不通；零工時格不算斷開） |
 | tool-held | — | M 含伴隨維度（手度／腳步）且 repeat>1 | **拒絕** | `E_REPEAT_NONLINEAR`（M=max(verb×N, hand, foot) 不可線性拆） |
 
-### 3.3 單次工時的取得（引擎唯一權威，投影層不做 TMU 算術）
+### 3.3 單次工時的取得——分桶規則（引擎唯一權威，投影層不做 TMU 算術）
+
+**分桶（2026-09-12 裁決）**：一個 tool-held motion 的七格分成三個桶，切點是 use 段（slot 3–5）的**重複區塊**，不是固定的 slot 界線：
 
 ```
-slot_tmus        = most_cycles.computed.breakdown[].tmu          # 7 格，已含 repeat
-once_slot_tmus   = compute_cycle(strip_repeats(slot_inputs, slots=3..5), rs_snapshot).slot_tmus
-acquire_tmu      = Σ slot_tmus[0..2]
-use_once_tmu     = Σ once_slot_tmus[3..5]
-release_tmu      = slot_tmus[6]
-N                = repeat_count（slot 3–5 非零格共同值；無 → 1）
-斷言             = acquire_tmu + N×use_once_tmu + release_tmu == total_tmu（|Δ| ≤ 1e-6 TMU），否則 E_TMU_DECOMPOSITION
+U   = use 段的非零格，依 slot 順序（3 → 4 → 5）；零工時格不參與判定
+R   = U 中 repeat_count > 1 的格
+若 R 為空：N = 1；setup_pre = Σ slot_tmus[0..2]；use_once = Σ slot_tmus[3..5]；setup_post = slot_tmus[6]
+否則：
+  R 內 repeat 值必須相同 → N；不同 → E_REPEAT_MIXED
+  R 必須在 U 中連續（前後可有不重複格，中間不可夾不重複格）→ 否則 E_REPEAT_NONCONTIGUOUS
+  pre  = U 中位於 R 之前的格；post = U 中位於 R 之後的格
+  setup_pre  = Σ slot_tmus[0..2] + Σ_{s∈pre}  slot_tmus[s]          # 每個 episode 一次
+  use_once   = Σ_{s∈R} once_slot_tmu(s)                             # 每件一次
+  setup_post = Σ_{s∈post} slot_tmus[s] + slot_tmus[6]               # 每個 episode 一次
+
+once_slot_tmu(s)：
+  引擎路徑（有 slot_inputs 時必走）= compute_cycle(strip_repeats(slot_inputs, slots=R), rs_snapshot).slot_tmus[s]
+  靜態路徑（fixture／無 slot_inputs）= slot_tmus[s] / N            # 逐格除，不是 Σslot[3..5]/N
+斷言（兩路徑皆驗）：setup_pre + N × use_once + setup_post == total_tmu（|Δ| ≤ 1e-6 TMU），否則 E_TMU_DECOMPOSITION
 ```
-`rs_snapshot` = 該列 `most_cycles.rule_set_id`（回放鐵則，ADR-023）。
+
+- 三列時：acquire 列 `duration` ← `setup_pre`、use 列 ← `use_once`、release 列 ← `setup_post`；N=1 時 use 列 Q=1。
+- 2 列時（§4.3）：`setup_post` 的歸屬見 §4.3。
+- M 含伴隨維度（手度／腳步）且 M∈R → `E_REPEAT_NONLINEAR`（M=max(verb×N, hand, foot) 不可逐格線性拆）。
+- `rs_snapshot` = 該列 `most_cycles.rule_set_id`（回放鐵則，ADR-023）。
+- 為什麼不是「slot 0–2／3–5／6 固定切」：「拿 scanner → 移到料架（M 一次）→ 掃 8 個（X×8、I×8）」是正常 MOST 建模；固定切會把一次性的 M 乘 8。分桶讓 setup／cyclic 的分界跟著 IE 標的 repeat 走，而不是跟著格子走。
 
 ---
 
@@ -108,12 +127,17 @@ N                = repeat_count（slot 3–5 非零格共同值；無 → 1）
 chain 結束時 `held` 非空 → `E_TOOL_NOT_RELEASED`（列出工具與最後持有的 motion）。跨 chain 持有（A chain 拿、B chain 放）→ `E_TOOL_CROSS_CHAIN`。
 
 ### 4.3 Pattern B 的 release 落點
-IMPLICIT_ACQUIRE 後**向後看同一 chain**：若在下一次 T 的 ACQUIRE／IMPLICIT_ACQUIRE 之前出現 T 的 RELEASE 事件（GM、object=T）→ 本 motion 產 **2 列**（slot 6 的返回 A 併入 use 列），T 持續 held 到該 RELEASE；否則產 **3 列**，slot 6 即 release，T 出 held。
+IMPLICIT_ACQUIRE 後**向後看同一 chain**：若在下一次 T 的 ACQUIRE／IMPLICIT_ACQUIRE 之前出現 T 的 RELEASE 事件（GM、object=T）→ 本 motion 產 **2 列**，T 持續 held 到該 RELEASE；否則產 **3 列**，`setup_post`（含 slot 6）即 release 列，T 出 held。
+
+**2 列時 `setup_post` 的歸屬（2026-09-12 修正）**：`setup_post`（區塊後不重複格 ＋ 返回 A）是每個 episode 一次的工時，不得併入會乘 N 的 cyclic 列。
+- N = 1：併入 use 列（Q=1，純加總，無乘數問題）。
+- N > 1：併入 **acquire 列**（setup 桶；TMU 正確、每 worker 一次；時序上雖發生在最後，但 LB 的 setup 列不帶時序語意）。
+原文「slot 6 併入 use 列」在 N>1 時會把一次性的返回 A 乘 N，已由本段取代。
 
 ### 4.4 欄位
 - `tool_id`：T 的 `name_en` 轉 snake_case（`electric driver` → `electric_driver`）；缺 `name_en` → `tool_<vocab_id 前 8 碼>` ＋ `W_TOOL_NAME_EN_MISSING`。**不同拿取位置＝不同詞彙**（`scanner_holster`／`scanner_cart`），不用 `action_type` 區分。
 - `tool_action`：`acquire`／`use`／`release`。
-- `action_type`：acquire 列恆 `pick`、release 列恆 `put`（保證 LB 分桶鍵 `(tool_id, action_type)` 在同工具所有取放列相等）；use 列依附錄 A。
+- `action_type`：acquire 列恆 `pick`、release 列恆 `put`（保證 LB 分桶鍵 `(tool_id, action_type)` 在同工具所有取放列相等）；use 列依 §6 `action_type` 規則（IE 標籤優先）。
 - `adjustable`：acquire／release 列 **預設 1**；motion 帶 `merge_lock=true` → 0。use 列與非工具列恆 0。
 - 同 `tool_id` 的所有 acquire 列 `duration` 必須相等，release 亦然 → 否則 `E_TOOL_ACQUIRE_DURATION_MISMATCH`／`E_TOOL_RELEASE_DURATION_MISMATCH`（對應 LB `MergeCandidateError` C4）。
 
@@ -178,7 +202,7 @@ Kahn 拓撲排序，就緒集合以 `(seq_no, part_index)` 最小者優先（par
 | `duration` | 非負整數 ms | `round_half_up(tmu × 36)`；tmu 依 §3.3 | 必填 |
 | `predecessors` | `a,b,c` 逗號 | §5 | 空可 |
 | `station_name` | 字串 | `wi_rows.sub_activity`（passthrough，LB 不綁定） | 空可 |
-| `action_type` | 短英文碼 | 附錄 A | 必填（fallback `op`） |
+| `action_type` | 短英文碼 | **優先序**：① acquire 列恆 `pick`、release 列恆 `put`；② general 列依 `general_role`（take_unit→`take`、scanner→`scan`、transport→`transport`）；③ `lb_tags.action_type`（IE 在 Level System 選填的動作標籤，如 `remove`／`test`／`latch`）；④ 附錄 A 由 slot 選項碼推導；⑤ `op` ＋ `W_ACTION_TYPE_FALLBACK`。只有 ①② 有求解意義（LB 分桶鍵／General 分類），③④⑤ 純顯示 | 必填 |
 | `complexity_level` | — | **恆空**（LB solver 不消費；Phase 2 擬刪） | 空 |
 | `adjustable` | 0/1 | §4.4 | 必填 |
 | `fixed_station` | 正整數（1-based） | `station_pin` | 空可 |
@@ -199,7 +223,7 @@ Kahn 拓撲排序，就緒集合以 `(seq_no, part_index)` 最小者優先（par
 
 ## 7. 不變量（匯出前必驗、測試必鎖）
 
-1. **TMU 守恆**：`Σ_motions(total_tmu × freq_int) == Σ_tasks(once_tmu × (quantity if cyclic else 1))`（TMU 域，精確）；ms 域 `|Δ| ≤ tasks_out`（每列 ≤0.5 ms 捨入）。SIMO 從屬列與 general 列以各自規則計入。
+1. **TMU 守恆**：`Σ_motions(total_tmu × freq_int) == Σ_tasks(once_tmu × (quantity if cyclic else 1))`（TMU 域，精確；單一 motion 的分桶守恆見 §3.3）；ms 域 `|Δ| ≤ tasks_out`（每列 ≤0.5 ms 捨入）。SIMO 從屬列與 general 列以各自規則計入。
 2. **拓撲**：`task_id` 唯一連號；每個 predecessor id < 自身；無重複、皆存在。
 3. **生命週期良構**：每個 acquire 恰一個 clean release；每個 use 被 episode 覆蓋；chain 結束 held 空。
 4. **組內傳染**：同 cub 內 `offline` 一致；同 cub 內 Q>1 列 `quantity`／`duration_basis` 一致；同 wcub 內 `offline` 一致、成員 Q≤1、不跨多個 cub。
@@ -224,7 +248,8 @@ Kahn 拓撲排序，就緒集合以 `(seq_no, part_index)` 最小者優先（par
 | `E_TOOL_FREQ_AND_REPEAT` | 持工具 F>1 且 N>1 | 二擇一：整體重複拆成多列 motion，或只用 repeat |
 | `E_TOOL_FRACTIONAL_FREQUENCY` | 持工具 frequency 非整數 | 改整數或拆 motion |
 | `E_TOOL_ACQUIRE_REPEAT` | slot 0–2 有 repeat | 取得只做一次；重複放 3–5 |
-| `E_REPEAT_MIXED` | slot 3–5 非零格 repeat 不一致 | 統一 repeat |
+| `E_REPEAT_MIXED` | 重複區塊 R 內 repeat 值不一致 | 統一 repeat |
+| `E_REPEAT_NONCONTIGUOUS` | use 段重複格之間夾著不重複的非零格（§3.3） | 夾在中間的動作拆成獨立 motion，或也標 repeat |
 | `E_REPEAT_NONLINEAR` | M 伴隨維度＋repeat | 伴隨動作拆獨立 motion |
 | `E_TMU_DECOMPOSITION` | §3.3 斷言失敗 | 系統錯誤，回報開發 |
 | `E_TOOL_ACQUIRE_DURATION_MISMATCH` / `E_TOOL_RELEASE_DURATION_MISMATCH` | 同工具取／放工時不同 | 不同位置用不同詞彙 |
@@ -247,6 +272,7 @@ Kahn 拓撲排序，就緒集合以 `(seq_no, part_index)` 最小者優先（par
 | `W_TOOL_NAME_EN_MISSING` | 工具詞彙無 `name_en` | 補英文 |
 | `W_GENERAL_WITH_TOOL` | general motion 持工具 | 以單列輸出、工具欄丟棄 |
 | `W_SIMO_COLLAPSED` | 有 SIMO 從屬列被略過 | 過渡方案 D15 |
+| `W_ACTION_TYPE_FALLBACK` | 無 IE 標籤且附錄 A 推不出（無 slot 選項碼）→ `op` | 在 Level System 補動作標籤 |
 
 ### 8.2 匯出報告（與 CSV 同時產出）
 
@@ -297,7 +323,9 @@ Kahn 拓撲排序，就緒集合以 `(seq_no, part_index)` 最小者優先（par
 
 ---
 
-## 附錄 A：`action_type` 推導
+## 附錄 A：`action_type` 推導（fallback；優先序見 §6）
+
+> **定位（2026-09-12）**：本表只在 `lb_tags.action_type` 缺值時用 slot **選項碼**（`slot_inputs` 的 `g_code`／`p_base_code`／`p_addon_codes`／`m_components[].verb_code`／`x_code`）推導；沒有 `slot_inputs` 的靜態 fixture 路徑不走本表。像 `remove`（從治具取出 vs 放入治具，slot 形狀相同）、`test`（ICT 測試不是 MiniMOST X 字典選項）這類語意，**結構碼推不出來**，只能由 IE 標。黃金 fixture 因此每個 motion 都帶 `lb_tags.action_type`。
 
 | 條件（依序） | 值 |
 |---|---|
@@ -314,7 +342,7 @@ Kahn 拓撲排序，就緒集合以 `(seq_no, part_index)` 最小者優先（par
 | GM 且 G 為 collect | `collect` |
 | GM 且 object 為 tool（Pattern A 取放已在前兩列處理） | — |
 | GM 其他 | `place`（P 非 hold）／`pick`（P=hold） |
-| 任一為空 | `op` |
+| 任一為空 | `op`（＋ `W_ACTION_TYPE_FALLBACK`） |
 
 僅 acquire/release 列的值有求解意義（LB 分桶鍵）；其餘為顯示標籤。
 

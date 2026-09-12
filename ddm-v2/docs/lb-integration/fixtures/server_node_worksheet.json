@@ -110,6 +110,7 @@
     "number_count": null
    },
    "lb_tags": {
+    "action_type": "take",
     "is_general": true,
     "general_role": "take_unit",
     "offline": false,
@@ -159,6 +160,7 @@
     "number_count": null
    },
    "lb_tags": {
+    "action_type": "collect",
     "is_general": false,
     "general_role": null,
     "offline": true,
@@ -208,6 +210,7 @@
     "number_count": null
    },
    "lb_tags": {
+    "action_type": "place",
     "is_general": false,
     "general_role": null,
     "offline": false,
@@ -257,6 +260,7 @@
     "number_count": null
    },
    "lb_tags": {
+    "action_type": "scan",
     "is_general": false,
     "general_role": null,
     "offline": false,
@@ -306,6 +310,7 @@
     "number_count": null
    },
    "lb_tags": {
+    "action_type": "insert",
     "is_general": false,
     "general_role": null,
     "offline": false,
@@ -355,6 +360,7 @@
     "number_count": null
    },
    "lb_tags": {
+    "action_type": "scan",
     "is_general": false,
     "general_role": null,
     "offline": false,
@@ -404,6 +410,7 @@
     "number_count": null
    },
    "lb_tags": {
+    "action_type": "insert",
     "is_general": false,
     "general_role": null,
     "offline": false,
@@ -453,6 +460,7 @@
     "number_count": null
    },
    "lb_tags": {
+    "action_type": "latch",
     "is_general": false,
     "general_role": null,
     "offline": false,
@@ -506,6 +514,7 @@
     "number_count": null
    },
    "lb_tags": {
+    "action_type": "fasten",
     "is_general": false,
     "general_role": null,
     "offline": false,
@@ -555,6 +564,7 @@
     "number_count": null
    },
    "lb_tags": {
+    "action_type": "pick",
     "is_general": false,
     "general_role": null,
     "offline": false,
@@ -604,6 +614,7 @@
     "number_count": null
    },
    "lb_tags": {
+    "action_type": "insert",
     "is_general": false,
     "general_role": null,
     "offline": false,
@@ -653,6 +664,7 @@
     "number_count": null
    },
    "lb_tags": {
+    "action_type": "press",
     "is_general": false,
     "general_role": null,
     "offline": false,
@@ -702,6 +714,7 @@
     "number_count": null
    },
    "lb_tags": {
+    "action_type": "fasten",
     "is_general": false,
     "general_role": null,
     "offline": false,
@@ -751,6 +764,7 @@
     "number_count": null
    },
    "lb_tags": {
+    "action_type": "place",
     "is_general": false,
     "general_role": null,
     "offline": false,
@@ -800,6 +814,7 @@
     "number_count": null
    },
    "lb_tags": {
+    "action_type": "press",
     "is_general": false,
     "general_role": null,
     "offline": false,
@@ -849,6 +864,7 @@
     "number_count": null
    },
    "lb_tags": {
+    "action_type": "remove",
     "is_general": false,
     "general_role": null,
     "offline": false,
@@ -898,6 +914,7 @@
     "number_count": null
    },
    "lb_tags": {
+    "action_type": "fasten",
     "is_general": false,
     "general_role": null,
     "offline": false,
@@ -947,6 +964,7 @@
     "number_count": null
    },
    "lb_tags": {
+    "action_type": "place",
     "is_general": false,
     "general_role": null,
     "offline": false,
@@ -996,6 +1014,7 @@
     "number_count": null
    },
    "lb_tags": {
+    "action_type": "press",
     "is_general": false,
     "general_role": null,
     "offline": false,
@@ -1045,6 +1064,7 @@
     "number_count": null
    },
    "lb_tags": {
+    "action_type": "remove",
     "is_general": false,
     "general_role": null,
     "offline": false,
@@ -1096,6 +1116,7 @@
     "number_count": null
    },
    "lb_tags": {
+    "action_type": "inspect",
     "is_general": false,
     "general_role": null,
     "offline": false,
@@ -1145,6 +1166,7 @@
     "number_count": null
    },
    "lb_tags": {
+    "action_type": "place",
     "is_general": false,
     "general_role": null,
     "offline": false,
@@ -1194,6 +1216,7 @@
     "number_count": null
    },
    "lb_tags": {
+    "action_type": "test",
     "is_general": false,
     "general_role": null,
     "offline": false,
@@ -1243,6 +1266,7 @@
     "number_count": null
    },
    "lb_tags": {
+    "action_type": "remove",
     "is_general": false,
     "general_role": null,
     "offline": false,

@@ -64,7 +64,7 @@ src/ddm_v2/lb_projection/
 - 測試 `tests/unit/test_lb_projection_contract_freeze.py`：`COLUMNS` 與上列**逐字相等**；`server_node_tasks.expected.csv` 第一行 == `",".join(COLUMNS)`。任何人動表頭必先改這個測試＝升版（Spec §10）。
 - 出處：Spec §6、§10。
 
-### WP1 資料模型：`level_entries` 七個 LB 標記欄
+### WP1 資料模型：`level_entries` 八個 LB 標記欄
 - **migration** `migrations/versions_v2/v2_0046_level_entries_lb_tags.py`（`down_revision="v2_0045"`）：
   ```python
   op.add_column("level_entries", sa.Column("worker_cub", sa.Text(), nullable=True))
@@ -75,12 +75,13 @@ src/ddm_v2/lb_projection/
   op.add_column("level_entries", sa.Column("general_role", sa.Text(), nullable=True))
   op.create_check_constraint("general_role_enum", "level_entries", "general_role IS NULL OR general_role IN ('take_unit','scanner','transport')")
   op.add_column("level_entries", sa.Column("merge_lock", sa.Boolean(), nullable=False, server_default=sa.text("false")))
+  op.add_column("level_entries", sa.Column("action_type", sa.Text(), nullable=True))   # IE 選填顯示標籤（Spec §6 優先序 ③）
   op.create_check_constraint("worker_cub_format", "level_entries", "worker_cub IS NULL OR worker_cub ~ '^wcub[0-9]+$'")
   op.create_check_constraint("station_pin_pos", "level_entries", "station_pin IS NULL OR station_pin >= 1")
   ```
   downgrade 對稱。`machine_count`／`manpower` **不動**（ADR-035 D7；待 User 裁決 4）。
 - `src/ddm_v2/models/v2/worksheet.py::LevelEntry` 加對應 `mapped_column`（命名與 CheckConstraint 短名慣例同檔案註解：`ck_level_entries_*` 由 naming_convention 加前綴）。
-- `src/ddm_v2/schemas/v2/worksheet.py::LevelFieldsIn` 加：`worker_cub: str | None = None`（pattern `^wcub\d+$`）、`offline: bool = False`、`segment: str | None = None`、`station_pin: int | None = Field(default=None, ge=1)`、`is_general: bool = False`、`general_role: Literal['take_unit','scanner','transport'] | None = None`、`merge_lock: bool = False`。
+- `src/ddm_v2/schemas/v2/worksheet.py::LevelFieldsIn` 加：`worker_cub: str | None = None`（pattern `^wcub\d+$`）、`offline: bool = False`、`segment: str | None = None`、`station_pin: int | None = Field(default=None, ge=1)`、`is_general: bool = False`、`general_role: Literal['take_unit','scanner','transport'] | None = None`、`merge_lock: bool = False`、`action_type: str | None = Field(default=None, max_length=32, pattern=r'^[a-z][a-z_]*$')`。
 - `services/v2/worksheet_service.py`：`save_worksheet` 的 `LevelEntry(...)` 建構（約 L211）帶入六欄；`read_worksheet` 的 `"level": {...}`（約 L280）輸出六欄。`clone_worksheet` 若逐欄複製 LevelEntry，補六欄。
 - 前端型別：依 `src/frontend/package.json` 既有 OpenAPI 型別產生腳本重生 `src/frontend/src/shared/types/api.d.ts`（**不手改**）。
 - 資料模型文件同步：見 §5。
@@ -98,7 +99,7 @@ src/ddm_v2/lb_projection/
       slot_inputs: dict | None = None      # 引擎路徑用；fixture 可缺
       rule_set_code: str | None = None
   class ProjectionLevel(BaseModel): ascription, level, countersignature, parent_countersignature, order, number, number_count
-  class ProjectionTags(BaseModel): is_general=False; general_role: Literal['take_unit','scanner','transport']|None=None; offline=False; worker_cub: str|None=None; segment: str|None=None;
+  class ProjectionTags(BaseModel): action_type: str|None=None; is_general=False; general_role: Literal['take_unit','scanner','transport']|None=None; offline=False; worker_cub: str|None=None; segment: str|None=None;
       station_pin: int|None=None; merge_lock=False; splittable=False
   class ProjectionRow(BaseModel):
       wi_row_id: str; seq_no: int; sub_activity: str|None; key_parts: str|None; hand: str|None
@@ -116,14 +117,14 @@ src/ddm_v2/lb_projection/
 - `tmu.py`：
   ```python
   @dataclass(frozen=True)
-  class Decomposed: acquire_tmu: float; use_once_tmu: float; release_tmu: float; n: int; total_tmu: float
-  def decompose_static(cycle: ProjectionCycle) -> Decomposed      # fixture 路徑：use_once = Σslot[3..5]/n（n 由 repeat_counts 共同值）
-  def decompose_engine(cycle: ProjectionCycle, rs: RuleSetData) -> Decomposed   # 權威路徑：compute_cycle(strip_repeats(slot_inputs)) 
-  def repeat_n(cycle) -> int   # slot 3–5 非零格 repeat 共同值；不一致 → E_REPEAT_MIXED；slot 0–2 有 repeat → E_TOOL_ACQUIRE_REPEAT
+  class Decomposed: setup_pre_tmu: float; use_once_tmu: float; setup_post_tmu: float; n: int; total_tmu: float; block: tuple[int, ...]
+  def repeat_block(cycle) -> tuple[int, ...]   # Spec §3.3：use 段非零格中 repeat>1 的連續區塊 R；值不一致 → E_REPEAT_MIXED；不連續 → E_REPEAT_NONCONTIGUOUS；slot 0–2 有 repeat → E_TOOL_ACQUIRE_REPEAT
+  def decompose_static(cycle: ProjectionCycle) -> Decomposed      # fixture 路徑：use_once = Σ_{s∈R} slot_tmus[s]/n（逐格）；pre/post 依 §3.3 分桶
+  def decompose_engine(cycle: ProjectionCycle, rs: RuleSetData) -> Decomposed   # 權威路徑：compute_cycle(strip_repeats(slot_inputs, slots=R))
   ```
-  - `decompose_engine` 斷言 `acquire + n*use_once + release == total_tmu`（|Δ|≤1e-6）否則 `E_TMU_DECOMPOSITION`；M 格含 `hand/foot` 伴隨分量且 n>1 → `E_REPEAT_NONLINEAR`（判法：`slot_inputs.m3.m_components` 任一 `angle_deg>0 or foot…`——以引擎 `M_COMPANION_KINDS` 為準）。
+  - 兩路徑皆斷言 `setup_pre + n*use_once + setup_post == total_tmu`（|Δ|≤1e-6）否則 `E_TMU_DECOMPOSITION`；M 格含 `hand/foot` 伴隨分量且 n>1 → `E_REPEAT_NONLINEAR`（判法：`slot_inputs.m3.m_components` 任一 `angle_deg>0 or foot…`——以引擎 `M_COMPANION_KINDS` 為準）。
   - `project.py` 有 `slot_inputs` 時**必走** `decompose_engine`；靜態路徑僅 fixture／無 slot_inputs。
-- 驳收：`test_lb_projection_tmu.py`：WI-I（190 = 22 + 8×19 + 16）、WI-D（48 = 16+22+10）、`E_REPEAT_MIXED`、`E_TOOL_ACQUIRE_REPEAT`、`E_REPEAT_NONLINEAR`；`test_lb_projection_engine_path.py`：以真 `slot_inputs` 走 `build_from_seed_v2()` 引擎，兩路徑結果相等。
+- 驗收：`test_lb_projection_tmu.py`：WI-I（190 = 22 + 8×19 + 16，R={M,X,I}）、WI-D（48 = 16+22+10）、**部分 repeat**（M 一次＋X×8、I×8：M 進 `setup_pre`，守恆成立）、**夾心**（M×8、X 一次、I×8 → `E_REPEAT_NONCONTIGUOUS`）、`E_REPEAT_MIXED`、`E_TOOL_ACQUIRE_REPEAT`、`E_REPEAT_NONLINEAR`；`test_lb_projection_engine_path.py`：以真 `slot_inputs` 走 `build_from_seed_v2()` 引擎，兩路徑結果相等。
 
 ### WP4 ToolLifecycleResolver（Spec §4）
 - `tools.py`：
@@ -133,7 +134,7 @@ src/ddm_v2/lb_projection/
   # MotionPlan: row, parts: list[Literal["acquire","use","release"]] (長度 1／2／3), tool_id, tool_vocab_key, action_types, adjustable_flags
   def tool_id_of(vocab: ProjectionVocab, key: str) -> tuple[str, list[Warning]]   # name_en → snake_case；缺 → tool_<key[:8]> + W_TOOL_NAME_EN_MISSING
   ```
-  - 事件判定表 Spec §4.1；release 落點向後看 §4.3；chain 結束 held 非空 → `E_TOOL_NOT_RELEASED`；跨 chain → `E_TOOL_CROSS_CHAIN`（由 project.py 在所有 chain 跑完後比對 held 集合）。
+  - 事件判定表 Spec §4.1；release 落點向後看 §4.3；**2 列且 N>1 時 `setup_post` 併入 acquire 列，N=1 併入 use 列**（§4.3 修正）；chain 結束 held 非空 → `E_TOOL_NOT_RELEASED`；跨 chain → `E_TOOL_CROSS_CHAIN`（由 project.py 在所有 chain 跑完後比對 held 集合）。
   - general motion：不進 resolver；有工具 → `W_GENERAL_WITH_TOOL`。
 - 驗收：`test_lb_projection_tools.py`：Pattern B 3 列（D）、Pattern B 2 列（CM 後接 GM 放下）、Pattern A 3 motion → 3 列（acquire/use/release 各一）、`E_TOOL_NOT_RELEASED`、`E_TOOL_CROSS_CHAIN`、`E_TOOL_TWO_TOOLS`、`merge_lock` → adjustable 0、預設 1。
 
@@ -147,15 +148,15 @@ src/ddm_v2/lb_projection/
   - 先呼叫 `most_engine.level.validate(rows→LevelRow)`；有 issue → `E_LEVEL_INVALID`（message 帶原 code 列表）。
   - `a/b` → `E_LEVEL_DISCRETE_UNSUPPORTED`；nb → `W_NB_UNSUPPORTED`；浮動 → `W_FLOATING_TASK`；general／SIMO 從屬排除。
   - 巢狀區塊位置：成員最小 `seq_no`（ADR-035 D6）。
-- 驗收：`test_lb_projection_precedence.py`：golden 的 38 條邊逐條斷言（L2 六個 source 皆 ← {2,3}；`31 ← {6,10,12,15,21,27,30}`；chain 邊）；`1~2` 有界平行案例；`a/b` 拒收；巢狀 cub 在 seq_no 位置；編號 tie-break（兩個同層 standalone 依 seq_no）。
+- 驗收：`test_lb_projection_precedence.py`：golden 的 42 條邊逐條斷言（L2 六個 source 皆 ← {2,3}；`31 ← {6,12,15,21,27,30}`——sub2 是單一 chain E→F→G→H，sink 是 12，10→31 為傳遞冗餘（§5.5）；chain 邊）；`1~2` 有界平行案例；`a/b` 拒收；巢狀 cub 在 seq_no 位置；編號 tie-break（兩個同層 standalone 依 seq_no）。
 
 ### WP6 QuantityProjector、mappers、RowEmitter
-- `quantity.py`：`plan_quantity(row, plan: MotionPlan, dec: Decomposed) -> QuantityPlan`（Spec §3.2 矩陣逐格；含 `W_TOOL_FREQ_ALL_CYCLIC`、`W_FRACTIONAL_FREQUENCY_BAKED`、`E_TOOL_FREQ_AND_REPEAT`、`E_TOOL_FRACTIONAL_FREQUENCY`）。
+- `quantity.py`：`plan_quantity(row, plan: MotionPlan, dec: Decomposed) -> QuantityPlan`（Spec §3.2 矩陣逐格；acquire／use／release 列的 `duration` 分別取 `dec.setup_pre_tmu`／`use_once_tmu`／`setup_post_tmu`；含 `W_TOOL_FREQ_ALL_CYCLIC`、`W_FRACTIONAL_FREQUENCY_BAKED`、`E_TOOL_FREQ_AND_REPEAT`、`E_TOOL_FRACTIONAL_FREQUENCY`）。
 - `mappers.py`：
   - `group_id(row, plan) -> int | None`：`cub\d+` → 數字；Q>1 無 cub → `9000 + seq_no` ＋ `W_AUTO_GROUP_FOR_LOT`；tool-held 三列同值。
   - `atomic_id(row) -> int | None`：`wcub\d+` → 數字。
   - `duration_ms(tmu) -> int`：`Decimal(str(tmu)) * 36` 以 `ROUND_HALF_UP` 取整。
-  - `action_type(...)`：Spec 附錄 A。
+  - `action_type(...)`：Spec §6 優先序（acquire/release 恆 pick/put → general 依 role → `lb_tags.action_type` → 附錄 A（需 `slot_inputs` 選項碼）→ `op`＋`W_ACTION_TYPE_FALLBACK`）。附錄 A 路徑用真 `slot_inputs` 的單元測試另寫（`test_lb_projection_action_type_fallback.py`），golden 走標籤路徑。
   - `role_type(row)`：`x_seconds >= 1` → `machine`。
   - `part_id(row)`：general → `"General"`。
 - `emit.py`：`to_row(task: LbTask) -> dict[str,str]`（空值→`""`；bool→`0/1`；預設 `quantity=1`）；`write_csv(rows) -> str`（`csv.DictWriter`, `lineterminator="\n"`, `fieldnames=COLUMNS`）。
