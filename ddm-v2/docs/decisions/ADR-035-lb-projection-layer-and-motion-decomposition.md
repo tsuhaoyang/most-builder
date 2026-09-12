@@ -1,6 +1,6 @@
 # ADR-035：LB 投影層與 motion 拆列——兩個乘數、工具生命週期、分層 DAG 的確定性翻譯
 
-- **狀態**：🟡 **proposed**（內容依 2026-09-11 User 整合討論裁決撰寫；**請 User 核可後改 🟢 accepted**。實作 agent 在核可前即以本 ADR 為邊界，遇本 ADR 未涵蓋處停下詢問，不得自行擴張）
+- **狀態**：🟢 **accepted**（2026-09-12，Howard 核可；撰寫內容依 2026-09-11 User 整合討論裁決，另含 2026-09-12 (c) 分桶／(A) 傳遞縮減／(B) action_type 三項裁決）。實作 agent 遇本 ADR 未涵蓋處停下詢問，不得自行擴張
 - **日期**：2026-09-11
 - **決策者**：Howard（IE／兩系統 owner）＋ 整合架構師（論證與規格）
 - **最高原則**：[`docs/lb-integration/MOST_LB_DATA_CONTRACT_SPEC.md`](../lb-integration/MOST_LB_DATA_CONTRACT_SPEC.md)（`most-lb-csv-v1.1`）。本 ADR 記錄「為什麼」，Spec 記錄「是什麼」；衝突時 Spec 為準並回修本 ADR。
@@ -69,8 +69,8 @@
 - `a/b` 離散跳號 → 拒絕（D8 User 裁決）。nb → 不輸出＋警告（LB 無欄）。
 - 編號：Kahn ＋ `(seq_no, part_index)` 最小優先。
 
-### D7 資料模型：`level_entries` 加 7 個 LB 標記欄（加法演進）
-`worker_cub text`、`offline bool`、`segment text`、`station_pin int`、`is_general bool`、`general_role text`（take_unit／scanner／transport；Spec §5.7）、`merge_lock bool`（＋對應 `LevelFieldsIn`／`read_worksheet`／`api.d.ts`）。`machine_count`／`manpower` **停止匯出**（D16），欄位保留另議。`role_type` 由 X 格推導，不落欄。
+### D7 資料模型：`level_entries` 加 8 個 LB 標記欄（加法演進）
+`worker_cub text`、`offline bool`、`segment text`、`station_pin int`、`is_general bool`、`general_role text`（take_unit／scanner／transport；Spec §5.7）、`merge_lock bool`、`action_type text`（IE 選填顯示標籤，Spec §6；2026-09-12 WP6 裁決：結構碼推不出 remove／test 等語意，標籤優先、附錄 A 為 fallback）（＋對應 `LevelFieldsIn`／`read_worksheet`／`api.d.ts`）。`machine_count`／`manpower` **停止匯出**（D16），欄位保留另議。`role_type` 由 X 格推導，不落欄。
 
 ### D8 MOST 端匯出前 Fail-Fast（E 碼擋、W 碼報）＋匯出報告
 錯誤碼表 Spec §8.1；報告形狀 §8.2。E 碼經 ADR-034 信封（`code=LB_EXPORT_BLOCKED`，`detail.errors[]`）。**不因為 LB 也會擋就不擋**——在 IE 還看得到 motion 的地方報錯，比送到 LB 變 500 好。

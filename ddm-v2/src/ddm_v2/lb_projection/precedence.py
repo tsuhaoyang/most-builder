@@ -13,7 +13,6 @@ from dataclasses import dataclass, field
 from ddm_v2.lb_projection.errors import (
     E_LEVEL_DISCRETE_UNSUPPORTED,
     E_LEVEL_INVALID,
-    W_FLOATING_TASK,
     ProjectionError,
 )
 from ddm_v2.lb_projection.models import ProjectionRow
@@ -199,15 +198,7 @@ def project_precedence(
 
     task_id = _kahn_number(all_nodes, edges)
 
-    # 浮動偵測（非 general、無前後邊）
-    for u in units.values():
-        if u.row.lb_tags.is_general:
-            continue
-        keys = {(nd.wi_row_id, nd.part) for nd in u.nodes}
-        has_edge = any((e[0].wi_row_id, e[0].part) in keys or (e[1].wi_row_id, e[1].part) in keys for e in edges)
-        if not has_edge:
-            warnings.append(ProjectionError(W_FLOATING_TASK, u.row.wi_row_id, "無前後約束的浮動 task"))
-
+    # 浮動偵測（W_FLOATING_TASK）由 validator.py 擁有（§5.10；單一權威，note#1）。
     return task_id, warnings
 
 

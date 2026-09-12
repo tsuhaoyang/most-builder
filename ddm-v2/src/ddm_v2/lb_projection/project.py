@@ -11,7 +11,6 @@ from typing import Any
 from ddm_v2.lb_projection import mappers
 from ddm_v2.lb_projection.emit import LbTask, write_csv
 from ddm_v2.lb_projection.errors import (
-    E_NARRATIVE_EN_MISSING,
     E_TOOL_CROSS_CHAIN,
     E_TOOL_NOT_RELEASED,
     ProjectionError,
@@ -93,7 +92,7 @@ def project_rows(
         for node, pq in zip(unit.nodes, qplan.parts):
             tid = task_id_map[f"{node.wi_row_id}:{node.part}"]
             tool_action = node.part if p.tool_id is not None else None
-            action = _action_for(row, node.part, p, errors)
+            action = _action_for(row, node.part, p)
             at, at_warns = mappers.action_type(row, tool_action, slot_inputs_by_row.get(row.wi_row_id))
             warnings.extend(at_warns)
             grp, g_warns = mappers.group_id(row, pq.quantity)
@@ -124,21 +123,25 @@ def project_rows(
             )
 
     tasks = [tasks_by_id[t] for t in sorted(tasks_by_id)]
+
+    # ── validator：Spec §7 跨列不變量 ＋ 無主碼（收齊全部，不早停；note#1/#4）──
+    from ddm_v2.lb_projection.validator import validate as _validate
+
+    v_errors, v_warnings = _validate(tasks, rows, plans)
+    errors.extend(v_errors)
+    warnings.extend(v_warnings)
+
     csv_text = write_csv(tasks)
     return ProjectionResult(csv_text=csv_text, tasks=tasks, errors=errors, warnings=warnings)
 
 
-def _action_for(row: ProjectionRow, part: str, plan: MotionPlan, errors: list[ProjectionError]) -> str:
-    """acquire→'pick up {tool}'、release→'put down {tool}'、否則 narrative_en（缺→E_NARRATIVE_EN_MISSING）。"""
+def _action_for(row: ProjectionRow, part: str, plan: MotionPlan) -> str:
+    """acquire→'pick up {tool}'、release→'put down {tool}'、否則 narrative_en（缺→''，由 validator 報 E_NARRATIVE_EN_MISSING）。"""
     if part == "acquire":
         return f"pick up {_tool_name(plan)}"
     if part == "release":
         return f"put down {_tool_name(plan)}"
-    narr = row.cycle.narrative_en
-    if not narr:
-        errors.append(ProjectionError(E_NARRATIVE_EN_MISSING, row.wi_row_id, "缺 narrative_en，無法餵 LB"))
-        return ""
-    return narr
+    return row.cycle.narrative_en or ""
 
 
 def _tool_name(plan: MotionPlan) -> str:

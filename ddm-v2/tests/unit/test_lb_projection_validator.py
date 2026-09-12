@@ -1,0 +1,181 @@
+"""WP7 關卡：CsvContractValidator（Spec §7 不變量 + 無主碼）。
+
+「每碼一個反例」以 project_rows() 邊界為準（note#1）；validator 只擁有跨列不變量與尚未有人擁有的碼。
+tools/tmu/precedence 已拋的碼（E_TOOL_NOT_RELEASED、E_REPEAT_*、E_LEVEL_*…）不在此重測。
+收齊再擋：project_rows 一次回全部 E/W（note#4）。
+"""
+from __future__ import annotations
+
+import pytest
+
+from ddm_v2.lb_projection.errors import (
+    E_ATOMIC_CROSS_GROUP,
+    E_ATOMIC_ON_TOOL_MOTION,
+    E_ATOMIC_QUANTITY,
+    E_GENERAL_IN_GROUP,
+    E_GENERAL_ROLE_ACTION_MISMATCH,
+    E_GENERAL_ROLE_MISSING,
+    E_NARRATIVE_EN_MISSING,
+    E_OFFLINE_INCONSISTENT,
+    E_SEGMENT_CROSS_GROUP,
+    E_SPLITTABLE_CONFLICT,
+    E_TOOL_ACQUIRE_DURATION_MISMATCH,
+    W_FLOATING_TASK,
+    W_NB_UNSUPPORTED,
+)
+from ddm_v2.lb_projection.models import ProjectionRow, ProjectionVocab
+from ddm_v2.lb_projection.project import project_rows
+from ddm_v2.lb_projection.validator import validate
+
+pytestmark = pytest.mark.unit
+
+_VOCAB = {"scanner": ProjectionVocab(kind="tool", name_en="scanner")}
+
+
+def _row(seq, **kw):
+    base = {
+        "wi_row_id": f"00000000-0000-4000-8000-{seq:012d}",
+        "seq_no": seq,
+        "key_parts": "P",
+        "sub_activity": "S",
+        "object_vocab": None,
+        "tool_vocab": None,
+        "frequency": kw.pop("frequency", 1),
+        "cycle": {
+            "seq_kind": kw.pop("seq", "GM"),
+            "slot_tmus": kw.pop("slot_tmus", [10, 0, 6, 0, 0, 6, 0]),
+            "repeat_counts": kw.pop("repeat", {}),
+            "x_seconds": kw.pop("x_seconds", 0),
+            "total_tmu": kw.pop("total", 22),
+            "narrative_en": kw.pop("narrative_en", "do something"),
+        },
+        "level": {"ascription": "main", "level": "1", **kw.pop("level", {})},
+        "lb_tags": kw.pop("lb_tags", {}),
+    }
+    return ProjectionRow.model_validate(base)
+
+
+def _codes(result):
+    return {e.code for e in result.errors}, {w.code for w in result.warnings}
+
+
+def test_narrative_missing() -> None:
+    r = _row(2, narrative_en=None)
+    result = project_rows([r], _VOCAB)
+    e, _w = _codes(result)
+    assert E_NARRATIVE_EN_MISSING in e
+    # note#4：每筆帶 wi_row_id
+    assert any(x.wi_row_id == r.wi_row_id for x in result.errors)
+
+
+def test_general_role_missing_and_in_group() -> None:
+    r = _row(1, lb_tags={"is_general": True, "general_role": None, "worker_cub": "wcub9"})
+    result = project_rows([r], _VOCAB)
+    e, _w = _codes(result)
+    assert E_GENERAL_ROLE_MISSING in e
+    assert E_GENERAL_IN_GROUP in e
+
+
+def test_general_role_action_mismatch() -> None:
+    # take_unit 但 action 含 scan
+    r = _row(1, lb_tags={"is_general": True, "general_role": "take_unit", "action_type": "take"},
+             narrative_en="scan the unit label")
+    result = project_rows([r], _VOCAB)
+    e, _w = _codes(result)
+    assert E_GENERAL_ROLE_ACTION_MISMATCH in e
+
+
+def test_splittable_conflict_on_lot() -> None:
+    r = _row(2, frequency=8, lb_tags={"splittable": True}, total=22)
+    result = project_rows([r], _VOCAB)
+    e, _w = _codes(result)
+    assert E_SPLITTABLE_CONFLICT in e
+
+
+def test_atomic_quantity_and_on_tool() -> None:
+    # wcub 成員 Q>1（frequency=8）→ E_ATOMIC_QUANTITY
+    r = _row(2, frequency=8, lb_tags={"worker_cub": "wcub5"}, total=22)
+    result = project_rows([r], _VOCAB)
+    e, _w = _codes(result)
+    assert E_ATOMIC_QUANTITY in e
+
+
+def test_offline_inconsistent_in_cub() -> None:
+    """同 cub（group）內 offline 不一致（直接測 validator，避開 level gate）。"""
+    from ddm_v2.lb_projection.emit import LbTask
+
+    tasks = [
+        LbTask(task_id=1, action="a", source_wi_row_id="a", action_type="op", group=7, offline_flag=1),
+        LbTask(task_id=2, action="b", source_wi_row_id="b", action_type="op", group=7, offline_flag=0),
+    ]
+    errors, _w = validate(tasks, [], [])
+    assert E_OFFLINE_INCONSISTENT in {e.code for e in errors}
+
+
+def test_nb_unsupported_warning() -> None:
+    """nb ascription 丟棄 → W_NB_UNSUPPORTED（直接測 validator，避開 level gate）。"""
+    r = _row(2, level={"ascription": "nb", "level": "1"})
+    _e, w = validate([], [r], [])
+    assert W_NB_UNSUPPORTED in {x.code for x in w}
+
+
+def test_collect_all_not_stop_at_first() -> None:
+    """note#4：一次回傳多個 E，不拋第一個就停。"""
+    r = _row(1, lb_tags={"is_general": True, "general_role": None, "worker_cub": "wcub9"})
+    result = project_rows([r], _VOCAB)
+    assert len(result.errors) >= 2  # ROLE_MISSING + IN_GROUP 同時回
+
+
+def test_floating_task_warning() -> None:
+    """單一非 general standalone motion，無前後 → W_FLOATING_TASK。"""
+    r = _row(2)
+    result = project_rows([r], _VOCAB)
+    _e, w = _codes(result)
+    assert W_FLOATING_TASK in w
+
+
+def test_tool_acquire_duration_mismatch_direct() -> None:
+    """取放等長比 ms（直接測 validator：同 tool_id 兩個不同 acquire duration）。"""
+    from ddm_v2.lb_projection.emit import LbTask
+
+    tasks = [
+        LbTask(task_id=1, action="pick up scanner", source_wi_row_id="a", action_type="pick",
+               tool_id="scanner", tool_action="acquire", duration=576),
+        LbTask(task_id=2, action="pick up scanner", source_wi_row_id="b", action_type="pick",
+               tool_id="scanner", tool_action="acquire", duration=792),
+    ]
+    errors, _w = validate(tasks, [], [])
+    assert E_TOOL_ACQUIRE_DURATION_MISMATCH in {e.code for e in errors}
+
+
+def test_segment_cross_group_direct() -> None:
+    from ddm_v2.lb_projection.emit import LbTask
+
+    tasks = [
+        LbTask(task_id=1, action="a", source_wi_row_id="a", action_type="op", segment="s1", group=30),
+        LbTask(task_id=2, action="b", source_wi_row_id="b", action_type="op", segment="s1", group=40),
+    ]
+    errors, _w = validate(tasks, [], [])
+    assert E_SEGMENT_CROSS_GROUP in {e.code for e in errors}
+
+
+def test_atomic_cross_group_direct() -> None:
+    from ddm_v2.lb_projection.emit import LbTask
+
+    tasks = [
+        LbTask(task_id=1, action="a", source_wi_row_id="a", action_type="op", atomic_group=20, group=30),
+        LbTask(task_id=2, action="b", source_wi_row_id="b", action_type="op", atomic_group=20, group=40),
+    ]
+    errors, _w = validate(tasks, [], [])
+    assert E_ATOMIC_CROSS_GROUP in {e.code for e in errors}
+
+
+def test_atomic_on_tool_direct() -> None:
+    from ddm_v2.lb_projection.emit import LbTask
+
+    tasks = [
+        LbTask(task_id=1, action="use", source_wi_row_id="a", action_type="fasten",
+               atomic_group=20, tool_id="driver", tool_action="use"),
+    ]
+    errors, _w = validate(tasks, [], [])
+    assert E_ATOMIC_ON_TOOL_MOTION in {e.code for e in errors}
