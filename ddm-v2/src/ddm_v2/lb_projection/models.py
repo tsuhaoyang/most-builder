@@ -63,6 +63,7 @@ class ProjectionTags(BaseModel):
     model_config = ConfigDict(extra="forbid")
     is_general: bool = False
     general_role: GeneralRole | None = None
+    action_type: str | None = None  # IE 標定的動作類型（ruling B, 2026-09-12）；非 tool/general 列的 §6 ③ 級來源
     offline: bool = False
     worker_cub: str | None = None
     segment: str | None = None

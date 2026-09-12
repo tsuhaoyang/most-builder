@@ -39,4 +39,88 @@ COLUMNS: tuple[str, ...] = (
     "general_role",
 )
 
-__all__ = ["CONTRACT_VERSION", "COLUMNS"]
+__all__ = ["CONTRACT_VERSION", "COLUMNS", "LbTask", "to_row", "write_csv"]
+
+import csv  # noqa: E402
+import io  # noqa: E402
+from dataclasses import dataclass, field  # noqa: E402
+
+
+@dataclass
+class LbTask:
+    """一個輸出列（24 欄）。空值以 None 表示，to_row 轉 ''；bool → 0/1。"""
+
+    task_id: int
+    action: str
+    source_wi_row_id: str
+    action_type: str
+    adjustable: int = 0
+    offline_flag: int = 0
+    divisible: int = 0
+    quantity: int = 1
+    role_type: str = "human"
+    part_id: str | None = None
+    group: int | None = None
+    atomic_group: int | None = None
+    duration: int = 0
+    predecessors: list[int] = field(default_factory=list)
+    station_name: str | None = None
+    fixed_station: int | None = None
+    tool_id: str | None = None
+    tool_action: str | None = None
+    segment: str | None = None
+    qty_scope: str | None = None
+    duration_basis: str | None = None
+    general_role: str | None = None
+    complexity_level: str | None = None  # 恆空
+    p2: str | None = None  # 恆空
+
+
+def _cell(v: object) -> str:
+    if v is None:
+        return ""
+    if isinstance(v, bool):
+        return "1" if v else "0"
+    return str(v)
+
+
+def to_row(task: LbTask) -> dict[str, str]:
+    """LbTask → 24 欄 dict（鍵＝COLUMNS）。空值→''、bool→0/1、predecessors→逗號串。"""
+    preds = ",".join(str(p) for p in task.predecessors) if task.predecessors else ""
+    values = {
+        "task_id": _cell(task.task_id),
+        "action": _cell(task.action),
+        "part_id": _cell(task.part_id),
+        "group": _cell(task.group),
+        "atomic_group": _cell(task.atomic_group),
+        "duration": _cell(task.duration),
+        "predecessors": preds,
+        "station_name": _cell(task.station_name),
+        "action_type": _cell(task.action_type),
+        "complexity_level": _cell(task.complexity_level),
+        "adjustable": _cell(task.adjustable),
+        "fixed_station": _cell(task.fixed_station),
+        "offline_flag": _cell(task.offline_flag),
+        "tool_id": _cell(task.tool_id),
+        "tool_action": _cell(task.tool_action),
+        "divisible": _cell(task.divisible),
+        "p2": _cell(task.p2),
+        "quantity": _cell(task.quantity),
+        "segment": _cell(task.segment),
+        "qty_scope": _cell(task.qty_scope),
+        "duration_basis": _cell(task.duration_basis),
+        "source_wi_row_id": _cell(task.source_wi_row_id),
+        "role_type": _cell(task.role_type),
+        "general_role": _cell(task.general_role),
+    }
+    return {c: values[c] for c in COLUMNS}
+
+
+def write_csv(tasks: list[LbTask]) -> str:
+    """24 欄 CSV 文字（lineterminator='\\n'、fieldnames=COLUMNS、無 BOM）。"""
+    buf = io.StringIO()
+    writer = csv.DictWriter(buf, fieldnames=list(COLUMNS), lineterminator="\n")
+    writer.writeheader()
+    for t in tasks:
+        writer.writerow(to_row(t))
+    return buf.getvalue()

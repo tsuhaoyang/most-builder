@@ -54,6 +54,7 @@ W_FLOATING_TASK = "W_FLOATING_TASK"
 W_TOOL_NAME_EN_MISSING = "W_TOOL_NAME_EN_MISSING"
 W_GENERAL_WITH_TOOL = "W_GENERAL_WITH_TOOL"
 W_SIMO_COLLAPSED = "W_SIMO_COLLAPSED"
+W_ACTION_TYPE_FALLBACK = "W_ACTION_TYPE_FALLBACK"
 
 ALL_E_CODES = tuple(v for k, v in sorted(globals().items()) if k.startswith("E_") and k != "E_TOOL_TWO_TOOLS_SAME_MOTION")
 ALL_W_CODES = tuple(v for k, v in sorted(globals().items()) if k.startswith("W_"))
