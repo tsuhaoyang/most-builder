@@ -37,6 +37,7 @@ export function buildSaveBody(
           worker_cub: e.worker_cub ?? null, offline: e.offline ?? false, segment: e.segment ?? null,
           station_pin: e.station_pin ?? null, is_general: e.is_general ?? false, general_role: e.general_role ?? null,
           merge_lock: e.merge_lock ?? false, action_type: e.action_type ?? null,
+          machine_unattended: e.machine_unattended ?? null,  // 三態（ADR-035 D10 §3.4）
         },
       }
     }),

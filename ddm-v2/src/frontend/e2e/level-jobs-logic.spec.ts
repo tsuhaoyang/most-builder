@@ -55,6 +55,7 @@ function buildGolden(): Built {
       workerCub: tags.worker_cub ?? '', offline: tags.offline ?? false, segment: tags.segment ?? '',
       stationPin: tags.station_pin ?? '', isGeneral: tags.is_general ?? false,
       generalRole: tags.general_role ?? '', mergeLock: tags.merge_lock ?? false, actionType: tags.action_type ?? '',
+      machineUnattended: tags.machine_unattended ?? null,
     }
     const csv = (lv.countersignature ?? '').trim()
     if (csv && !gm[csv]) {
@@ -141,7 +142,7 @@ test('proposeBaseline groups consecutive same wiGroup; null when grouped', () =>
   const mkCell = (): LevelCell => ({
     coefficient: 1, number: '', number_count: '', level: '1', countersignature: '',
     machine_count: 1, manpower: 1, workerCub: '', offline: false, segment: '', stationPin: '',
-    isGeneral: false, generalRole: '', mergeLock: false, actionType: '',
+    isGeneral: false, generalRole: '', mergeLock: false, actionType: '', machineUnattended: null,
   })
   const rows = [mkRow('a', '裝 HDD'), mkRow('b', '裝 HDD'), mkRow('c', '鎖螺絲')]
   const lm: Record<string, LevelCell> = { a: mkCell(), b: mkCell(), c: mkCell() }

@@ -98,6 +98,7 @@ export interface WsReadRow {
     general_role: string | null
     merge_lock: boolean
     action_type: string | null
+    machine_unattended: boolean | null
   } | null
 }
 /**

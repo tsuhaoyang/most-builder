@@ -26,6 +26,7 @@ interface LevelState {
   setGeneralRole: (id: string, role: string) => void
   toggleMergeLock: (id: string) => void
   setActionType: (id: string, s: string) => void
+  setMachineUnattended: (id: string, val: boolean | null) => void
   createWcub: () => string
   assignWcub: (rowId: string, label: string) => void
   removeWcub: (label: string) => void
@@ -115,6 +116,8 @@ export const useLevelStore = create<LevelState>((set, get) => ({
     return { levelMap: { ...s.levelMap, [id]: { ...cur, mergeLock: !cur.mergeLock } } }
   }),
   setActionType: (id, str) => set(s => ({ levelMap: { ...s.levelMap, [id]: { ...(s.levelMap[id] || blankCell(0)), actionType: str } } })),
+  // ADR-035 D10 F3/F4：CM 機台時間三態（null/false/true）。patchCell 包裝，寫入 levelMap[id].machineUnattended。
+  setMachineUnattended: (id, val) => set(s => ({ levelMap: { ...s.levelMap, [id]: { ...(s.levelMap[id] || blankCell(0)), machineUnattended: val } } })),
 
   // wcub（同人）群組：獨立於 groupMeta，永不進 level 引擎。
   createWcub: () => {

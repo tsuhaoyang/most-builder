@@ -196,6 +196,13 @@ export function setSegment(ids: string[], name: string): void {
   restampLayers()
 }
 
+// ── 機台顧不顧（CM x_seconds≥1）三態 ────────────────────────────────
+// null=未回答、false=要顧、true=不用顧。patchCell 寫入後 restampLayers（層級不變，僅為一致性）。
+export function setMachineUnattended(id: string, val: boolean | null): void {
+  L().patchCell(id, { machineUnattended: val })
+  restampLayers()
+}
+
 // ── helpers ─────────────────────────────────────────────────────────
 function _dissolveEmptyCubs(): void {
   const st = L()

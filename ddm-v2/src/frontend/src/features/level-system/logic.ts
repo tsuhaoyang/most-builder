@@ -7,6 +7,8 @@ export interface LevelCell {
   // 絕不入 groupMeta/countersignature（那會被送進 R1–R9/level 引擎當 sub/cub — 禁止）。
   workerCub: string; offline: boolean; segment: string; stationPin: number | ''
   isGeneral: boolean; generalRole: string; mergeLock: boolean; actionType: string
+  // ADR-035 D10 F3/F4：CM 機台時間（x_seconds≥1）「人要不要顧」三態。null=未回答、false=要顧、true=不用顧。
+  machineUnattended: boolean | null
 }
 export interface GroupMeta { type: 'sub' | 'cub'; parent: string; seq: number }
 
@@ -15,6 +17,7 @@ export const blankCell = (i: number): LevelCell => ({
   countersignature: '', machine_count: 1, manpower: 1,
   workerCub: '', offline: false, segment: '', stationPin: '',
   isGeneral: false, generalRole: '', mergeLock: false, actionType: '',
+  machineUnattended: null,
 })
 
 export const wiIndex = (rows: Row[], id: string) => rows.findIndex(r => r.id === id)
@@ -59,6 +62,7 @@ export interface LevelPayloadRow {
   // WP12（ADR-035）LB projection tags
   worker_cub: string | null; offline: boolean; segment: string | null; station_pin: number | null
   is_general: boolean; general_role: string | null; merge_lock: boolean; action_type: string | null
+  machine_unattended: boolean | null
 }
 
 // 由分組推導 ascription/order/level/parent（IE 不手填）；空母群組的子 cub 自動攤平 parent
@@ -96,6 +100,7 @@ export function derive(
       general_role: m.generalRole?.trim() ? m.generalRole.trim() : null,
       merge_lock: !!m.mergeLock,
       action_type: m.actionType?.trim() ? m.actionType.trim() : null,
+      machine_unattended: m.machineUnattended ?? null,  // 三態 passthrough（ADR-035 D10 §3.4）
     }
   })
 }

@@ -64,6 +64,8 @@ export function useWorksheetWorkspace(worksheetId: string) {
         generalRole: tags?.general_role ?? '',
         mergeLock: tags?.merge_lock ?? false,
         actionType: tags?.action_type ?? '',
+        // ADR-035 D10 §3.4：機台三態（null/false/true）由 read_worksheet lb_tags 還原（B7）。
+        machineUnattended: tags?.machine_unattended ?? null,
       }
       const countersignature = (level?.countersignature ?? '').trim()
       if (countersignature && !groupMeta[countersignature]) {

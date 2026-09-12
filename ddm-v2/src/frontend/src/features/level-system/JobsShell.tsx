@@ -1,0 +1,59 @@
+// ADR-035 D10 F3/F4：作業版外殼（作業版 = 給非 IE 的「工序整理」視圖）。
+// 掛 LbPreview（dry-run，取得 report.rows 供卡片秒數/chips）；持有 selectedJobId 給 JobDrawer。
+// 預覽節流（debounce + latest-wins）與 422 toast 由 F6 補；此處先 useEffect 直打，失敗靜默忽略。
+import { useEffect, useState } from 'react'
+import { useTranslation } from 'react-i18next'
+import { useMe, canEdit } from '../../shared/auth/useMe'
+import { useWiStore } from '../wi-workbench/store'
+import { useRowNarr } from '../wi-workbench/useRowNarr'
+import { buildSaveBody } from '../wi-workbench/savePayload'
+import { useLevelStore } from './store'
+import { useLbPreview, type LbReport } from './api'
+import { derive } from './logic'
+import { JobsFlow } from './JobsFlow'
+import { JobDrawer } from './JobDrawer'
+
+export function JobsShell({ activeWs }: { activeWs: string }) {
+  const { t } = useTranslation()
+  const { data: me } = useMe()
+  const editable = canEdit(me)
+  const rows = useWiStore(s => s.rows)
+  const levelMap = useLevelStore(s => s.levelMap)
+  const groupMeta = useLevelStore(s => s.groupMeta)
+  const rowNarr = useRowNarr()
+
+  const preview = useLbPreview(activeWs)
+  const [report, setReport] = useState<LbReport | null>(null)
+  const [selectedJobId, setSelectedJobId] = useState<string | null>(null)
+
+  // 掛載 + rows/levelMap/groupMeta 變動 → dry-run 預覽。無 debounce（F6 補）；失敗靜默。
+  useEffect(() => {
+    if (!rows.length) { setReport(null); return }
+    const payload = derive(rows, levelMap, groupMeta, rowNarr)
+    const baseRevision = useWiStore.getState().revisionNo
+    const body = buildSaveBody(rows, payload, baseRevision)
+    preview.mutate(body, {
+      onSuccess: r => setReport(r),
+      onError: () => { /* F6：422 toast；此處先靜默 */ },
+    })
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [rows, levelMap, groupMeta])
+
+  return (
+    <div className="grid grid-cols-1 lg:grid-cols-[1fr_360px] gap-3">
+      <div>
+        <h3 className="font-semibold text-sm mb-1">{t('levelSystem.jobs.title')}</h3>
+        <p className="text-xs text-slate-500 mb-2">{t('levelSystem.jobs.subtitle')}</p>
+        <JobsFlow
+          report={report}
+          editable={editable}
+          onSelect={setSelectedJobId}
+          selectedJobId={selectedJobId}
+        />
+      </div>
+      <div className="rounded-xl border border-slate-200 bg-slate-50/40 p-2">
+        <JobDrawer jobId={selectedJobId} report={report} editable={editable} />
+      </div>
+    </div>
+  )
+}
