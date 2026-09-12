@@ -142,8 +142,11 @@ async def test_multi_action_fixture_via_service_path(db_session, monkeypatch):
         assert len(result.plan.actions) == 2
         assert len(result.drafts) == 2
         assert result.drafts[0].engine_result["total_tmu"] == 6.0
-        assert result.drafts[1].engine_result["total_tmu"] == 6.0
-        assert result.drafts[1].cycle["frequency"] == 2
+        # ADR-035 D4 QuantityPolicyV2：持工具 quantity=2 → x4.repeat_count=2、frequency=1；
+        # compute_cycle total_tmu 6→12（repeat 燙進格），effective TMU 不變。
+        assert result.drafts[1].engine_result["total_tmu"] == 12.0
+        assert result.drafts[1].cycle["frequency"] == 1
+        assert result.drafts[1].cycle["x4"]["repeat_count"] == 2
         assert "quantity_policy_review" in result.drafts[1].issues
         assert legacy["slots"]  # 相容欄位仍在
     finally:

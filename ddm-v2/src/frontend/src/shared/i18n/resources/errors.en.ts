@@ -94,6 +94,8 @@ const errorsEn: ErrorCatalog = {
   SERVICE_UNAVAILABLE: 'The service is temporarily unavailable; please try again later',
   PAYLOAD_TOO_LARGE: 'The uploaded content is too large',
   INTERNAL_ERROR: 'An internal error occurred; please try again later',
+  // ── LB projection export (ADR-035 WP8) ──────────────────────────────────
+  LB_EXPORT_BLOCKED: 'LB export blocked: {{count}} issue(s) must be fixed first (see report)',
 }
 
 export default errorsEn

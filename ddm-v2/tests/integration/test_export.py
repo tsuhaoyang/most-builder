@@ -15,10 +15,6 @@ pytestmark = pytest.mark.integration
 WS = "55555555-5555-5555-5555-555555555555"
 OBJ = "66666666-6666-6666-6666-666666666666"
 
-# ADR-011 加法原則：lb-csv 合約凍結——LB 拿 normal（second），寬放屬 MOST 端，欄位不得增刪改序。
-LB_CSV_HEADER = ("seq_no,content,second,ascription,level,level_min,level_max,variable,"
-                 "countersignature,parent_countersignature,order,number,number_count,machine_count,manpower")
-
 
 def _gm_row():
     return {"id": str(uuid.uuid4()), "seq_no": 1, "hand": "RH", "object_vocab_id": OBJ,
@@ -27,6 +23,17 @@ def _gm_row():
                       "a0": {"reach_cm": 20}, "g2": {"g_code": "g_grasp"},
                       "a3": {"reach_cm": 25}, "p5": {"p_base_code": "p_place_none"}},
             "level": {"ascription": "main", "level": "1"}}
+
+
+def _gm_row_en():
+    """投影可用的乾淨 GM 列：帶 narrative_en、level=1、action_type 標籤（ruling B）。"""
+    return {"id": str(uuid.uuid4()), "seq_no": 1, "hand": "RH", "object_vocab_id": OBJ,
+            "frequency": 1, "narrative": "拿取並放置",
+            "cycle": {"seq": "GM", "rule_set_code": "MINIMOST_FACTORY_V1",
+                      "a0": {"reach_cm": 20}, "g2": {"g_code": "g_grasp"},
+                      "a3": {"reach_cm": 25}, "p5": {"p_base_code": "p_place_none"},
+                      "narrative_en": "take and place part"},
+            "level": {"ascription": "main", "level": "1", "action_type": "place"}}
 
 
 async def _seeded(client) -> bool:
@@ -92,32 +99,71 @@ async def test_export_excel_no_allowance_standard_blank(client):
 
 
 async def test_export_lb_csv(client):
-    if not await _seeded(client):
-        pytest.skip("demo worksheet 未種")
-    r = await client.get(f"/api/v2/worksheets/{WS}/export/lb-csv")
-    assert r.status_code == 200
-    assert "text/csv" in r.headers.get("content-type", "") or len(r.content) > 0
-
-
-async def test_export_lb_csv_contract_frozen(client):
-    """ADR-011：lb-csv 表頭凍結；設了 allowance 也不得混入 standard/allowance 欄（LB 拿 normal）。"""
+    """ADR-035 WP8：lb-csv 改為投影層 24 欄契約。用 clone 隔離；demo 5555 可能含 level 離散跳號等。"""
     if not await _seeded(client):
         pytest.skip("demo worksheet 未種")
     new = (await client.post(f"/api/v2/worksheets/{WS}/clone")).json()["new_worksheet_id"]
-    r = await client.put(f"/api/v2/worksheets/{new}", json={"rows": [_gm_row()], "allowance_percent": 10})
+    r = await client.put(f"/api/v2/worksheets/{new}", json={"rows": [_gm_row_en()]})
     assert r.status_code == 200, r.text
     csv_r = await client.get(f"/api/v2/worksheets/{new}/export/lb-csv")
-    assert csv_r.status_code == 200
-    header = csv_r.text.splitlines()[0].strip().lstrip("﻿")  # 端點帶 UTF-8 BOM（Excel 相容，既有行為）
-    assert header == LB_CSV_HEADER, f"lb-csv 合約被改動：{header}"
+    assert csv_r.status_code == 200, csv_r.text
+    header = csv_r.text.splitlines()[0].strip().lstrip("﻿")  # UTF-8 BOM
+    from ddm_v2.lb_projection.emit import COLUMNS
+
+    assert header == ",".join(COLUMNS), f"lb-csv 表頭非投影 24 欄契約：{header}"
+    # 移除 machine_count／manpower（D16）
+    assert "machine_count" not in header and "manpower" not in header
 
 
-async def test_export_lb_api_dry_run(client):
+async def test_export_lb_csv_blocked_422(client):
+    """有 E 碼 → 422 且 error.code == LB_EXPORT_BLOCKED 且 detail.errors[0].wi_row_id 存在（ADR-034 信封）。
+
+    註：缺 narrative_en 在 API 路徑不可達（save 一律以 build_narrative_en 合成英文，D14），
+    故以可經 save 觸發的 E_LEVEL_DISCRETE_UNSUPPORTED（level='1/3'）驗同一條 422 信封契約。
+    """
     if not await _seeded(client):
         pytest.skip("demo worksheet 未種")
-    r = await client.post(f"/api/v2/worksheets/{WS}/export/lb-api")
-    assert r.status_code == 200
-    assert "payload" in r.json()
+    new = (await client.post(f"/api/v2/worksheets/{WS}/clone")).json()["new_worksheet_id"]
+    row = _gm_row_en()
+    row["level"] = {"ascription": "main", "level": "1/3", "action_type": "place"}  # 離散跳號 → E 碼
+    r = await client.put(f"/api/v2/worksheets/{new}", json={"rows": [row]})
+    assert r.status_code == 200, r.text
+    csv_r = await client.get(f"/api/v2/worksheets/{new}/export/lb-csv")
+    assert csv_r.status_code == 422, csv_r.text
+    body = csv_r.json()
+    assert body["error"]["code"] == "LB_EXPORT_BLOCKED"
+    errs = body["error"]["detail"]["errors"]
+    assert len(errs) >= 1
+    assert "wi_row_id" in errs[0]  # 每筆帶 wi_row_id 欄（跨列不變量可為 None）
+
+
+async def test_export_lb_report_200_with_warnings(client):
+    """lb-report 永遠 200（不擋），回 tasks_out/groups/atomic/errors/warnings（Spec §8.2）。"""
+    if not await _seeded(client):
+        pytest.skip("demo worksheet 未種")
+    new = (await client.post(f"/api/v2/worksheets/{WS}/clone")).json()["new_worksheet_id"]
+    r = await client.put(f"/api/v2/worksheets/{new}", json={"rows": [_gm_row_en()]})
+    assert r.status_code == 200, r.text
+    rep = await client.get(f"/api/v2/worksheets/{new}/export/lb-report")
+    assert rep.status_code == 200, rep.text
+    body = rep.json()
+    assert "tasks_out" in body and "groups" in body and "atomic_groups" in body
+    assert "errors" in body and "warnings" in body
+    assert body["contract_version"] == "most-lb-csv-v1.1"
+
+
+async def test_export_lb_api_payload_shape(client):
+    """lb-api：回 {contract_version, csv, tasks, report}，不再直送 build_output。"""
+    if not await _seeded(client):
+        pytest.skip("demo worksheet 未種")
+    new = (await client.post(f"/api/v2/worksheets/{WS}/clone")).json()["new_worksheet_id"]
+    r = await client.put(f"/api/v2/worksheets/{new}", json={"rows": [_gm_row_en()]})
+    assert r.status_code == 200, r.text
+    api = await client.post(f"/api/v2/worksheets/{new}/export/lb-api")
+    assert api.status_code == 200, api.text
+    body = api.json()
+    assert set(["contract_version", "csv", "tasks", "report"]).issubset(body.keys())
+    assert "payload" not in body  # build_output 不再直送
 
 
 async def test_export_report_xlsx_happy_path(client):

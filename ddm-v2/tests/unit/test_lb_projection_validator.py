@@ -224,15 +224,15 @@ def test_auto_group_for_lot_warning() -> None:
 
 
 def test_level_invalid_gate() -> None:
-    """level.validate 有 issue → E_LEVEL_INVALID（precedence gate 擁有；project_rows 邊界）。"""
+    """level.validate 有 issue → E_LEVEL_INVALID 收進 result.errors（project_rows 捕捉 PrecedenceError；收齊再擋）。"""
     from ddm_v2.lb_projection.errors import E_LEVEL_INVALID
-    from ddm_v2.lb_projection.precedence import PrecedenceError
 
     # cub 群組但成員 ascription 結構不合 R 規則 → level 引擎報 issue
     a = _row(5, level={"countersignature": "cub7", "order": 1, "level": "1", "ascription": "sub"})
-    with pytest.raises(PrecedenceError) as ei:
-        project_rows([a], _VOCAB)
-    assert ei.value.err.code == E_LEVEL_INVALID
+    result = project_rows([a], _VOCAB)
+    e, _w = _codes(result)
+    assert E_LEVEL_INVALID in e
+    assert result.tasks == []  # 編號致命 → 無 task
 
 
 def test_simo_collapsed_warning() -> None:

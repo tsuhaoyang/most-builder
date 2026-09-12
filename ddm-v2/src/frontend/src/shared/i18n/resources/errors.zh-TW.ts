@@ -98,6 +98,8 @@ const errorsZh: ErrorCatalog = {
   SERVICE_UNAVAILABLE: '服務暫時無法使用，請稍後再試',
   PAYLOAD_TOO_LARGE: '上傳內容過大',
   INTERNAL_ERROR: '系統內部錯誤，請稍後再試',
+  // ── LB 投影匯出（ADR-035 WP8）────────────────────────────────────────
+  LB_EXPORT_BLOCKED: 'LB 匯出被擋：{{count}} 個問題需先修正（詳見報告）',
 }
 
 export default errorsZh

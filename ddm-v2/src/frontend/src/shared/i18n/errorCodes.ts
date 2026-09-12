@@ -66,6 +66,8 @@ export const ERROR_CODES = [
   'I18N_UNKNOWN_SCOPE_KEY',
   'I18N_REVIEW_ROW_NOT_FOUND',
   'I18N_REVIEW_TARGET_MISSING',
+  // LB projection export (ADR-035 WP8)
+  'LB_EXPORT_BLOCKED',
 ] as const
 
 export type ErrorCode = (typeof ERROR_CODES)[number]
