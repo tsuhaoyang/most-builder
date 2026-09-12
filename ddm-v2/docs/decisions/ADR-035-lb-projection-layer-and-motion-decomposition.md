@@ -136,3 +136,5 @@
 ## 5. 落地追蹤
 實作書：[`docs/lb-integration/LB_PROJECTION_IMPLEMENTATION_PLAN.md`](../lb-integration/LB_PROJECTION_IMPLEMENTATION_PLAN.md)。
 commit／PR 引用：`implements ADR-035: …`。狀態轉 🟢 時回填 accepted 日期並在 `decisions/README.md` 更新。
+
+- **D10 作業版 UI（兩層視圖）落地（2026-09-12）**：實作書 [`LEVEL_SYSTEM_JOB_UX_IMPLEMENTATION_SPEC.md`](../lb-integration/LEVEL_SYSTEM_JOB_UX_IMPLEMENTATION_SPEC.md)；commit 範圍 `08f59e7`（B1）…`49d02c1`（F8）。作業版反投影 store 為唯一真相、不接 LLM、不移植原型 engine。附帶修正兩個真實後端錯誤：clone 漏帶全部 9 個 LB tag 欄（B7）、adapter `_build_projection_row` 的 `repeat_counts` 硬寫空 dict 導致 save 路徑投影 N=1（F9）。

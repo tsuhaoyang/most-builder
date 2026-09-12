@@ -210,6 +210,7 @@ src/ddm_v2/lb_projection/
 - i18n：`zh-TW.ts`／`en.ts` `levelSystem.*` 新 key（`createWcub`、`offline`、`segment`、`stationPin`、`general`、`mergeLock`、`preview.*`、`export.blocked`）。
 - E2E（Playwright）：圈 wcub → 切 offline → 整組傳染 → 匯出 report 有 `W_*`；含工具 motion 的 wcub → 即時擋。
 - 出處：ADR-035 D10；Spec §6、§8。
+- **後續：作業版（使用者語言）UI 見 [`LEVEL_SYSTEM_JOB_UX_IMPLEMENTATION_SPEC.md`](LEVEL_SYSTEM_JOB_UX_IMPLEMENTATION_SPEC.md)**（ADR-035 D10 修訂：WP12 的 IE 詞彙檢視改為「進階檢視」，另加作業版兩層視圖、同一 store；已落地 `08f59e7`..`49d02c1`）。
 
 ---
 

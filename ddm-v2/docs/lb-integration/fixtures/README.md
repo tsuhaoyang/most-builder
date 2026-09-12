@@ -4,6 +4,7 @@
 |---|---|
 | `server_node_worksheet.json` | 投影層**輸入**：一份 server node 組裝 worksheet 的 24 個 motion（七格 TMU、repeat、frequency、vocab、Level System 標註、LB 標記）。形狀＝`ProjectionRow`（實作書 WP2）。`slot_tmus` 為引擎 `computed.breakdown` 的 7 格值（已含 repeat）。 |
 | `server_node_tasks.expected.csv` | 投影層**期望輸出**：34 列 × 24 欄，`\n` 換行、UTF-8 無 BOM。實作必須逐位元相同。 |
+| `server_node_hints.expected.json` | 黃金 hints 快照（ADR-035 D10 B4）：`build_report` 對本 golden 產出的 `hints[]`（確定性提示，§7.2）。首次由 agent 產出經 User 過目後鎖定；= 3 條 `H_TOOL_DECOMPOSED`（scanner {4,6}／electric_driver {9}／torque_driver {13,17}）。machine 三列（L2/N2/P2）已回答，故無 `H_MACHINE_TIME`（只在未答時問）。 |
 
 ## 這份 fixture 證明什麼
 

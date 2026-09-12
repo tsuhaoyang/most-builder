@@ -64,7 +64,7 @@ MOST→LB 匯出的語意以 [MOST_LB_DATA_CONTRACT_SPEC.md](lb-integration/MOST
 | [ADR-035](decisions/ADR-035-lb-projection-layer-and-motion-decomposition.md) | 投影層決策與邊界（拆列、repeat_count、compiler 目的地、資料模型、過渡守衛、UI） | 🟢 accepted（2026-09-12，Howard） |
 | [LB 投影層實作書](lb-integration/LB_PROJECTION_IMPLEMENTATION_PLAN.md) | WP0–WP12、檔案變更總表、關卡、禁止事項 | ✅ 已落地（feature/lb-projection，abc259a..d73467f；WP0–12 全綠） |
 | [Agent Brief](lb-integration/AGENT_BRIEF_LB_PROJECTION.md) | 執行 agent 的工作方式與交付格式 | 🔄 |
-| [Level System 作業版實作書](lb-integration/LEVEL_SYSTEM_JOB_UX_IMPLEMENTATION_SPEC.md) | ADR-035 D10 修訂：使用者語言的作業／排／四個是非題 UI；`wi_group`；dry-run 預覽端點；確定性提示（無 LLM）；反投影形式定義；zh-TW／en i18n 全目錄 | 📝 待執行（2026-09-12） |
+| [Level System 作業版實作書](lb-integration/LEVEL_SYSTEM_JOB_UX_IMPLEMENTATION_SPEC.md) | ADR-035 D10 修訂：使用者語言的作業／排／四個是非題 UI；`wi_group`；dry-run 預覽端點；確定性提示（無 LLM）；反投影形式定義；zh-TW／en i18n 全目錄 | ✅ 已落地（feature/lb-projection，`08f59e7`..`49d02c1`；B1–F9 全綠，DoD-1 22 欄逐欄相等） |
 | [Agent Brief：作業版](lb-integration/AGENT_BRIEF_LEVEL_JOBS_UX.md) | 執行作業版實作書的 agent prompt | 📝 |
 | [作業版原型](lb-integration/prototypes/level-jobs/README.md) | 可跑的 HTML 設計原型（engine.js 為投影 JS 鏡像，僅供理解，不得移植） | 📌 設計參考 |
 | [黃金 fixture](lb-integration/fixtures/README.md) | server node 24 motions → 34 tasks；LB 端實跑通過 | ✅ |

@@ -119,6 +119,8 @@ WorkbenchState
 - 關鍵：level 以 **wiRowId（穩定）** 為鍵 → 改 MOST 內容不丟邏輯標註（F4）。
 - `second = raw_seconds × coefficient` 在後端 GENERATED；前端只顯示。難度係數只在此乘一次（E6）。
 
+> **作業版（ADR-035 D10，2026-09-12）：** Level System 有兩層視圖、同一 store。store（`levelMap`／`groupMeta`／`workerCubMeta` 等）為唯一真相；「作業視圖」是對 store 的**反投影**（純函式 `jobsFromStore`，實作書附錄 A），動作寫回 store。`lb_tags`（9 欄，含三態 `machine_unattended`）與 `wi_group`（作業名）在 `hydrate` 時自 `read_worksheet` 還原。作業版預覽走**乾跑端點** `POST …/lb-report/preview`（不落庫），不接 LLM、不做關鍵字猜測。
+
 ## 8. 錯誤處理（code → UI）
 
 API 422 `{code,message}` → 對映到具體欄位 inline 提示：
@@ -130,6 +132,8 @@ API 422 `{code,message}` → 對映到具體欄位 inline 提示：
 | `P_TOO_MANY_ADDONS`/`P_DUP_ADDON` | P 附加區提示 |
 | `SLOT_CROSS_MODEL` | 不應發生（前端切換已清欄）→ 視為 bug 上報 |
 | Level `R3_ORPHAN`/`R2_REDEFINE`/`R6_NB_VS_CUB`/… | 對應列/欄高亮 + §catalog 說明 |
+| `LB_EXPORT_BLOCKED`（匯出/儲存並交產線平衡） | 作業版頂部錯誤列；「儲存並交給產線平衡」在 err>0 時停用 |
+| 預覽 422（`lb-report/preview` 乾跑，如 `E_LEVEL_DISCRETE_UNSUPPORTED`） | 作業版 `preview-error` 列顯示 `rowError` 訊息，不阻擋編輯 |
 
 ## 9. 暫存 / 發布 / 另存新檔（對映 API，data-model §2.9）
 

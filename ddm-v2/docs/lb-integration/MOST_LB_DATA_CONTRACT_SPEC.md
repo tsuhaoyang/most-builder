@@ -287,6 +287,8 @@ Kahn 拓撲排序，就緒集合以 `(seq_no, part_index)` 最小者優先（par
   "nb_dropped": [], "columns": ["task_id", "...", "role_type"] }
 ```
 
+> **報告加法欄位（2026-09-12，實作書 `LEVEL_SYSTEM_JOB_UX`）：** `errors[]`／`warnings[]` 各項可帶 `params`（結構化參數，供前端組使用者語言句；訊息字串不變）；新增 `rows[]`（每列摘要：`wi_row_id`／`task_ids`／`tool_id`／`parts`／`repeat_n`／`frequency`／`quantity`／`qty_scope`／`x_seconds`／`is_general`／`general_role`／`duration_ms_total`）、`hints[]`（確定性提示，種類見實作書 §7.2）、`tasks[]`（僅 `include_tasks=true` 時）。皆為加法欄位——**CSV 24 欄與 `contract_version` 不變**。（§6 `divisible` 列的追記已由架構師加，不重寫。）
+
 ---
 
 ## 9. 黃金 fixture 與驗收
