@@ -38,6 +38,30 @@ async def test_save_and_read_roundtrip(client):
     assert len(rows) == 1 and rows[0]["cycle"]["total_tmu"] == 28
 
 
+async def test_lb_tags_roundtrip(client):
+    """ADR-035 D7 / WP1：level 的 8 個 LB 標記欄 save→read roundtrip（含 action_type、general_role）。"""
+    if not await _seeded(client):
+        pytest.skip("demo worksheet 未種（先跑 dev_seed_v2.py）")
+    new = (await client.post(f"/api/v2/worksheets/{WS}/clone")).json()["new_worksheet_id"]
+    row = _gm_row()
+    row["level"] = {
+        "ascription": "main", "level": "1",
+        "worker_cub": "wcub20", "offline": True, "segment": "dimm",
+        "station_pin": 3, "is_general": False, "general_role": None,
+        "merge_lock": True, "action_type": "place",
+    }
+    r = await client.put(f"/api/v2/worksheets/{new}", json={"rows": [row]})
+    assert r.status_code == 200, r.text
+    rd = (await client.get(f"/api/v2/worksheets/{new}")).json()
+    tags = rd["rows"][0]["lb_tags"]
+    assert tags["worker_cub"] == "wcub20"
+    assert tags["offline"] is True
+    assert tags["segment"] == "dimm"
+    assert tags["station_pin"] == 3
+    assert tags["merge_lock"] is True
+    assert tags["action_type"] == "place"
+
+
 async def test_allowance_roundtrip_standard_seconds(client):
     """impl-02 §3：allowance=10 → standard = normal × 1.1；未帶 allowance 再存不清除既有值。"""
     if not await _seeded(client):

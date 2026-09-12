@@ -12,6 +12,7 @@ from uuid import UUID
 
 from sqlalchemy import (
     BigInteger,
+    Boolean,
     CheckConstraint,
     Computed,
     Date,
@@ -186,6 +187,15 @@ class LevelEntry(Base, TimestampMixin):
     order_in_group: Mapped[int | None] = mapped_column(Integer)
     machine_count: Mapped[int] = mapped_column(Integer, nullable=False, server_default=text("1"))
     manpower: Mapped[int] = mapped_column(Integer, nullable=False, server_default=text("1"))
+    # ── LB 標記欄（ADR-035 D7；加法演進 v2_0046）──
+    worker_cub: Mapped[str | None] = mapped_column(Text)          # wcub*（same-worker + span 排他）
+    offline: Mapped[bool] = mapped_column(Boolean, nullable=False, server_default=text("false"))
+    segment: Mapped[str | None] = mapped_column(Text)            # Q>1 lot 的段標籤（同 segment 必同 cub）
+    station_pin: Mapped[int | None] = mapped_column(Integer)     # 固定站（1-based）
+    is_general: Mapped[bool] = mapped_column(Boolean, nullable=False, server_default=text("false"))
+    general_role: Mapped[str | None] = mapped_column(Text)       # take_unit/scanner/transport（Spec §5.7）
+    merge_lock: Mapped[bool] = mapped_column(Boolean, nullable=False, server_default=text("false"))
+    action_type: Mapped[str | None] = mapped_column(Text)        # IE 選填顯示標籤（Spec §6；ruling B）
 
     wi_row: Mapped[WiRow] = relationship(back_populates="level_entry")
 
@@ -193,4 +203,8 @@ class LevelEntry(Base, TimestampMixin):
         CheckConstraint("coefficient > 0", name="coefficient_pos"),
         CheckConstraint("ascription IS NULL OR ascription = 'main'", name="ascription"),
         CheckConstraint("machine_count >= 1 AND manpower >= 1", name="resources_pos"),
+        CheckConstraint(
+            "general_role IS NULL OR general_role IN ('take_unit','scanner','transport')",
+            name="general_role_enum",
+        ),
     )

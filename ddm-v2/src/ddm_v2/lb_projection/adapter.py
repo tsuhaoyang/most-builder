@@ -62,6 +62,11 @@ def rows_from_worksheet(data: dict[str, Any], vocab: dict[str, ProjectionVocab])
         x4 = slot_inputs.get("x4") or {}
         x_seconds = float(x4.get("x_seconds", 0) or 0)
         lv = r.get("level") or {}
+        # lb_tags：fixture 與 read_worksheet（WP1）都在 row 頂層放 "lb_tags"；舊資料可能仍在 level 內 → fallback。
+        tags = r.get("lb_tags") or {}
+
+        def _tag(key: str, default: Any = None) -> Any:
+            return tags.get(key, lv.get(key, default))
         out.append(
             ProjectionRow.model_validate(
                 {
@@ -96,14 +101,15 @@ def rows_from_worksheet(data: dict[str, Any], vocab: dict[str, ProjectionVocab])
                         "number_count": lv.get("number_count"),
                     },
                     "lb_tags": {
-                        "is_general": bool(lv.get("is_general", False)),
-                        "general_role": lv.get("general_role"),
-                        "offline": bool(lv.get("offline", False)),
-                        "worker_cub": lv.get("worker_cub"),
-                        "segment": lv.get("segment"),
-                        "station_pin": lv.get("station_pin"),
-                        "merge_lock": bool(lv.get("merge_lock", False)),
-                        "splittable": bool(lv.get("splittable", False)),
+                        "is_general": bool(_tag("is_general", False)),
+                        "general_role": _tag("general_role"),
+                        "action_type": _tag("action_type"),
+                        "offline": bool(_tag("offline", False)),
+                        "worker_cub": _tag("worker_cub"),
+                        "segment": _tag("segment"),
+                        "station_pin": _tag("station_pin"),
+                        "merge_lock": bool(_tag("merge_lock", False)),
+                        "splittable": bool(_tag("splittable", False)),
                     },
                 }
             )

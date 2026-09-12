@@ -20,6 +20,15 @@ class LevelFieldsIn(BaseModel):
     number_count: int | None = None
     machine_count: int = 1
     manpower: int = 1
+    # ── LB 標記欄（ADR-035 D7）──
+    worker_cub: str | None = None
+    offline: bool = False
+    segment: str | None = None
+    station_pin: int | None = None
+    is_general: bool = False
+    general_role: str | None = None
+    merge_lock: bool = False
+    action_type: str | None = None
 
 
 class WiRowSaveIn(BaseModel):

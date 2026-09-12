@@ -215,6 +215,9 @@ async def save_worksheet(
             parent_countersignature=lv.parent_countersignature,
             order_in_group=lv.order, number=lv.number, number_count=lv.number_count,
             machine_count=lv.machine_count, manpower=lv.manpower,
+            worker_cub=lv.worker_cub, offline=lv.offline, segment=lv.segment,
+            station_pin=lv.station_pin, is_general=lv.is_general,
+            general_role=lv.general_role, merge_lock=lv.merge_lock, action_type=lv.action_type,
         ))
     await session.flush()
     out = await read_worksheet(session, worksheet_id)
@@ -273,6 +276,11 @@ async def read_worksheet(session: AsyncSession, worksheet_id: uuid.UUID) -> dict
                       "parent_countersignature": lv.parent_countersignature,
                       "order": lv.order_in_group, "number": lv.number, "number_count": lv.number_count,
                       "machine_count": lv.machine_count, "manpower": lv.manpower} if lv else None,
+            # LB 標記層（ADR-035 D7）：加法擴充；adapter（WP2）讀此鍵構 ProjectionTags
+            "lb_tags": {"worker_cub": lv.worker_cub, "offline": lv.offline, "segment": lv.segment,
+                        "station_pin": lv.station_pin, "is_general": lv.is_general,
+                        "general_role": lv.general_role, "merge_lock": lv.merge_lock,
+                        "action_type": lv.action_type} if lv else None,
         })
     total = round(total, 3)
     normal_seconds = round(total * TMU_TO_SEC, 4)

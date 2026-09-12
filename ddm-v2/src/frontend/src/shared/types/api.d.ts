@@ -1763,8 +1763,8 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /** Index */
-        get: operations["index__get"];
+        /** Root */
+        get: operations["root__get"];
         put?: never;
         post?: never;
         delete?: never;
@@ -2424,6 +2424,31 @@ export interface components {
              * @default 1
              */
             manpower: number;
+            /** Worker Cub */
+            worker_cub?: string | null;
+            /**
+             * Offline
+             * @default false
+             */
+            offline: boolean;
+            /** Segment */
+            segment?: string | null;
+            /** Station Pin */
+            station_pin?: number | null;
+            /**
+             * Is General
+             * @default false
+             */
+            is_general: boolean;
+            /** General Role */
+            general_role?: string | null;
+            /**
+             * Merge Lock
+             * @default false
+             */
+            merge_lock: boolean;
+            /** Action Type */
+            action_type?: string | null;
         };
         /** LevelIssueOut */
         LevelIssueOut: {
@@ -7509,7 +7534,7 @@ export interface operations {
             };
         };
     };
-    index__get: {
+    root__get: {
         parameters: {
             query?: never;
             header?: never;
