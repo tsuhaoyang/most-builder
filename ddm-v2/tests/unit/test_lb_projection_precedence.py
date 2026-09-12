@@ -84,15 +84,13 @@ def test_ab_discrete_level_rejected() -> None:
     assert ei.value.err.code == E_LEVEL_DISCRETE_UNSUPPORTED
 
 
-def test_golden_predecessors_match_except_o10() -> None:
-    """完整投影後 33/34 task 的 predecessors 與 task_id 逐一對照 golden 相等。
+def test_golden_predecessors_match() -> None:
+    """完整投影後 34/34 task 的 predecessors 與 task_id 逐一等於 golden；總邊數 42（裁決 A 後）。
 
-    唯一差異：golden 的 O（task31）多列前置 10（sub2 內 F 的 scanner release）。
-    依 Spec §5.3/§5.5，sub2 是單一 chain E→F→G→H，sink=H(task12)；10→11→12→31 已存在，
-    故 10→31 為傳遞冗餘，本實作依 Spec 傳遞縮減後不含它。此為 Spec↔golden 不一致，待 User 裁決
-    （見 test 註解與回報）。這裡驗證「除 task31 外全等」，鎖住其餘 33 邊為 Spec 真值。
+    task 31 = {6,12,15,21,27,30}（sub2 單一 chain E→F→G→H，sink=12；10→31 傳遞冗餘已由 §5.5 縮減）。
     """
     import csv
+    from collections import defaultdict
 
     rows, _vocab, plans, task_id, _w = _project()
     units = build_motion_units(plans)
@@ -108,8 +106,6 @@ def test_golden_predecessors_match_except_o10() -> None:
     for y, x in P._transitive_reduction(chains):
         edges.append((chains[y].sink_of(units), chains[x].source_of(units)))
 
-    from collections import defaultdict
-
     preds: dict = defaultdict(set)
     for a, b in edges:
         preds[task_id[f"{b.wi_row_id}:{b.part}"]].add(task_id[f"{a.wi_row_id}:{a.part}"])
@@ -118,11 +114,6 @@ def test_golden_predecessors_match_except_o10() -> None:
         int(r["task_id"]): (set(map(int, r["predecessors"].split(","))) if r["predecessors"] else set())
         for r in csv.DictReader(open(_GOLDEN_JSON.parent / "server_node_tasks.expected.csv"))
     }
+    assert len(edges) == 42
     for t in range(1, 35):
-        mine = preds.get(t, set())
-        if t == 31:
-            # 已知差異：golden 多冗餘邊 10；除去後應相等
-            assert golden[t] - mine == {10}
-            assert mine == {6, 12, 15, 21, 27, 30}
-        else:
-            assert mine == golden[t], f"task {t}: mine={sorted(mine)} golden={sorted(golden[t])}"
+        assert preds.get(t, set()) == golden[t], f"task {t}: mine={sorted(preds.get(t, set()))} golden={sorted(golden[t])}"
