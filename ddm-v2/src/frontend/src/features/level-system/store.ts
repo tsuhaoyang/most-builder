@@ -34,7 +34,7 @@ interface LevelState {
   toggleNbPick: (id: string) => void
   confirmNb: (count: number) => void
   removeNb: (label: string) => void
-  hydrate: (levelMap: Record<string, LevelCell>, groupMeta: Record<string, GroupMeta>, gseq: number) => void
+  hydrate: (levelMap: Record<string, LevelCell>, groupMeta: Record<string, GroupMeta>, gseq: number, workerCubMeta?: Record<string, { seq: number }>, wseq?: number) => void
 }
 
 const rows = () => useWiStore.getState().rows
@@ -150,7 +150,9 @@ export const useLevelStore = create<LevelState>((set, get) => ({
     return { levelMap: lm }
   }),
 
-  // 由載入的 worksheet 還原 Level（取代本地狀態）。wcub 屬純 client UX 維度，載入時重置
-  // （後端 lb-report 才是投影權威；hydrate 不還原 wcub 分組）。
-  hydrate: (levelMap, groupMeta, gseq) => set({ levelMap, groupMeta, gseq, workerCubMeta: {}, wseq: 0, wcubError: '', nbMode: false, nbPick: [] }),
+  // 由載入的 worksheet 還原 Level（取代本地狀態）。加法簽名（ADR-035 D10 F1）：
+  // 舊三參數呼叫 hydrate(levelMap, groupMeta, gseq) 仍可用（workerCubMeta/wseq 預設空）；
+  // 作業版傳入 workerCubMeta/wseq 以還原「同一個人」分組維度（hydrate 內由 read_worksheet 的 lb_tags 重建）。
+  hydrate: (levelMap, groupMeta, gseq, workerCubMeta = {}, wseq = 0) =>
+    set({ levelMap, groupMeta, gseq, workerCubMeta, wseq, wcubError: '', nbMode: false, nbPick: [] }),
 }))

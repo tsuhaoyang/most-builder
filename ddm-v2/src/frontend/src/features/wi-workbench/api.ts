@@ -62,6 +62,7 @@ export interface WsReadRow {
   tool_vocab_id: string | null
   frequency: number
   simo_group_id: string | null
+  wi_group: string | null
   /** F-03b §2 provenance — nullable 軟參考（非 FK） */
   source_module_id: string | null
   source_module_version: number | null
@@ -83,8 +84,20 @@ export interface WsReadRow {
     level: string | null
     countersignature: string | null
     parent_countersignature: string | null
+    order: number | null
     number: string | null
     number_count: number | null
+  } | null
+  /** ADR-035 D7 LB 標記層；read_worksheet 加法輸出。作業版 hydrate 還原（F1） */
+  lb_tags: {
+    worker_cub: string | null
+    offline: boolean
+    segment: string | null
+    station_pin: number | null
+    is_general: boolean
+    general_role: string | null
+    merge_lock: boolean
+    action_type: string | null
   } | null
 }
 /**

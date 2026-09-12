@@ -13,6 +13,8 @@ export interface Row {
    * 的產物凍進 state 會讓那些列永遠停在加入當下的語言。顯示請走 `useRowNarr()`。
    */
   narr: string
+  /** 作業名稱（ADR-035 D10；`wi_rows.wi_group`）。本地新加的列由編輯器帶入。 */
+  wiGroup: string | null
   /**
    * 後端英文敘述（`most_cycles.narrative_en`）。`null` 代表 API 尚未提供英文欄位值；
    * 空字串則保留後端的明確空值語意，不在前端翻譯或猜測。
@@ -31,6 +33,7 @@ interface WiState {
   addRow: (r: Row) => void
   delRow: (id: string) => void
   setRows: (rows: Row[]) => void
+  updateRows: (patch: (r: Row) => Row) => void
   setRevisionMeta: (meta: { revisionNo: number | null; contentHash?: string | null }) => void
   totalTmu: () => number   // ADR-020：SIMO 標記列（simoGroup 非空）貢獻 0，其餘 Σ(tmu × freq)
 }
@@ -42,6 +45,7 @@ export const useWiStore = create<WiState>((set, get) => ({
   addRow: (r) => set((s) => ({ rows: [...s.rows, r] })),
   delRow: (id) => set((s) => ({ rows: s.rows.filter((x) => x.id !== id) })),
   setRows: (rows) => set({ rows }),
+  updateRows: (patch) => set((s) => ({ rows: s.rows.map(patch) })),
   setRevisionMeta: ({ revisionNo, contentHash }) =>
     set({
       revisionNo,

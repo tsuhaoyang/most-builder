@@ -18,6 +18,7 @@ import {
 import { AiDraftPanel } from './AiDraftPanel'
 import { useLevelStore } from '../level-system/store'
 import { derive } from '../level-system/logic'
+import { buildSaveBody } from './savePayload'
 import { useWorksheetWorkspace } from './useWorksheetWorkspace'
 import { useRowNarr } from './useRowNarr'
 import {
@@ -556,7 +557,7 @@ export function WiWorkbench() {
     addRow({
       id: crypto.randomUUID(), seq: cur.seq, handCode: cur.handCode, freq: cur.freq, simoGroup: cur.simoGroup,
       // narr 留空＝「還沒有後端敘述」；預覽句由 useRowNarr 在顯示時重算
-      nv: { ...cur.nv }, narr: '', narrEn: null, tmu, seconds: tmu * TMU_SEC, payload,
+      nv: { ...cur.nv }, narr: '', narrEn: null, wiGroup: null, tmu, seconds: tmu * TMU_SEC, payload,
     } as Row)
   }
 
@@ -579,31 +580,7 @@ export function WiWorkbench() {
     const lv = useLevelStore.getState()
     const d = derive(rows, lv.levelMap, lv.groupMeta, rowNarr)
     const baseRevision = useWiStore.getState().revisionNo
-    const body = {
-      base_revision: baseRevision ?? undefined,
-      rows: rows.map((r, i) => {
-        const e = d[i] || {}
-        return {
-          id: r.id, seq_no: i + 1, hand: r.handCode,
-          object_vocab_id: r.nv.obj || null,
-          from_vocab_id: r.nv.from || null, to_vocab_id: r.nv.to || null,
-          frequency: r.freq, simo_group_id: r.simoGroup || null,
-          // Backend regenerates narrative_zh/narrative_en from the pinned rule-set; never send
-          // the locale-dependent display selection back as the Chinese narrative input.
-          narrative: r.narr || null, cycle: r.payload,
-          level: {
-            coefficient: e.coefficient ?? 1, ascription: e.ascription ?? 'main', level: e.level ?? String(i + 1),
-            countersignature: e.countersignature ?? null, parent_countersignature: e.parent_countersignature ?? null,
-            order: e.order ?? null, number: e.number ?? null, number_count: e.number_count ?? null,
-            machine_count: 1, manpower: 1,
-            // WP12（ADR-035）LB projection tags — 預設對齊 LevelFieldsIn（字串 ?? null、bool ?? false）
-            worker_cub: e.worker_cub ?? null, offline: e.offline ?? false, segment: e.segment ?? null,
-            station_pin: e.station_pin ?? null, is_general: e.is_general ?? false, general_role: e.general_role ?? null,
-            merge_lock: e.merge_lock ?? false, action_type: e.action_type ?? null,
-          },
-        }
-      }),
-    }
+    const body = buildSaveBody(rows, d, baseRevision)
     try {
       const res = await save.mutateAsync(body)
       if (typeof res.revision_no === 'number') {
