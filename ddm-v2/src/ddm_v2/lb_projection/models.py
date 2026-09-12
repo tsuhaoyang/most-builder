@@ -70,6 +70,7 @@ class ProjectionTags(BaseModel):
     station_pin: int | None = None
     merge_lock: bool = False
     splittable: bool = False
+    machine_unattended: bool | None = None  # 三態（ADR-035 D10 §3.4）
 
 
 class ProjectionRow(BaseModel):

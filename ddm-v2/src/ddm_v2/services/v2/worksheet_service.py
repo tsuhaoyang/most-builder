@@ -258,6 +258,7 @@ async def save_worksheet(
             worker_cub=lv.worker_cub, offline=lv.offline, segment=lv.segment,
             station_pin=lv.station_pin, is_general=lv.is_general,
             general_role=lv.general_role, merge_lock=lv.merge_lock, action_type=lv.action_type,
+            machine_unattended=lv.machine_unattended,
         ))
     await session.flush()
     out = await read_worksheet(session, worksheet_id)
@@ -323,7 +324,7 @@ async def read_worksheet(session: AsyncSession, worksheet_id: uuid.UUID) -> dict
             "lb_tags": {"worker_cub": lv.worker_cub, "offline": lv.offline, "segment": lv.segment,
                         "station_pin": lv.station_pin, "is_general": lv.is_general,
                         "general_role": lv.general_role, "merge_lock": lv.merge_lock,
-                        "action_type": lv.action_type} if lv else None,
+                        "action_type": lv.action_type, "machine_unattended": lv.machine_unattended} if lv else None,
         })
     total = round(total, 3)
     normal_seconds = round(total * TMU_TO_SEC, 4)
@@ -444,7 +445,11 @@ async def clone_worksheet(session: AsyncSession, worksheet_id: uuid.UUID, actor:
                                    level=lv.level, countersignature=lv.countersignature,
                                    parent_countersignature=lv.parent_countersignature, order_in_group=lv.order_in_group,
                                    number=lv.number, number_count=lv.number_count,
-                                   machine_count=lv.machine_count, manpower=lv.manpower))
+                                   machine_count=lv.machine_count, manpower=lv.manpower,
+                                   worker_cub=lv.worker_cub, offline=lv.offline, segment=lv.segment,
+                                   station_pin=lv.station_pin, is_general=lv.is_general,
+                                   general_role=lv.general_role, merge_lock=lv.merge_lock,
+                                   action_type=lv.action_type, machine_unattended=lv.machine_unattended))
     await session.flush()
     # clone 內容 hash 在首次讀取／儲存前可為空；採源內容再算一次供診斷
     out_src = await read_worksheet(session, new_ws.id)

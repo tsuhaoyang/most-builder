@@ -16,7 +16,7 @@ pytestmark = pytest.mark.unit
 _VOCAB = {"scanner": ProjectionVocab(kind="tool", name_en="scanner")}
 
 
-def _cm(seq, *, freq=1, x_seconds=0.0, segment=None, cs="", tool=None, obj=None, x_code=None, head=True):
+def _cm(seq, *, freq=1, x_seconds=0.0, segment=None, cs="", tool=None, obj=None, x_code=None, head=True, machine_unattended=None):
     slots = {"4": {"x_seconds": x_seconds}} if x_seconds else {}
     if x_code:
         slots.setdefault("4", {})["x_code"] = x_code
@@ -35,7 +35,7 @@ def _cm(seq, *, freq=1, x_seconds=0.0, segment=None, cs="", tool=None, obj=None,
                   "x_seconds": x_seconds, "total_tmu": 30,
                   "narrative_en": f"row {seq}", "slot_inputs": {"seq": "CM", "slots": slots}},
         "level": lvl,
-        "lb_tags": {"segment": segment},
+        "lb_tags": {"segment": segment, "machine_unattended": machine_unattended},
     })
 
 
@@ -46,10 +46,22 @@ def _hints_of(rows):
 
 def test_machine_time_positive_and_negative():
     kinds, _ = _hints_of([_cm(1, x_seconds=3.0), _cm(2, x_seconds=0.0)])
-    assert "H_MACHINE_TIME" in kinds  # x_seconds>=1
+    assert "H_MACHINE_TIME" in kinds  # x_seconds>=1 且 machine_unattended 未回答（None）
     # 反例：x_seconds<1 不出
     kinds2, hs = _hints_of([_cm(1, x_seconds=0.2)])
     assert "H_MACHINE_TIME" not in kinds2
+
+
+def test_machine_time_not_asked_once_answered():
+    """B7：machine_unattended 已回答（True/False）→ H_MACHINE_TIME 不再問。"""
+    kinds_t, _ = _hints_of([_cm(1, x_seconds=3.0, machine_unattended=True)])
+    assert "H_MACHINE_TIME" not in kinds_t
+    kinds_f, _ = _hints_of([_cm(1, x_seconds=3.0, machine_unattended=False)])
+    assert "H_MACHINE_TIME" not in kinds_f
+    # params 帶 x_seconds（未回答時）
+    _k, hs = _hints_of([_cm(1, x_seconds=3.0)])
+    h = next(h for h in hs if h.kind == "H_MACHINE_TIME")
+    assert h.params == {"x_seconds": 3.0}
 
 
 def test_lot_run_segment_positive_and_negative():

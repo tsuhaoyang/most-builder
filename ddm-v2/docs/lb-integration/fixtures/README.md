@@ -34,3 +34,5 @@ assert csv_text == open("docs/lb-integration/fixtures/server_node_tasks.expected
 ## 變更紀錄
 - 2026-09-12：每個 motion 的 `lb_tags` 新增 `action_type`（IE 標籤；Spec §6 優先序 ③）。expected CSV 不變。由 WP6 實作發現附錄 A 無法從結構碼推出 remove／test 等語意，架構師裁決標籤優先。
 - 2026-09-12：修正 task 31 的 `predecessors`（移除傳遞冗餘邊 10→31；sub2 是單一 chain E→F→G→H，sink 為 12，Spec §5.5 要求傳遞縮減）。由 WP5 實作發現，架構師核可。LB 端驗證重跑通過。
+
+- L2（seq 15）／P2（seq 23）`lb_tags.machine_unattended: true`、N2（seq 19）`false`（ADR-035 D10 §3.4；`role_type=machine` 需 CM∧x≥1∧unattended==true）。expected CSV 僅 task 29 role_type=human；hints 快照 = 3 條 H_TOOL_DECOMPOSED（machine 三列已回答）。

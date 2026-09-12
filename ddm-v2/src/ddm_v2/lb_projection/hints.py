@@ -113,10 +113,10 @@ def hints(result: Any, rows: list[ProjectionRow]) -> list[Hint]:
     for tool_id, ids in dec_by_tool.items():
         _add(_mk("H_TOOL_DECOMPOSED", ids, {"tool_id": tool_id}))
 
-    # ── H_MACHINE_TIME（info）：CM 且 x_seconds ≥ 1 ──
+    # ── H_MACHINE_TIME（ask）：CM 且 x_seconds ≥ 1 且 machine_unattended 未回答（None）──
     for r in rows:
-        if r.cycle.seq_kind == "CM" and (r.cycle.x_seconds or 0) >= 1:
-            _add(_mk("H_MACHINE_TIME", [r.wi_row_id], {}))
+        if r.cycle.seq_kind == "CM" and (r.cycle.x_seconds or 0) >= 1 and r.lb_tags.machine_unattended is None:
+            _add(_mk("H_MACHINE_TIME", [r.wi_row_id], {"x_seconds": r.cycle.x_seconds}))
 
     out.sort(key=lambda h: min(seq_by_id.get(i, 1_000_000) for i in h.wi_row_ids))
     return out

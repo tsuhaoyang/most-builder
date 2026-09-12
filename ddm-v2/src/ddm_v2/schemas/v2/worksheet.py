@@ -29,6 +29,7 @@ class LevelFieldsIn(BaseModel):
     general_role: str | None = None
     merge_lock: bool = False
     action_type: str | None = None
+    machine_unattended: bool | None = None  # 三態（ADR-035 D10 §3.4）：null=未答/false=要顧/true=不用顧
 
 
 class WiRowSaveIn(BaseModel):

@@ -197,6 +197,7 @@ class LevelEntry(Base, TimestampMixin):
     general_role: Mapped[str | None] = mapped_column(Text)       # take_unit/scanner/transport（Spec §5.7）
     merge_lock: Mapped[bool] = mapped_column(Boolean, nullable=False, server_default=text("false"))
     action_type: Mapped[str | None] = mapped_column(Text)        # IE 選填顯示標籤（Spec §6；ruling B）
+    machine_unattended: Mapped[bool | None] = mapped_column(Boolean)  # 三態（ADR-035 D10 §3.4）：null=未答/false=要顧/true=不用顧
 
     wi_row: Mapped[WiRow] = relationship(back_populates="level_entry")
 

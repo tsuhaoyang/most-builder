@@ -2483,6 +2483,8 @@ export interface components {
             merge_lock: boolean;
             /** Action Type */
             action_type?: string | null;
+            /** Machine Unattended */
+            machine_unattended?: boolean | null;
         };
         /** LevelIssueOut */
         LevelIssueOut: {

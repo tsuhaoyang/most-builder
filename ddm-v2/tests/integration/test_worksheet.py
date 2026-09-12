@@ -62,6 +62,20 @@ async def test_lb_tags_roundtrip(client):
     assert tags["action_type"] == "place"
 
 
+async def test_machine_unattended_three_state_roundtrip(client):
+    """B7（ADR-035 D10 §3.4）：machine_unattended 三態 null／false／true 各 roundtrip。"""
+    if not await _seeded(client):
+        pytest.skip("demo worksheet 未種")
+    for val in (None, False, True):
+        new = (await client.post(f"/api/v2/worksheets/{WS}/clone")).json()["new_worksheet_id"]
+        row = _gm_row()
+        row["level"] = {"ascription": "main", "level": "1", "machine_unattended": val}
+        r = await client.put(f"/api/v2/worksheets/{new}", json={"rows": [row]})
+        assert r.status_code == 200, r.text
+        rd = (await client.get(f"/api/v2/worksheets/{new}")).json()
+        assert rd["rows"][0]["lb_tags"]["machine_unattended"] is val, f"machine_unattended {val} 未 roundtrip"
+
+
 async def test_allowance_roundtrip_standard_seconds(client):
     """impl-02 §3：allowance=10 → standard = normal × 1.1；未帶 allowance 再存不清除既有值。"""
     if not await _seeded(client):

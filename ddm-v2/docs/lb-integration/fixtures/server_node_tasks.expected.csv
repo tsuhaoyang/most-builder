@@ -27,7 +27,7 @@ task_id,action,part_id,group,atomic_group,duration,predecessors,station_name,act
 26,fasten backplane bracket screw to torque,BACKPLANE,10,,684,25,Backplane,fasten,,0,,0,torque_driver,use,0,,1,,,,00000000-0000-4000-8000-000000000017,human,
 27,put down torque driver,BACKPLANE,10,,576,26,Backplane,put,,0,,0,torque_driver,release,0,,1,,,,00000000-0000-4000-8000-000000000017,human,
 28,place I/O shield into heat-stake fixture and hold,IO_SHIELD,11,21,2016,"2,3",IO shield,place,,0,,0,,,0,,1,,,,00000000-0000-4000-8000-000000000018,human,
-29,start heat stake while holding shield (2 s),IO_SHIELD,11,21,2108,28,IO shield,press,,0,,0,,,0,,1,,,,00000000-0000-4000-8000-000000000019,machine,
+29,start heat stake while holding shield (2 s),IO_SHIELD,11,21,2108,28,IO shield,press,,0,,0,,,0,,1,,,,00000000-0000-4000-8000-000000000019,human,
 30,withdraw hands from heat-stake fixture,IO_SHIELD,11,21,648,29,IO shield,remove,,0,,0,,,0,,1,,,,00000000-0000-4000-8000-000000000020,human,
 31,visual inspection of assembled board (12 check points),MB,,,3168,"6,12,15,21,27,30",Final,inspect,,0,,0,,,1,,1,,,,00000000-0000-4000-8000-000000000021,human,
 32,place board into ICT fixture and close lid,MB,,,2232,31,Final,place,,0,6,0,,,0,,1,,,,00000000-0000-4000-8000-000000000022,human,

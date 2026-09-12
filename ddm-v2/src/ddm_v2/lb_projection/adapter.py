@@ -120,6 +120,7 @@ def _build_projection_row(
             "station_pin": _tag("station_pin"),
             "merge_lock": bool(_tag("merge_lock", False)),
             "splittable": bool(_tag("splittable", False)),
+            "machine_unattended": _tag("machine_unattended"),  # 三態：保留 None/True/False，不 bool() 強制
         },
     })
 
@@ -139,6 +140,7 @@ def rows_from_save_payload(computed: list[Any], vocab: dict[str, ProjectionVocab
             "is_general": lv.is_general, "general_role": lv.general_role, "action_type": lv.action_type,
             "offline": lv.offline, "worker_cub": lv.worker_cub, "segment": lv.segment,
             "station_pin": lv.station_pin, "merge_lock": lv.merge_lock,
+            "machine_unattended": lv.machine_unattended,
         }
         level_d = {
             "ascription": lv.ascription, "level": lv.level, "countersignature": lv.countersignature,

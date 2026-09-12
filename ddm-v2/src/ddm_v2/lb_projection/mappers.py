@@ -57,8 +57,12 @@ def atomic_id(row: ProjectionRow) -> int | None:
 
 
 def role_type(row: ProjectionRow) -> str:
-    """CM 且 x_seconds ≥ 1 → machine；否則 human（Spec §6、D17）。"""
-    if row.cycle.seq_kind == "CM" and (row.cycle.x_seconds or 0) >= 1:
+    """CM ∧ x_seconds≥1 ∧ machine_unattended==True → machine；其餘 human（Spec §6 修訂、ADR-035 D10 §3.4）。
+
+    事實在 MOST（人不用顧才算 machine），政策在 LB。machine_unattended 為 None/False → human。
+    """
+    if (row.cycle.seq_kind == "CM" and (row.cycle.x_seconds or 0) >= 1
+            and row.lb_tags.machine_unattended is True):
         return "machine"
     return "human"
 
