@@ -3,7 +3,7 @@
 import { useWiStore, type Row } from '../wi-workbench/store'
 import { useLevelStore } from './store'
 import { rowsIn, rowsInWcub, cs, canAssignWcub, type LevelCell, type GroupMeta } from './logic'
-import { jobsFromStore } from './jobs'
+import { jobsFromStore, proposeBaseline } from './jobs'
 import { fmtLevel, normalizeLayers, parseLevel } from './layers'
 import type { Job } from './jobsModel'
 
@@ -187,6 +187,33 @@ export function setGeneral(id: string, role: string | null): void {
     st.toggleGeneral(id)
   }
   restampLayers()
+}
+
+// ── baseline（附錄 A.4）：hydrate 後套用；回傳是否套用了（供通知條）──
+export function applyBaseline(): { applied: boolean; jobCount: number } {
+  const st = L()
+  const plan = proposeBaseline(rows(), st.levelMap)
+  if (!plan) return { applied: false, jobCount: 0 }
+  // 候選段成 sub
+  for (const seg of plan.actions) {
+    const sub = st.createGroup('sub', '')
+    seg.ids.forEach(id => L().moveTo(id, sub))
+  }
+  if (plan.pristine) {
+    // 全新：每個 Job（含單列）依出現順序各自一排
+    const model = jobsFromStore(rows(), L().levelMap, L().groupMeta)
+    const ordered = [...model.jobs].sort((a, b) => {
+      const ia = rows().findIndex(r => r.id === (a.steps[0] ?? a.generalSteps[0]))
+      const ib = rows().findIndex(r => r.id === (b.steps[0] ?? b.generalSteps[0]))
+      return ia - ib
+    })
+    ordered.forEach((j, k) => {
+      for (const id of [...j.steps, ...j.generalSteps]) L().patchCell(id, { level: String(k + 1) })
+    })
+  }
+  restampLayers()
+  const jc = jobsFromStore(rows(), L().levelMap, L().groupMeta).jobs.length
+  return { applied: true, jobCount: jc }
 }
 
 // ── segment ─────────────────────────────────────────────────────────

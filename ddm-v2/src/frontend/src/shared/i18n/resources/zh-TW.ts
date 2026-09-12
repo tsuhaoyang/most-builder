@@ -1371,6 +1371,8 @@ const zhTW = {
         offlineWhole: '同一工站的作業要整個一起離線',
         pin: '<b>固定在某一站</b>做', pinHint: '只有設備焊死在某站時才需要。',
         pinNone: '（未固定）', pinAt: '：第 {{n}} 站', pinPrompt: '固定在第幾站？（空白＝不固定）',
+        pinPlaceholder: '站號',
+        generalOnly: '通用動作不適用（每台一次，不進作業）',
       },
       adv: {
         title: '進階（很少用）',

@@ -1426,6 +1426,8 @@ const en: Widen<typeof zhTW> = {
         offlineWhole: 'A same-station job goes offline as a whole',
         pin: '<b>Fixed to one station</b>', pinHint: 'Only when equipment is hard-wired to a station.',
         pinNone: '(not fixed)', pinAt: ': station {{n}}', pinPrompt: 'Which station? (blank = not fixed)',
+        pinPlaceholder: 'Station',
+        generalOnly: 'General actions do not apply (once per unit, not part of a job)',
       },
       adv: {
         title: 'Advanced (rarely used)',

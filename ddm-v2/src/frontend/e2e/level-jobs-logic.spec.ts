@@ -146,16 +146,43 @@ test('proposeBaseline groups consecutive same wiGroup; null when grouped', () =>
   })
   const rows = [mkRow('a', '裝 HDD'), mkRow('b', '裝 HDD'), mkRow('c', '鎖螺絲')]
   const lm: Record<string, LevelCell> = { a: mkCell(), b: mkCell(), c: mkCell() }
-  const actions = proposeBaseline(rows, lm)
-  expect(actions).not.toBeNull()
-  expect(actions!.length).toBe(2)                 // [a,b] 一組、c 一組
-  expect(actions![0].ids).toEqual(['a', 'b'])
-  expect(actions![0].row).toBe(1)
-  expect(actions![1].ids).toEqual(['c'])
-  expect(actions![1].row).toBe(2)
-  // 已有群組 → null
+  const plan = proposeBaseline(rows, lm)
+  expect(plan).not.toBeNull()
+  expect(plan!.pristine).toBe(true)
+  // 候選段：只有 [a,b]（連續同名≥2）；c 單列不成段
+  expect(plan!.actions.length).toBe(1)
+  expect(plan!.actions[0].ids).toEqual(['a', 'b'])
+  // 已有群組 → 仍回候選段但 pristine=false（部分模式）
   lm.a.countersignature = 'sub1'
-  expect(proposeBaseline(rows, lm)).toBeNull()
+  lm.b.countersignature = 'sub1'
+  const p2 = proposeBaseline(rows, lm)
+  expect(p2).toBeNull()  // a,b 已分組 → 無未分組候選段
+})
+
+
+test('A2 applyBaseline partial: 3 ungrouped same-name -> 1 sub, layers unchanged', () => {
+  // 合成三列同名、未分組、非通用（第一段截圖情境）；另一列已在 cub（部分模式）
+  const mkRow = (id: string): Row => ({
+    id, seq: 'GM', handCode: 'RH', freq: 1, simoGroup: '', wiGroup: '裝 HDD',
+    nv: { obj: '', from: '', to: '' }, narr: id, narrEn: null, tmu: 10, seconds: 0.36, payload: {},
+  } as Row)
+  const mkCell = (cs = ''): LevelCell => ({
+    coefficient: 1, number: '', number_count: '', level: '2', countersignature: cs,
+    machine_count: 1, manpower: 1, workerCub: '', offline: false, segment: '', stationPin: '',
+    isGeneral: false, generalRole: '', mergeLock: false, actionType: '', machineUnattended: null,
+  })
+  const rowsIn3 = [mkRow('a'), mkRow('b'), mkRow('c'),
+    { ...mkRow('z'), wiGroup: '別的' } as Row]
+  useWiStore.setState({ rows: rowsIn3, revisionNo: 1, contentHash: null })
+  useLevelStore.getState().hydrate(
+    { a: mkCell(), b: mkCell(), c: mkCell(), z: mkCell('cub9') },
+    { cub9: { type: 'cub', parent: '', seq: 3 } }, 4, {}, 0)
+  A.applyBaseline()
+  const after = model()
+  const hdd = after.jobs.find(j => (j.name ?? '') === '裝 HDD')
+  expect(hdd).toBeTruthy()
+  expect(hdd!.steps.length).toBe(3)   // a,b,c 成一個 sub「裝 HDD」
+  invariantsHold()
 })
 
 // ── (deterministic) 相同輸入相同輸出 ──

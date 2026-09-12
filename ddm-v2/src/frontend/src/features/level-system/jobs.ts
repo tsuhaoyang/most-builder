@@ -151,42 +151,40 @@ export function jobsFromStore(rows: Row[], lm: LM, gm: GM): JobModel {
 }
 
 /**
- * baseline（附錄 A.4）：所有列 cs=='' 且至少一列 wiGroup 非空 → 依 rows 序把「連續同名非通用」段成 sub、
- * 各作業各自一排。回傳可套用的動作清單（動作在 jobsActions 定義）；不符條件 → null。
- * 純計算：只回「該做什麼」的描述，不改 store（呼叫端執行）。
+ * baseline（附錄 A.4，2026-09-12 修訂：全新／部分兩種）。純計算，回動作清單；F3 在 hydrate 後套用。
+ * 候選段＝依 rows 序「連續、wiGroup 相同非空、皆非通用、皆未分組(cs=='')」的極大段（長度 ≥2）。
+ * 無候選段 → null。全新（所有列 cs==''）：候選段成 sub + 每個 Job 依序各自一排（setLayer k）。
+ * 部分（已有任何群組）：只把候選段成 sub，不重排 layer（新 sub level＝其第一列現有 level）。
  */
-export interface BaselineAction { kind: 'group'; ids: string[]; name: string; row: number }
+export interface BaselineAction { kind: 'group'; ids: string[]; name: string }
+export interface BaselinePlan { actions: BaselineAction[]; pristine: boolean }
 
-export function proposeBaseline(rows: Row[], lm: LM): BaselineAction[] | null {
-  const anyGroup = rows.some(r => cs(lm, r.id) !== '')
-  if (anyGroup) return null
-  const anyName = rows.some(r => (r.wiGroup || '').trim())
-  if (!anyName) return null
-
-  const actions: BaselineAction[] = []
-  let rowNo = 0
-  let i = 0
+export function proposeBaseline(rows: Row[], lm: LM): BaselinePlan | null {
   const cell = (id: string) => lm[id] || blankCell(0)
+  const pristine = rows.every(r => (cell(r.id).countersignature || '').trim() === '')
+
+  const segments: BaselineAction[] = []
+  let i = 0
   while (i < rows.length) {
     const r = rows[i]
     const wg = (r.wiGroup || '').trim()
-    const isGen = cell(r.id).isGeneral
-    // 連續同名非通用段
-    if (wg && !isGen) {
+    const eligible = wg && !cell(r.id).isGeneral && (cell(r.id).countersignature || '').trim() === ''
+    if (eligible) {
       const seg = [r.id]
       let j = i + 1
-      while (j < rows.length && (rows[j].wiGroup || '').trim() === wg && !cell(rows[j].id).isGeneral) {
-        seg.push(rows[j].id)
-        j++
+      while (j < rows.length) {
+        const rj = rows[j]
+        if ((rj.wiGroup || '').trim() === wg && !cell(rj.id).isGeneral && (cell(rj.id).countersignature || '').trim() === '') {
+          seg.push(rj.id)
+          j++
+        } else break
       }
-      rowNo++
-      actions.push({ kind: 'group', ids: seg, name: wg, row: rowNo })
+      if (seg.length >= 2) segments.push({ kind: 'group', ids: seg, name: wg })
       i = j
     } else {
-      rowNo++
-      actions.push({ kind: 'group', ids: [r.id], name: wg, row: rowNo })
       i++
     }
   }
-  return actions
+  if (segments.length === 0) return null
+  return { actions: segments, pristine }
 }

@@ -50,6 +50,8 @@ export function JobDrawer({ jobId, report, editable }: Props) {
   const stepIds = [...job.steps, ...job.generalSteps]
   const subset = sel.filter(id => stepIds.includes(id))
   const scopeSel = subset.length > 0
+  // 只有通用步驟的作業（無 steps）：四題與固定站不適用（general 不得入群組 → E_GENERAL_IN_GROUP）。
+  const generalOnly = job.steps.length === 0
 
   const displayName = job.name ?? (rowNarr(rowById(stepIds[0]!) ?? ({} as Row)) || t('levelSystem.jobs.unnamed'))
   const nameValue = nameDraft ?? displayName
@@ -100,11 +102,16 @@ export function JobDrawer({ jobId, report, editable }: Props) {
 
       {/* 四個是非題 */}
       <div className="space-y-2">
+        {generalOnly && (
+          <div className="text-[11px] text-slate-500 bg-slate-100 rounded px-2 py-1" data-testid="drawer-general-only">
+            {t('levelSystem.jobs.q.generalOnly')}
+          </div>
+        )}
         {/* 同一工站 */}
         <Question
           testId="drawer-q-station"
           checked={job.sameStation}
-          disabled={!editable || job.sameStation}
+          disabled={!editable || generalOnly || job.sameStation}
           onChange={on => A.setSameStation(job, on, subsetArg)}
           label={<Trans i18nKey="levelSystem.jobs.q.station" components={{ b: <b /> }} />}
           hint={job.sameStation ? t('levelSystem.jobs.q.stationAlready') : t('levelSystem.jobs.q.stationHint')}
@@ -113,7 +120,7 @@ export function JobDrawer({ jobId, report, editable }: Props) {
         <Question
           testId="drawer-q-person"
           checked={job.samePerson}
-          disabled={!editable || personDisabled}
+          disabled={!editable || generalOnly || personDisabled}
           onChange={on => A.setSamePerson(job, on, subsetArg)}
           label={<Trans i18nKey="levelSystem.jobs.q.person" components={{ b: <b /> }} />}
           hint={personDisabled ? t('levelSystem.jobs.q.personBlocked', { count: personBlockedCount }) : t('levelSystem.jobs.q.personHint')}
@@ -122,7 +129,7 @@ export function JobDrawer({ jobId, report, editable }: Props) {
         <Question
           testId="drawer-q-offline"
           checked={job.offline}
-          disabled={!editable}
+          disabled={!editable || generalOnly}
           onChange={on => A.setOffline(job, on, subsetArg)}
           label={<Trans i18nKey="levelSystem.jobs.q.offline" components={{ b: <b /> }} />}
           hint={t('levelSystem.jobs.q.offlineHint')}
@@ -139,9 +146,10 @@ export function JobDrawer({ jobId, report, editable }: Props) {
               type="number"
               min={1}
               className="border rounded w-16 px-1 text-xs"
-              placeholder={t('levelSystem.jobs.q.pinPrompt')}
+              placeholder={t('levelSystem.jobs.q.pinPlaceholder')}
+              title={t('levelSystem.jobs.q.pinPrompt')}
               value={job.pin ?? ''}
-              disabled={!editable}
+              disabled={!editable || generalOnly}
               onChange={e => {
                 const v = e.target.value
                 A.setPin(job, v === '' ? null : Math.max(1, parseInt(v, 10) || 1))

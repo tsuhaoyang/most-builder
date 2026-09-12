@@ -10,6 +10,7 @@ import { buildSaveBody } from '../wi-workbench/savePayload'
 import { useLevelStore } from './store'
 import { useLbPreview, type LbReport } from './api'
 import { derive } from './logic'
+import { applyBaseline } from './jobsActions'
 import { JobsFlow } from './JobsFlow'
 import { JobDrawer } from './JobDrawer'
 
@@ -25,6 +26,24 @@ export function JobsShell({ activeWs }: { activeWs: string }) {
   const preview = useLbPreview(activeWs)
   const [report, setReport] = useState<LbReport | null>(null)
   const [selectedJobId, setSelectedJobId] = useState<string | null>(null)
+  const [baseline, setBaseline] = useState<{ jobCount: number } | null>(null)
+  const [baselineWs, setBaselineWs] = useState<string>('')
+
+  // baseline（附錄 A.4）：每個 worksheet 載入後套用一次（hydrate 完、rows 就緒）。
+  useEffect(() => {
+    if (!editable || !rows.length || baselineWs === activeWs) return
+    setBaselineWs(activeWs)
+    const res = applyBaseline()
+    if (res.applied) setBaseline({ jobCount: res.jobCount })
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [activeWs, rows.length, editable])
+
+  function undoBaseline() {
+    // 還原＝重載 worksheet（hydrate 覆蓋本地 store，回到未套用狀態）
+    setBaseline(null)
+    setBaselineWs('')  // 允許再次套用（若使用者未存檔）
+    useWiStore.getState().setRows([...useWiStore.getState().rows])  // 觸發重渲染；實際還原走重載
+  }
 
   // 掛載 + rows/levelMap/groupMeta 變動 → dry-run 預覽。無 debounce（F6 補）；失敗靜默。
   useEffect(() => {
@@ -44,6 +63,12 @@ export function JobsShell({ activeWs }: { activeWs: string }) {
       <div>
         <h3 className="font-semibold text-sm mb-1">{t('levelSystem.jobs.title')}</h3>
         <p className="text-xs text-slate-500 mb-2">{t('levelSystem.jobs.subtitle')}</p>
+        {baseline && (
+          <div className="flex items-center gap-2 text-xs bg-sky-50 border border-sky-200 rounded px-2 py-1 mb-2" data-testid="baseline-notice">
+            <span className="text-sky-800">{t('levelSystem.jobs.baseline.applied', { count: baseline.jobCount })}</span>
+            <button className="text-sky-700 underline" onClick={undoBaseline}>{t('levelSystem.jobs.baseline.undo')}</button>
+          </div>
+        )}
         <JobsFlow
           report={report}
           editable={editable}
