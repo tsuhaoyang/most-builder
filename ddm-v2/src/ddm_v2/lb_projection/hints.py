@@ -26,6 +26,9 @@ class Hint:
     def as_dict(self) -> dict[str, Any]:
         return {"kind": self.kind, "key": self.key, "wi_row_ids": self.wi_row_ids, "params": self.params}
 
+    # 別名（實作書快照測試用 to_dict；report.py 用 as_dict）
+    to_dict = as_dict
+
 
 def _mk(kind: str, ids: list[str], params: dict[str, Any]) -> Hint:
     sid = sorted(ids)
@@ -51,26 +54,32 @@ def hints(result: Any, rows: list[ProjectionRow]) -> list[Hint]:
         r = row_by_id.get(rid)
         return (r.level.countersignature or "").strip() if r else ""
 
-    def _is_cub(rid: str) -> bool:
-        c = _cs(rid)
-        return c.startswith("cub")
+    def _all_same_cub(ids: list[str]) -> bool:
+        cubs = [_cs(i) for i in ids]
+        return all(c.startswith("cub") for c in cubs) and len(set(cubs)) == 1
 
-    # ── H_TOOL_EPISODE_SAME_STATION：同 chain 內一個工具 episode 跨 ≥2 列、不全在同一 cub ──
+    # ── H_TOOL_EPISODE_SAME_STATION：Pattern A episode 狀態機（§7.2）──
+    # 沿 chain 順序：acquire（不含 release）開始一段 → use 延續 → release 結束；
+    # 只看 MotionPlan.parts（resolve_chain 已算好）。Pattern B 單列（acquire+release 同列）不參與。
     for ch in chains:
-        ids = list(getattr(ch, "ordered_row_ids", []))
-        # 依 tool_id 收集該 chain 的持工具列（有 plan.tool_id）
-        by_tool: dict[str, list[str]] = {}
-        for rid in ids:
+        open_ep: dict[str, list[str]] = {}   # tool_id → 開啟中的段
+        for rid in getattr(ch, "ordered_row_ids", []):
             p = plan_by_id.get(rid)
-            if p is not None and getattr(p, "tool_id", None):
-                by_tool.setdefault(p.tool_id, []).append(rid)
-        for tool_id, tool_ids in by_tool.items():
-            if len(tool_ids) < 2:
+            if p is None or not getattr(p, "tool_id", None):
                 continue
-            cubs = {_cs(rid) for rid in tool_ids if _is_cub(rid)}
-            all_same_cub = len(cubs) == 1 and all(_is_cub(rid) for rid in tool_ids)
-            if not all_same_cub:
-                _add(_mk("H_TOOL_EPISODE_SAME_STATION", tool_ids, {"tool_id": tool_id}))
+            parts, tool_id = set(p.parts), p.tool_id
+            if "acquire" in parts and "release" in parts:
+                continue                          # Pattern B 單列：已閉合，不參與
+            if "acquire" in parts:
+                open_ep[tool_id] = [rid]          # 開始（含 ['acquire','use']）
+                continue
+            if tool_id not in open_ep:
+                continue                          # 孤兒 use/release：resolve_chain 已報 E，hints 忽略
+            open_ep[tool_id].append(rid)
+            if "release" in parts:
+                seg = open_ep.pop(tool_id)
+                if len(seg) >= 2 and not _all_same_cub(seg):
+                    _add(_mk("H_TOOL_EPISODE_SAME_STATION", seg, {"tool_id": tool_id}))
 
     # ── H_LOT_RUN_SEGMENT：同 chain 連續、frequency>1 整數相等、≥2 列、至少一列無 segment ──
     for ch in chains:
