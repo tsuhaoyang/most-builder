@@ -101,9 +101,11 @@ def _pa(seq, part, *, cs="sub9", head=False, tool="scanner"):
     is_gm = part in ("acquire", "release")
     lvl = {"countersignature": cs, "order": seq}
     if head:
-        lvl["ascription"] = "main"; lvl["level"] = "1"
+        lvl["ascription"] = "main"
+        lvl["level"] = "1"
     else:
-        lvl["ascription"] = None; lvl["level"] = None
+        lvl["ascription"] = None
+        lvl["level"] = None
     return ProjectionRow.model_validate({
         "wi_row_id": f"00000000-0000-4000-8000-{seq:012d}", "seq_no": seq,
         "object_vocab": tool, "tool_vocab": None, "frequency": 1,
@@ -128,8 +130,12 @@ def test_two_pattern_b_same_tool_no_episode_hint():
     # 兩個獨立 Pattern B 列（tool_vocab=scanner，各自拆三列），同 sub、同 tool → episode 0 條
     def _pb(seq, head):
         lvl = {"countersignature": "sub9", "order": seq}
-        if head: lvl["ascription"] = "main"; lvl["level"] = "1"
-        else: lvl["ascription"] = None; lvl["level"] = None
+        if head:
+            lvl["ascription"] = "main"
+            lvl["level"] = "1"
+        else:
+            lvl["ascription"] = None
+            lvl["level"] = None
         return ProjectionRow.model_validate({
             "wi_row_id": f"00000000-0000-4000-8000-{seq:012d}", "seq_no": seq,
             "tool_vocab": "scanner", "object_vocab": None, "frequency": 1,
