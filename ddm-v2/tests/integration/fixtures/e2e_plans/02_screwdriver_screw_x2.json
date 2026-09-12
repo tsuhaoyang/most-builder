@@ -1,7 +1,7 @@
 {
   "id": "02_screwdriver_screw_x2",
   "source_text": "拿取電動起子，依圖示鎖附兩顆螺絲",
-  "notes": "GM acquire + CM process；frequency=2 + quantity_policy_review",
+  "notes": "GM acquire + CM process；持工具 quantity=2 → x4.repeat_count=2（ADR-035 D4；frequency=1，effective TMU 不變）+ quantity_policy_review",
   "plan": {
     "schema_version": "wi-plan-v1",
     "source_text": "拿取電動起子，依圖示鎖附兩顆螺絲",
@@ -56,9 +56,9 @@
       "complete": true,
       "seq": "CM",
       "x_code": "x_screw_fix",
-      "frequency": 2,
-      "total_tmu": 6.0,
-      "tech_line": "A0 B0 G0 M0 X6 I0 A0",
+      "frequency": 1,
+      "total_tmu": 12.0,
+      "tech_line": "A0 B0 G0 M0 X12 I0 A0",
       "issues_contain": ["quantity_policy_review"]
     }
   ]
