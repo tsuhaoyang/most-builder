@@ -220,6 +220,8 @@ export function WiWorkbench() {
   const [tmu, setTmu] = useState<number | null>(null)
   const [tech, setTech] = useState('')
   const [saveMsg, setSaveMsg] = useState('')
+  // ADR-035 D10 F7：新列的「作業」（wi_group）名稱；add() 帶入並保留（連續加同一作業的多列）
+  const [curWiGroup, setCurWiGroup] = useState('')
   const editable = canEdit(me)
 
   // ── [D] drag state ──────────────────────────────────────────────────────────
@@ -293,6 +295,25 @@ export function WiWorkbench() {
     }), 250)
     return () => clearTimeout(id)
   }, [JSON.stringify(payload)]) // eslint-disable-line react-hooks/exhaustive-deps
+
+  // ADR-035 D10 F7：既有列的 wi_group 名稱清單（去重、非空）→ datalist 重用；避免同義字打錯。
+  // 兩個 useMemo 必須在任何 early-return 之前（Rules of Hooks）。
+  const wiGroupOptions = useMemo(
+    () => Array.from(new Set(rows.map(r => (r.wiGroup || '').trim()).filter(Boolean))),
+    [rows],
+  )
+  // 由 rows.wiGroup 直接推導的作業大綱（讀回「作業」欄；與手動 WI 分組並存）
+  const derivedJobOutline = useMemo(() => {
+    const order: string[] = []
+    const byName = new Map<string, Row[]>()
+    for (const r of rows) {
+      const name = (r.wiGroup || '').trim()
+      if (!name) continue
+      if (!byName.has(name)) { byName.set(name, []); order.push(name) }
+      byName.get(name)!.push(r)
+    }
+    return order.map(name => ({ name, rows: byName.get(name)! }))
+  }, [rows])
 
   // 錯誤態必須與載入態可分（否則設定錯誤會永遠停在 spinner）
   const ruleSetErr = active.error ?? optsErr
@@ -557,7 +578,8 @@ export function WiWorkbench() {
     addRow({
       id: crypto.randomUUID(), seq: cur.seq, handCode: cur.handCode, freq: cur.freq, simoGroup: cur.simoGroup,
       // narr 留空＝「還沒有後端敘述」；預覽句由 useRowNarr 在顯示時重算
-      nv: { ...cur.nv }, narr: '', narrEn: null, wiGroup: null, tmu, seconds: tmu * TMU_SEC, payload,
+      // wiGroup（作業）：帶入編輯器目前輸入值；不清空 curWiGroup，連續加同一作業的多列免重打
+      nv: { ...cur.nv }, narr: '', narrEn: null, wiGroup: curWiGroup.trim() || null, tmu, seconds: tmu * TMU_SEC, payload,
     } as Row)
   }
 
@@ -609,6 +631,8 @@ export function WiWorkbench() {
     }
   }
 
+  // ADR-035 D10 F7：由 rows.wiGroup 直接推導的作業大綱（讀回「作業」欄；與手動 WI 分組並存）
+  // ADR-035 D10 F7：由 rows.wiGroup 直接推導的作業大綱（讀回「作業」欄；與手動 WI 分組並存）
   const total = totalTmu()
 
   // ── render ─────────────────────────────────────────────────────────────────
@@ -626,12 +650,14 @@ export function WiWorkbench() {
           ruleSetCode={opts?.code}
           worksheetId={activeWs || null}
           canWriteReviews={editable}
-          onAdoptCycle={(cycle) => {
+          onAdoptCycle={(cycle, wiGroup) => {
             setCur((c) => {
               const next = payloadToState(cycle)
               // 保留手別／語彙情境，不整頁清空
               return { ...next, handCode: c.handCode || next.handCode, nv: { ...c.nv } }
             })
+            // ADR-035 D10 §13-5：作業欄若尚空，帶入來源語句預設（不覆蓋使用者已填值）
+            if (wiGroup) setCurWiGroup((prev) => prev.trim() ? prev : wiGroup)
           }}
           onLegacyFill={(patch) => setCur((c) => ({ ...c, ...patch }))}
         />
@@ -687,6 +713,14 @@ export function WiWorkbench() {
           <span className="text-slate-500">{t('workbench.wiEditor.simoLabel')}</span>
           <input className="border rounded w-20 px-1 py-0.5" value={cur.simoGroup}
             onChange={e => set({ simoGroup: e.target.value })} placeholder={t('workbench.wiEditor.simoPlaceholder')} />
+          {/* ADR-035 D10 F7：作業（wi_group）名稱——新列帶此值；datalist 供重用既有作業名 */}
+          <span className="text-slate-500">{t('workbench.wiEditor.jobLabel')}</span>
+          <input className="border rounded w-40 px-1 py-0.5" value={curWiGroup}
+            list="wi-group-options" maxLength={200} data-testid="editor-wi-group"
+            onChange={e => setCurWiGroup(e.target.value)} placeholder={t('workbench.wiEditor.jobPlaceholder')} />
+          <datalist id="wi-group-options">
+            {wiGroupOptions.map(name => <option key={name} value={name} />)}
+          </datalist>
           <span className="font-mono text-slate-500 text-xs">{tech || '—'}</span>
           <span className="ml-auto">
             <Trans
@@ -753,6 +787,7 @@ export function WiWorkbench() {
                 <th className="p-1">#</th>
                 <th className="p-1">{t('workbench.wiEditor.colHand')}</th>
                 <th className="p-1">{t('workbench.wiEditor.colNarrative')}</th>
+                <th className="p-1">{t('workbench.wiEditor.colJob')}</th>
                 <th className="p-1">Base TMU</th>
                 {/* D-3 freq input */}
                 <th className="p-1">{t('workbench.wiEditor.colFreq')}</th>
@@ -803,6 +838,14 @@ export function WiWorkbench() {
                     <td className="p-1">{i + 1}</td>
                     <td className="p-1">{r.handCode}</td>
                     <td className="p-1 max-w-xs truncate">{rowNarr(r)}</td>
+                    {/* ADR-035 D10 F7：作業（wi_group）欄——可直接編輯，共用同一 datalist */}
+                    <td className="p-1">
+                      <input className="border rounded w-36 px-1 py-0.5 text-xs" value={r.wiGroup ?? ''}
+                        list="wi-group-options" maxLength={200} disabled={!editable}
+                        data-testid={`row-wi-group-${r.id}`}
+                        placeholder={t('workbench.wiEditor.jobPlaceholder')}
+                        onChange={e => updateRow(r.id, { wiGroup: e.target.value.trim() || null })} />
+                    </td>
                     <td className="p-1"><b>{r.tmu}</b></td>
                     {/* D-3 freq input */}
                     <td className="p-1">
@@ -844,7 +887,7 @@ export function WiWorkbench() {
                 )
               })}
               {rows.length === 0 && (
-                <tr><td colSpan={12} className="p-3 text-slate-400">{t('workbench.wiEditor.noRows')}</td></tr>
+                <tr><td colSpan={13} className="p-3 text-slate-400">{t('workbench.wiEditor.noRows')}</td></tr>
               )}
             </tbody>
           </table>
@@ -878,6 +921,21 @@ export function WiWorkbench() {
           <span className="text-xs text-slate-500">{saveMsg}</span>
         </div>
       </div>
+
+      {/* ═══ [ADR-035 D10 F7] 作業大綱（由 rows.wiGroup 推導）═══ */}
+      {derivedJobOutline.length > 0 && (
+        <div className="bg-white rounded-xl border p-4" data-testid="job-outline">
+          <h2 className="font-semibold mb-2">{t('workbench.wiEditor.jobOutlineTitle', { count: derivedJobOutline.length })}</h2>
+          <div className="space-y-1">
+            {derivedJobOutline.map(job => (
+              <div key={job.name} className="flex items-center gap-3 px-3 py-1.5 border rounded-lg text-sm" data-testid="job-outline-row">
+                <span className="font-medium flex-1 truncate" title={job.name}>{job.name}</span>
+                <span className="text-xs text-slate-500 shrink-0">{t('workbench.wiEditor.groupActions', { count: job.rows.length })}</span>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
 
       {/* ═══ [E-2] WI Outline ═══ */}
       {wiGroups.length > 0 && (

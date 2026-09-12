@@ -38,7 +38,7 @@ export function AiDraftPanel({
   ruleSetCode: string | undefined
   worksheetId: string | null | undefined
   canWriteReviews: boolean
-  onAdoptCycle: (cycle: Record<string, unknown>) => void
+  onAdoptCycle: (cycle: Record<string, unknown>, wiGroup?: string | null) => void
   onLegacyFill: (patch: Partial<CycleState>) => void
 }) {
   const { t } = useTranslation()
@@ -95,7 +95,9 @@ export function AiDraftPanel({
     const draft = drafts.find((d) => d.action_id === actionId)
     if (!draft?.cycle) return
     if (revisionStaleBlocked()) return
-    onAdoptCycle(draft.cycle)
+    // ADR-035 D10 §13-5：採用草稿時，「作業」預設＝來源 NL 語句（≤80 字），供人辨識這組動作屬哪個作業
+    const wiGroupDefault = text.trim().slice(0, 80) || null
+    onAdoptCycle(draft.cycle, wiGroupDefault)
     markAdopted(actionId)
     if (canWriteReviews && ai?.run_id) {
       try {
