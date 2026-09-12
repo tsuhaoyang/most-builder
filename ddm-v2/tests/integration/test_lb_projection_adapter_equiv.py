@@ -59,18 +59,26 @@ async def test_two_paths_equivalent(client, db_session):
     b_by = {r.wi_row_id: r for r in b}
     assert set(a_by) == set(b_by)
 
-    # 投影層實際消費的欄位必須相等（slot_tmus/total_tmu/x_seconds/repeat_counts/seq_kind/narrative_en/
-    # frequency/simo/object/tool/level/lb_tags）。cosmetic 的 narrative_zh／rule_set_code／slot_inputs
-    # 因來源不同（read_worksheet vs save payload）在鍵序／None 上有差異，但投影層不讀它們，故排除比對——
-    # 真正的等價由「兩路徑 project_rows 的 report 相等」保證（見 test_export_lb_preview.test_preview_equals_saved_report）。
+    # 排除 narrative_zh／rule_set_code：投影層不消費（rs 另以 slot_inputs_by_row 的 rs 傳入、rule_set_code
+    # 由 rs_by_row 承載），兩來源（read_worksheet vs save payload）在這兩欄本就不同，不影響投影。
+    # slot_inputs **是**投影消費欄（driver decompose_engine／strip_repeats）→ 納入比對，但先正規化：
+    # 遞迴丟掉值為 None 的鍵、sort_keys（兩來源鍵序不同但語意相同）。正規化後仍不等＝真差異。
+    def _norm(v):
+        if isinstance(v, dict):
+            return {k: _norm(x) for k, x in sorted(v.items()) if x is not None}
+        if isinstance(v, list):
+            return [_norm(x) for x in v]
+        return v
+
     def _proj_view(r):
         c = r.cycle
         return {
             "seq_no": r.seq_no, "hand": r.hand, "object_vocab": r.object_vocab, "tool_vocab": r.tool_vocab,
             "frequency": r.frequency, "simo_group_id": r.simo_group_id,
             "cycle": {"seq_kind": c.seq_kind, "slot_tmus": c.slot_tmus, "repeat_counts": c.repeat_counts,
-                      "x_seconds": c.x_seconds, "total_tmu": c.total_tmu, "narrative_en": c.narrative_en},
+                      "x_seconds": c.x_seconds, "total_tmu": c.total_tmu, "narrative_en": c.narrative_en,
+                      "slot_inputs": _norm(c.slot_inputs)},
             "level": r.level.model_dump(), "lb_tags": r.lb_tags.model_dump(),
         }
     for wid in a_by:
-        assert _proj_view(a_by[wid]) == _proj_view(b_by[wid]), f"row {wid} 投影相關欄位不一致"
+        assert _proj_view(a_by[wid]) == _proj_view(b_by[wid]), f"row {wid} 投影相關欄位不一致（含正規化 slot_inputs）"

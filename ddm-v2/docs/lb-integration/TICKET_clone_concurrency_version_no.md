@@ -1,6 +1,7 @@
 # TICKET: clone_worksheet 併發產生 process_versions 唯一鍵衝突（500）
 
 - **狀態**：**closed**（fix commit：見 `fix(worksheet): serialize version_no allocation per SKU with advisory lock`）
+  - 已知前提：**版本不可刪**（目前無任何 ProcessVersion 刪除路徑），故 `COUNT+1` 與 `MAX+1` 等價且安全；若日後開放刪除，須改為「數字後綴的 `MAX+1`」（COUNT 會跳號重用）。
 - **回報者**：MOST agent（ADR-035 D10 F1 收尾取證，Howard 要求）
 - **嚴重度**：中（正常單人操作不觸發；併發 clone 同一 worksheet 時 500）
 
@@ -21,8 +22,8 @@ asyncpg.exceptions.UniqueViolationError: duplicate key value violates unique con
   → SQLAlchemy IntegrityError → error_handlers.integrity_error_handler
 ```
 
-`clone_worksheet` 為同一 `sku_id` 建新 `ProcessVersion`，`version_no = max(version_no)+1`。
-兩個併發交易讀到相同的 `max`，各自 insert 相同 `(sku_id, version_no)` → 撞 partial/複合 unique
+`clone_worksheet` 為同一 `sku_id` 建新 `ProcessVersion`，`version_no = "v{COUNT(*)+1}"`。
+兩個併發交易讀到相同的 count，各自 insert 相同 `(sku_id, version_no)` → 撞 partial/複合 unique
 `uq_process_versions_sku_id_version_no`。這是 **read-modify-write 的競態**，非測試隔離問題
 （兩 spec 各自 clone、不共享前端 state；證據＝失敗發生在 clone HTTP 呼叫，早於任何前端互動）。
 
