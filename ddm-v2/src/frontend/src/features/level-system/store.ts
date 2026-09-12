@@ -16,7 +16,7 @@ interface LevelState {
   sync: () => void
   patchCell: (id: string, patch: Partial<LevelCell>) => void
   moveTo: (rowId: string, label: string) => void
-  createGroup: (type: 'sub' | 'cub', parent: string) => void
+  createGroup: (type: 'sub' | 'cub', parent: string) => string
   dissolveGroup: (label: string) => void
   // WP12 LB projection tag setters（client propagation UX only；後端才是權威）
   toggleOffline: (rowId: string) => void
@@ -26,7 +26,7 @@ interface LevelState {
   setGeneralRole: (id: string, role: string) => void
   toggleMergeLock: (id: string) => void
   setActionType: (id: string, s: string) => void
-  createWcub: () => void
+  createWcub: () => string
   assignWcub: (rowId: string, label: string) => void
   removeWcub: (label: string) => void
   clearWcubError: () => void
@@ -63,10 +63,15 @@ export const useLevelStore = create<LevelState>((set, get) => ({
     levelMap: { ...s.levelMap, [rowId]: { ...(s.levelMap[rowId] || blankCell(0)), countersignature: label } },
   })),
 
-  createGroup: (type, parent) => set(s => {
-    let n = 1; while (s.groupMeta[type + n]) n++
-    return { groupMeta: { ...s.groupMeta, [type + n]: { type, parent: parent || '', seq: s.gseq + 1 } }, gseq: s.gseq + 1 }
-  }),
+  createGroup: (type, parent) => {
+    // 加法（ADR-035 D10 F2）：回傳新 label（作業版動作需要）。先算 label 再 set。
+    const s = get()
+    let n = 1
+    while (s.groupMeta[type + n]) n++
+    const label = type + n
+    set({ groupMeta: { ...s.groupMeta, [label]: { type, parent: parent || '', seq: s.gseq + 1 } }, gseq: s.gseq + 1 })
+    return label
+  },
 
   dissolveGroup: (label) => set(s => {
     const lm = { ...s.levelMap }; const gm = { ...s.groupMeta }
@@ -112,10 +117,14 @@ export const useLevelStore = create<LevelState>((set, get) => ({
   setActionType: (id, str) => set(s => ({ levelMap: { ...s.levelMap, [id]: { ...(s.levelMap[id] || blankCell(0)), actionType: str } } })),
 
   // wcub（同人）群組：獨立於 groupMeta，永不進 level 引擎。
-  createWcub: () => set(s => {
-    let n = 1; while (s.workerCubMeta['wcub' + n]) n++
-    return { workerCubMeta: { ...s.workerCubMeta, ['wcub' + n]: { seq: s.wseq + 1 } }, wseq: s.wseq + 1 }
-  }),
+  createWcub: () => {
+    const s = get()
+    let n = 1
+    while (s.workerCubMeta['wcub' + n]) n++
+    const label = 'wcub' + n
+    set({ workerCubMeta: { ...s.workerCubMeta, [label]: { seq: s.wseq + 1 } }, wseq: s.wseq + 1 })
+    return label
+  },
 
   // 指派 wcub：freq>1 或 tool-held 列必須 BLOCK（不指派）並亮錯誤指示。
   assignWcub: (rowId, label) => set(s => {
