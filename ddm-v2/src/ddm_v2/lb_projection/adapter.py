@@ -87,10 +87,21 @@ def _build_projection_row(
     """唯一對映規則（read_worksheet 與 save payload 兩路徑共用；避免兩份漂移）。
 
     level 六欄 ← level dict；lb_tags ← 頂層 lb_tags（缺 key 時 fallback 到 level dict，相容舊資料）。
-    slot 級 repeat_count 在 WP3 tmu.py 依 slot_inputs 精確處理，此處 repeat_counts 留空（結構搬運）。
+    repeat_counts ← slot_inputs 的 g2/m3/x4/i5/p5 的 repeat_count（鍵＝slot index，對齊 tmu.py §3.3）。
     """
     def _tag(key: str, default: Any = None) -> Any:
         return lb_tags.get(key, level.get(key, default))
+
+    # slot_inputs（CycleIn dump）→ repeat_counts（slot index → N）；tmu.repeat_block 依此找 R。
+    # slot 對映：g2→2、m3→3、x4→4、i5→5、p5→5（GM）。
+    repeat_counts: dict[str, int] = {}
+    si = slot_inputs if isinstance(slot_inputs, dict) else {}
+    for slot_key, idx in (("g2", "2"), ("m3", "3"), ("x4", "4"), ("i5", "5"), ("p5", "5")):
+        slot = si.get(slot_key)
+        if isinstance(slot, dict):
+            rc = slot.get("repeat_count")
+            if rc not in (None, 1):
+                repeat_counts[idx] = int(rc)
 
     return ProjectionRow.model_validate({
         "wi_row_id": wi_row_id, "seq_no": seq_no,
@@ -98,7 +109,7 @@ def _build_projection_row(
         "object_vocab": object_vocab, "tool_vocab": tool_vocab,
         "frequency": frequency, "simo_group_id": simo_group_id,
         "cycle": {
-            "seq_kind": seq_kind, "slot_tmus": slot_tmus, "repeat_counts": {},
+            "seq_kind": seq_kind, "slot_tmus": slot_tmus, "repeat_counts": repeat_counts,
             "x_seconds": x_seconds, "total_tmu": total_tmu, "tech_line": tech_line,
             "narrative_en": narrative_en, "narrative_zh": narrative_zh,
             "slot_inputs": slot_inputs, "rule_set_code": rule_set_code,
