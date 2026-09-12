@@ -1,0 +1,10 @@
+const fs = require("fs"); const D = require("./data.js"), E = require("./engine.js"), JB = require("./jobs.js");
+const J = JB.example(D.LABELS); J.jobs = J.jobs.filter((j) => j.id !== "j-Q");
+const st = JB.toEngineState(J, D.LABELS); const rows24 = D.rows.filter((r) => r.seq <= 24);
+const p = E.project(rows24, st);
+const golden = fs.readFileSync(require("path").join(__dirname, "..", "..", "fixtures", "server_node_tasks.expected.csv"), "utf8");
+console.log("jobs→engine: tasks", p.tasks.length, "E", p.errors.map((e) => e.code), "W", p.warnings.map((w) => w.code), "golden:", E.toCsv(p.tasks) === golden ? "byte-identical ✅" : "DIFF ❌");
+const full = E.project(D.rows, JB.toEngineState(JB.example(D.LABELS), D.LABELS));
+console.log("with 風扇 job: tasks", full.tasks.length, "E", full.errors.map((e) => e.code), "sugg", E.suggestions(D.rows, JB.toEngineState(JB.example(D.LABELS), D.LABELS), full).map((s) => s.kind));
+const b = JB.baseline(D.rows); const pb = E.project(D.rows, JB.toEngineState(b, D.LABELS));
+console.log("baseline: jobs", b.jobs.map((j) => `${j.name}(${j.steps.length})@${j.row}`).join(" | "), "\n  tasks", pb.tasks.length, "E", pb.errors.map((e) => e.code + ":" + e.rowId), "W", [...new Set(pb.warnings.map((w) => w.code))]);

@@ -86,6 +86,14 @@
 - 匯出前顯示 §8.2 報告；E 碰擋、W 碼列出。
 - i18n：zh-TW／en 同步（ADR-032）。E2E 覆蓋「圈 wcub → offline 傳染 → 匯出報告」。
 
+> **追記（2026-09-12，D10 修訂）**：上述「LB 標記層」UI 已於 WP12 落地（`4ada705`/`d73467f`），但 User 實測回饋：sub／cub／wcub／segment／pin／general 是模型詞彙，一般使用者只懂「工序」。因此 D10 修訂為**兩層視圖、同一 store**：
+> 1. **作業版（預設）**：使用者只操作「作業（一組接著做的步驟，有名字）」「排（同一排＝可同時做）」與每個作業最多四個是非題（同一工站／同一個人一口氣／離線先做／固定站）；sub／cub／wcub／offline／pin 由作業視圖**反投影**自 `useLevelStore`（store 仍是唯一真相，`derive()` 不變）。作業名稱新增 `wi_rows.wi_group`，由手動、AI 草稿、Excel 匯入、模組實體化四條路徑填入。
+> 2. **進階檢視**：WP12 的 IE 視圖原樣保留（nb、離散層級、難度係數仍在此）。
+> 3. **「系統看出來的事」不接 LLM**：提示（同站建議、批量建議、工具自動拆列說明、機台時間說明）由後端投影資料以確定性規則產生（`lb_projection/hints.py`），E／W 碼由前端 i18n 模板轉成使用者語言；不做敘述關鍵字猜測。
+> 4. **未存檔預覽**：新增 `POST …/export/lb-report/preview`（dry-run，與存檔後 `lb-report` 同一投影路徑、同一報告 builder）；報告加法欄位 `rows[]`／`hints[]`／`params`，CSV 與 `CONTRACT_VERSION` 不變。
+> 5. `divisible`／`splittable` **不加 DB 欄、不加 UI**：LB 端 ADR-023 §4 明列「MOST 不輸出 `divisible`；與 quantity 收斂另立 ADR」。產品路徑恆 0；黃金 fixture O 列的 `lb_tags.splittable` 僅為覆蓋 24 欄，投影層對應保留。
+> 實作書：`docs/lb-integration/LEVEL_SYSTEM_JOB_UX_IMPLEMENTATION_SPEC.md`（含反投影形式定義、動作→store 變更表、i18n 全目錄、規則表）。設計原型：`docs/lb-integration/prototypes/level-jobs/`。
+
 ---
 
 ## 3. 被否決的方案

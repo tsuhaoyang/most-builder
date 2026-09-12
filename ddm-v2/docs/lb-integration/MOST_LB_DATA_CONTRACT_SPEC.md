@@ -209,7 +209,7 @@ Kahn 拓撲排序，就緒集合以 `(seq_no, part_index)` 最小者優先（par
 | `offline_flag` | 0/1 | `offline` | 必填 |
 | `tool_id` | snake_case | §4.4 | 非工具列空 |
 | `tool_action` | acquire/use/release | §4 | 非工具列空；與 `tool_id` 同空同非空 |
-| `divisible` | 0/1 | `splittable`；tool-held 或 Q>1 motion 標 splittable → `E_SPLITTABLE_CONFLICT` | 必填 |
+| `divisible` | 0/1 | `splittable`；tool-held 或 Q>1 motion 標 splittable → `E_SPLITTABLE_CONFLICT`。**追記（2026-09-12）**：`splittable` 只存在於投影層輸入（fixture 路徑，為覆蓋 24 欄）；`level_entries` 無此欄、UI 不提供，**產品路徑恆 0**——LB ADR-023 §4：「MOST 不輸出 `divisible`；與 quantity 收斂另立 ADR」。 | 必填 |
 | `p2` | — | **恆空**（D10：人數交 solver；LB 端可自行填） | 空 |
 | `quantity` | 正整數 | §3.2 | 必填（預設 1） |
 | `segment` | 字串 | `lb_tags.segment`；Q>1 時建議明填；同 segment 必同 cub（`E_SEGMENT_CROSS_GROUP`） | 空可 |

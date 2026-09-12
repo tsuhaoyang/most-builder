@@ -1,0 +1,249 @@
+<title>工序整理</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@600;700&family=Source+Sans+3:wght@400;600&family=IBM+Plex+Mono:wght@400;500&family=Noto+Sans+TC:wght@400;500;700&display=swap">
+<style>
+:root{
+  --bg:#F3F5F7; --surface:#FFFFFF; --surface-2:#EDF1F4; --ink:#1B2430; --muted:#5B6774; --rule:#D6DCE2; --code-bg:#E9EDF1;
+  --accent:#1F6F8B; --accent-soft:#DCE9EF; --station:#9A6B00; --station-soft:#F5EBD0; --person:#5A4E9E; --person-soft:#E3E0F2;
+  --gen:#B85C14; --gen-soft:#F6E4D3; --ok:#2E7D4F; --ok-soft:#DDEFE3; --bad:#9C3B2C; --bad-soft:#F4DDD8; --warn:#9A6B00; --warn-soft:#F5EBD0; --sel:#FFF3C4;
+  --font-body:"Source Sans 3","Noto Sans TC",system-ui,sans-serif; --font-head:"Barlow Condensed","Noto Sans TC",system-ui,sans-serif; --font-mono:"IBM Plex Mono",ui-monospace,Menlo,monospace;
+}
+@media (prefers-color-scheme: dark){ :root:not([data-theme="light"]){
+  --bg:#141A21; --surface:#1C242D; --surface-2:#222C36; --ink:#E6EBF0; --muted:#98A4B0; --rule:#2C3742; --code-bg:#222C36;
+  --accent:#6FB3D0; --accent-soft:#1E3440; --station:#E0B44C; --station-soft:#3A3220; --person:#A79BE0; --person-soft:#2A2640;
+  --gen:#E0904A; --gen-soft:#3A2A1C; --ok:#6CC08F; --ok-soft:#1E3427; --bad:#E08B7C; --bad-soft:#3D2521; --warn:#E0B44C; --warn-soft:#3A3220; --sel:#3D3A1E;
+}}
+:root[data-theme="dark"]{
+  --bg:#141A21; --surface:#1C242D; --surface-2:#222C36; --ink:#E6EBF0; --muted:#98A4B0; --rule:#2C3742; --code-bg:#222C36;
+  --accent:#6FB3D0; --accent-soft:#1E3440; --station:#E0B44C; --station-soft:#3A3220; --person:#A79BE0; --person-soft:#2A2640;
+  --gen:#E0904A; --gen-soft:#3A2A1C; --ok:#6CC08F; --ok-soft:#1E3427; --bad:#E08B7C; --bad-soft:#3D2521; --warn:#E0B44C; --warn-soft:#3A3220; --sel:#3D3A1E;
+}
+*{box-sizing:border-box} body{margin:0;background:var(--bg);color:var(--ink);font:15px/1.5 var(--font-body);padding-block:0 32px;padding-inline:16px}
+button{font:inherit;color:var(--ink);background:var(--surface);border:1px solid var(--rule);border-radius:6px;padding:5px 11px;cursor:pointer}
+button:hover{border-color:var(--accent)} button:disabled{opacity:.45;cursor:not-allowed} button.primary{background:var(--accent);color:#fff;border-color:var(--accent)} button.on{background:var(--accent-soft);color:var(--accent);border-color:var(--accent);font-weight:600}
+button.small{font-size:12px;padding:2px 7px;border-radius:4px}
+button:focus-visible,input:focus-visible,select:focus-visible{outline:2px solid var(--accent);outline-offset:1px}
+input,select{font:inherit;color:var(--ink);background:var(--surface);border:1px solid var(--rule);border-radius:4px;padding:3px 6px}
+header{display:flex;flex-wrap:wrap;align-items:center;gap:10px;padding-block:12px 10px;border-bottom:1px solid var(--rule)}
+header h1{font:700 26px/1 var(--font-head);margin:0 6px 0 0} .sub{color:var(--muted);font-size:13px}
+.views{display:flex;gap:2px;background:var(--surface-2);padding:2px;border-radius:6px} .views button{border:0;background:transparent} .views button.on{background:var(--surface);box-shadow:0 0 0 1px var(--rule)}
+.spacer{flex:1} .pill{font-family:var(--font-mono);font-size:12px;color:var(--muted)} .pill b{color:var(--ink)} .pill.bad b{color:var(--bad)} .pill.warn b{color:var(--warn)} .pill.ok b{color:var(--ok)}
+main{display:grid;grid-template-columns:minmax(420px,1.6fr) minmax(320px,1fr);gap:14px;margin-top:14px;align-items:start} main.one{grid-template-columns:1fr}
+@media (max-width:980px){main{grid-template-columns:1fr}}
+.pane{background:var(--surface);border:1px solid var(--rule);border-radius:8px;min-width:0} .pane>h2{font:600 15px/1 var(--font-head);letter-spacing:.05em;margin:0;padding:10px 12px;border-bottom:1px solid var(--rule);color:var(--muted);display:flex;gap:8px;align-items:center}
+.pane>h2 .hint{font:13px var(--font-body);letter-spacing:0;color:var(--muted);font-weight:400}
+.flow{padding:10px 12px}
+.band{border:1px solid var(--rule);border-radius:8px;background:var(--surface-2);padding:8px 10px 10px}
+.band .bh{display:flex;align-items:center;gap:8px;margin-bottom:6px} .band .bh .no{font:700 18px var(--font-head);color:var(--accent);width:26px;height:26px;border-radius:50%;border:2px solid var(--accent);display:inline-flex;align-items:center;justify-content:center}
+.band .bh .hint{font-size:12px;color:var(--muted)} .band.drop{outline:2px dashed var(--accent)}
+.cards{display:flex;flex-wrap:wrap;gap:8px}
+.job{background:var(--surface);border:1px solid var(--rule);border-radius:8px;padding:8px 10px;min-width:200px;flex:1 1 220px;max-width:340px;cursor:pointer;position:relative}
+.job:hover{border-color:var(--accent)} .job.open{border-color:var(--accent);box-shadow:0 0 0 2px var(--accent-soft)} .job.drop{outline:2px dashed var(--accent)}
+.job .name{font-weight:600;display:flex;gap:6px;align-items:center} .job .name .grip{color:var(--muted);cursor:grab} .job .meta{font-size:12px;color:var(--muted);margin:2px 0 4px}
+.chips{display:flex;flex-wrap:wrap;gap:4px} .chip{font-size:11.5px;padding:0 6px;border-radius:999px;line-height:18px;background:var(--code-bg);color:var(--muted);white-space:nowrap}
+.chip.station{background:var(--station-soft);color:var(--station)} .chip.person{background:var(--person-soft);color:var(--person)} .chip.off{border:1px dashed var(--muted);background:transparent} .chip.gen{background:var(--gen-soft);color:var(--gen)} .chip.tool{background:var(--accent-soft);color:var(--accent)} .chip.bad{background:var(--bad-soft);color:var(--bad)} .chip.pin{background:var(--ok-soft);color:var(--ok)}
+.job .acts{display:flex;gap:4px;margin-top:6px;flex-wrap:wrap} .job .acts button{font-size:11.5px;padding:1px 6px}
+.gap{height:26px;display:flex;align-items:center;justify-content:center;color:var(--muted);font-size:12px;border:1px dashed transparent;border-radius:6px;margin:2px 0}
+.gap.drop{border-color:var(--accent);background:var(--accent-soft);color:var(--accent)}
+.legend{font-size:12px;color:var(--muted);padding:6px 12px;border-top:1px solid var(--rule)}
+/* drawer */
+.drawer{padding:10px 12px;display:flex;flex-direction:column;gap:10px}
+.drawer h3{font:600 17px var(--font-head);margin:0} .scope{font-size:13px;color:var(--muted)}
+.q{display:flex;align-items:flex-start;gap:8px;padding:6px 8px;border:1px solid var(--rule);border-radius:6px;background:var(--surface-2)} .q input{margin-top:4px} .q .t{flex:1} .q .t small{display:block;color:var(--muted)}
+.q.station{border-left:3px solid var(--station)} .q.person{border-left:3px solid var(--person)} .q.off{border-left:3px solid var(--muted)} .q.pin{border-left:3px solid var(--ok)}
+.steps{border-top:1px solid var(--rule);padding-top:8px} .steps h4{font:600 13px var(--font-head);letter-spacing:.05em;color:var(--muted);margin:0 0 6px;text-transform:uppercase}
+.step{display:flex;align-items:flex-start;gap:6px;padding:4px 6px;border-radius:5px;font-size:13.5px} .step:hover{background:var(--surface-2)} .step.sel{background:var(--sel)} .step .seq{font-family:var(--font-mono);color:var(--muted);width:24px;text-align:right;padding-top:2px} .step .t{flex:1} .step .t small{display:block;color:var(--muted)} .step .mv{display:flex;flex-direction:column;gap:1px} .step .mv button{padding:0 5px;font-size:10px;line-height:14px}
+.adv{font-size:12.5px;color:var(--muted);border-top:1px dashed var(--rule);padding-top:8px} .adv summary{cursor:pointer}
+.empty{padding:24px 12px;color:var(--muted);font-size:14px}
+/* notices */
+.notices{padding:8px 12px;display:flex;flex-direction:column;gap:6px}
+.n{border-radius:6px;padding:7px 10px;font-size:13.5px;display:flex;gap:8px;align-items:flex-start} .n .t{flex:1} .n .t small{display:block;color:var(--muted);font-size:12px} .n .b{display:flex;gap:4px;flex-shrink:0}
+.n.ask{background:var(--gen-soft);border-left:3px solid var(--gen)} .n.err{background:var(--bad-soft);border-left:3px solid var(--bad)} .n.warn{background:var(--warn-soft);border-left:3px solid var(--warn)} .n.info{background:var(--surface-2);border-left:3px solid var(--rule)}
+.n button{font-size:12px;padding:2px 8px}
+/* line view */
+.line{padding:12px} .lrow{display:flex;gap:10px;align-items:stretch;margin-bottom:6px} .lrow .lno{font:700 16px var(--font-head);color:var(--accent);width:34px;flex-shrink:0;padding-top:8px}
+.blk{background:var(--surface-2);border:1px solid var(--rule);border-radius:6px;padding:6px 10px;min-width:150px} .blk b{display:block} .blk small{color:var(--muted)} .blk.off{border-style:dashed;color:var(--muted)} .blk .bar{height:6px;border-radius:3px;background:var(--accent);margin-top:4px;opacity:.6}
+.larrow{color:var(--muted);text-align:center;font-size:12px;margin:0 0 6px 44px}
+.marker{font-size:13px;color:var(--gen);padding:4px 10px} .lfoot{padding:10px 12px;border-top:1px solid var(--rule);font-size:13px;color:var(--muted);display:flex;gap:12px;flex-wrap:wrap;align-items:center}
+.devwrap{overflow:auto;max-height:60vh;border-top:1px solid var(--rule)} .dev td,.dev th{white-space:nowrap;font-family:var(--font-mono);font-size:11px;padding:2px 6px;border-bottom:1px solid var(--rule)} .dev th{position:sticky;top:0;background:var(--surface)} .dev td.a{font-family:var(--font-body);font-size:12px;max-width:26ch;overflow:hidden;text-overflow:ellipsis}
+.modal{position:fixed;inset:0;background:rgba(0,0,0,.4);display:flex;align-items:center;justify-content:center;z-index:20} .modal .box{background:var(--surface);border:1px solid var(--rule);border-radius:8px;padding:12px;width:min(900px,95vw)} .modal textarea{width:100%;height:50vh;font:12px var(--font-mono);color:var(--ink);background:var(--code-bg);border:1px solid var(--rule)}
+@media (prefers-reduced-motion: reduce){*{transition:none!important}}
+</style>
+
+<header>
+  <h1>工序整理</h1><span class="sub">把作業排好順序、回答幾個問題，產線平衡需要的資料就準備好了。</span>
+  <div class="views"><button id="v-flow" class="on" onclick="setView('flow')">作業順序</button><button id="v-line" onclick="setView('line')">產線視角</button></div>
+  <button onclick="loadExample()">載入整理好的範例</button><button onclick="startOver()">從頭開始（照作業順序）</button>
+  <span class="spacer"></span>
+  <span class="pill" id="p-ask"></span><span class="pill bad" id="p-err"></span><span class="pill ok" id="p-ok"></span>
+  <button class="primary" id="btn-export" onclick="exportCsv()">交給產線平衡</button>
+  <label class="sub" style="display:flex;gap:4px;align-items:center"><input type="checkbox" id="dev" onchange="S.dev=this.checked;render()"> 開發者</label>
+</header>
+
+<main id="main">
+  <section class="pane" id="pane-flow">
+    <h2>作業順序 <span class="hint">上下＝先後；<b>同一排＝可以同時做（誰先都行）</b>。拖作業卡到另一張卡上＝一起做；拖到兩排之間＝接著做。</span></h2>
+    <div class="flow" id="flow"></div>
+    <div class="legend">🏭 同一工站 · 👤 同一個人 · ⏸ 離線先做 · 📍 固定站 · ⭐ 通用動作 · 🔧 用工具（系統自動處理拿放）</div>
+    <h2 style="border-top:1px solid var(--rule)">系統看出來的事 <span class="hint">需要你回答的先列在前面</span></h2>
+    <div class="notices" id="notices"></div>
+  </section>
+  <section class="pane" id="pane-drawer"><h2>作業內容 <span class="hint">點左邊的作業卡打開</span></h2><div id="drawer" class="drawer"><div class="empty">還沒選作業。</div></div></section>
+  <section class="pane" id="pane-line" hidden>
+    <h2>產線視角 <span class="hint">產線平衡系統會看到的順序與可同時做的作業</span></h2>
+    <div class="line" id="line"></div><div class="lfoot" id="lfoot"></div>
+    <div id="devgrid" hidden class="devwrap"><table class="dev" id="devt"></table></div>
+  </section>
+</main>
+<div id="modal" class="modal" hidden><div class="box"><div style="display:flex;gap:8px;align-items:center;margin-bottom:6px"><b>tasks.csv（交給產線平衡的檔案）</b><span class="spacer"></span><button onclick="copyCsv()">複製</button><button onclick="document.getElementById('modal').hidden=true">關閉</button></div><textarea id="csvbox" readonly></textarea></div></div>
+
+<script src="data.js"></script><script src="engine.js"></script><script src="jobs.js"></script>
+<script>
+const ROWS = WB_DATA.rows, R = Object.fromEntries(ROWS.map(r => [r.id, r])), EN = WB_ENGINE, JB = WB_JOBS;
+const WI_ZH = { General: "把機箱放上輸送帶", "Pre-kit": "預備 8 顆螺絲", "MB sub-assy": "主板組裝", "HDD sub-assy": "裝 HDD", Backplane: "背板壓合", "IO shield": "I/O 擋板熱熔", Final: "目檢與 ICT 測試", Fan: "鎖風扇支架" };
+const NARR_ZH = { A:"把機箱放上輸送帶", B:"預備 8 顆螺絲進料盤", C:"從料架拿主板放進機箱", D:"用掃描槍掃主板序號", E:"把 CPU 插進插槽", F:"用掃描槍掃 CPU 標籤", G:"插 DIMM（8 條）", H:"扣 DIMM 卡榫（8 個）", I:"用電動起子鎖主板螺絲（8 顆）", J1:"從料架拿起 HDD", J2:"對位滑入 HDD 槽", J3:"把 HDD 壓到底", K:"用扭力起子鎖 HDD 支架螺絲", L1:"把背板放進壓合治具", L2:"啟動壓合（機台 3 秒）", L3:"從治具取出背板", M:"用扭力起子鎖背板支架螺絲", N1:"把 I/O 擋板放進熱熔治具並扶住", N2:"啟動熱熔（機台 2 秒）", N3:"放手取出", O:"外觀目檢（12 個點）", P1:"把板子放進 ICT 治具並蓋上", P2:"啟動 ICT 測試（機台 20 秒）", P3:"從 ICT 取出板子", Q1:"從座上拿起六角扳手", Q2:"用六角扳手鎖風扇支架", Q3:"把六角扳手放回座上" };
+const S = { J: null, open: null, selSteps: new Set(), view: 'flow', dev: false, dismissed: new Set() };
+let PROJ = null, STATE = null, NOTICES = [];
+const esc = s => String(s ?? '').replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
+const zh = id => NARR_ZH[id] || R[id].narr;
+const stepLabel = id => `第 ${R[id].seq} 步「${zh(id)}」`;
+const save = () => { try { localStorage.setItem('lwb-jobs', JSON.stringify(S.J)); } catch (e) {} };
+const load = () => { try { const j = JSON.parse(localStorage.getItem('lwb-jobs') || 'null'); if (j) { S.J = j; return true; } } catch (e) {} return false; };
+function loadExample() { S.J = JB.example(WB_DATA.LABELS); S.open = null; S.selSteps.clear(); S.dismissed.clear(); render(); }
+function startOver() { S.J = JB.baseline(ROWS); for (const j of S.J.jobs) j.name = WI_ZH[j.name] || j.name; S.open = null; S.selSteps.clear(); S.dismissed.clear(); render(); }
+function setView(v) { S.view = v; render(); }
+const job = id => S.J.jobs.find(j => j.id === id);
+const jobOfStep = id => S.J.jobs.find(j => j.steps.includes(id));
+const stag = id => (S.J.stepTags[id] = S.J.stepTags[id] || {});
+const isGen = id => !!(S.J.stepTags[id] && S.J.stepTags[id].general_role);
+const secs = ids => { const set = new Set(ids); return PROJ.tasks.filter(t => set.has(t._rowId)).reduce((a, t) => a + t.duration * (t.qty_scope === 'cyclic' ? t.quantity : 1), 0) / 1000; };
+function autoInfo(id) {
+  const r = R[id], out = [], pl = PROJ.plans[id];
+  if (pl && pl.tool) { const m = { acquire: '拿起', use: '使用', release: '放回' }; out.push(`<span class="chip tool">🔧 ${pl.tool.replace(/_/g, ' ')}：${pl.parts.map(p => m[p]).join('／')}${pl.parts.length > 1 ? `（拆 ${pl.parts.length} 步）` : ''}</span>`); }
+  const d = EN.isToolHeld(r) ? EN.decompose(r, []) : null;
+  if (d && d.N > 1) out.push(`<span class="chip">拿一次做 ${d.N} 次</span>`); else if (r.freq > 1) out.push(`<span class="chip">做 ${r.freq} 次</span>`);
+  if (r.kind === 'CM' && r.xsec >= 1) out.push(`<span class="chip">機台 ${r.xsec} 秒，人不用顧</span>`);
+  return out.join('');
+}
+// ── 作業操作 ──
+function mergeUp(jid) { const j = job(jid); if (j.row > 1) { j.row -= 1; } JB.normalizeRows(S.J); render(); }
+function ownRow(jid) { const j = job(jid); j.row += 0.5; JB.normalizeRows(S.J); render(); }
+function openJob(jid) { S.open = S.open === jid ? null : jid; S.selSteps.clear(); render(); }
+function setFlag(jid, flag, on) {
+  const j = job(jid); const ids = [...S.selSteps].filter(id => j.steps.includes(id));
+  if (ids.length && flag !== 'pin') { // 針對選取的步驟
+    if (flag === 'sameStation') { const lab = on ? EN.nextLabel(STATE, 'cub') : null; for (const id of ids) { if (on) stag(id).cub = lab; else delete stag(id).cub; } }
+    if (flag === 'samePerson') { const lab = on ? EN.nextLabel(STATE, 'wcub') : null; for (const id of ids) { if (on) stag(id).wcub = lab; else delete stag(id).wcub; } }
+    if (flag === 'offline') for (const id of ids) { if (on) stag(id).offline = true; else delete stag(id).offline; }
+  } else { j[flag] = on; if (flag === 'sameStation' && !on) delete j.cubLabel; if (flag === 'samePerson' && !on) delete j.wcubLabel; }
+  render();
+}
+function setPin(jid) { const j = job(jid); const v = prompt('固定在第幾站？（空白＝不固定）', j.pin || ''); if (v === null) return; j.pin = v.trim() ? +v : null; render(); }
+function toggleStep(id) { S.selSteps.has(id) ? S.selSteps.delete(id) : S.selSteps.add(id); render(); }
+function moveStep(id, dir) { const j = jobOfStep(id); const i = j.steps.indexOf(id), k = i + dir; if (k < 0 || k >= j.steps.length) return; [j.steps[i], j.steps[k]] = [j.steps[k], j.steps[i]]; render(); }
+function splitSelected(jid) { const j = job(jid); const ids = j.steps.filter(id => S.selSteps.has(id)); if (!ids.length || ids.length === j.steps.length) return; const name = prompt('新作業的名稱', zh(ids[0])); if (name === null) return; j.steps = j.steps.filter(id => !ids.includes(id)); S.J.jobs.push({ id: 'j' + Date.now(), name, row: j.row + 0.5, steps: ids, sameStation: false, samePerson: false, offline: false, pin: null }); JB.normalizeRows(S.J); S.selSteps.clear(); render(); }
+function moveStepsTo(jid, target) { if (!target) return; const j = job(jid); const ids = j.steps.filter(id => S.selSteps.has(id)); if (!ids.length) return; j.steps = j.steps.filter(id => !ids.includes(id)); job(target).steps.push(...ids); S.J.jobs = S.J.jobs.filter(x => x.steps.length); JB.normalizeRows(S.J); S.selSteps.clear(); if (!job(S.open)) S.open = target; render(); }
+function setGeneral(id, role) { if (role) { stag(id).general_role = role; delete stag(id).wcub; delete stag(id).cub; } else delete stag(id).general_role; render(); }
+function toggleLock(id) { stag(id).merge_lock = !stag(id).merge_lock; render(); }
+function toggleSplittable(id) { stag(id).splittable = !stag(id).splittable; render(); }
+// ── 拖放 ──
+let dragJob = null;
+function dragStart(ev, jid) { dragJob = jid; ev.dataTransfer.effectAllowed = 'move'; ev.dataTransfer.setData('text/plain', jid); }
+function over(ev, el) { ev.preventDefault(); el.classList.add('drop'); } function leave(el) { el.classList.remove('drop'); }
+function dropOnJob(ev, jid) { ev.preventDefault(); ev.stopPropagation(); if (!dragJob || dragJob === jid) return; job(dragJob).row = job(jid).row; JB.normalizeRows(S.J); render(); }
+function dropOnGap(ev, after) { ev.preventDefault(); if (!dragJob) return; job(dragJob).row = after + 0.5; JB.normalizeRows(S.J); render(); }
+// ── 系統看出來的事 ──
+function buildNotices() {
+  const out = [];
+  const sugg = EN.suggestions(ROWS, STATE, PROJ);
+  for (const s of sugg) {
+    if (s.kind === 'cub') { const j = jobOfStep(s.rowIds[0]); const whole = j && s.rowIds.length === j.steps.filter(id => !isGen(id)).length; const tool = (PROJ.plans[s.rowIds[0]] || {}).tool || '';
+      out.push({ type: 'ask', key: 'cub:' + s.rowIds.join(), text: `${s.rowIds.map(id => `第 ${R[id].seq} 步`).join('、')} 是拿起、使用、放回同一把工具（${tool.replace(/_/g, ' ')}）——這通常在同一個地方做。要標成「同一工站」嗎？`, yes: () => { if (whole) { j.sameStation = true; } else { const lab = EN.nextLabel(STATE, 'cub'); for (const id of s.rowIds) stag(id).cub = lab; } } }); }
+    if (s.kind === 'segment') out.push({ type: 'ask', key: 'seg:' + s.rowIds.join(), text: `${s.rowIds.map(id => `第 ${R[id].seq} 步「${zh(id)}」`).join(' 和 ')} 都做 ${R[s.rowIds[0]].freq} 次——是同一批人接著做嗎（每人插幾條就扣幾個）？`, yes: () => { const name = 'batch' + (Object.values(S.J.stepTags).filter(t => t.segment).length + 1); for (const id of s.rowIds) stag(id).segment = name; } });
+  }
+  for (const r of ROWS) if (!isGen(r.id) && (r.part === 'General' || /conveyor|next station|work order/i.test(r.narr))) out.push({ type: 'ask', key: 'gen:' + r.id, text: `${stepLabel(r.id)} 看起來是每台都要做一次的通用動作，不屬於特定零件。要放在線頭（第一站開頭）嗎？`, yes: () => setGeneral(r.id, 'take_unit') });
+  for (const e of PROJ.errors) out.push({ type: 'err', key: 'E:' + e.code + e.rowId, text: JB.humanize(e, stepLabel), focus: e.rowId });
+  for (const w of PROJ.warnings) if (!JB.HIDDEN.has(w.code)) out.push({ type: 'warn', key: 'W:' + w.code + w.rowId, text: JB.humanize(w, stepLabel), focus: w.rowId });
+  const tools = {}; for (const [id, pl] of Object.entries(PROJ.plans)) if (pl.tool && pl.parts.length > 1) (tools[pl.tool] = tools[pl.tool] || []).push(id);
+  for (const [t, ids] of Object.entries(tools)) out.push({ type: 'info', key: 'tool:' + t, text: `${ids.map(id => `第 ${R[id].seq} 步`).join('、')} 用到 ${t.replace(/_/g, ' ')}：系統會自動當成「拿起 → 使用 → 放回」三個動作交給產線平衡，你不用另外拆。` });
+  const machines = ROWS.filter(r => r.kind === 'CM' && r.xsec >= 1 && jobOfStep(r.id)); if (machines.length) out.push({ type: 'info', key: 'machine', text: `${machines.map(r => `第 ${r.seq} 步`).join('、')} 是機台時間（人不用顧），產線平衡會算進節拍但不算人力。` });
+  return out.filter(n => !S.dismissed.has(n.key));
+}
+function answer(i, yes) { const n = NOTICES[i]; if (!n) return; if (yes && n.yes) n.yes(); S.dismissed.add(n.key); render(); }
+function focusStep(id) { const j = jobOfStep(id); if (j) { S.open = j.id; S.selSteps = new Set([id]); S.view = 'flow'; render(); } }
+// ── 渲染 ──
+function jobChips(j) {
+  const out = []; const gens = j.steps.filter(isGen).length;
+  if (j.sameStation) out.push('<span class="chip station">🏭 同一工站</span>'); else if (j.steps.some(id => (S.J.stepTags[id] || {}).cub)) out.push('<span class="chip station">🏭 部分同站</span>');
+  if (j.samePerson) out.push('<span class="chip person">👤 同一個人</span>'); else if (j.steps.some(id => (S.J.stepTags[id] || {}).wcub)) out.push('<span class="chip person">👤 部分同人</span>');
+  if (j.offline) out.push('<span class="chip off">⏸ 離線先做</span>'); if (j.pin) out.push(`<span class="chip pin">📍 第 ${j.pin} 站</span>`);
+  if (gens) out.push(`<span class="chip gen">⭐ 通用×${gens}</span>`); if (j.steps.some(id => (S.J.stepTags[id] || {}).segment)) out.push('<span class="chip person">同一批人</span>');
+  const tools = new Set(j.steps.map(id => (PROJ.plans[id] || {}).tool).filter(Boolean)); if (tools.size) out.push(`<span class="chip tool">🔧 ${[...tools].map(t => t.replace(/_/g, ' ')).join('、')}</span>`);
+  const errs = PROJ.errors.filter(e => e.rowId && j.steps.includes(e.rowId)).length; if (errs) out.push(`<span class="chip bad">要處理 ${errs}</span>`);
+  return out.join('');
+}
+function renderFlow() {
+  const rows = [...new Set(S.J.jobs.map(j => j.row))].sort((a, b) => a - b); let h = '';
+  h += `<div class="gap" ondragover="over(event,this)" ondragleave="leave(this)" ondrop="leave(this);dropOnGap(event,0)">放到這裡 → 最先做</div>`;
+  rows.forEach((r, i) => {
+    const js = S.J.jobs.filter(j => j.row === r).sort((a, b) => R[a.steps[0]].seq - R[b.steps[0]].seq);
+    h += `<div class="band"><div class="bh"><span class="no">${i + 1}</span><span class="hint">${js.length > 1 ? `這 ${js.length} 個作業可以同時做，誰先都行` : '這一排只有一個作業'}${i > 0 ? '；都要等上一排全部做完' : ''}</span></div><div class="cards">`;
+    for (const j of js) {
+      const shared = js.length > 1;
+      h += `<div class="job ${S.open === j.id ? 'open' : ''}" draggable="true" ondragstart="dragStart(event,'${j.id}')" ondragover="over(event,this)" ondragleave="leave(this)" ondrop="leave(this);dropOnJob(event,'${j.id}')" onclick="openJob('${j.id}')">
+        <div class="name"><span class="grip">⠿</span>${esc(j.name)}</div><div class="meta">${j.steps.length} 步 · 約 ${secs(j.steps).toFixed(1)} 秒</div><div class="chips">${jobChips(j)}</div>
+        <div class="acts">${i > 0 ? `<button class="small" onclick="event.stopPropagation();mergeUp('${j.id}')" title="和上一排一起做（同時）">◀ 跟上一排一起做</button>` : ''}${shared ? `<button class="small" onclick="event.stopPropagation();ownRow('${j.id}')" title="從這一排分出去，接著做">▶ 自己一排</button>` : ''}</div></div>`;
+    }
+    h += `</div></div><div class="gap" ondragover="over(event,this)" ondragleave="leave(this)" ondrop="leave(this);dropOnGap(event,${r})">放到這裡 → 接著做</div>`;
+  });
+  document.getElementById('flow').innerHTML = h;
+}
+function renderDrawer() {
+  const el = document.getElementById('drawer'); const j = S.open && job(S.open); if (!j) { el.innerHTML = '<div class="empty">點左邊的作業卡，回答幾個問題。大多數作業什麼都不用勾。</div>'; return; }
+  const sel = j.steps.filter(id => S.selSteps.has(id)); const scopeSteps = sel.length ? sel : null;
+  const chk = (flag) => scopeSteps ? scopeSteps.every(id => (S.J.stepTags[id] || {})[flag === 'sameStation' ? 'cub' : flag === 'samePerson' ? 'wcub' : 'offline']) : j[flag];
+  let h = `<h3>${esc(j.name)}</h3><div class="scope">${scopeSteps ? `以下設定套用到<b>選取的 ${scopeSteps.length} 步</b>（取消勾選＝整個作業）` : `以下設定套用到<b>整個作業（${j.steps.length} 步）</b>；要只設其中幾步，先在下面勾步驟`}</div>`;
+  h += `<label class="q station"><input type="checkbox" ${chk('sameStation') ? 'checked' : ''} onchange="setFlag('${j.id}','sameStation',this.checked)"><span class="t">要在<b>同一個工站</b>做完<small>有治具、機台或料架綁在一個位置時勾。中間可以換人。</small></span></label>`;
+  h += `<label class="q person"><input type="checkbox" ${chk('samePerson') ? 'checked' : ''} onchange="setFlag('${j.id}','samePerson',this.checked)"><span class="t">要<b>同一個人一口氣做完</b>，中途不能去做別的<small>例如拿起 HDD 後不能放下去鎖螺絲。用工具或做很多次的步驟不適用。</small></span></label>`;
+  h += `<label class="q off"><input type="checkbox" ${chk('offline') ? 'checked' : ''} onchange="setFlag('${j.id}','offline',this.checked)"><span class="t">在<b>離線區先做好</b>，不佔線上的時間<small>預先備料、預裝之類。</small></span></label>`;
+  h += `<div class="q pin"><span class="t"><b>固定在某一站</b>做${j.pin ? `：第 ${j.pin} 站` : '（未固定）'}<small>只有設備焊死在某站時才需要。</small></span><button class="small" onclick="setPin('${j.id}')">設定</button></div>`;
+  h += `<div class="steps"><h4>步驟（照做的順序）</h4>`;
+  for (const id of j.steps) { const t = S.J.stepTags[id] || {}; h += `<div class="step ${S.selSteps.has(id) ? 'sel' : ''}"><input type="checkbox" ${S.selSteps.has(id) ? 'checked' : ''} onchange="toggleStep('${id}')" aria-label="選取第 ${R[id].seq} 步"><span class="seq">${R[id].seq}</span><span class="t">${esc(zh(id))}${t.general_role ? ' <span class="chip gen">⭐ 通用</span>' : ''}${t.cub ? ' <span class="chip station">🏭</span>' : ''}${t.wcub ? ' <span class="chip person">👤</span>' : ''}${t.offline ? ' <span class="chip off">⏸</span>' : ''}${t.segment ? ' <span class="chip person">同一批人</span>' : ''}<small>${(R[id].tmu * 0.036).toFixed(2)} 秒 ${autoInfo(id)}</small></span><span class="mv"><button onclick="moveStep('${id}',-1)">▲</button><button onclick="moveStep('${id}',1)">▼</button></span></div>`; }
+  h += `</div>`;
+  if (sel.length) {
+    const others = S.J.jobs.filter(x => x.id !== j.id);
+    h += `<div class="q"><span class="t">選取的 ${sel.length} 步：</span><button class="small" onclick="splitSelected('${j.id}')" ${sel.length === j.steps.length ? 'disabled' : ''}>拆成新作業</button><select onchange="moveStepsTo('${j.id}',this.value)"><option value="">移到別的作業…</option>${others.map(o => `<option value="${o.id}">${esc(o.name)}</option>`).join('')}</select></div>`;
+    if (sel.length === 1) { const id = sel[0], t = S.J.stepTags[id] || {}; h += `<div class="q"><span class="t">這一步是<b>每台都做一次的通用動作</b>？<small>不屬於特定零件，例如把機箱放上線、掃工單、推到下一站。</small><select onchange="setGeneral('${id}',this.value)"><option value="" ${!t.general_role ? 'selected' : ''}>不是</option><option value="take_unit" ${t.general_role === 'take_unit' ? 'selected' : ''}>是，放在線頭（第一站開頭）</option><option value="scanner" ${t.general_role === 'scanner' ? 'selected' : ''}>是，每一站開頭都做</option><option value="transport" ${t.general_role === 'transport' ? 'selected' : ''}>是，每一站結尾都做</option></select></span></div>`;
+      h += `<details class="adv"><summary>進階（很少用）</summary><label><input type="checkbox" ${t.merge_lock ? 'checked' : ''} onchange="toggleLock('${id}')"> 這一步的工具用完必須放回原位，不可為了省時間跟別的步驟共用一次取放</label><br><label><input type="checkbox" ${t.splittable ? 'checked' : ''} onchange="toggleSplittable('${id}')"> 這一步可以由兩個人各做一半</label></details>`; }
+  }
+  el.innerHTML = h;
+}
+function renderNotices() {
+  NOTICES = buildNotices(); const order = { ask: 0, err: 1, warn: 2, info: 3 }; NOTICES.sort((a, b) => order[a.type] - order[b.type]);
+  document.getElementById('notices').innerHTML = NOTICES.map((n, i) => `<div class="n ${n.type}"><span class="t">${esc(n.text)}</span><span class="b">${n.type === 'ask' ? `<button onclick="answer(${i},true)">是</button><button onclick="answer(${i},false)">否</button>` : ''}${n.focus ? `<button onclick="focusStep('${n.focus}')">去看</button>` : ''}${n.type === 'info' || n.type === 'warn' ? `<button onclick="answer(${i},false)">知道了</button>` : ''}</span></div>`).join('') || '<div class="empty" style="padding:8px 0">沒有需要處理的事。</div>';
+}
+function renderLine() {
+  const rows = [...new Set(S.J.jobs.map(j => j.row))].sort((a, b) => a - b); let h = '';
+  const gens = ROWS.filter(r => isGen(r.id)); for (const g of gens) if (S.J.stepTags[g.id].general_role === 'take_unit') h += `<div class="marker">⭐ 線頭：${esc(zh(g.id))}（每台一次）</div>`;
+  rows.forEach((r, i) => { const js = S.J.jobs.filter(j => j.row === r && j.steps.some(id => !isGen(id))); if (!js.length) return; h += `<div class="lrow"><span class="lno">${i + 1}</span>${js.map(j => { const s = secs(j.steps); return `<div class="blk ${j.offline ? 'off' : ''}"><b>${esc(j.name)}</b><small>${j.steps.length} 步 · ${s.toFixed(1)} 秒${j.pin ? ` · 第 ${j.pin} 站` : ''}${j.sameStation ? ' · 同站' : ''}${j.samePerson ? ' · 同人' : ''}</small><div class="bar" style="width:${Math.min(100, s * 4)}%"></div></div>`; }).join('')}</div>${i < rows.length - 1 ? '<div class="larrow">⬇ 下一排等這一排全部做完</div>' : ''}`; });
+  for (const g of gens) if (S.J.stepTags[g.id].general_role !== 'take_unit') h += `<div class="marker">⭐ ${S.J.stepTags[g.id].general_role === 'scanner' ? '每站開頭' : '每站結尾'}：${esc(zh(g.id))}</div>`;
+  document.getElementById('line').innerHTML = h;
+  document.getElementById('lfoot').innerHTML = `產線平衡會收到 <b>${PROJ.tasks.length}</b> 個工作項（用工具的步驟已自動拆成拿起／使用／放回）· 一個人從頭做到尾約 <b>${(PROJ.tmuTotal / 1000).toFixed(1)}</b> 秒 · ${PROJ.errors.length ? `<span style="color:var(--bad)">還有 ${PROJ.errors.length} 件要處理才能交出</span>` : '<span style="color:var(--ok)">可以交給產線平衡</span>'}`;
+  const dg = document.getElementById('devgrid'); dg.hidden = !S.dev;
+  if (S.dev) { const cols = EN.COLUMNS; document.getElementById('devt').innerHTML = `<thead><tr>${cols.map(c => `<th>${c}</th>`).join('')}</tr></thead><tbody>${PROJ.tasks.map(t => `<tr>${cols.map(c => `<td class="${c === 'action' ? 'a' : ''}">${esc(t[c])}</td>`).join('')}</tr>`).join('')}</tbody>`; }
+}
+function render() {
+  JB.normalizeRows(S.J); STATE = JB.toEngineState(S.J, WB_DATA.LABELS); PROJ = EN.project(ROWS, STATE);
+  const asks = buildNotices().filter(n => n.type === 'ask').length;
+  document.getElementById('p-ask').innerHTML = `待回答 <b>${asks}</b>`; document.getElementById('p-err').innerHTML = `要處理 <b>${PROJ.errors.length}</b>`; document.getElementById('p-ok').innerHTML = PROJ.errors.length ? '' : `<b>可以交出</b>`;
+  document.getElementById('btn-export').disabled = PROJ.errors.length > 0;
+  document.getElementById('main').className = S.view === 'line' ? 'one' : '';
+  document.getElementById('pane-flow').hidden = S.view !== 'flow'; document.getElementById('pane-drawer').hidden = S.view !== 'flow'; document.getElementById('pane-line').hidden = S.view !== 'line';
+  document.getElementById('v-flow').classList.toggle('on', S.view === 'flow'); document.getElementById('v-line').classList.toggle('on', S.view === 'line');
+  if (S.view === 'flow') { renderFlow(); renderDrawer(); renderNotices(); } else renderLine();
+  save();
+}
+function exportCsv() { if (PROJ.errors.length) return; document.getElementById('csvbox').value = EN.toCsv(PROJ.tasks); document.getElementById('modal').hidden = false; }
+function copyCsv() { navigator.clipboard && navigator.clipboard.writeText(document.getElementById('csvbox').value); }
+if (!load()) loadExample(); else render();
+</script>
