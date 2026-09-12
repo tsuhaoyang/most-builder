@@ -236,3 +236,114 @@ test('A2 rename', () => {
   expect(jobByName('最終檢查')).toBeTruthy()
   invariantsHold()
 })
+
+// ── F2b：補齊 A.2 其餘動作各一案例（I-1/I-2/I-3）──
+function i3Holds(): void {
+  // I-3：通用列 countersignature=='' 且 workerCub==''
+  const st = useLevelStore.getState()
+  for (const [id, c] of Object.entries(st.levelMap)) {
+    if (c.isGeneral) {
+      expect((c.countersignature || '').trim()).toBe('')
+      expect((c.workerCub || '').trim()).toBe('')
+    }
+  }
+}
+
+test('A2 setSameStation subset -> nested cub build+dissolve', () => {
+  loadStores(buildGolden())
+  const cpu = jobByName('裝 CPU 與 DIMM')   // sub2；子集 G,H
+  const g = model().jobs.find(j => j.id === 'sub2')!.steps.slice(2, 4)  // 後兩步
+  A.setSameStation(cpu, true, g)
+  // G,H 進了一個 parent=sub2 的巢狀 cub
+  const st = useLevelStore.getState()
+  const gcs = st.levelMap[g[0]].countersignature
+  expect(gcs.startsWith('cub')).toBe(true)
+  expect(st.groupMeta[gcs].parent).toBe('sub2')
+  invariantsHold(); i3Holds()
+  // 拆除
+  A.setSameStation(jobByName('裝 CPU 與 DIMM'), false, g)
+  expect(useLevelStore.getState().levelMap[g[0]].countersignature).toBe('sub2')
+  invariantsHold()
+})
+
+test('A2 setSamePerson positive on assignable job', () => {
+  loadStores(buildGolden())
+  const hdd = jobByName('裝 HDD')   // J1,J2,J3 (freq1) + K (torque driver, tool!)
+  // K 是工具列 → 整組被擋；改測子集 J1-J3（可指派）
+  const sub3 = model().jobs.find(j => j.id === 'sub3')!
+  const plain = sub3.steps.slice(0, 3)  // J1,J2,J3
+  A.setSamePerson(jobByName('裝 HDD'), true, plain)
+  const st = useLevelStore.getState()
+  const w = st.levelMap[plain[0]].workerCub
+  expect(w).toBeTruthy()
+  expect(plain.every(id => st.levelMap[id].workerCub === w)).toBe(true)
+  invariantsHold()
+})
+
+test('A2 splitSteps', () => {
+  loadStores(buildGolden())
+  const hdd = model().jobs.find(j => j.id === 'sub3')!
+  const split = hdd.steps.slice(0, 2)
+  A.splitSteps(jobByName('裝 HDD'), split, '前置')
+  expect(jobByName('前置')).toBeTruthy()
+  invariantsHold(); i3Holds()
+})
+
+test('A2 moveStepsTo single-target-becomes-sub', () => {
+  loadStores(buildGolden())
+  const src = model().jobs.find(j => j.id === 'sub3')!
+  const move = src.steps.slice(0, 1)
+  const target = jobByName('放主板進機箱')   // 單列未分組
+  A.moveStepsTo(jobByName('裝 HDD'), target, move)
+  // target 現含移入的步驟
+  invariantsHold(); i3Holds()
+})
+
+test('A2 reorderStep changes order and level restamped', () => {
+  loadStores(buildGolden())
+  const before = useWiStore.getState().rows.map(r => r.id)
+  const sub3 = model().jobs.find(j => j.id === 'sub3')!
+  A.reorderStep(jobByName('裝 HDD'), sub3.steps[1], -1)  // 上移第二步
+  const after = useWiStore.getState().rows.map(r => r.id)
+  expect(after).not.toEqual(before)  // 列序改變
+  invariantsHold()
+})
+
+test('A2 setGeneral detaches group and clears wcub', () => {
+  loadStores(buildGolden())
+  const sub3 = model().jobs.find(j => j.id === 'sub3')!
+  const id = sub3.steps[0]
+  A.setGeneral(id, 'scanner')
+  const c = useLevelStore.getState().levelMap[id]
+  expect(c.isGeneral).toBe(true)
+  expect((c.countersignature || '').trim()).toBe('')
+  expect((c.workerCub || '').trim()).toBe('')
+  expect(c.generalRole).toBe('scanner')
+  invariantsHold(); i3Holds()
+})
+
+test('A2 setSegment', () => {
+  loadStores(buildGolden())
+  const sub3 = model().jobs.find(j => j.id === 'sub3')!
+  A.setSegment(sub3.steps.slice(0, 2), 'batchX')
+  const st = useLevelStore.getState()
+  expect(sub3.steps.slice(0, 2).every(id => st.levelMap[id].segment === 'batchX')).toBe(true)
+  invariantsHold()
+})
+
+test('A2 setLate / joinLayerOf / placeBetween', () => {
+  loadStores(buildGolden())
+  const d = jobByName('掃主板序號')
+  A.setLate(d, d.row + 1)
+  expect(jobByName('掃主板序號').rowHi).not.toBeNull()
+  invariantsHold()
+  // joinLayerOf：把 D 併到 O 的排
+  loadStores(buildGolden())
+  const o = jobByName('外觀目檢')
+  A.joinLayerOf(jobByName('掃主板序號'), o)
+  invariantsHold()
+  // placeBetween
+  loadStores(buildGolden())
+  A.placeBetween(jobByName('外觀目檢'), 1)
+  invariantsHold()
+})
