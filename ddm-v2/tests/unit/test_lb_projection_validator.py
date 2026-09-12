@@ -20,6 +20,8 @@ from ddm_v2.lb_projection.errors import (
     E_SEGMENT_CROSS_GROUP,
     E_SPLITTABLE_CONFLICT,
     E_TOOL_ACQUIRE_DURATION_MISMATCH,
+    E_TOOL_ID_SHARED_ACROSS_LOT,
+    E_TOOL_RELEASE_DURATION_MISMATCH,
     W_FLOATING_TASK,
     W_NB_UNSUPPORTED,
 )
@@ -132,6 +134,34 @@ def test_floating_task_warning() -> None:
     result = project_rows([r], _VOCAB)
     _e, w = _codes(result)
     assert W_FLOATING_TASK in w
+
+
+def test_tool_release_duration_mismatch_direct() -> None:
+    """§7.6 release 側等長（ms）：同 tool_id 兩個不同 release duration。"""
+    from ddm_v2.lb_projection.emit import LbTask
+
+    tasks = [
+        LbTask(task_id=1, action="put down scanner", source_wi_row_id="a", action_type="put",
+               tool_id="scanner", tool_action="release", duration=360),
+        LbTask(task_id=2, action="put down scanner", source_wi_row_id="b", action_type="put",
+               tool_id="scanner", tool_action="release", duration=576),
+    ]
+    errors, _w = validate(tasks, [], [])
+    assert E_TOOL_RELEASE_DURATION_MISMATCH in {e.code for e in errors}
+
+
+def test_tool_id_shared_across_lot_direct() -> None:
+    """§7.7 過渡守衛：同 tool_id 同時出現在 Q>1 與 Q=1 episode。"""
+    from ddm_v2.lb_projection.emit import LbTask
+
+    tasks = [
+        LbTask(task_id=1, action="use", source_wi_row_id="a", action_type="fasten",
+               tool_id="electric_driver", tool_action="use", quantity=8, qty_scope="cyclic"),
+        LbTask(task_id=2, action="use", source_wi_row_id="b", action_type="fasten",
+               tool_id="electric_driver", tool_action="use", quantity=1),
+    ]
+    errors, _w = validate(tasks, [], [])
+    assert E_TOOL_ID_SHARED_ACROSS_LOT in {e.code for e in errors}
 
 
 def test_tool_acquire_duration_mismatch_direct() -> None:
