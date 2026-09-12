@@ -833,6 +833,20 @@ frequency=1 ＋ review reason。**不展開多 action、不自動用 repeat_coun
 >    ——`a6` 在兩條分支都**從未被填過**（恆 0），**CM 的 `a0` 也從未被填過**。
 >    `StrictGmDraft`／`StrictCmDraft` 有這些欄位、引擎也算得出來，只是編譯路徑不產生它們。
 >    P3 補上 `return_to` → `a6`（以及 CM 的 `a0`）之後本表要補列。
+
+> **ADR-035 D4：QuantityPolicyV2（2026-09-12 落地，WP9）**
+>
+> 新增 `resolve_multiplier(action, plan) -> (frequency, repeat_count, reasons)` **包住** `resolve_frequency`
+> （後者保留不刪，ADR-033 明文）：
+> - 持工具（`is_tool_held`）且 quantity 解析為整數 N>1 → `(1.0, N, reasons+['repeat_policy_v2'])`
+>   ——手不放、動作重複 N 次＝格級 cyclic 乘數（Spec §3.2）。`compile_plan` 把 `repeat_count` 寫進
+>   use 段有內容的格：CM 的 `m3`（有分量時）／`x4`（有 x_code 或 x_seconds）／`i5`（有 i_code）；GM 的 `p5`。
+> - 非持工具 → 沿用 `resolve_frequency`（`repeat_count=None`，frequency 照 V1）。
+> - `Strict{P,M,X,I}Slot`（`extra="forbid"`）顯式加 `repeat_count: int | None`；`CycleIn` 各格本就有。
+> - **TMU 中性**（ADR-035 D4）：現行 compiler 不編 A0/A6、G 已留空 → 乘數只在 frequency↔repeat_count
+>   兩維度間搬移，effective TMU（`compute_cycle().total × frequency`）恆等。gold g02 的 `expected_cycles`
+>   僅改形狀（frequency 2→1、repeat 進 x4、compute_cycle total 6→12、tech_line X6→X12），effective 12 不變。
+> - quantity 供給端仍受 ADR-033 D1 管制（unevidenced 照樣採用＋review）；本政策不放寬供給端。
 >    ⚠️ **`return_to` 的語意（U-5 裁決）＝返回身體最初始狀態（站位），不是回到 `from_location`**
 >    ——`from_location` 是**取件處**，站位是**身體初始位置**，兩者不同；
 >    A6 量的是「終點 → 站位」，端點需 ADR-031 的佈局提供。**不要把 A6 寫成回到 `from_location`。**

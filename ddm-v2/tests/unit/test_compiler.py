@@ -561,6 +561,41 @@ def test_evidenced_quantity_not_flagged():
     assert draft.cycle["frequency"] == 2.0
 
 
+def test_tool_held_quantity_goes_to_repeat_count():
+    """ADR-035 D4 / WP9：持工具 process quantity=2 → x4.repeat_count=2、frequency=1（QuantityPolicyV2）。
+
+    TMU 中性斷言（compute_cycle 域）：
+      改前形狀（frequency=2、x4 無 repeat）effective TMU = compute_cycle(before).total × 2
+      改後形狀（frequency=1、x4.repeat_count=2）effective TMU = compute_cycle(after).total × 1
+    兩者恆等（ADR-035 D4：現行 compiler 不編 A0/A6、G 已留空 → 乘數只換維度，effective 不變）。
+    """
+    from ddm_v2.most_engine.calculate import compute_cycle
+    from ddm_v2.most_engine.providers import build_from_seed_v2
+
+    draft = _compile_one(
+        _dist_plan(
+            "鎖附兩顆螺絲",
+            (0, 6, "鎖附兩顆螺絲"),
+            {
+                "quantity": {"text": "兩顆", "value": 2, "unit": "顆", "status": "explicit"},
+                "tool_ref": {"text": "electric_driver", "action_ref": "a0", "status": "explicit"},
+            },
+            action_type="process",
+        ),
+        [_cand("a1", "X", "x4.x_code", "x_screw_fix")],
+    )
+    assert draft.cycle["x4"]["repeat_count"] == 2
+    assert draft.cycle["frequency"] == 1.0
+    assert "repeat_policy_v2" in draft.issues
+
+    rs = build_from_seed_v2()
+    before = {"seq": "CM", "slots": {4: {"x_code": "x_screw_fix"}}}
+    after = {"seq": "CM", "slots": {4: {"x_code": "x_screw_fix", "repeat_count": 2}}}
+    eff_before = compute_cycle(before, rs).total_tmu * 2
+    eff_after = compute_cycle(after, rs).total_tmu * 1
+    assert eff_before == eff_after, f"effective TMU 不中性：{eff_before} != {eff_after}"
+
+
 @pytest.mark.parametrize(
     "norm,span_end,expect_status",
     [("推治具30cm", 7, "auto"), ("推動治具", 4, "review")],

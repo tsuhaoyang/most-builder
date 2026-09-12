@@ -325,6 +325,27 @@ def resolve_frequency(action: PlannedAction, plan: WorkInstructionPlan) -> tuple
     return 1.0, reasons
 
 
+def resolve_multiplier(
+    action: PlannedAction,
+    plan: WorkInstructionPlan,
+) -> tuple[float, int | None, list[str]]:
+    """QuantityPolicyV2（ADR-035 D4）：回 (frequency, repeat_count, reasons)。
+
+    持工具（`is_tool_held`）且 quantity 解析為整數 N>1 → (1.0, N, reasons+['repeat_policy_v2'])
+    ——手不放、動作重複 N 次＝格級 cyclic 乘數（Spec §3.2）。否則沿用 `resolve_frequency`
+    （回 (freq, None, reasons)）。`resolve_frequency` 保留不刪（ADR-033 明文）。
+
+    quantity 供給端仍受 ADR-033 D1 管制（unevidenced 照樣採用＋review），本函式不放寬。
+    """
+    freq, reasons = resolve_frequency(action, plan)
+    if not is_tool_held(action, plan):
+        return freq, None, reasons
+    # 持工具：把整數 N>1 從 frequency 改導向 repeat_count（cyclic）
+    if freq > 1 and freq == int(freq):
+        return 1.0, int(freq), [*reasons, "repeat_policy_v2"]
+    return freq, None, reasons
+
+
 def holding_inferred_reason(
     action: PlannedAction,
     plan: WorkInstructionPlan,

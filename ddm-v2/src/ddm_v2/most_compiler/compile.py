@@ -23,7 +23,7 @@ from ddm_v2.most_compiler.policies import (
     holding_inferred_reason,
     is_tool_held,
     numeric_claim_is_evidenced,
-    resolve_frequency,
+    resolve_multiplier,
 )
 from ddm_v2.nlp.contracts import CycleDraft, PlannedAction, SlotCandidateSet, WorkInstructionPlan
 from ddm_v2.nlp.quantities import extract_distances
@@ -193,7 +193,7 @@ def compile_plan(
             continue
 
         complete, miss_reason = _core_complete(action, candidate_sets)
-        freq, freq_reasons = resolve_frequency(action, plan)
+        freq, repeat_count, freq_reasons = resolve_multiplier(action, plan)
         issues: list[str] = []
         if miss_reason:
             issues.append(miss_reason)
@@ -259,7 +259,7 @@ def compile_plan(
                 b1=StrictBSlot(b_code=b_code),
                 g2=StrictGSlot(g_code=g_code),
                 a3=StrictASlot(reach_cm=float(a3_cm or 0)),
-                p5=StrictPSlot(p_base_code=p_code, p_addon_codes=addons),
+                p5=StrictPSlot(p_base_code=p_code, p_addon_codes=addons, repeat_count=repeat_count),
                 frequency=freq,
             )
             cycle_dict = gm.model_dump()
@@ -319,9 +319,13 @@ def compile_plan(
             cm = StrictCmDraft(
                 b1=StrictBSlot(b_code=b_code),
                 g2=StrictGSlot(g_code=g_code),
-                m3=StrictMSlot(m_components=m_comps),
-                x4=StrictXSlot(x_code=x_code, x_seconds=x_seconds),
-                i5=StrictISlot(i_code=i_code),
+                m3=StrictMSlot(m_components=m_comps, repeat_count=repeat_count if m_comps else None),
+                x4=StrictXSlot(
+                    x_code=x_code,
+                    x_seconds=x_seconds,
+                    repeat_count=repeat_count if (x_code or x_seconds) else None,
+                ),
+                i5=StrictISlot(i_code=i_code, repeat_count=repeat_count if i_code else None),
                 frequency=freq,
             )
             cycle_dict = cm.model_dump()

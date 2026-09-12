@@ -33,6 +33,7 @@ class StrictPSlot(BaseModel):
     p_base_code: str | None = None
     p_addon_codes: list[str] = Field(default_factory=list)
     precision: bool = False
+    repeat_count: int | None = None  # ADR-035 D4：持工具 cyclic 乘數（GM 罕見）
 
 
 class StrictMComponent(BaseModel):
@@ -49,6 +50,7 @@ class StrictMSlot(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     m_components: list[StrictMComponent] = Field(default_factory=list)
+    repeat_count: int | None = None  # ADR-035 D4：持工具 cyclic 乘數
 
 
 class StrictXSlot(BaseModel):
@@ -56,12 +58,14 @@ class StrictXSlot(BaseModel):
 
     x_code: str | None = None
     x_seconds: float = 0
+    repeat_count: int | None = None  # ADR-035 D4：持工具 cyclic 乘數
 
 
 class StrictISlot(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     i_code: str | None = None
+    repeat_count: int | None = None  # ADR-035 D4：持工具 cyclic 乘數
 
 
 class StrictGmDraft(BaseModel):
