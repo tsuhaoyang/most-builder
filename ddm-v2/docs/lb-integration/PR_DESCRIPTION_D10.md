@@ -51,7 +51,8 @@ IE 詞彙檢視保留為「進階檢視」。**不接 LLM、不做關鍵字猜�
 - `PYTHONPATH=src pytest tests/integration -q` → **616 passed, 1 skipped, 1 failed**。
   唯一 failed＝`test_outbox_api.py::test_claim_pending_and_mark_published`——**pre-existing，與 D10 無關**：
   已驗證它在 D10 之前的 base commit（`2321f5e`）以相同方式失敗，且不觸及 lb_projection／worksheet／
-  level 任何路徑（outbox event claim/publish）。已回報 Howard，out of scope。
+  level 任何路徑（outbox event claim/publish）。已開票 `TICKET_outbox_claim_pending.md`，out of scope。
+  （新增回歸案 `test_export.py::test_lb_csv_tool_use_repeat_count_expands_quantity` 已計入 passed。）
 - `python3 scripts/core_logic/run_all.py` → **✅ 全部通過**（引擎黃金值全程未動）。
 - 前端 `npm run typecheck && npm run typecheck:e2e && npm run build` → **全通過**。
 - Playwright e2e（dev server，`__ddmTest` hook）：`level-jobs-golden`（DoD-1）、`level-jobs-ui`、
@@ -64,24 +65,60 @@ IE 詞彙檢視保留為「進階檢視」。**不接 LLM、不做關鍵字猜�
 
 ## DoD 對照
 
-- **DoD-1（黃金複本逐欄相等）✅**：`e2e/support/goldenReplica.ts` 以真實 CycleIn 建 24 列，對照
-  `server_node_worksheet.json` 結構（seq_kind/tool/frequency/repeat 格位/x_seconds/level/lb_tags）；
-  存→lb-csv 與 `server_node_tasks.expected.csv` **21 個語意欄逐欄相等**，`tasks_out==34`、`errors==[]`。
-  排除 `duration`（複本 TMU 不同，§8.3）、`divisible`（§3.2）、`action`（複本敘述由不同 MOST 內容產）、
-  `source_wi_row_id`（複本 UUID）。
+- **DoD-1（黃金複本逐欄相等）✅，兩條路徑皆綠**：
+  - **API 路徑**（`level-jobs-golden.spec.ts` 第一條）：`goldenReplica.ts` 以真實 CycleIn 建 24 列 →
+    PUT → GET lb-csv 與 `server_node_tasks.expected.csv` **逐欄相等**，`tasks_out==34`、`errors==[]`；
+    排除 `duration`（複本 TMU 不同，§8.3）、`divisible`（§3.2）、`action`（複本敘述由不同 MOST 內容產）、
+    `source_wi_row_id`（複本 UUID）。
+  - **UI 路徑**（第二條，User 要求）：複本 PUT → 開作業版 → 等 `pill-ok` → 點儲存 → GET lb-csv 逐欄比對。
+    **`source_wi_row_id` 不排除**：以 `seq_no → fixture wi_row_id`（`00000000-0000-4000-8000-<n 補零>`）對照表，
+    把複本 id 換成 fixture id 後納入比對。其餘排除同 API 路徑（duration/divisible/action）。
 - **DoD-2 反投影無損（I-4）✅**：`jobsFromStore` + `derive()` 往返；`level-jobs-logic` 19 測試含 I-1/I-2/I-3。
 - **DoD-3 作業版純確定性（無 LLM）✅**：`jobs.ts`/`notices.ts`/`hints.py` 皆純規則；原型關鍵字規則未進正式碼；
   frontend-ux-spec §8 規則 11 明列。
 - **DoD-4 i18n 全目錄 ✅**：§6 全 key 兩語系；34 plain 碼對稱；Widen typecheck + guard 測試綠。
 - **DoD-5 四輸入路徑帶作業名 ✅**：F7（工時表欄/AI 草稿/作業大綱/Excel 匯入）。
-- **DoD-6 截圖 ✅**：`level-jobs-flow.png`/`-drawer.png`/`-line.png`（zh-TW）+ `-flow.en.png`，皆 11 作業載入狀態。
+- **DoD-6 截圖 ✅**：`level-jobs-flow.png`/`-drawer.png`/`-line.png`（zh-TW）+ `-flow.en.png`，皆 11 作業載入狀態，
+  **等 `pill-ok` 才拍**（不再閃「要處理」／「約 0 秒」）。
 
 ---
 
-## 待 User 過目
+## 收尾三件（User 核准後）
+
+1. **載入閃錯（缺陷）修正**：四張截圖原本都是「要處理 1」＋所有卡「約 0 秒」。查清那個 E＝**`E_LEVEL_INVALID`**
+   （`tasks_out=0`）。**根因有二**：
+   - (a) **timing**：預覽在 hydrate／baseline 完成前就發（level 尚未還原）。
+   - (b) **內容 bug**：`savePayload.buildSaveBody` 的 `level ?? String(i+1)`／`ascription ?? 'main'` 把
+     `derive()` 對「非鏈首成員」明確回的 `null` 竄改成各自不同的層號 → 投影 `R2_REDEFINE`＋`R7_NON_DECREASING`。
+   - **修法**：JobsShell 以 `hydrated && baselineApplied` 為閘門才發預覽；閘門前 pills 只顯示 `preview.updating`
+     （不顯示 ask/err/ok）、卡片秒數用 `row.seconds×freq` 回退（既有邏輯，非 0）、save-export 停用。
+     並讓 `buildSaveBody` 忠實保留 `derive` 的 null（不再竄改層號）。
+     `level-jobs-ui.spec.ts` 加斷言：載入全程 `pill-err` 不得出現、每個 preview `errors` 皆空、最終落 `pill-ok`。
+2. **DoD-1 走 UI**（見上）。為讓 UI 存檔路徑正確，修正**既有存檔缺口**：`buildSaveBody`／`Row`／hydrate 過去
+   丟掉 `tool_vocab_id`／`sub_activity`／`key_parts` → 經作業版（或工時表）存檔後，工具生命週期與 station_name／
+   part_id 會消失。已補齊三欄的 hydrate→Row→save 往返（後端 schema／ORM／read 本就支援）。
+3. **repeat_counts 舊 bug 回歸測試**：`tests/integration/test_export.py::test_lb_csv_tool_use_repeat_count_expands_quantity`
+   （純 DB 路徑）：存一列 tool-held CM、use 段 `repeat_count=8` → lb-csv 三列 `quantity=8`、use=cyclic、
+   acquire/release=setup。
+
+## repeat_counts 修正對既有 worksheet 的影響
+
+adapter `_build_projection_row` 從前把 `repeat_counts` 硬寫空 dict；修正後改由 `slot_inputs` 推導。
+**影響面**：任何「工具列 use 段帶 repeat_count」的既有 worksheet，其 lb-csv／lb-report 匯出結果會改變——
+該工具 task 的 `quantity` 從被低估的 1 變為正確的 N。**這是修正，不是回歸**：舊值違反 Spec §3.2／§3.3
+（use 段重複區塊應以 N 展開數量）。無 repeat 的列不受影響。
+
+---
+
+## 待 User 過目（已於本輪裁決）
 
 - **黃金 hints 快照** `server_node_hints.expected.json` = 3 條 `H_TOOL_DECOMPOSED`（scanner {4,6}／
-  electric_driver {9}／torque_driver {13,17}）；machine 三列已回答故無 `H_MACHINE_TIME`。首次產出，請過目後鎖。
-- **DoD-1 排除 `action`/`source_wi_row_id`**：§8.3 只寫排除 duration/divisible，但複本是不同 worksheet，
-  敘述（narrative-derived `action`）與 UUID 本就不同。已在 spec 逐欄比對排除並註明理由——若 User 認為
-  應改用固定 UUID／敘述使複本 100% 位元相等，請裁決（目前判斷 21 個語意欄相等已足以證明作業版正確）。
+  electric_driver {9}／torque_driver {13,17}）；machine 三列已回答故無 `H_MACHINE_TIME`。**已核准鎖定 ✅**。
+- **DoD-1 `action` 欄排除**：**已核准 ✅**（acquire／release 的 `pick up`／`put down {tool}` 仍比對，維持）；
+  複本 use／單列敘述由不同 MOST 內容產生，本就不同。UI 路徑已把 `source_wi_row_id` 改為映射比對（不排除）。
+
+## 既有失敗（與本線無關，已開票）
+
+`tests/integration/test_outbox_api.py::test_claim_pending_and_mark_published` 在 D10 之前的 base commit
+（`2321f5e`）以相同方式失敗，且不觸及 lb_projection／worksheet／level 任何路徑。已開小票
+`docs/lb-integration/TICKET_outbox_claim_pending.md`（open，不阻擋合併）。
