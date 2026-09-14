@@ -229,7 +229,7 @@ Kahn 拓撲排序，就緒集合以 `(seq_no, part_index)` 最小者優先（par
 4. **組內傳染**：同 cub 內 `offline` 一致；同 cub 內 Q>1 列 `quantity`／`duration_basis` 一致；同 wcub 內 `offline` 一致、成員 Q≤1、不跨多個 cub。
 5. **互斥**：Q>1 ⊥ `divisible`；Q>1 ⊥ `atomic_group`；`divisible` ⊥ acquire/release；`atomic_group` 成員無工具欄（wcub 標在 tool-held motion → `E_ATOMIC_ON_TOOL_MOTION`）。
 6. **取放等長**：同 `tool_id` 所有 acquire 列 `duration` 相等；release 相等。
-7. **過渡期守衛（LB ADR-001 追記缺口）**：同一 `tool_id` 不得同時出現在 Q>1 episode 與 Q=1 episode → `E_TOOL_ID_SHARED_ACROSS_LOT`（提示：為批量情境另立詞彙，如 `electric_driver_lot`）。LB 修好後降為 W。
+7. **過渡期守衛（LB ADR-001 追記缺口）**：同一 `tool_id` 不得同時出現在 Q>1 episode 與 Q=1 episode → `E_TOOL_ID_SHARED_ACROSS_LOT`（提示：為批量情境另立詞彙，如 `electric_driver_lot`）。**降級條件：LB `feature/most-integration-phase2` 合入 master 後**（`detect_merge_candidates` 修好、過渡缺口消除）方可降為 W；在此之前**維持 E**（擋匯出），不得提前降級。
 8. **表頭凍結**：24 欄名與順序 ＝ §6；任何變動 ＝ `contract_version` 升版 ＋ LB 契約同步。
 
 ---

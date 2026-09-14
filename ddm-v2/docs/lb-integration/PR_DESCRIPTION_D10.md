@@ -97,6 +97,9 @@ IE 詞彙檢視保留為「進階檢視」。**不接 LLM、不做關鍵字猜�
 2. **DoD-1 走 UI**（見上）。為讓 UI 存檔路徑正確，修正**既有存檔缺口**：`buildSaveBody`／`Row`／hydrate 過去
    丟掉 `tool_vocab_id`／`sub_activity`／`key_parts` → 經作業版（或工時表）存檔後，工具生命週期與 station_name／
    part_id 會消失。已補齊三欄的 hydrate→Row→save 往返（後端 schema／ORM／read 本就支援）。
+   > 這兩個存檔修正（1(b) 的 `buildSaveBody` null 層號竄改、2 的 tool/sub_activity/key_parts 漏帶）皆源於
+   > 存檔路徑，兩者引入於 `37c420b`（2026-06-22，`[Phase 2][Frontend] feat(wi): precise 7-slot editor + save worksheet`）。
+   > 因 MOST 尚未上線，**無既有資料需修復**（僅需修程式，不需資料遷移）。
 3. **repeat_counts 舊 bug 回歸測試**：`tests/integration/test_export.py::test_lb_csv_tool_use_repeat_count_expands_quantity`
    （純 DB 路徑）：存一列 tool-held CM、use 段 `repeat_count=8` → lb-csv 三列 `quantity=8`、use=cyclic、
    acquire/release=setup。
