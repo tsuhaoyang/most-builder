@@ -56,6 +56,7 @@ export interface WsReadRow {
   seq_no: number
   hand: string | null
   sub_activity: string | null
+  key_parts: string | null
   object_vocab_id: string | null
   from_vocab_id: string | null
   to_vocab_id: string | null

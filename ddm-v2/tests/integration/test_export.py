@@ -250,3 +250,69 @@ async def test_export_report_xlsx_not_found(client):
     fake_id = uuid.uuid4()
     r = await client.get(f"/api/v2/worksheets/{fake_id}/export/report.xlsx")
     assert r.status_code == 404
+
+
+async def test_lb_csv_tool_use_repeat_count_expands_quantity(client):
+    """回歸（ADR-035 D10 收尾）：adapter._build_projection_row 曾把 repeat_counts 硬寫空 dict，
+    導致 DB／save-payload 投影路徑找不到重複區塊 → 工具列 repeat 的 motion 被投影成 N=1。
+    修正後：一列 tool-held CM、use 段 repeat_count=8 → lb-csv 拆三列，quantity 皆 8，
+    use=cyclic、acquire/release=setup（純 DB 路徑，不依賴 E2E）。"""
+    if not await _seeded(client):
+        pytest.skip("demo worksheet 未種")
+
+    # 建一個帶 name_en 的 tool vocab（tool_id = name_en snake_case = electric_driver）
+    tv = await client.post("/api/v2/vocab", json={"kind": "tool", "name_zh": "電動起子(repeat回歸)", "name_en": "electric driver"})
+    assert tv.status_code in (200, 201), tv.text
+    tool_id = tv.json()["id"]
+
+    new = (await client.post(f"/api/v2/worksheets/{WS}/clone")).json()["new_worksheet_id"]
+    rid = str(uuid.uuid4())
+    # tool-held CM：g_tap 抓工具、use 段 m3/x4/i5 帶 repeat_count=8（x_press 需正秒數）
+    cm = {"seq": "CM", "rule_set_code": "MINIMOST_FACTORY_V2",
+          "a0": {"reach_cm": 16}, "g2": {"g_code": "g_tap"},
+          "m3": {"m_components": [{"verb_code": "m_screw"}], "repeat_count": 8},
+          "x4": {"x_code": "x_press", "x_seconds": 0.216, "repeat_count": 8},
+          "i5": {"i_code": "i_check", "repeat_count": 8},
+          "a6": {"reach_cm": 16}}
+    row = {"id": rid, "seq_no": 1, "hand": "RH", "object_vocab_id": OBJ, "tool_vocab_id": tool_id,
+           "frequency": 1, "narrative": "鎖 8 顆螺絲", "narrative_en": "fasten 8 screws",
+           "cycle": {**cm, "narrative_en": "fasten 8 screws"},
+           "level": {"ascription": "main", "level": "1", "action_type": "fasten"}}
+    r = await client.put(f"/api/v2/worksheets/{new}", json={"rows": [row]})
+    assert r.status_code == 200, r.text
+
+    rep = (await client.get(f"/api/v2/worksheets/{new}/export/lb-report")).json()
+    assert rep["errors"] == [], rep["errors"]
+
+    csv_text = (await client.get(f"/api/v2/worksheets/{new}/export/lb-csv")).text
+    lines = csv_text.replace("\ufeff", "").strip().split("\n")
+    header = lines[0].split(",")
+    qi, tai, tid = header.index("quantity"), header.index("tool_action"), header.index("tool_id")
+
+    def cells(line: str) -> list[str]:
+        out, cur, q = [], "", False
+        for ch in line:
+            if ch == '"':
+                q = not q
+            elif ch == "," and not q:
+                out.append(cur)
+                cur = ""
+            else:
+                cur += ch
+        out.append(cur)
+        return out
+
+    body = [cells(x) for x in lines[1:]]
+    # 這列（唯一工具）拆三列：acquire / use / release，quantity 皆 8
+    ours = [c for c in body if c[tid] == "electric_driver"]
+    assert len(ours) == 3, f"預期三列（acquire/use/release），得 {len(ours)}"
+    by_action = {c[tai]: c for c in ours}
+    assert set(by_action) == {"acquire", "use", "release"}, list(by_action)
+    for action, c in by_action.items():
+        assert c[qi] == "8", f"{action} quantity 應為 8，得 {c[qi]!r}"
+
+    # qty_scope：use=cyclic、acquire/release=setup
+    qsi = header.index("qty_scope")
+    assert by_action["use"][qsi] == "cyclic"
+    assert by_action["acquire"][qsi] == "setup"
+    assert by_action["release"][qsi] == "setup"

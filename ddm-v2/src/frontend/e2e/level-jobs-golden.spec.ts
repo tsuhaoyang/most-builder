@@ -64,3 +64,59 @@ test('DoD-1: golden replica lb-csv equals expected except duration/divisible', a
     }
   }
 })
+
+// 固定 fixture wi_row_id：seq_no n → 00000000-0000-4000-8000-<n 補零 12 位>
+const fixtureId = (seqNo: number): string => `00000000-0000-4000-8000-${String(seqNo).padStart(12, '0')}`
+
+test('DoD-1 via UI: open jobs → pill-ok → save-export → lb-csv equals expected (source_wi_row_id mapped, not excluded)', async ({ page, request }) => {
+  test.skip(!(await seeded(request)), 'demo worksheet 未種')
+  const vocab = await ensureReplicaVocab(request)
+  const rows = buildGoldenRows(vocab)
+  // 複本 row id → fixture id（seq_no i+1）
+  const idMap = new Map<string, string>()
+  rows.forEach((r, i) => idMap.set(String((r as { id: string }).id), fixtureId(i + 1)))
+
+  const wsId = ((await (await request.post(`/api/v2/worksheets/${WS}/clone`, { headers: AUTH })).json()) as { new_worksheet_id: string }).new_worksheet_id
+  const saved = await request.put(`/api/v2/worksheets/${wsId}`, { headers: AUTH, data: { rows } })
+  expect(saved.status(), await saved.text()).toBe(200)
+
+  await page.goto('/')
+  const hasHook = await page.evaluate(() => !!(window as unknown as Record<string, unknown>).__ddmTest)
+  test.skip(!hasHook, '需 dev server 暴露 __ddmTest')
+  await page.evaluate((id) => {
+    const t = (window as unknown as { __ddmTest: { workspace: { getState: () => { setActiveWs: (i: string) => void } } } }).__ddmTest
+    t.workspace.getState().setActiveWs(id)
+    window.dispatchEvent(new CustomEvent('ddm:switch-tab', { detail: 'level' }))
+  }, wsId)
+
+  // 等作業卡 + 預覽落定（pill-ok）
+  await page.locator('[data-testid^="job-card-"]').first().waitFor({ timeout: 10000 })
+  await expect(page.getByTestId('pill-ok')).toBeVisible({ timeout: 10000 })
+  await expect(page.getByTestId('jobs-save-export')).toBeEnabled()
+
+  // 點「儲存」（save-export 會導頁，這裡只驗存檔＋另取 csv）；等存檔完成
+  const [putResp] = await Promise.all([
+    page.waitForResponse(r => r.url().includes(`/worksheets/${wsId}`) && r.request().method() === 'PUT', { timeout: 10000 }),
+    page.getByTestId('jobs-save').click(),
+  ])
+  expect(putResp.status(), await putResp.text()).toBe(200)
+
+  // GET lb-csv（存檔後的權威投影）
+  const csvText = await (await request.get(`/api/v2/worksheets/${wsId}/export/lb-csv`, { headers: AUTH })).text()
+  const got = parseCsv(csvText)
+  const exp = parseCsv(readFileSync(EXPECTED, 'utf-8'))
+  expect(got.header).toEqual(exp.header)
+  expect(got.rows.length).toBe(exp.rows.length)
+
+  const srcCol = exp.header.indexOf('source_wi_row_id')
+  // 把複本 CSV 的 source_wi_row_id 換成 fixture id 後，source_wi_row_id 也納入比對（不排除）。
+  const EXCLUDE = new Set(['duration', 'divisible', 'action'])
+  for (let r = 0; r < exp.rows.length; r++) {
+    for (let c = 0; c < exp.header.length; c++) {
+      if (EXCLUDE.has(exp.header[c])) continue
+      let gotVal = got.rows[r][c]
+      if (c === srcCol) gotVal = idMap.get(gotVal) ?? gotVal   // 複本 id → fixture id
+      expect(gotVal, `row ${r + 1} col ${exp.header[c]}`).toBe(exp.rows[r][c])
+    }
+  }
+})

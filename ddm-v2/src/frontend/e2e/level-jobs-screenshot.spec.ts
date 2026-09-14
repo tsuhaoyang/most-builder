@@ -29,7 +29,9 @@ async function loadJobs(page: Page, request: APIRequestContext): Promise<void> {
     window.dispatchEvent(new CustomEvent('ddm:switch-tab', { detail: 'level' }))
   }, wsId)
   await page.locator('[data-testid^="job-card-"]').first().waitFor({ timeout: 10000 })
-  await page.waitForTimeout(600)
+  // 等預覽落定（pill-ok 出現）才拍，避免拍到 gate 未開的 updating 狀態
+  await page.getByTestId('pill-ok').waitFor({ timeout: 10000 })
+  await page.waitForTimeout(400)
 }
 
 test('capture jobs flow + drawer + line (11-job golden)', async ({ page, request }) => {

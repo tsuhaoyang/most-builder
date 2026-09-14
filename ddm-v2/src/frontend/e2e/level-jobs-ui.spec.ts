@@ -31,6 +31,45 @@ async function loadJobs(page: Page, request: APIRequestContext): Promise<string>
   return wsId
 }
 
+test('load never flickers 要處理: pill-err never appears; settles to pill-ok', async ({ page, request }) => {
+  test.skip(!(await seeded(request)), 'demo worksheet 未種')
+  const vocab = await ensureReplicaVocab(request)
+  const rows = buildGoldenRows(vocab)
+  const wsId = ((await (await request.post(`/api/v2/worksheets/${WS}/clone`, { headers: AUTH })).json()) as { new_worksheet_id: string }).new_worksheet_id
+  const saved = await request.put(`/api/v2/worksheets/${wsId}`, { headers: AUTH, data: { rows } })
+  expect(saved.status(), await saved.text()).toBe(200)
+
+  // 監看每個 preview 回應：載入期間不得回 E（gate 未開時根本不發）
+  const previewErrCodes: string[][] = []
+  page.on('response', async r => {
+    if (r.url().includes('/lb-report/preview')) {
+      try { const j = await r.json(); previewErrCodes.push((j.errors ?? []).map((e: { code: string }) => e.code)) } catch { /* ignore */ }
+    }
+  })
+
+  await page.goto('/')
+  const hasHook = await page.evaluate(() => !!(window as unknown as Record<string, unknown>).__ddmTest)
+  test.skip(!hasHook, '需 dev server 暴露 __ddmTest')
+  await page.evaluate((id) => {
+    const t = (window as unknown as { __ddmTest: { workspace: { getState: () => { setActiveWs: (i: string) => void } } } }).__ddmTest
+    t.workspace.getState().setActiveWs(id)
+    window.dispatchEvent(new CustomEvent('ddm:switch-tab', { detail: 'level' }))
+  }, wsId)
+
+  // 載入期間任何時刻都不得出現「要處理」(pill-err)
+  let sawErr = false
+  const deadline = Date.now() + 4000
+  while (Date.now() < deadline) {
+    if (await page.getByTestId('pill-err').count() > 0) sawErr = true
+    await page.waitForTimeout(70)
+  }
+  expect(sawErr, 'pill-err（要處理）在載入過程中不得出現').toBe(false)
+  // 最終落定 ok
+  await expect(page.getByTestId('pill-ok')).toBeVisible()
+  // 發出的每個 preview 都沒有 E（gate 確保只在 hydrate+baseline 後才發）
+  for (const codes of previewErrCodes) expect(codes, JSON.stringify(previewErrCodes)).toEqual([])
+})
+
 test('golden replica renders 11 jobs; flow/line toggle + save-export lb groups', async ({ page, request }) => {
   test.skip(!(await seeded(request)), 'demo worksheet 未種')
   const wsId = await loadJobs(page, request)

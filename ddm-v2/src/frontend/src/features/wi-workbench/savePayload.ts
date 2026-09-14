@@ -20,7 +20,10 @@ export function buildSaveBody(
       const e = (levelPayload[i] || {}) as Partial<LevelPayloadRow>
       return {
         id: r.id, seq_no: i + 1, hand: r.handCode,
+        sub_activity: r.subActivity ?? null,
+        key_parts: r.keyParts ?? null,
         object_vocab_id: r.nv.obj || null,
+        tool_vocab_id: r.toolVocab ?? null,   // ADR-035 D10：帶回工具，否則存檔後工具生命週期消失
         from_vocab_id: r.nv.from || null, to_vocab_id: r.nv.to || null,
         frequency: r.freq, simo_group_id: r.simoGroup || null,
         // Backend regenerates narrative_zh/narrative_en from the pinned rule-set; never send
@@ -29,7 +32,12 @@ export function buildSaveBody(
         wi_group: r.wiGroup ?? null,   // ADR-035 D10：作業名稱
         cycle: r.payload,
         level: {
-          coefficient: e.coefficient ?? 1, ascription: e.ascription ?? 'main', level: e.level ?? String(i + 1),
+          // derive() 對非鏈首成員明確回 level=null／ascription=null（＝繼承所屬 chain）。
+          // 過去這裡用 `?? String(i+1)`／`?? 'main'` 會把 null 竄改成各自不同的層號，
+          // 造成投影 R2_REDEFINE／R7_NON_DECREASING（載入即 E_LEVEL_INVALID）。改為忠實保留 derive 值。
+          coefficient: e.coefficient ?? 1,
+          ascription: 'ascription' in e ? (e.ascription ?? null) : 'main',
+          level: 'level' in e ? (e.level ?? null) : String(i + 1),
           countersignature: e.countersignature ?? null, parent_countersignature: e.parent_countersignature ?? null,
           order: e.order ?? null, number: e.number ?? null, number_count: e.number_count ?? null,
           machine_count: 1, manpower: 1,

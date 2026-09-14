@@ -580,6 +580,7 @@ export function WiWorkbench() {
       // narr 留空＝「還沒有後端敘述」；預覽句由 useRowNarr 在顯示時重算
       // wiGroup（作業）：帶入編輯器目前輸入值；不清空 curWiGroup，連續加同一作業的多列免重打
       nv: { ...cur.nv }, narr: '', narrEn: null, wiGroup: curWiGroup.trim() || null, tmu, seconds: tmu * TMU_SEC, payload,
+      toolVocab: null, subActivity: null, keyParts: null,
     } as Row)
   }
 

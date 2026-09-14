@@ -25,6 +25,9 @@ export function useWorksheetWorkspace(worksheetId: string) {
       freq: row.frequency,
       simoGroup: row.simo_group_id ?? '',
       wiGroup: row.wi_group ?? null,
+      toolVocab: row.tool_vocab_id ?? null,
+      subActivity: row.sub_activity ?? null,
+      keyParts: row.key_parts ?? null,
       nv: {
         obj: row.object_vocab_id ?? '',
         from: row.from_vocab_id ?? '',

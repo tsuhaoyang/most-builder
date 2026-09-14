@@ -48,22 +48,33 @@ export function JobsShell({ activeWs }: { activeWs: string }) {
   const [updating, setUpdating] = useState(false)
   const [baseline, setBaseline] = useState<{ jobCount: number } | null>(null)
   const [baselineWs, setBaselineWs] = useState<string>('')
+  // 載入閘門（ADR-035 D10 收尾）：hydrate 與 baseline 都完成前不發預覽（否則 level 未還原 →
+  // 後端回 E_LEVEL_INVALID + tasks_out=0，畫面閃「要處理 1」＋所有卡「約 0 秒」）。
+  const [baselineDone, setBaselineDone] = useState<string>('')  // 已跑過 baseline 的 activeWs
+  // hydrated = 每個現有列都有對應的 levelMap 項（hydrate 已把 rows 與 levelMap 灌成一致）。
+  const hydrated = rows.length > 0 && rows.every(r => !!levelMap[r.id])
+  const baselineApplied = baselineDone === activeWs
+  const previewGateOpen = hydrated && baselineApplied
 
   // 節流：debounce + latest-wins。seq 遞增，onSuccess/onError 只認最新 seq。
   const seqRef = useRef(0)
   const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
 
-  // worksheet 切換 → 清 dismissed（session 級，附錄 A）
-  useEffect(() => { setDismissed(new Set()); setReport(null); setPreviewError(null) }, [activeWs])
+  // worksheet 切換 → 清 dismissed（session 級，附錄 A）+ 重置載入閘門
+  useEffect(() => { setDismissed(new Set()); setReport(null); setPreviewError(null); setBaselineDone('') }, [activeWs])
 
-  // baseline（附錄 A.4）：每個 worksheet 載入後套用一次
+  // baseline（附錄 A.4）：每個 worksheet 於 hydrate 完成後套用一次；跑完（不論是否有變動）開閘。
   useEffect(() => {
-    if (!editable || !rows.length || baselineWs === activeWs) return
+    if (baselineWs === activeWs) return
+    if (!hydrated) return               // 等 hydrate 完成才判 baseline（否則讀到半灌的 store）
     setBaselineWs(activeWs)
-    const res = applyBaseline()
-    if (res.applied) setBaseline({ jobCount: res.jobCount })
+    if (editable) {
+      const res = applyBaseline()
+      if (res.applied) setBaseline({ jobCount: res.jobCount })
+    }
+    setBaselineDone(activeWs)           // 開閘：預覽此後才會發
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [activeWs, rows.length, editable])
+  }, [activeWs, hydrated, editable])
 
   function undoBaseline() {
     setBaseline(null)
@@ -72,8 +83,10 @@ export function JobsShell({ activeWs }: { activeWs: string }) {
   }
 
   // rows/levelMap/groupMeta/dev 變動 → debounce 400ms 後 dry-run 預覽（latest-wins）。
+  // 閘門：hydrate + baseline 未完成前不發（避免 level 未還原的 E_LEVEL_INVALID 閃錯）；閘門關閉時顯示 updating。
   useEffect(() => {
-    if (!rows.length) { setReport(null); return }
+    if (!rows.length) { setReport(null); setUpdating(false); return }
+    if (!previewGateOpen) { setUpdating(true); return }  // 閘門未開：pills 顯示 updating，不發請求
     if (timerRef.current) clearTimeout(timerRef.current)
     timerRef.current = setTimeout(() => {
       const payload = derive(rows, levelMap, groupMeta, rowNarr)
@@ -104,7 +117,7 @@ export function JobsShell({ activeWs }: { activeWs: string }) {
     }, 400)
     return () => { if (timerRef.current) clearTimeout(timerRef.current) }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [rows, levelMap, groupMeta, dev])
+  }, [rows, levelMap, groupMeta, dev, previewGateOpen])
 
   // R1–R9 驗證（作業流程正常時應為空）；levelMap/rows 變動時重跑。
   useEffect(() => {
@@ -131,6 +144,8 @@ export function JobsShell({ activeWs }: { activeWs: string }) {
   )
   const askCount = notices.filter(n => n.type === 'ask' && !(n.kind !== 'H_MACHINE_TIME' && dismissed.has(n.key))).length
   const errCount = notices.filter(n => n.type === 'err').length
+  // 預覽是否已就緒（閘門開 + 有 report + 非更新中）；未就緒時只顯示 updating，不顯示 ask/err/ok。
+  const ready = previewGateOpen && report !== null && !updating
 
   const onDismiss = (key: string) => setDismissed(s => new Set(s).add(key))
 
@@ -182,16 +197,17 @@ export function JobsShell({ activeWs }: { activeWs: string }) {
         </div>
 
         <div className="flex items-center gap-1 text-[11px]">
-          {askCount > 0 && (
+          {ready && askCount > 0 && (
             <span data-testid="pill-ask" className="px-1.5 py-0.5 rounded bg-sky-100 text-sky-800">{t('levelSystem.jobs.pill.ask', { count: askCount })}</span>
           )}
-          {errCount > 0 && (
+          {ready && errCount > 0 && (
             <span data-testid="pill-err" className="px-1.5 py-0.5 rounded bg-red-100 text-red-800">{t('levelSystem.jobs.pill.err', { count: errCount })}</span>
           )}
-          {errCount === 0 && (
+          {ready && errCount === 0 && (
             <span data-testid="pill-ok" className="px-1.5 py-0.5 rounded bg-emerald-100 text-emerald-800">{t('levelSystem.jobs.pill.ok')}</span>
           )}
-          {updating && <span data-testid="preview-updating" className="text-slate-400">{t('levelSystem.jobs.preview.updating')}</span>}
+          {!ready && <span data-testid="preview-updating" className="text-slate-400">{t('levelSystem.jobs.preview.updating')}</span>}
+          {ready && updating && <span data-testid="preview-updating" className="text-slate-400">{t('levelSystem.jobs.preview.updating')}</span>}
         </div>
 
         <div className="flex-1" />
@@ -208,7 +224,7 @@ export function JobsShell({ activeWs }: { activeWs: string }) {
             <button
               data-testid="jobs-save-export"
               className="px-2 py-1 rounded text-xs border bg-sky-600 text-white border-sky-600 hover:bg-sky-700 disabled:opacity-50"
-              disabled={save.isPending || errCount > 0}
+              disabled={save.isPending || !ready || errCount > 0}
               onClick={doSaveAndExport}>
               {t('levelSystem.jobs.saveAndExport')}
             </button>

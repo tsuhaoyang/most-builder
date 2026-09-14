@@ -8,6 +8,11 @@ export interface Row {
   simoGroup: string
   /** 情境欄。`component`／`where` 只有本地新加的列帶得到（後端 WiRow 沒有這兩欄）。 */
   nv: { obj: string; from: string; to: string; component?: string; where?: string }
+  /** 工具 vocab id（LB 投影工具生命週期用；`wi_rows.tool_vocab_id`）。存檔須帶回，否則工具會被丟掉。 */
+  toolVocab: string | null
+  /** 站別／零件（顯示與 LB 投影 passthrough；`wi_rows.sub_activity`／`key_parts`）。存檔須帶回。 */
+  subActivity: string | null
+  keyParts: string | null
   /**
    * 後端中文敘述（`most_cycles.narrative_zh`）。**本地新加的列一律留空**——把 `i18n.t`
    * 的產物凍進 state 會讓那些列永遠停在加入當下的語言。顯示請走 `useRowNarr()`。
