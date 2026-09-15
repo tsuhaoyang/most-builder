@@ -43,7 +43,7 @@
 | `object` 為工具且未持有（Pattern A 的「拿起工具」GM） | **1 列** `tool_action=acquire` | §4 |
 | `object` 為工具且已持有、GM 放置（Pattern A 的「放下工具」） | **1 列** `tool_action=release` | §4 |
 | `is_general=true` | **1 列**，不拆、不帶工具欄、`part_id=General`、`general_role` 明填、無邊 | §5.7 |
-| SIMO 從屬列（`simo_group_id` 非空） | **0 列**（時間已在主列；LB 尚無 SIMO 欄） | 過渡方案 D15 |
+| SIMO 從屬列（`simo_group_id` 非空） | **0 列**（時間已在主列；LB 尚無 SIMO 欄） | ~~過渡方案 D15~~ **定案（LB ADR-023 D10 暫緩）** |
 
 三列共用：`group`／`segment`／`quantity`／`duration_basis`／`atomic_group`／`offline_flag`／`station_name`／`part_id`／`fixed_station`／`source_wi_row_id`。
 拆列**不改工時標準**：`acquire_tmu + N×use_once_tmu + release_tmu == total_tmu`（§7.1）。
@@ -271,7 +271,7 @@ Kahn 拓撲排序，就緒集合以 `(seq_no, part_index)` 最小者優先（par
 | `W_FLOATING_TASK` | §5.10 | 確認是否漏標依賴 |
 | `W_TOOL_NAME_EN_MISSING` | 工具詞彙無 `name_en` | 補英文 |
 | `W_GENERAL_WITH_TOOL` | general motion 持工具 | 以單列輸出、工具欄丟棄 |
-| `W_SIMO_COLLAPSED` | 有 SIMO 從屬列被略過 | 過渡方案 D15 |
+| `W_SIMO_COLLAPSED` | 有 SIMO 從屬列被略過 | ~~過渡方案 D15~~ **定案（LB ADR-023 D10 暫緩）** |
 | `W_ACTION_TYPE_FALLBACK` | 無 IE 標籤且附錄 A 推不出（無 slot 選項碼）→ `op` | 在 Level System 補動作標籤 |
 
 ### 8.2 匯出報告（與 CSV 同時產出）
@@ -313,16 +313,17 @@ Kahn 拓撲排序，就緒集合以 `(seq_no, part_index)` 最小者優先（par
 
 | 欄／概念 | 狀態 | 對接 |
 |---|---|---|
-| `source_wi_row_id` | v1 已輸出 | LB 需保留並在回寫（D13）帶回 |
-| `role_type` | v1 已輸出；2026-09-12 規則修訂為需 `machine_unattended` 斷言（§6） | LB Phase 2 WP-L9 消費：`machine` 不佔 worker、仍進站 makespan；求解政策 `unattended_machine_policy` 可整批降級為 busy（ADR-023 D9 追記） |
+| `source_wi_row_id` | v1 已輸出 | ~~LB 需保留並在回寫（D13）帶回~~ **LB Phase 2 已消費，並經回寫 `rows[].source_wi_row_id` 帶回**（LB `5082aa6`、`adb750b`＋`631e3a5`；於 `feature/most-integration-phase2`，尚未合入 LB master） |
+| `role_type` | v1 已輸出；2026-09-12 規則修訂為需 `machine_unattended` 斷言（§6） | ~~LB Phase 2 WP-L9 消費：`machine` 不佔 worker、仍進站 makespan；求解政策 `unattended_machine_policy` 可整批降級為 busy（ADR-023 D9 追記）~~ **LB Phase 2 已消費**：`machine` 不佔 worker、進站節拍；求解政策 `unattended_machine_policy`（free／busy）；回寫帶 `unattended_machine_policy` 與 `unattended_machine_policy_source`（`persisted`／`defaulted`）（LB `dee1809..d267e43`、`e4e626c`、`02dba21`） |
 | `machine` 列拆成「人工前段（A B G M）／X／人工後段（I A）」 | 未做（v1 近似：整列不佔人） | Phase 3：沿工具拆列的分桶機制（§3.3）新增 machine 分解；黃金 task 數會變 |
-| `general_role` | v1.1 已輸出 | LB Phase 2 以此取代 `part_id=General` ∧ 無 pred ∧ `action` 關鍵字三欄魔術值 |
-| `simo_group` | 未輸出 | LB 加欄＋max 計算後，MOST 從屬列改為輸出（D15） |
+| `general_role` | v1.1 已輸出 | ~~LB Phase 2 以此取代 `part_id=General` ∧ 無 pred ∧ `action` 關鍵字三欄魔術值~~ **LB Phase 2 已以此取代 `part_id=General`＋關鍵字判定**（舊路徑降為相容路徑並記警告）（LB `2b5b961`） |
+| `simo_group` | 未輸出 | ~~LB 加欄＋max 計算後，MOST 從屬列改為輸出（D15）~~ **LB 暫緩、不實作（ADR-023 D10 追記）**：LB 原設計取 max，與 MOST ADR-020「SIMO 標記列貢獻 0」相反。MOST **維持不輸出從屬列，此為定案而非過渡**。重啟前提：MOST 持久化 `simo_with_row_id`、代表＝主列、不取 max（LB `c3ee94a`） |
 | `nb`（不可同站） | 丟棄＋W | LB 加 `max_per_station` 類約束 |
 | `wi_group` | 未輸出 | 待 WI 層物件在 worksheet 情境有穩定 id |
-| `p2` | 恆空 | LB 端規劃者覆蓋 |
-| 「lot 必須同一人一氣完成」 | 不可表達 | LB 允許 `p2=1` 或 atomic 對 Q>1 定義為 Σused=1 |
-| `complexity_level` | 恆空 | LB 擬刪 |
+| `p2` | 恆空 | ~~LB 端規劃者覆蓋~~ **MOST 維持恆空**；LB 值域：Q=1 需 `p2 ≥ 2`、Q>1 可 `p2 ≥ 1`（LB `e3fb862`） |
+| 「lot 必須同一人一氣完成」 | ~~不可表達~~ **LB 已支援** | ~~LB 允許 `p2=1` 或 atomic 對 Q>1 定義為 Σused=1~~ **LB 已支援 Q>1 的 `p2=1`（該批由恰一人完成）**（LB `e3fb862`） |
+| `complexity_level` | 恆空 | ~~LB 擬刪~~ **LB 已退出求解路徑，僅顯示**（LB `139c9fe`） |
+| **回寫契約 `lb-most-writeback-v1`** | MOST 端消費尚未實作 | **LB 已提供純讀端點 `GET …/results/{result_id}/writeback`**（扁平 `rows[]`，每 task 一筆；`workers` 為清單；不含結構欄與 SIMO 從屬列）（LB `adb750b`、`631e3a5`、`02dba21`） |
 
 ---
 

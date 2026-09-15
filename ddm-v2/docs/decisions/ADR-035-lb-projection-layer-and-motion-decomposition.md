@@ -82,6 +82,8 @@
 2. `p2` 恆空（D10）。3. `complexity_level` 恆空（LB solver 零消費）。4. SIMO 從屬列不輸出（D15）。5. nb 不輸出。
 每條在 LB Phase 2 對應修正落地後，於 Spec §11 降級或移除。
 
+> **追記（2026-09-16）**：第 4 條 SIMO 從屬列不輸出**改為定案、非過渡**（LB ADR-023 D10 暫緩：LB 原設計取 max，與 ADR-020「SIMO 標記列貢獻 0」相反）。MOST 維持不輸出從屬列；重啟前提＝MOST 持久化 `simo_with_row_id`、代表＝主列、不取 max。同步見 Spec §11 `simo_group` 列、§2 粒度表 SIMO 列、§8.1 `W_SIMO_COLLAPSED`（皆改「定案（LB ADR-023 D10 暫緩）」）。其餘守衛（第 1 條 `E_TOOL_ID_SHARED_ACROSS_LOT`、第 2 條 `p2` 恆空、第 3 條 `complexity_level` 恆空）**維持過渡不變**（守衛保護的是 MOST 匯出實際餵入的 LB 線上 master，該版尚無對應修正；`feature/most-integration-phase2` 未合入）。
+
 ### D10 UI：Level System 增加 LB 標記層（建議設計，可於實作時調整）
 - 既有：`sub`（↕ 天藍）、`cub`（🔒 琥珀）。新增：`worker_cub`（👤 紫，圈選成組，設組即傳染 offline／擋 Q>1）、`offline`（列級切換，組內傳染提示）、`segment`（Q>1 列的 chip，依附 cub）、`station pin`（📍 站號）、`general`（線頭／線尾通用列）、`merge_lock`（🔧🔒 此工具取放不可省）。
 - 每列右側 **投影預覽 badge**：會變幾列（1／2／3）、Q、setup/cyclic、tool_id、warnings——IE 不看 CSV 就知道 LB 會收到什麼。
