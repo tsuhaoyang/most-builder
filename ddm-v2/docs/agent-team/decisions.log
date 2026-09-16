@@ -1,0 +1,3 @@
+# MOST（ddm-v2）dev-team 決策追蹤（只由主 context 追加；tab 分隔）
+# 欄位：ISO日期 \t domain_id \t 改了哪些檔與節 \t 一句話決策摘要 \t 觸發的 commit 或分支
+2026-09-16	dev-team	docs/agent-team/*, scripts/agent_team/*, AGENTS.md, CLAUDE.md, .kiro/agents/*, .claude/agents/*	階段一：從無到有建立 MOST agent 團隊正本（most-code-reviewer／most-logic-reviewer／most-doc-sync）、domains.yaml（11 領域，命中 0 領域＝0）、checkpoint／commit-convention／verification／decisions.log；腳本自 LB commit 2b59ddc 複製並改路徑常數；.kiro／.claude 薄轉接；CLAUDE.md／AGENTS.md 薄入口（實作書 docs-and-agent-docs-restructure-plan.md §1）	chore/agent-docs-shared

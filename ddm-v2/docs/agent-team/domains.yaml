@@ -1,0 +1,327 @@
+# MOST（ddm-v2）領域登記表（dev-team 單一真相）
+#
+# 用途：把「業務邏輯領域」對應到（程式路徑、graphify 錨點、權威文件、不可違反的約束）。
+# 消費者：
+#   - docs/agent-team/agents/most-logic-reviewer.md （每個受影響領域派一個實例）
+#   - docs/agent-team/checkpoint.md
+#   - scripts/agent_team/domain_guard.py            （改檔／討論時的提醒）
+#   - scripts/agent_team/check_agent_config.py       （check_8：每個業務檔至少命中一領域）
+#
+# 維護規則（同 LB）：
+#   - 新增領域＝加一筆條目，不新增 agent（logic reviewer 參數化）。
+#   - anchors 給 graphify（`graphify explain "<anchor>"`）；paths 可能過時，anchors 跟著圖走。
+#   - invariants 只寫「違反就是 bug」的硬規則，抄自 ADR 的已鎖定決策；不確定的不要寫。
+#   - docs 是該領域權威文件；邏輯變更經使用者核可後，most-doc-sync 只改這裡列出的檔案。
+#   - 來源範本：line-balance_stream-weaver_v2/docs/agent-team/domains.yaml（commit 2b59ddc）。
+
+version: 1
+updated: 2026-09-16
+
+# 不歸任何領域的業務檔白名單（check_agent_config.py check_8 消費）。
+# 判準：純結構／框架接線／設定／通用基底，無業務邏輯，改它不需要領域守衛。每條附理由。
+no_domain_allowlist:
+  - path: "src/ddm_v2/__init__.py"
+    reason: "套件標記檔，無業務邏輯"
+  - path: "src/ddm_v2/main.py"
+    reason: "FastAPI app 組裝／掛路由，無領域業務邏輯"
+  - path: "src/ddm_v2/database.py"
+    reason: "async engine／session factory，框架接線"
+  - path: "src/ddm_v2/settings.py"
+    reason: "設定（pydantic-settings），無業務邏輯"
+  - path: "src/ddm_v2/locale.py"
+    reason: "語系碼↔資源鍵對照常數（ADR-032 由 i18n 領域文件治理，此檔僅常數表）"
+  - path: "src/ddm_v2/exceptions.py"
+    reason: "DomainError 基底類別，跨領域共用，無單一領域歸屬"
+  - path: "src/ddm_v2/api/route_registry.py"
+    reason: "路由註冊表，框架接線"
+  - path: "src/ddm_v2/api/routes/v2/__init__.py"
+    reason: "套件標記檔"
+  - path: "src/ddm_v2/services/v2/__init__.py"
+    reason: "套件標記檔"
+  - path: "src/ddm_v2/models/__init__.py"
+    reason: "套件標記檔"
+  - path: "src/ddm_v2/models/v2/__init__.py"
+    reason: "套件標記檔"
+  - path: "src/ddm_v2/models/v2/base.py"
+    reason: "SQLAlchemy declarative base／mixin，跨領域基底"
+  - path: "src/ddm_v2/models/v2/org.py"
+    reason: "Site/Product/SKU 組織階層 ORM，純結構容器（業務邏輯在 catalog service）"
+  - path: "src/ddm_v2/models/v2/codes.py"
+    reason: "共用列舉／代碼常數"
+  - path: "src/ddm_v2/models/v2/bom.py"
+    reason: "BOM 結構 ORM，純資料容器"
+  - path: "src/ddm_v2/schemas/__init__.py"
+    reason: "套件標記檔"
+  - path: "src/ddm_v2/schemas/v2/__init__.py"
+    reason: "套件標記檔"
+  - path: "src/ddm_v2/schemas/common.py"
+    reason: "共用分頁／ID 等基底 schema，跨領域"
+  - path: "src/ddm_v2/schemas/v2/catalog.py"
+    reason: "組織階層 CRUD schema，純結構"
+  - path: "src/ddm_v2/search/__init__.py"
+    reason: "套件標記檔"
+  - path: "src/ddm_v2/search/adapters/__init__.py"
+    reason: "套件標記檔"
+  - path: "src/ddm_v2/seed/__init__.py"
+    reason: "套件標記檔"
+  - path: "src/ddm_v2/seed/v2/__init__.py"
+    reason: "套件標記檔"
+  - path: "src/frontend/src/main.tsx"
+    reason: "React 進入點／掛載，框架接線"
+  - path: "src/frontend/src/App.tsx"
+    reason: "頂層 tab 路由外殼，無單一領域業務邏輯"
+
+domains:
+  - id: most-engine
+    title: MiniMOST 序列模型與 TMU 單一權威引擎
+    anchors: [compute_cycle, compute_table, _a_tmu, _m_tmu, build_from_seed_v2, resolve_multiplier]
+    paths:
+      - "src/ddm_v2/most_engine/calculate.py"
+      - "src/ddm_v2/most_engine/providers.py"
+      - "src/ddm_v2/most_engine/rule_set_data.py"
+      - "src/ddm_v2/most_engine/narrative.py"
+      - "src/ddm_v2/most_engine/narrative_en.py"
+      - "src/ddm_v2/most_engine/__init__.py"
+      - "src/ddm_v2/api/routes/v2/calculate.py"
+      - "src/ddm_v2/schemas/v2/most.py"
+    docs:
+      - docs/core-logic/minimost-sequence-model-core-logic-spec.md
+      - docs/core-logic/core-logic-validation-test-catalog.md
+      - docs/decisions/ADR-028-most-engine-boundary-validation-and-single-authority.md
+      - docs/decisions/ADR-014-v3-dictionary-as-value-authority.md
+    keywords: [tmu, minimost, most engine, 引擎, 七格, gm, cm, golden, 黃金值, calculate, a_tmu, m_tmu, simo]
+    invariants:
+      - most_engine 是所有 TMU 計算與 level 驗證的單一權威；前端不得自算，值一律來自 POST /api/v2/minimost/calculate（ADR-028）
+      - 邊界驗證（如 A_NEGATIVE）加在 calculate.py 的計算點、不加在查表 helper；A／M 對稱（ADR-028）
+      - 動到 calculate.py／rule-set seeds／level rules／schemas/v2/most.py → 必過 scripts/core_logic/run_all.py（錨點 GM=28、CM=29）
+      - rule-set 值來自 DB，引擎執行期讀取；MostCycle 以 per-cycle rule_set_id 釘版回放
+
+  - id: rule-set
+    title: Rule-set 版本治理與回放
+    anchors: [rule_set_service, clone_draft, next_version_no, rule_option_service, rule_set_diff]
+    paths:
+      - "src/ddm_v2/services/v2/rule_set_service.py"
+      - "src/ddm_v2/services/v2/rule_set_diff.py"
+      - "src/ddm_v2/services/v2/rule_option_service.py"
+      - "src/ddm_v2/services/v2/synonym_service.py"
+      - "src/ddm_v2/services/v2/policy_service.py"
+      - "src/ddm_v2/api/routes/v2/rule_set.py"
+      - "src/ddm_v2/api/routes/v2/synonyms.py"
+      - "src/ddm_v2/models/v2/rule_set.py"
+      - "src/ddm_v2/models/v2/rule_set_tables.py"
+      - "src/ddm_v2/models/v2/synonym.py"
+      - "src/ddm_v2/models/v2/policy.py"
+      - "src/ddm_v2/schemas/v2/rule_set_options.py"
+      - "src/ddm_v2/seed/v2/rule_set_seed.py"
+      - "src/ddm_v2/seed/v2/rule_set_seed_v2.py"
+      - "src/ddm_v2/seed/v2/policy_seed.py"
+    docs:
+      - docs/decisions/ADR-023-dictionary-governance-unification.md
+      - docs/decisions/ADR-025-import-template-matching-p2.md
+    keywords: [rule-set, rule set, 規則版本, clone, 發布, published, draft, retired, 回放, synonym, 同義詞, 詞彙治理]
+    invariants:
+      - 已發布版不可變；改動走 clone→改→發布；舊 worksheet 以釘版 rule_set_id 維持原值（ADR-023）
+      - version_no 配號須序列化（per-SKU advisory lock），避免併發 COUNT+1 競態
+
+  - id: level-system
+    title: Level System（R1–R9 巢狀關係與驗證）
+    anchors: [validate, level_validation_service, LevelEntry, ascription, countersignature]
+    paths:
+      - "src/ddm_v2/most_engine/level.py"
+      - "src/ddm_v2/services/v2/level_validation_service.py"
+      - "src/ddm_v2/models/v2/level_validation.py"
+    docs:
+      - docs/core-logic/level-system-core-logic-spec.md
+      - docs/decisions/ADR-028-most-engine-boundary-validation-and-single-authority.md
+    keywords: [level system, r1, r9, 層級, main, sub, cub, nb, ascription, countersignature, 巢狀, 難度係數]
+    invariants:
+      - level 驗證權威在 most_engine/level.py；R1–R9 規則不得在服務層另立分支
+      - 同一 top-level chain 的成員 level 字串一致；非鏈首成員 ascription／level 為 null
+
+  - id: wi-workbench
+    title: WI 工時表（worksheet／cycle／SIMO 配對／clone／revision）
+    anchors: [save_worksheet, read_worksheet, clone_worksheet, compute_rows_for_save, worksheet_revision]
+    paths:
+      - "src/ddm_v2/services/v2/worksheet_service.py"
+      - "src/ddm_v2/services/v2/worksheet_revision.py"
+      - "src/ddm_v2/services/v2/process_version_service.py"
+      - "src/ddm_v2/services/v2/catalog_service.py"
+      - "src/ddm_v2/services/v2/cases_service.py"
+      - "src/ddm_v2/api/routes/v2/worksheet.py"
+      - "src/ddm_v2/api/routes/v2/cases.py"
+      - "src/ddm_v2/api/routes/v2/catalog.py"
+      - "src/ddm_v2/models/v2/worksheet.py"
+      - "src/ddm_v2/schemas/v2/worksheet.py"
+      - "src/ddm_v2/schemas/v2/cases.py"
+      - "src/frontend/src/features/wi-workbench/**"
+      - "src/frontend/src/features/workbench-v3/**"
+      - "src/frontend/src/features/cases/**"
+      - "src/frontend/src/features/catalog/**"
+    docs:
+      - docs/architecture/data-model-and-storage-spec.md
+      - docs/decisions/ADR-020-simo-contribution-semantics.md
+    keywords: [worksheet, 工時表, wi_row, most_cycle, simo, clone, 另存, revision, 版本衝突, cycle]
+    invariants:
+      - SIMO 標記列（simo_group_id 非空）貢獻 0，時間由未標記主列吸收；不取 group max（ADR-020，對齊 v3 認證版）
+      - most_cycle.wi_row_id 為 1:1（worksheet 情境）；clone 必須保留全部 LB tag 欄與 wi_group
+      - 前端不算 TMU；儲存 body 由 buildSaveBody 產出，derive() 的 null（非鏈首層級）須忠實保留
+
+  - id: motion-module
+    title: 動作範本庫與 WI 大綱（motion_module／template matching）
+    anchors: [motion_module_service, instantiate, template_matching, MotionModule, wi-template]
+    paths:
+      - "src/ddm_v2/services/v2/motion_module_service.py"
+      - "src/ddm_v2/services/v2/template_matching.py"
+      - "src/ddm_v2/services/v2/wi_set_service.py"
+      - "src/ddm_v2/services/v2/wi_context_service.py"
+      - "src/ddm_v2/api/routes/v2/motion_module.py"
+      - "src/ddm_v2/api/routes/v2/motion_template.py"
+      - "src/ddm_v2/api/routes/v2/wi_set.py"
+      - "src/ddm_v2/api/routes/v2/wi_context.py"
+      - "src/ddm_v2/api/routes/v2/vocab.py"
+      - "src/ddm_v2/models/v2/motion_module.py"
+      - "src/ddm_v2/models/v2/motion_template.py"
+      - "src/ddm_v2/models/v2/wi_set.py"
+      - "src/ddm_v2/models/v2/wi_context.py"
+      - "src/ddm_v2/models/v2/vocab.py"
+      - "src/ddm_v2/schemas/v2/motion_module.py"
+      - "src/ddm_v2/schemas/v2/motion_template.py"
+      - "src/ddm_v2/schemas/v2/wi_set.py"
+      - "src/ddm_v2/schemas/v2/wi_context.py"
+      - "src/ddm_v2/schemas/v2/vocab.py"
+      - "src/frontend/src/features/wi-project/**"
+      - "src/frontend/src/features/master-data/**"
+    docs:
+      - docs/decisions/ADR-025-import-template-matching-p2.md
+      - docs/architecture/data-model-and-storage-spec.md
+    keywords: [motion module, 動作範本, wi outline, wi 大綱, template, 範本比對, wi set, instantiate, 實體化, vocab, 語彙]
+    invariants:
+      - WI 層＝一句語句＋多個 motion（category='wi-template' 的 module.rows[]）；LB task 粒度對到 motion 不是 WI
+      - 範本實體化（from-module）帶 wi_group=module.name_zh；TMU 由後端算，前端不自算
+
+  - id: nlp-compiler
+    title: NL→MOST 編譯器與 LLM planner
+    anchors: [compile, resolve_multiplier, QuantityPolicyV2, llm_planner, rule_based, engine_gate]
+    paths:
+      - "src/ddm_v2/most_compiler/**"
+      - "src/ddm_v2/nlp/**"
+      - "src/ddm_v2/services/v2/wi_ai_service.py"
+      - "src/ddm_v2/services/v2/ai_review_service.py"
+      - "src/ddm_v2/services/v2/parse_job_service.py"
+      - "src/ddm_v2/services/v2/parse_job_worker.py"
+      - "src/ddm_v2/api/routes/v2/nl_draft.py"
+      - "src/ddm_v2/api/routes/v2/parse_jobs.py"
+      - "src/ddm_v2/api/routes/v2/ai_review.py"
+      - "src/ddm_v2/models/v2/ai_ops.py"
+    docs:
+      - docs/decisions/ADR-033-llm-planner-scope-narrowing.md
+    keywords: [compiler, 編譯, nl, 自然語言, llm, planner, 草稿, draft, quantity policy, rule_based, lexicon]
+    invariants:
+      - NL 數量／頻率經 QuantityPolicyV2（resolve_multiplier）解析，對 TMU 中性（ADR-033）
+      - LLM 只做受限 planner，不得成為 TMU／規則的權威來源；引擎閘門（engine_gate）擋不合法序列
+
+  - id: lb-projection
+    title: LB 投影層（motion→task、工具生命週期、匯出契約）
+    anchors: [project_rows, build_report, ToolLifecycleResolver, decompose_engine, rows_from_worksheet, to_lb_csv]
+    paths:
+      - "src/ddm_v2/lb_projection/**"
+      - "src/ddm_v2/services/v2/export_service.py"
+      - "src/ddm_v2/api/routes/v2/export.py"
+    docs:
+      - docs/lb-integration/MOST_LB_DATA_CONTRACT_SPEC.md
+      - docs/decisions/ADR-035-lb-projection-layer-and-motion-decomposition.md
+      - docs/lb-integration/LB_PROJECTION_IMPLEMENTATION_PLAN.md
+    keywords: [lb, projection, 投影, lb-csv, task, tool episode, acquire, release, quantity, qty_scope, repeat, contract_version, writeback, 回寫]
+    invariants:
+      - CSV 24 欄名與順序凍結；任何變動＝contract_version 升版＋LB 契約同步（Spec §6/§7.8）
+      - 黃金 fixture 投影後與 server_node_tasks.expected.csv 逐位元相等（tasks_out=34）
+      - E_TOOL_ID_SHARED_ACROSS_LOT 維持 E（擋匯出），降級條件＝LB feature/most-integration-phase2 合入 master 後
+      - SIMO 從屬列不輸出、p2 恆空、complexity_level 恆空（ADR-035 D9 過渡守衛；SIMO 為定案，其餘為過渡）
+      - repeat_counts 由 slot_inputs 推導（不得硬寫空 dict）；clone 保留全部 9 個 LB tag 欄
+
+  - id: job-ux
+    title: 作業版（Level System job-oriented UX，反投影）
+    anchors: [jobsFromStore, JobsShell, derive, buildNotices, applyBaseline, useLbPreview]
+    paths:
+      - "src/frontend/src/features/level-system/**"
+    docs:
+      - docs/lb-integration/LEVEL_SYSTEM_JOB_UX_IMPLEMENTATION_SPEC.md
+      - docs/decisions/ADR-035-lb-projection-layer-and-motion-decomposition.md
+    keywords: [作業版, job-ux, jobs, 作業, reverse projection, 反投影, jobsshell, notices, baseline, preview, machine_unattended]
+    invariants:
+      - store（useLevelStore）為唯一真相；作業視圖是純函式反投影，動作寫回同一 store（不另存 t()／useRowNarr 產物）
+      - 作業版不接 LLM、不做關鍵字猜測；提示由投影資料的確定性規則產生（hints.py）
+      - 預覽走 dry-run 端點；hydrate/baseline 完成前不發預覽（避免 E_LEVEL_INVALID 閃錯）
+
+  - id: i18n
+    title: 雙語 UI／資料標籤與錯誤信封
+    anchors: [registry, i18n_service, useRowNarr, pickNarrative, LOCALE_STORAGE_KEY, error_handlers]
+    paths:
+      - "src/ddm_v2/services/v2/i18n_service.py"
+      - "src/ddm_v2/api/routes/v2/i18n.py"
+      - "src/ddm_v2/errors/**"
+      - "src/ddm_v2/api/error_handlers.py"
+      - "src/ddm_v2/models/v2/i18n.py"
+      - "src/ddm_v2/schemas/v2/i18n.py"
+      - "src/frontend/src/shared/i18n/**"
+      - "src/frontend/src/features/dictionaries/**"
+      - "src/frontend/src/features/dictionary/**"
+    docs:
+      - docs/decisions/ADR-032-bilingual-ui-and-data-label-layer.md
+      - docs/decisions/ADR-034-language-aware-error-contract.md
+      - docs/decisions/ADR-011-schema-evolution-and-contract-stability.md
+    keywords: [i18n, 雙語, locale, 語系, narrative_en, 敘事英文, error envelope, 錯誤信封, registry, zh-tw, en, 對稱]
+    invariants:
+      - 所有 API 錯誤收斂為單一 {error:{...}} 信封（RFC 9457 對齊、加法相容）；在地化在前端（ADR-034）
+      - zh-TW／en key 集合對稱（Widen typecheck）；語言來源＝使用者個人設定，API 回應語言中立（ADR-032）
+      - schema 一律加法演進；改名／刪欄走加新欄→雙寫→廢舊欄（ADR-011）
+
+  - id: excel-import
+    title: Excel／CSV 匯入
+    anchors: [import_service, TARGET_FIELDS, map_columns, submit_import, dsx_service]
+    paths:
+      - "src/ddm_v2/services/v2/import_service.py"
+      - "src/ddm_v2/services/v2/dsx_service.py"
+      - "src/ddm_v2/services/v2/dsx_client.py"
+      - "src/ddm_v2/api/routes/v2/import_excel.py"
+      - "src/ddm_v2/api/routes/v2/dsx.py"
+      - "src/ddm_v2/schemas/v2/import_excel.py"
+      - "src/ddm_v2/schemas/v2/dsx.py"
+      - "src/ddm_v2/models/v2/import_staging.py"
+      - "src/ddm_v2/models/v2/dsx_suggestion.py"
+      - "src/frontend/src/features/import/**"
+      - "src/frontend/src/features/export/**"
+    docs:
+      - docs/decisions/ADR-013-excel-import-architecture.md
+    keywords: [import, 匯入, excel, csv, target_fields, column map, 欄位對應, staging, dsx, wi_group]
+    invariants:
+      - 匯入為兩階段（staging→submit）；column_map 缺 description 擋提交（ADR-013）
+      - 匯入建列填 wi_group（TARGET_FIELDS 含 wi_group）
+
+  - id: auth-rbac
+    title: 認證與 RBAC（角色階層、稽核、搜尋）
+    anchors: [require_role, identity, audit_service, outbox_service, search_service]
+    paths:
+      - "src/ddm_v2/auth/**"
+      - "src/ddm_v2/services/v2/audit_service.py"
+      - "src/ddm_v2/services/v2/outbox_service.py"
+      - "src/ddm_v2/api/routes/v2/admin_users.py"
+      - "src/ddm_v2/api/routes/v2/audit_log.py"
+      - "src/ddm_v2/api/routes/v2/search.py"
+      - "src/ddm_v2/models/v2/auth.py"
+      - "src/ddm_v2/models/v2/audit.py"
+      - "src/ddm_v2/models/v2/outbox.py"
+      - "src/ddm_v2/schemas/v2/auth.py"
+      - "src/ddm_v2/schemas/v2/audit.py"
+      - "src/ddm_v2/search/**"
+      - "src/frontend/src/features/users/**"
+      - "src/frontend/src/features/layout/**"
+      - "src/frontend/src/features/dashboard/**"
+      - "src/frontend/src/shared/**"
+    docs:
+      - docs/decisions/ADR-019-worksheet-access-control.md
+      - docs/architecture/rbac-spec.md
+    keywords: [auth, rbac, 權限, role, viewer, ie, manager, admin, x-username, forwardauth, audit, 稽核, outbox]
+    invariants:
+      - 角色階層 viewer < IE < manager < admin；gateway 模式信任入站 X-Username，只綁 loopback（ADR-019、ADR-023 D7b）
+      - shared/api/client.ts 是唯一 API 入口；shared/types/api.d.ts 由 OpenAPI 產生、不可手改
