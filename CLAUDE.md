@@ -1,146 +1,40 @@
 # CLAUDE.md
 
-This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
+This file provides guidance to Claude Code (claude.ai/code) when working in this repository.
 
-## 品質關卡（不可跳過）
+> **薄轉接**：規則本體不在此。單一事實來源是 `@AGENTS.md`（工具中立入口）與其指向的
+> `ddm-v2/docs/agent-team/` 正本。本檔只保留 Claude 專屬設定與指路，避免規則兩處漂移（DOC_CONVENTION R3）。
 
-- 每完成一個功能段落或準備 commit 前，必須執行 /dev-team:checkpoint。
-- 主對話不得自行完成 code review 或資安檢查——必須委派對應席位。
-- 重大架構決策必須有 ADR 紀錄（本 repo 的 ADR 在 `ddm-v2/docs/decisions/`），沒有就先跑對應的 /arch-decisions skill。
+@AGENTS.md
 
-## 跨專案整合
+## Claude 專屬
 
-本專案與 LineBalance（`/home/howard/workspace/line-balance_stream-weaver_v2`，Stream Weaver）強關聯：MOST 匯出 → LB 匯入（MOST 是工時標準來源，LB 是消費方做產線平衡）、auth 整合（本 repo 的 `LB/` 即共享登入基礎設施）、部署拓撲。跨兩專案的決策用 unified-arch agent 協調；共享契約以單一文件為準，不要兩邊各寫一份。
+- 子 agent（薄轉接）在 `ddm-v2/.claude/agents/`：`most-code-reviewer`、`most-logic-reviewer`、`most-doc-sync`；
+  完整定義在 `ddm-v2/docs/agent-team/agents/<name>.md`。`.claude/` 為 gitignore，不 commit。
+- Claude skills 在 `ddm-v2/.kiro/skills/`（db-schema、fastapi-dev、graphify、most-review、react-dev）。
+- 品質關卡的委派機制：讀 `ddm-v2/docs/agent-team/checkpoint.md`，用 subagent／task 機制派 reviewer；
+  「派誰、帶什麼 domain_id」以該檔為準。
 
-**處理 line-balance 檔案前，必須先讀它的 CLAUDE.md**（`/home/howard/workspace/line-balance_stream-weaver_v2/CLAUDE.md`）——它的測試環境、時間單位契約（內部 `_ms` vs API 秒）與 commit 規範都定義在那裡。
+## monorepo 邊界（給 Claude 的提醒）
 
-## Repository Structure
+- 幾乎所有指令都要先 `cd ddm-v2`。git 根是 `most-builder/`（CLAUDE.md／AGENTS.md 在此），專案在 `ddm-v2/`。
+- 處理 line-balance 檔案前，先讀它的入口（`/home/howard/workspace/line-balance_stream-weaver_v2/AGENTS.md`）——
+  其測試環境、時間單位契約、commit 規範定義在那裡。
 
-Monorepo with four top-level directories:
+## 已知過時修正（2026-09-16，本輪逐條查證）
 
-- **`ddm-v2/`** — Active development. MiniMOST work-measurement platform (FastAPI + React). All new work goes here.
-- **`ddm-v3/`** — Protected external v3 user-data source (gitignored). `apps/api/minimost.db` contains the saved WI/MI statements, actions, templates, and WI Set project consumed read-only by `ddm-v2/scripts/migrate_v3_user_data.py`. **Never delete, clean, or write this DB.** The separate IE-certified value dictionary remains at `ddm-v2/docs/v3/reference/minimost_ai_dictionary_v1.json` per ADR-014.
-- **`ddm-legacy/`** — Archived Phase 1 code (single HTML + Python). Do not modify.
-- **`LB/`** — LineBalance auth service + Traefik config (shared login infrastructure).
+先前本檔（146 行版）有數處敘述與現況不符，已在改薄時一併校正：
 
-All commands below assume `cd ddm-v2` first.
-
-## Commands
-
-### Backend
-
-```bash
-# Setup (one-time)
-# ⚠️ 一律從鎖檔安裝，不要用 `pip install -e ".[dev]"`：那會解析到當下最新版，
-#    裝出與 CI／Docker 不同的一組依賴（ADR-029；docs/CI_GATES.md 硬性規則 6）。
-#    Python 用 3.11（對齊 CI 與 Dockerfile 的 python:3.11-slim）。
-python3.11 -m venv .venv
-.venv/bin/pip install --require-hashes -r requirements-build.lock
-.venv/bin/pip install --require-hashes --no-build-isolation -r requirements-dev.lock
-.venv/bin/pip install --no-deps --no-build-isolation -e .
-
-# DB migration + seed
-# 資料庫名是 ddm_v2_most（不是 ddm_v2）；帳密以 compose 的 db 服務為準，可查：
-#   docker compose exec db sh -c 'echo $POSTGRES_USER/$POSTGRES_DB'
-export DATABASE_URL="postgresql+asyncpg://USER:PASS@localhost:5432/ddm_v2_most"
-PYTHONPATH=src .venv/bin/alembic upgrade head
-PYTHONPATH=src .venv/bin/python scripts/dev_seed_v2.py         # hierarchy + worksheet + admin
-PYTHONPATH=src .venv/bin/python scripts/dev_seed_templates.py  # motion template library
-PYTHONPATH=src .venv/bin/python scripts/dev_seed_30rows.py     # (optional) 30 sample rows
-
-# Run (single server, frontend + API same origin)
-PYTHONPATH=src .venv/bin/python scripts/preview_server.py      # http://127.0.0.1:8099
-# ⚠️ 只綁 loopback：本檔以 AUTH_DEV_USER=IEC141289 免認證運作，任何連得到的人都是 admin。
-#    要給同事看 demo 才顯式 DDM_PREVIEW_HOST=0.0.0.0（ADR-023 D7b）。
-
-# Tests（unit 與 integration 必須分開跑：兩邊有同名檔案，一起跑會 basename 衝突）
-PYTHONPATH=src pytest tests/unit                # unit only (no DB needed)
-PYTHONPATH=src DATABASE_URL=... pytest tests/integration
-PYTHONPATH=src pytest tests/unit/test_most_engine.py::test_name  # single test
-PYTHONPATH=src python scripts/core_logic/run_all.py             # golden-value validation
-
-# Lint / type check
-ruff check src/
-mypy src/
-```
-
-### Frontend (`cd src/frontend`)
-
-```bash
-npm install
-npm run dev        # hot-reload dev server :5173 (Vite proxy /api → :8099; keep preview_server running)
-npm run build      # build to dist/
-npm run typecheck  # tsc --noEmit
-npm run gen:api    # regenerate src/shared/types/api.d.ts from OpenAPI (run after changing API schemas)
-E2E_BASE_URL=http://127.0.0.1:8099 npx playwright test   # e2e (needs preview_server running)
-```
-
-### Docker
-
-```bash
-# ⚠️ 一律疊加 dev overlay，否則 db 的主機 port 會被拿掉（見下方陷阱）
-docker compose -f docker-compose.yml -f docker-compose.dev.yml up -d --build
-```
-
-**陷阱**：`docker-compose.yml` 本身**不發佈** db 的主機 port（那是 `docker-compose.dev.yml`
-的 override）。所以單跑 `docker compose up -d` 會把 db 重建成只有容器內可達，
-**本機的 `pytest tests/integration` 會整批 skip、`psql` 連不上** —— 症狀長得像程式迴歸，
-其實是環境副作用。2026-07-21 已絆倒過一次。
-
-app 綁 `127.0.0.1:8877`（ADR-023 D7b）：gateway 模式無條件信任入站 `X-Username`，
-曝露到 loopback 以外等同零憑證 admin。對外一律前掛 Traefik ForwardAuth。
-
-## Architecture
-
-### Backend (hexagonal: routes → services → repositories)
-
-**Critical design invariant**: `most_engine/` is the single authority for all TMU calculation and level validation. The frontend never calculates — every TMU value comes from `POST /api/v2/minimost/calculate`. Rule-set tables in the DB are the value source; the engine reads them at runtime.
-
-### Data Hierarchy
-
-`Site → Product → SKU → ProcessVersion → MostWorksheet → WiRow`；`MostCycle` 以
-**per-cycle 的 `rule_set_id`** 釘住當初的規則版本（回放靠這個欄位，不是靠程式分支）。
-
-### Frontend (`src/frontend/src/`)
-
-`shared/api/client.ts` 是唯一 API 入口；`shared/types/api.d.ts` **由 OpenAPI 產生，不可手改**。
-
-Feature tabs follow the v3-parity IA (7 primary + admin extras) defined in **ADR-021** (`ddm-v2/docs/decisions/ADR-021-ia-restructure-v3-parity.md`).
-
-**UI/UX 母版 = ddm-v3 的畫面與 ADR-021**（v3 的 UX 是使用者驗證過的權威）。任何前端改動必須對照 v3 對應頁面；交付需附 Playwright 截圖對照。`docs/html_con/v2-workbench.html` 已廢止為 UI reference（僅存檔勿刪）。前端派工驗收：typecheck + build + 截圖對照 v3 + code-reviewer。
-
-### Auth / RBAC
-
-- Production: Traefik ForwardAuth injects `X-Username` (employee number). Role hierarchy: `viewer < IE < manager < admin`.
-- Local dev: `AUTH_DEV_USER=IEC141289` (preview_server sets this automatically).
-- Two auth modes switchable via `DDM_AUTH_MODE`: `gateway` (default, header-based) and `verify` (session-cookie bridge to LB).
-
-## CI Gates (must pass before merging)
-
-**完整清單以 `ddm-v2/docs/CI_GATES.md` 為準**（此處只留最常被引用的那條錨點，
-避免兩份清單漂移——先前這裡停在 6 條、那邊已經是 7 條）：
-
-- **Golden values**: 任何動到 `most_engine/`、rule-set seeds、level rules 或
-  `schemas/v2/most.py` 的改動都必須通過 `scripts/core_logic/run_all.py`。
-  錨點 **GM=28**（A6 B0 G6 A10 B0 P6 A0）與 **CM=29**（A10 B0 G3 M16 X0 I0 A0 @ 45cm push）。
-
-## Hard Rules (from `.cursor/rules/`)
-
-- **No error bypass**: Never silence errors with bare `except: pass`, coerce types to avoid exceptions, or set fake defaults to pass validation. Find and fix the root cause.
-- **DB changes are bilateral**: When fixing an Alembic/PostgreSQL error, always check both the SQLAlchemy model (`src/ddm_v2/models/`) **and** the migration (`migrations/versions_v2/`). Never fix only one side.
-- **Agent delegation**: The main Claude instance coordinates and commits. Implementation and validation are delegated to specialized agents (`ddm-backend`, `ddm-frontend`, `ddm-validator`, `ddm-testing`). The coordinator does not write feature code directly.
-
-## Key Docs
-
-| What | Where |
-|---|---|
-| Sequence model spec (MiniMOST GM/CM rules) | `docs/core-logic/minimost-sequence-model-core-logic-spec.md` |
-| Level System spec (R1–R9 filling rules) | `docs/core-logic/level-system-core-logic-spec.md` |
-| Golden-value test catalog | `docs/core-logic/core-logic-validation-test-catalog.md` |
-| System architecture | `docs/architecture/system-architecture-v2-spec.md` |
-| Data model + storage | `docs/architecture/data-model-and-storage-spec.md` |
-| RBAC spec | `docs/architecture/rbac-spec.md` |
-| CI verification gates | `docs/CI_GATES.md` |
-| v2 authority and anti-legacy guide | `docs/architecture/v2-authoritative-model-guide.md` |
-| All docs index | `docs/DOC_REGISTRY.md` |
-| All ADRs | `docs/decisions/` |
+1. `/dev-team:checkpoint` slash command — MOST **無**此 command／dev-team；實際機制是
+   `ddm-v2/docs/agent-team/checkpoint.md`（本輪新建）。
+2. 「委派對應席位」引用的 `ddm-backend`／`ddm-frontend`／`ddm-validator`／`ddm-testing` agent —
+   **不存在**（`.kiro/agents`、`.claude/agents` 先前皆空）；正確清單為 `most-code-reviewer`／
+   `most-logic-reviewer`／`most-doc-sync`（本輪新建）。
+3. `/arch-decisions` skill、`unified-arch` agent — **不存在**（skills 僅 db-schema／fastapi-dev／
+   graphify／most-review／react-dev）。改為指向 `ddm-v2/docs/decisions/`。
+4. 「Hard Rules (from `.cursor/rules/`)」 — `ddm-v2` **無** `.cursor/`（那是 `most-builder/.cursor`，
+   不同工具、非 ddm-v2 的 agent 設定）；該三條硬規則（no error bypass、DB 雙邊、agent 委派）語意仍有效，
+   併入 AGENTS.md 的核心不變量。
+5. `DATABASE_URL=...localhost:5432` 範例 — 本機 dev（compose dev overlay）host port 常為 **15432**；
+   5432 僅為通用範例，實際以 compose 的 db 服務為準。
+6. app 綁 `127.0.0.1:8877:8000`（docker）／preview_server `:8099`（本機）——已與現況核對一致，保留於 AGENTS.md 指向的 README。
