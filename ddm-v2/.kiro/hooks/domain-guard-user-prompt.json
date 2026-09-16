@@ -1,0 +1,15 @@
+{
+  "version": "v1",
+  "hooks": [
+    {
+      "name": "Domain Guard (討論提醒)",
+      "trigger": "UserPromptSubmit",
+      "description": "使用者送出訊息時，偵測討論內容命中的業務領域，注入該領域的權威文件與硬約束提醒。只提醒不阻擋。",
+      "action": {
+        "type": "command",
+        "command": "python3 scripts/agent_team/domain_guard.py userprompt",
+        "timeout": 30
+      }
+    }
+  ]
+}

@@ -1,0 +1,16 @@
+{
+  "version": "v1",
+  "hooks": [
+    {
+      "name": "Domain Guard (存檔提醒)",
+      "trigger": "PostFileSave",
+      "description": "存檔 Python/TS/TSX 檔案後，把改動對應回 domains.yaml 的業務領域，注入權威文件與硬約束提醒。只提醒不阻擋。",
+      "matcher": "\\.(py|ts|tsx)$",
+      "action": {
+        "type": "command",
+        "command": "python3 scripts/agent_team/domain_guard.py posttooluse",
+        "timeout": 30
+      }
+    }
+  ]
+}
