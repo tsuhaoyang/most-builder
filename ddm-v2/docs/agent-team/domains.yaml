@@ -28,8 +28,6 @@ no_domain_allowlist:
     reason: "async engine／session factory，框架接線"
   - path: "src/ddm_v2/settings.py"
     reason: "設定（pydantic-settings），無業務邏輯"
-  - path: "src/ddm_v2/locale.py"
-    reason: "語系碼↔資源鍵對照常數（ADR-032 由 i18n 領域文件治理，此檔僅常數表）"
   - path: "src/ddm_v2/exceptions.py"
     reason: "DomainError 基底類別，跨領域共用，無單一領域歸屬"
   - path: "src/ddm_v2/api/route_registry.py"
@@ -259,6 +257,7 @@ domains:
     paths:
       - "src/ddm_v2/services/v2/i18n_service.py"
       - "src/ddm_v2/api/routes/v2/i18n.py"
+      - "src/ddm_v2/locale.py"
       - "src/ddm_v2/errors/**"
       - "src/ddm_v2/api/error_handlers.py"
       - "src/ddm_v2/models/v2/i18n.py"
@@ -274,6 +273,7 @@ domains:
     invariants:
       - 所有 API 錯誤收斂為單一 {error:{...}} 信封（RFC 9457 對齊、加法相容）；在地化在前端（ADR-034）
       - zh-TW／en key 集合對稱（Widen typecheck）；語言來源＝使用者個人設定，API 回應語言中立（ADR-032）
+      - 語系碼↔資源鍵對照（locale.py 與前端 i18n.ts）前後端值域必須逐字相同，改一邊必須改另一邊（ADR-032 I6）
       - schema 一律加法演進；改名／刪欄走加新欄→雙寫→廢舊欄（ADR-011）
 
   - id: excel-import

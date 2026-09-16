@@ -25,6 +25,7 @@
 from __future__ import annotations
 
 import glob as _glob
+import json
 import os
 import re
 import sys
@@ -309,6 +310,46 @@ def check_8_business_files_have_domain() -> None:
         ok(f"所有業務檔（{len(files)} 檔）都命中領域或在白名單")
 
 
+def check_9_transceivers_are_thin() -> None:
+    """轉接層必須維持薄（Howard 2026-09-16 裁決 1）：
+      - .kiro/agents/*.json：prompt 摘要 ≤10 行，且引用 docs/agent-team/agents/<name>.md。
+      - .claude/agents/*.md：正文（front-matter 之後）摘要 ≤10 行，且引用 docs/agent-team/agents/<name>.md。
+    超出即 warning（不擋 commit，但提醒規則本體外流）。"""
+    def _refs_canon(text: str, name: str) -> bool:
+        return f"docs/agent-team/agents/{name}.md" in text
+
+    # .kiro/agents/*.json
+    for f in sorted((DDM / ".kiro" / "agents").glob("*.json")):
+        try:
+            data = json.loads(f.read_text(encoding="utf-8"))
+        except (OSError, ValueError):
+            warn(f"{f.relative_to(REPO)} 無法解析為 JSON")
+            continue
+        name = data.get("name", f.stem)
+        prompt = str(data.get("prompt", ""))
+        n_lines = len([ln for ln in prompt.splitlines() if ln.strip()])
+        if n_lines > 10:
+            warn(f"{f.relative_to(REPO)} prompt 摘要 {n_lines} 行（>10）——轉接應維持薄，規則本體移到正本")
+        if not _refs_canon(prompt + " ".join(data.get("resources", [])), name):
+            warn(f"{f.relative_to(REPO)} 未引用正本 docs/agent-team/agents/{name}.md——轉接必須指路")
+
+    # .claude/agents/*.md
+    for f in sorted((DDM / ".claude" / "agents").glob("*.md")):
+        text = f.read_text(encoding="utf-8")
+        name = f.stem
+        # 去掉 front-matter（--- … ---）後算正文非空行數
+        body = text
+        if text.lstrip().startswith("---"):
+            parts = text.split("---", 2)
+            body = parts[2] if len(parts) == 3 else text
+        n_lines = len([ln for ln in body.splitlines() if ln.strip()])
+        if n_lines > 10:
+            warn(f"{f.relative_to(REPO)} 正文 {n_lines} 行（>10）——轉接應維持薄，規則本體移到正本")
+        if not _refs_canon(text, name):
+            warn(f"{f.relative_to(REPO)} 未引用正本 docs/agent-team/agents/{name}.md——轉接必須指路")
+    ok("轉接層薄度檢查完成（.kiro/agents JSON prompt ≤10 行、.claude/agents 正文 ≤10 行、皆指向正本）")
+
+
 def main() -> int:
     check_1_claude_imports_agents()
     check_2_transceivers_reference_existing_canon()
@@ -318,6 +359,7 @@ def main() -> int:
     check_6_no_stale_moved_paths()
     check_7_canon_code_paths_exist()
     check_8_business_files_have_domain()
+    check_9_transceivers_are_thin()
 
     print("== check_agent_config ==")
     for m in oks:

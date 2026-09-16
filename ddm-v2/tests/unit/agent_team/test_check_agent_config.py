@@ -177,3 +177,17 @@ def test_business_file_in_allowlist_passes(tmp_path: Path) -> None:
     (tmp_path / "ddm-v2" / "src" / "ddm_v2" / "orphan" / "loose.py").write_text("x = 1\n", encoding="utf-8")
     r = _run(tmp_path)
     assert r.returncode == 0, r.stdout + r.stderr
+
+
+def test_fat_transceiver_warns_not_blocks(tmp_path: Path) -> None:
+    """check_9：轉接檔正文超過 10 行 → warning（不擋 commit，exit 0）。"""
+    _build_repo(tmp_path)
+    victim = tmp_path / "ddm-v2" / ".claude" / "agents" / f"{AGENTS[0]}.md"
+    fat_body = "\n".join(f"規則第 {i} 行（本體外流）" for i in range(1, 15))
+    victim.write_text(
+        f"---\nname: {AGENTS[0]}\n---\n@docs/agent-team/agents/{AGENTS[0]}.md\n{fat_body}\n",
+        encoding="utf-8",
+    )
+    r = _run(tmp_path)
+    assert r.returncode == 0, r.stdout + r.stderr  # warning 不擋
+    assert "轉接應維持薄" in r.stdout
