@@ -1,3 +1,4 @@
 # MOST（ddm-v2）dev-team 決策追蹤（只由主 context 追加；tab 分隔）
 # 欄位：ISO日期 \t domain_id \t 改了哪些檔與節 \t 一句話決策摘要 \t 觸發的 commit 或分支
 2026-09-16	dev-team	docs/agent-team/*, scripts/agent_team/*, AGENTS.md, CLAUDE.md, .kiro/agents/*, .claude/agents/*	階段一：從無到有建立 MOST agent 團隊正本（most-code-reviewer／most-logic-reviewer／most-doc-sync）、domains.yaml（11 領域，命中 0 領域＝0）、checkpoint／commit-convention／verification／decisions.log；腳本自 LB commit 2b59ddc 複製並改路徑常數；.kiro／.claude 薄轉接；CLAUDE.md／AGENTS.md 薄入口（實作書 docs-and-agent-docs-restructure-plan.md §1）	chore/agent-docs-shared
+2026-09-16	dev-team	docs/_inventory.md（暫存，D3 刪）	階段二 WP-D1 盤點：graphify 重建 9323 節點與 HEAD 同步；96 md 逐檔表；四類問題（斷鏈 0 文件↔文件／11 文件↔程式、孤兒 29、重複權威實質 1 項待決、歷史數類）；MOST 專屬三項與文件缺口（rule-set／motion-module／nlp／outbox-search／excel-import）交 Howard 裁決	chore/agent-docs-shared
