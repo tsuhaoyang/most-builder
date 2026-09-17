@@ -227,6 +227,7 @@ domains:
       - "src/ddm_v2/api/routes/v2/export.py"
       - "src/ddm_v2/services/v2/lb_client.py"
       - "src/ddm_v2/services/v2/lb_writeback_service.py"
+      - "src/ddm_v2/api/routes/v2/lb_writeback.py"
       - "src/ddm_v2/models/v2/lb_writeback.py"
     docs:
       - docs/lb-integration/MOST_LB_DATA_CONTRACT_SPEC.md
