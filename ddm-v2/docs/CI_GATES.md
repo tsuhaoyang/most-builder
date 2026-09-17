@@ -155,7 +155,7 @@
 | 計算 | `POST /minimost/calculate` GM 黃金 | `tests/integration/test_v2_api.py` |
 | 範本庫 | CRUD + 治理(promote) + `/match`；RBAC | `tests/integration/test_v2_api.py` |
 | **Rule-set** | list / options / full（**12 區塊**有資料，含 `m_foot`）；**publish analyst→403（approver gate）** | `tests/integration/test_rule_set.py` |
-| **字典治理：生命週期（ADR-023 D1）** | clone-draft→編輯→publish（發布前完整性驗證：每參數至少一啟用選項）→原子 activate；**恰好一個 active** 不變式；retire；`certified_import` 寫入被擋；`catalog_service`/`worksheet_service` 改讀 active（V1/V2 分裂已解） | `tests/integration/test_rule_set_lifecycle.py` |
+| **字典治理：生命週期（ADR-023 D1）** | clone-draft→編輯→publish（發布前完整性驗證：每參數至少一啟用選項）→原子 activate；**恰好一個 active** 不變式；retire；`certified_import` 寫入被擋；`catalog_service`/`worksheet_service` 改讀 active（V1/V2 分裂已解） | ~~`tests/integration/test_rule_set_lifecycle.py`~~ 實際覆蓋於 `test_rule_set.py`＋`test_rule_set_delete_unretire.py`＋`test_rule_set_replay_isolation.py`（訂正 2026-09-17：無同名彙總檔，行為分散於這三檔） |
 | **字典治理：回放鐵則（ADR-023 §3.4）** | V1 **retire＋deactivate 後**仍載得到並得 GM=28/CM=29；引用已封存版本的 cycle 重算＝原值；`load_rule_set_from_db` 查詢不含 `status`/`is_active` | `tests/integration/test_rule_set_replay_isolation.py` |
 | **字典治理：選項級 CRUD＋帶界（ADR-023 D2）** | 七參數選項 CRUD；**帶型整組替換**（上界遞增不重疊、末帶開放，違反→400）；clone 逐欄保真（反射比對 400+ 格，含 `m_foot`／`sentence_text_zh`／`display_rule`／`max_select`／`vision_scope`） | `tests/integration/test_rule_set_options.py` |
 | **字典治理：匯出/匯入 draft（ADR-023 D3）** | export＝`load_full` 形狀＋metadata（**雙向**釘死 `set(export)-set(full)==META`）；round-trip 逐欄保真；匯入產物恆 `draft`＋`manual`＋`is_active=False`（payload 內治理欄位一律忽略）；缺區塊／畸形列／非法帶界 → **400 且零寫入** | `tests/integration/test_rule_set_export_import.py` |

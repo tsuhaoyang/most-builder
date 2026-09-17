@@ -1,5 +1,7 @@
 # MOST 工作台 UI/UX 套用指南
 
+> ⚠️ **歷史文件（不可作為現況依據）**：本檔為歷史／存檔紀錄，僅供追溯。現況以對應領域的權威文件為準（見 `docs/DOC_REGISTRY.md` 領域索引）。**agent 預設不讀。**
+
 > 目標：讓其他專案重現同一套視覺語言、互動模式與參數模型。  
 > 實作基準：Sidebar「MOST 工作台」→ `/most-workbench` → `MostWorkbenchPage.vue`（UX v2.1）。  
 > 相關原始碼：`apps/web/src/pages/MostWorkbenchPage.vue`、`apps/web/src/pages/most-workbench/*`、`apps/web/src/types/most.ts`。

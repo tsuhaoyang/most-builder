@@ -1,5 +1,7 @@
 # WI AI Parser 交付追蹤（Worklog）
 
+> ⚠️ **歷史文件（不可作為現況依據）**：本檔為歷史／存檔紀錄，僅供追溯。現況以對應領域的權威文件為準（見 `docs/DOC_REGISTRY.md` 領域索引）。**agent 預設不讀。**
+
 **文件類型：** 交付追蹤紀錄（單一追蹤入口；不定義規格）
 **規格：** [wi-ai-parser-implementation-spec.md](wi-ai-parser-implementation-spec.md)（§20 定義本文件的填寫規則）
 **建立日期：** 2026-08-07

@@ -40,13 +40,17 @@
 
 ## graphify（知識圖譜）
 
-- `ddm-v2/graphify-out/` 已落後 ADR-035 全部工作，**需重建**（`cd ddm-v2 && graphify .`；階段二 WP-D1）。
-  重建後回答 codebase 問題先 `graphify query "<問題>"`，改完程式 `graphify update .`；維護時機見 checkpoint。
+- `ddm-v2/graphify-out/` 已於 WP-D1 重建並與 HEAD 同步（9323 節點）。回答 codebase 問題先 `graphify query "<問題>"`，
+  改完程式 `graphify update .`；維護時機見 checkpoint。
+- **日常只跑 `graphify . --code-only`**（本機無 LLM key）：文件／paper／image 的**語意抽取需 LLM key**
+  （GEMINI／ANTHROPIC／OPENAI 等）；code-only 走本地 AST、免 key，足夠日常程式圖維護。docs 的盤點與索引改由
+  `DOC_REGISTRY.md` 三層入口＋領域索引處理，不依賴圖的語意層。
 
 ## 歷史文件
 
-- `ddm-v2/docs/v3/`、`docs/html_con/`、`ddm-legacy/` 等為歷史／存檔，**不可作為現況依據**，agent 預設不讀
-  （去留與標註於階段二 WP-D1 處理）。
+- `ddm-v2/docs/v3/`、`docs/html_con/`、`docs/architecture/legacy-inventory-and-engine-audit.md`、各 `*-worklog.md`、
+  `roadmap/phase5-*` 等為歷史／存檔，檔頭已標「歷史文件」，**不可作為現況依據，agent 預設不讀**
+  （分類見 `ddm-v2/docs/DOC_REGISTRY.md` 的〈歷史〉〈過程紀錄〉〈前瞻計畫〉區）。
 
 ## 跨專案整合
 

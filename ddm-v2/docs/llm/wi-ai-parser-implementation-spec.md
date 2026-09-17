@@ -1178,7 +1178,7 @@ Model 檔：`src/ddm_v2/models/v2/ai_ops.py`（一檔四表，domain 同類）�
 | created_by / created_at | text / timestamptz | |
 
 Immutable：application 層禁止 UPDATE config/model/prompt_version（可 UPDATE status）。
-Seed script `scripts/dev_seed_ai_bundles.py`：建 `wi-ai-dev-000`（rule_based, active）。
+Seed script `scripts/dev_seed_ai_bundles.py`：建 `wi-ai-dev-000`（rule_based, active）。 <!-- 訂正 2026-09-17：此 script 為設計期規劃，尚未建（scripts/ 現有 backfill_embeddings.py、wi_ai_eval.py）。斷鏈屬設計意圖，不改敘述。 -->
 
 ### 12.2 `ai_parse_runs`
 
@@ -1253,7 +1253,7 @@ Seed script `scripts/dev_seed_ai_bundles.py`：建 `wi-ai-dev-000`（rule_based,
 | embedding_model | text（`EmbeddingProvider.model_id`） |
 | created_at | timestamptz |
 
-Index 建立 script：`scripts/build_option_embeddings.py`（讀 active rule-set → embed →
+Index 建立 script：`scripts/build_option_embeddings.py`（讀 active rule-set → embed → <!-- 訂正 2026-09-17：規劃期腳本名，現以 scripts/backfill_embeddings.py 實作；prune_ai_runs.py 尚未建。斷鏈屬設計意圖，不改敘述。 -->
 upsert）；`embedding_model` 或 rule-set 內容變更即重建整組，不就地改單筆。
 
 ---

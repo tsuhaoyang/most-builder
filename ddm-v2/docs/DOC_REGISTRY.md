@@ -26,6 +26,34 @@ MOST→LB 匯出的語意以 [MOST_LB_DATA_CONTRACT_SPEC.md](lb-integration/MOST
 | ⏳ | 完整提案，仍依賴 proposed ADR / User 核可 |
 | 📌 | 必要參考或封存資產，不是新實作權威 |
 
+## 三層入口（怎麼用這份索引）
+
+**改什麼功能 → 領域索引 → 權威規格**。三步：
+
+1. **改什麼功能**：先想這次動的是哪個業務領域（TMU 引擎？投影？作業版？rule-set？…）。
+2. **領域索引**：查下表 → 進 `docs/domains/<id>.md`（七段：一句話／權威文件／決策 ADR／程式入口／吃哪些欄位狀態／不變量／測試與缺口）。不變量的單一真相在 `docs/agent-team/domains.yaml`。
+3. **權威規格**：領域索引指向的 core-logic spec／ADR／lb-integration 契約，才是要改／要比對的權威。
+
+> **ADR 索引層（重要，一跳可達）**：本索引**不**逐一列 24 份 ADR 的連結；ADR 的主題／狀態索引集中在 [decisions/README.md](decisions/README.md)。路徑為 **DOC_REGISTRY.md → decisions/README.md → 各 ADR**（三層入口的 ADR 索引層）。ADR 非孤兒，經此一跳可達。
+
+### 領域索引（11 個業務領域）
+
+| 領域 | 索引 | 一句話 | 缺口票 |
+|---|---|---|---|
+| most-engine | [domains/most-engine.md](domains/most-engine.md) | TMU 單一權威引擎 | — |
+| level-system | [domains/level-system.md](domains/level-system.md) | R1–R9 巢狀關係與驗證 | — |
+| wi-workbench | [domains/wi-workbench.md](domains/wi-workbench.md) | 工時表／SIMO／clone／revision | — |
+| motion-module | [domains/motion-module.md](domains/motion-module.md) | 動作範本庫／WI 大綱 | BL-DOC-3 |
+| nlp-compiler | [domains/nlp-compiler.md](domains/nlp-compiler.md) | NL→MOST 編譯與 LLM planner | BL-DOC-2 |
+| rule-set | [domains/rule-set.md](domains/rule-set.md) | 版本治理與回放 | **BL-DOC-1** |
+| lb-projection | [domains/lb-projection.md](domains/lb-projection.md) | motion→task 投影與匯出契約 | — |
+| job-ux | [domains/job-ux.md](domains/job-ux.md) | 作業版（反投影，無 LLM） | — |
+| i18n | [domains/i18n.md](domains/i18n.md) | 雙語標籤與錯誤信封 | — |
+| excel-import | [domains/excel-import.md](domains/excel-import.md) | Excel／CSV 匯入 | BL-DOC-5 |
+| auth-rbac | [domains/auth-rbac.md](domains/auth-rbac.md) | 認證／RBAC／稽核／搜尋 | BL-DOC-4 |
+
+有程式、缺單一權威規格的區域列於 [BACKLOG.md](BACKLOG.md)（BL-DOC-1…5，優先序見該檔）；對應領域索引誠實標「現況以程式為準」。
+
 ## 核心邏輯
 
 | 文件 | 用途 | 狀態 |
@@ -114,6 +142,50 @@ Roadmap 只定義時程與退出條件，不定義資料真相。
 | [外部 v3 使用者 SQLite DB](../../ddm-v3/apps/api/minimost.db) | **保護資產、gitignored**；含 13 筆 WI 大綱、29 筆 actions、2 份 WI templates、1 個 WI Set 專案。只允許 `migrate_v3_user_data.py` 以 read-only mode 讀取，禁止清理或寫入 |
 | [sample_excel/](sample_excel/) | 1205 Level/敘事來源、1128 WI 範本與詳解參考 |
 | [html_con/](html_con/) | 已退役 UI prototype；依 repo 守則只封存、不作新實作依據 |
+
+## dev-team（agent 團隊設定）
+
+正本在 `docs/agent-team/`，工具中立；`.kiro/`、`.claude/` 只留薄轉接；repo 根 `AGENTS.md`／`CLAUDE.md` 為薄入口。
+
+| 文件 | 用途 |
+|---|---|
+| [agent-team/domains.yaml](agent-team/domains.yaml) | 領域登記表（11 領域 paths／anchors／invariants；領域索引與缺口守衛的單一真相） |
+| [agent-team/checkpoint.md](agent-team/checkpoint.md) | 品質關卡（commit 前必跑；派 most-code-reviewer／most-logic-reviewer／most-doc-sync） |
+| [agent-team/commit-convention.md](agent-team/commit-convention.md) | commit 慣例（`implements ADR-NNN: <WP> …`／`docs: …`） |
+| [agent-team/verification.md](agent-team/verification.md) | 驗證規範（UI Playwright、unit/integration 分開跑、core-logic 黃金） |
+| [agent-team/agents/](agent-team/agents/most-code-reviewer.md) | 三個 agent 角色正本 |
+| [agent-team/decisions.log](agent-team/decisions.log) | 決策追蹤（只由主 context 追加） |
+
+## 前瞻計畫（未排程）
+
+> 標記：**未排程；實作前需回到本文件補 spec 並經核准**。不得覆蓋前四層權威。
+
+| 文件 | 定位 |
+|---|---|
+| [roadmap/wi-ai-and-batch-modeling-delivery-plan.md](roadmap/wi-ai-and-batch-modeling-delivery-plan.md) | 前瞻交付計畫（未排程） |
+| [v4-integration/](v4-integration/00-overview.md)（14 份） | v4↔MOST 整合評估；**內容多指向 LB repo，屬跨 repo 參考**；未排程，實作前需補 spec 並核准 |
+
+## 過程紀錄（歷史過程，非現況規範）
+
+> 這些是開發過程的流水帳／PR 描述／工單，**非現況規範**；收編於此後不再算孤兒。
+
+| 文件 | 定位 |
+|---|---|
+| [lb-integration/PR_DESCRIPTION.md](lb-integration/PR_DESCRIPTION.md)、[PR_DESCRIPTION_D10.md](lb-integration/PR_DESCRIPTION_D10.md) | LB 投影／作業版 PR 描述 |
+| [lb-integration/TICKET_clone_concurrency_version_no.md](lb-integration/TICKET_clone_concurrency_version_no.md)、[TICKET_outbox_claim_pending.md](lb-integration/TICKET_outbox_claim_pending.md) | 工單（並發、outbox） |
+| [llm/wi-ai-parser-worklog.md](llm/wi-ai-parser-worklog.md)、[llm/i18n-worklog.md](llm/i18n-worklog.md) | 交付流水帳（已標歷史檔頭） |
+| [llm/gold-review/](llm/gold-review/README.md) | gold set 覆核過程紀錄 |
+| [_inventory.md](_inventory.md) | WP-D1 盤點暫存（**WP-D3 刪**） |
+
+## 歷史（不可作為現況依據，agent 預設不讀）
+
+> 下列文件檔頭已標「歷史文件」；**agent 預設不讀**，現況以領域索引指向的權威文件為準。
+
+| 文件 | 定位 |
+|---|---|
+| [architecture/legacy-inventory-and-engine-audit.md](architecture/legacy-inventory-and-engine-audit.md) | Phase-1 legacy 分類與引擎稽核（歷史） |
+| [v3/reference/most-workbench-ui-ux.md](v3/reference/most-workbench-ui-ux.md)、[four-tabs-usage-logic.md](v3/reference/four-tabs-usage-logic.md) | v3 UX 母版參照（歷史畫面） |
+| [roadmap/phase5-i18n-full-bilingual-spec.md](roadmap/phase5-i18n-full-bilingual-spec.md) | 已被 ADR-032 取代（⛔） |
 
 ## 已清理內容
 

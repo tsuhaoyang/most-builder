@@ -135,7 +135,7 @@
    | 動作模組實體化 | `motion_module_service`（`session.add(WiRow(` 於 materialize） | `module.name_zh`（該次實體化的所有列同名） |
 4. `read_worksheet`：rows[] 加 `"wi_group": wr.wi_group`。`clone_worksheet`：複製。`content_hash_from_read`：加入。`worksheet_revision` 快照列（有 `sub_activity` 的那個 dict）：加入。
 5. 前端型別 `WsReadRow.wi_group: string | null`（§5 F1）；`npm run gen:api` 若 `openapi.json` 由後端重生則重生 `api.d.ts`（現況 `gen:api` 讀 repo 內 `openapi.json`；照 WP12 慣例處理）。
-6. 測試：`tests/integration/test_wi_group_roundtrip.py`（存→讀→clone 相等；content_hash 隨 wi_group 變）；`tests/unit/test_import_excel_wi_group.py`（mapping 帶 `wi_group` → 建列有值；未對應 → None）；`tests/unit/test_motion_module_materialize_wi_group.py`（實體化列 `wi_group == name_zh`）。
+6. 測試：`tests/integration/test_wi_group_roundtrip.py`（存→讀→clone 相等；content_hash 隨 wi_group 變）；`tests/unit/test_import_excel_wi_group.py`（mapping 帶 `wi_group` → 建列有值；未對應 → None）；`tests/integration/test_motion_module_materialize_wi_group.py`（實體化列 `wi_group == name_zh`；2026-09-12 自 unit 移入 integration）。
 
 ### B2（取消）
 原規劃第 9 標記 `splittable`；依 §3.2 裁決不做。編號保留避免其他章節錯位。
@@ -194,7 +194,7 @@
 3. `mappers.role_type`：`"machine" if seq_kind=="CM" and x_seconds>=1 and lb_tags.machine_unattended is True else "human"`。
 4. `hints.py` `H_MACHINE_TIME`：改為 **ask**，條件加 `lb_tags.machine_unattended is None`（§7.2）；params 加 `{"x_seconds": …}`。
 5. 黃金：fixture 三列加 tag（§3.4）；重跑投影更新 `server_node_tasks.expected.csv`（差異必須只有 task 29 `role_type`——用 csv 逐欄 diff 證明，貼在回報）；`server_node_hints.expected.json` 更新為 3 條；`fixtures/README.md` 註記。
-6. 測試：`tests/integration/test_worksheet_lb_tags_roundtrip.py` 加三態 roundtrip（null／false／true 各一）；`tests/unit/test_lb_projection_mappers.py` 加 role_type 三案（x≥1 ∧ true → machine；x≥1 ∧ null → human；x≥1 ∧ false → human）；hints 測試加「已回答不再問」；golden 測試更新後全綠。
+6. 測試：~~`tests/integration/test_worksheet_lb_tags_roundtrip.py` 加三態 roundtrip（null／false／true 各一）~~（**訂正 2026-09-17**：三態 roundtrip 實際落於 `tests/integration/test_wi_group_roundtrip.py` 與 `test_lb_projection_adapter_equiv.py`，未建同名檔）；`tests/unit/test_lb_projection_mappers.py` 加 role_type 三案（x≥1 ∧ true → machine；x≥1 ∧ null → human；x≥1 ∧ false → human）；hints 測試加「已回答不再問」；golden 測試更新後全綠。
 
 ## 5. 前端工作包
 

@@ -95,7 +95,7 @@ Claude 的 `@AGENTS.md` 已在 LB 實測可用；Kiro steering 用 `#[[file:…]
 
 - **WP-D1 盤點**：先 `graphify .` 重建（現有圖已落後 ADR-035 全部工作）。除四類問題（斷鏈／孤兒／重複權威／歷史）外，MOST 另需處理：
   - `docs/DOC_REGISTRY.md` 未收錄的約 47 份 → 逐份判定「收進索引／標歷史／確實該刪」。
-  - 空目錄 `docs/sample_excel/`、`docs/html_con/` → 判定去留。
+  - ~~空目錄 `docs/sample_excel/`、`docs/html_con/` → 判定去留。~~ **訂正（2026-09-17，WP-D1 實測）**：兩者**非空目錄**（原敘述只數 `.md`，漏數其他副檔名）——`docs/sample_excel/` 有 3 個 `.xlsx`（MOST 邏輯原始 Excel，來源素材）；`docs/html_con/` 有 2 個 `.html`（`v2-workbench.html`、`v2-wi-preview.html`，封存原型）。裁決：**保留，標「素材／封存原型」**，非去留空目錄問題。
   - `docs/v3/`、`docs/llm/`、`docs/v4-integration/`、`docs/roadmap/` → 分類為「歷史／前瞻計畫／現行」，前瞻計畫在索引標「未排程，實作前需回到本文件補 spec」。
 - **WP-D2**：`docs/domains/<id>.md` 11 份（七段格式同 LB，「吃哪些欄位／狀態」要實際查程式）；`DOC_REGISTRY.md` 升為三層入口（改什麼功能 → 領域索引 → 權威規格），保留既有權威順序段落。
 - **WP-D3**：`docs_check.py`（自 LB 複製改路徑）、`checkpoint.md` 加兩步、`most-doc-sync` 正本要求先跑腳本、`DOC_CONVENTION` 對應段落（MOST 若無此檔則在 `DOC_REGISTRY.md` 補一節「文件規範」並指向 LB 版本的三條硬規則精神——**不得複製全文**）。

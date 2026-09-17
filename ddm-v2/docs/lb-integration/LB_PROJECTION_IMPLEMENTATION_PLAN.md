@@ -85,7 +85,7 @@ src/ddm_v2/lb_projection/
 - `services/v2/worksheet_service.py`：`save_worksheet` 的 `LevelEntry(...)` 建構（約 L211）帶入六欄；`read_worksheet` 的 `"level": {...}`（約 L280）輸出六欄。`clone_worksheet` 若逐欄複製 LevelEntry，補六欄。
 - 前端型別：依 `src/frontend/package.json` 既有 OpenAPI 型別產生腳本重生 `src/frontend/src/shared/types/api.d.ts`（**不手改**）。
 - 資料模型文件同步：見 §5。
-- 驗收：`tests/integration/test_worksheet_lb_tags_roundtrip.py`（需 DB；save → read 六欄原樣）；無 DB 環境 skip。
+- 驗收：~~`tests/integration/test_worksheet_lb_tags_roundtrip.py`~~（**訂正 2026-09-17**：實際落於 `tests/integration/test_wi_group_roundtrip.py`＋`test_lb_projection_adapter_equiv.py`，未建同名檔）（需 DB；save → read 六欄原樣）；無 DB 環境 skip。
 - 出處：ADR-035 D7；Spec §1 tool-held／§6。
 
 ### WP2 `ProjectionRow` 與 adapter
@@ -175,7 +175,7 @@ src/ddm_v2/lb_projection/
   - `lb_api_payload`：`payload` 改為 `{"contract_version", "csv": csv_text, "tasks": [...dict...], "report": {...}}`；保留 `status:"interface-ready"` 語意；**移除** `build_output` 直送（保守邊不可沿用）。
   - 需要 `load_vocab`（kinds/name_en）與 `rs`（`load_rule_set_from_db` by 該 worksheet 各列的 `rule_set_id`；同 worksheet 多版本時逐列取）。
 - `api/routes/v2/export.py`：`/export/lb-csv` 回 CSV（BOM 維持）；新增 `GET /worksheets/{id}/export/lb-report`；`LbExportBlocked` 由 error handler 轉 422 信封（依 ADR-034 現有 `register_exception_handlers` 路徑）。
-- 驗收：`tests/integration/test_export_lb_csv.py`（DB）：seed 一份含工具 CM 與 cub 的 worksheet → CSV 表頭 == COLUMNS、含三列 scanner episode；缺 `narrative_en` 時 422 且 `error.code == "LB_EXPORT_BLOCKED"`；`lb-report` 200 帶 warnings。無 DB skip。
+- 驗收：~~`tests/integration/test_export_lb_csv.py`~~（**訂正 2026-09-17**：實際落於 `tests/integration/test_export.py`，含 `test_lb_csv_tool_use_repeat_count_expands_quantity` 等；未建同名檔）（DB）：seed 一份含工具 CM 與 cub 的 worksheet → CSV 表頭 == COLUMNS、含三列 scanner episode；缺 `narrative_en` 時 422 且 `error.code == "LB_EXPORT_BLOCKED"`；`lb-report` 200 帶 warnings。無 DB skip。
 
 ### WP9 NL compiler：QuantityPolicyV2（ADR-035 D4）
 - `most_compiler/policies.py`：新增
@@ -257,7 +257,7 @@ WP1／WP9 與投影層核心（WP2–7）互不相依，可平行。**WP6 golden
 | `src/ddm_v2/most_compiler/intermediate.py` | 改：Strict slots +`repeat_count` | 9 |
 | `tests/unit/test_lb_projection_*.py`（8 檔）、`tests/unit/fixtures/lb_projection/` | 新增 | 0–7,10 |
 | `tests/unit/test_compiler.py`、`tests/gold/wi_plans/*.json` | 改 | 9 |
-| `tests/integration/test_worksheet_lb_tags_roundtrip.py`、`test_export_lb_csv.py` | 新增 | 1,8 |
+| ~~`tests/integration/test_worksheet_lb_tags_roundtrip.py`、`test_export_lb_csv.py`~~ 實際＝`test_wi_group_roundtrip.py`＋`test_lb_projection_adapter_equiv.py`＋`test_export.py`（訂正 2026-09-17） | 新增 | 1,8 |
 | `scripts/lb_projection_check.py` | 新增 | 10 |
 | `src/frontend/src/features/level-system/{logic,store}.ts`、`LevelSystem.tsx`、`shared/i18n/resources/{zh-TW,en}.ts`、`shared/types/api.d.ts`（重生） | 改 | 12 |
 | `docs/…`（§5） | 改 | 11 |

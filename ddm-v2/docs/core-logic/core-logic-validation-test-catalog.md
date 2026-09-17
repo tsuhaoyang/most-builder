@@ -9,6 +9,8 @@
 > 本文件「**先說清楚每個測試在驗什麼、封了哪個 edge case、抓的是哪種真實錯誤**」，再由 validator 實作。
 > 寫測試的目的不是湊綠燈，而是把「IE 會填錯的地方」「來源資料會矛盾的地方」逐一釘死。
 
+> **單位換算（引用式，非本檔定義）**：`1 TMU = 0.036 秒`（定義見 [minimost-sequence-model-core-logic-spec.md §3 TMU 與合計規則](./minimost-sequence-model-core-logic-spec.md#3-tmu-與合計規則)）。本檔的 `1.008s`、`ceil(sec/0.036)` 等只是套用該定義的黃金向量與換算，不是定義處。
+
 ---
 
 ## 0. 兩個層次的黃金集
