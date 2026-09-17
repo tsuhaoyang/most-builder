@@ -24,6 +24,7 @@ from ddm_v2.models.v2.dsx_suggestion import WiRowDsxSuggestion
 from ddm_v2.models.v2.i18n import I18nReviewState
 from ddm_v2.models.v2.import_staging import ExcelImport, ImportProfile, ImportRow
 from ddm_v2.models.v2.level_validation import LevelValidationRun
+from ddm_v2.models.v2.lb_writeback import LbRowPlacement, LbWritebackSnapshot
 from ddm_v2.models.v2.motion_module import MotionModule, MotionModuleVersion
 from ddm_v2.models.v2.motion_template import MotionTemplate
 from ddm_v2.models.v2.org import Product, Site, Sku
@@ -93,6 +94,8 @@ __all__ = [
     "ImportProfile",
     "ImportRow",
     "LevelValidationRun",
+    "LbWritebackSnapshot",
+    "LbRowPlacement",
     "RuleOptionSynonym",
     "WiSetProject",
     "WiSetItem",
