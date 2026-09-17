@@ -56,6 +56,15 @@ FORWARD_REF_ALLOWLIST = {
     "scripts/dev_seed_ai_bundles.py",
     "scripts/build_option_embeddings.py",
     "scripts/prune_ai_runs.py",
+    # ADR-036 回寫實作書預告、尚未建（B5／測試階段會建；B5 前不做，等 LB 新 fixture）：
+    "tests/unit/test_lb_writeback_parse.py",
+    "tests/unit/test_lb_writeback_aggregate.py",
+    "tests/unit/test_lb_writeback_diff.py",
+    "tests/integration/test_lb_writeback_endpoints.py",
+    "src/frontend/e2e/writeback-line-view.spec.ts",
+    # LB 端產法／原始 fixture 路徑（跨 repo，記於 MOST fixture README 的來源出處，非 MOST 檔）：
+    "scripts/gen_writeback_sample.py",
+    "test/backend/integration/fixtures/most_integration/writeback_sample.json",
 }
 GRAPH_LAG_THRESHOLD = 5  # 圖落後 HEAD 超過幾個 commit 才警告
 

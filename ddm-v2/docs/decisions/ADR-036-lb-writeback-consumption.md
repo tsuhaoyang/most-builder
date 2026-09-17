@@ -5,7 +5,7 @@
 🟡 **proposed**（2026-09-17，整合架構師撰寫；三項取捨已由 Howard 2026-09-17 裁決，見 §2 D1／D2／D5）。實作見 `docs/lb-integration/LB_WRITEBACK_CONSUMPTION_IMPLEMENTATION_SPEC.md`。
 
 - **對應 LB 端**：`lb-most-writeback-v1`，定義於 LB `docs/dev_docs/MOST_INTEGRATION_INPUT_SPEC.md` §8（**該檔是回寫契約的唯一權威**；本 ADR 不重述欄位）、LB ADR-023 D11。LB 落地 commit `adb750b`＋`631e3a5`＋`02dba21`（分支 `feature/most-integration-phase2`，未合入 LB master）。
-- **關聯**：[ADR-035](ADR-035-lb-projection-layer-and-motion-decomposition.md)（MOST→LB 投影；本 ADR 是反方向）、`docs/lb-integration/MOST_LB_CONTRACT.md` D13（屬性可雙向、結構單向）、[ADR-011](ADR-011-schema-evolution-and-contract-stability.md)（加法演進）、[ADR-019](ADR-019-rbac-read-write-boundaries.md)（端點權限）、[ADR-034](ADR-034-language-aware-error-contract.md)（錯誤信封）。
+- **關聯**：[ADR-035](ADR-035-lb-projection-layer-and-motion-decomposition.md)（MOST→LB 投影；本 ADR 是反方向）、`docs/lb-integration/MOST_LB_CONTRACT.md` D13（屬性可雙向、結構單向）、[ADR-011](ADR-011-schema-evolution-and-contract-stability.md)（加法演進）、[ADR-019](ADR-019-worksheet-access-control.md)（端點權限）、[ADR-034](ADR-034-language-aware-error-contract.md)（錯誤信封）。
 
 ---
 
