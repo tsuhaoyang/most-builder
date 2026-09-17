@@ -76,6 +76,11 @@ class ErrorCode(str, Enum):
     # --- LB projection export (ADR-035 WP8) ---
     LB_EXPORT_BLOCKED = "LB_EXPORT_BLOCKED"
 
+    # --- LB writeback consumption (ADR-036 B5) ---
+    LB_WRITEBACK_CONTRACT_MISMATCH = "LB_WRITEBACK_CONTRACT_MISMATCH"  # 422：contract_version 非 lb-most-writeback-v1
+    LB_UNREACHABLE = "LB_UNREACHABLE"                                  # 502：LB 不可達／逾時／5xx
+    LB_NOT_CONFIGURED = "LB_NOT_CONFIGURED"                            # 503：DDM_LB_API_BASE_URL 未設
+
     # --- WI context / worksheet codes ---
     WI_CONTEXT_INVALID = "WI_CONTEXT_INVALID"
     SIMO_PAIR_INVALID = "SIMO_PAIR_INVALID"

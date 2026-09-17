@@ -202,3 +202,367 @@ def diff(
                 {"wi_row_id": wi, "expected_n": m.expected_n, "units_total": mp.units_total}
             )
     return d
+
+
+def build_most_rows_from_read(worksheet_read: dict) -> list[MostRowInfo]:
+    """從 read_worksheet 的回應組出 diff 需要的 MostRowInfo（is_general／offline／simo 由 MOST 端資料）。
+
+    SIMO 從屬列：`simo_group_id` 非空且非該群組主列——read_worksheet 已正規化 `simo_group_id`
+    （標記列非空）；此處保守以「有 simo_group_id」視為從屬（主列不帶標記）。
+    """
+    out: list[MostRowInfo] = []
+    for r in worksheet_read.get("rows", []) or []:
+        tags = r.get("lb_tags") or {}
+        simo = (r.get("simo_group_id") or "").strip()
+        freq = r.get("frequency")
+        out.append(MostRowInfo(
+            wi_row_id=str(r["wi_row_id"]),
+            is_general=bool(tags.get("is_general", False)),
+            is_simo_subordinate=bool(simo),
+            offline=bool(tags.get("offline", False)),
+            expected_n=int(freq) if (freq is not None and float(freq) > 1) else None,
+        ))
+    return out
+
+
+def general_ids_from_read(worksheet_read: dict) -> set[str]:
+    """MOST 端 is_general 的 wi_row_id 集合（aggregate 的 general_ids 用；不從 LB payload 猜）。"""
+    return {
+        str(r["wi_row_id"])
+        for r in worksheet_read.get("rows", []) or []
+        if (r.get("lb_tags") or {}).get("is_general", False)
+    }
+
+
+def summarize(parsed: ParsedWriteback, agg: dict[str, MotionPlacement], d: WritebackDiff) -> dict[str, Any]:
+    """給端點回應的摘要（人看＋前端用）。"""
+    return {
+        "contract_version": parsed.contract_version,
+        "project_id": parsed.project_id,
+        "version_id": parsed.version_id,
+        "result_id": parsed.result_id,
+        "unattended_machine_policy": parsed.unattended_machine_policy,
+        "unattended_machine_policy_source": parsed.unattended_machine_policy_source,
+        "rows_in": len(parsed.rows),
+        "motions": len(agg),
+        "matched": len(d.matched),
+        "unmatched": len(d.unmatched),
+        "missing": len(d.missing),
+        "cross_station": [wi for wi, mp in agg.items() if mp.cross_station],
+        "offline_conflicts": [wi for wi, mp in agg.items() if mp.offline_conflict],
+    }
+
+
+def diff_to_dict(agg: dict[str, MotionPlacement], d: WritebackDiff) -> dict[str, Any]:
+    """diff ＋逐 motion 聚合 → JSON-able（前端產線視角用）。"""
+    return {
+        "matched": d.matched,
+        "unmatched": d.unmatched,
+        "missing": d.missing,
+        "offline_diffs": d.offline_diffs,
+        "unit_mismatches": d.unit_mismatches,
+        "motions": {
+            wi: {
+                "task_ids": mp.task_ids,
+                "stations": sorted(mp.stations),
+                "workers": sorted(mp.workers),
+                "units_total": mp.units_total,
+                "offline": any(mp.offline_values) if mp.offline_values else False,
+                "cross_station": mp.cross_station,
+                "offline_conflict": mp.offline_conflict,
+            }
+            for wi, mp in agg.items()
+        },
+    }
+
+
+# ── DB-facing（B5）：persist／retention／orchestration ────────────────────────
+# 這一段碰 session（非純函式）；純解析／聚合／差異在上方。
+
+import uuid as _uuid  # noqa: E402
+from datetime import datetime, timezone  # noqa: E402
+
+from sqlalchemy import delete, func, select  # noqa: E402
+from sqlalchemy.ext.asyncio import AsyncSession  # noqa: E402
+
+from ddm_v2.errors.registry import ErrorCode  # noqa: E402
+from ddm_v2.exceptions import BadGatewayError, NotFoundError, ServiceUnavailableError, ValidationError  # noqa: E402
+from ddm_v2.models.v2.lb_writeback import LbRowPlacement, LbWritebackSnapshot  # noqa: E402
+from ddm_v2.services.v2.lb_client import LbRequestFailed, LbUnreachable, fetch_writeback  # noqa: E402
+from ddm_v2.settings import get_settings  # noqa: E402
+
+RETENTION_PER_WORKSHEET = 10  # ADR-036 D4
+
+
+async def persist(
+    session: AsyncSession,
+    *,
+    worksheet_id: _uuid.UUID,
+    payload: dict,
+    parsed: ParsedWriteback,
+    source_url: str | None,
+    actor: str,
+) -> _uuid.UUID:
+    """存一筆 snapshot ＋逐列 placement，套保留策略（每 worksheet 最近 N 筆）。回 snapshot_id。"""
+    snap = LbWritebackSnapshot(
+        id=_uuid.uuid4(), worksheet_id=worksheet_id,
+        contract_version=parsed.contract_version,
+        lb_project_id=parsed.project_id, lb_version_id=parsed.version_id, lb_result_id=parsed.result_id,
+        generated_at=_parse_dt(parsed.generated_at),
+        unattended_machine_policy=parsed.unattended_machine_policy,
+        unattended_machine_policy_source=parsed.unattended_machine_policy_source,
+        source_url=source_url, payload=payload, created_by=actor,
+    )
+    session.add(snap)
+    await session.flush()
+    for r in parsed.rows:
+        session.add(LbRowPlacement(
+            id=_uuid.uuid4(), snapshot_id=snap.id,
+            source_wi_row_id=_uuid.UUID(r.source_wi_row_id),
+            task_id=r.task_id, line_index=r.line_index, station_index=r.station_index,
+            workers=r.workers, units=r.units, offline_flag=r.offline_flag,
+        ))
+    await session.flush()
+    await _enforce_retention(session, worksheet_id)
+    return snap.id
+
+
+async def _enforce_retention(session: AsyncSession, worksheet_id: _uuid.UUID) -> None:
+    ids = (await session.execute(
+        select(LbWritebackSnapshot.id)
+        .where(LbWritebackSnapshot.worksheet_id == worksheet_id)
+        .order_by(LbWritebackSnapshot.fetched_at.desc())
+    )).scalars().all()
+    stale = ids[RETENTION_PER_WORKSHEET:]
+    if stale:
+        # placements 靠 FK ON DELETE CASCADE 連帶刪
+        await session.execute(delete(LbWritebackSnapshot).where(LbWritebackSnapshot.id.in_(stale)))
+        await session.flush()
+
+
+def _parse_dt(s: str | None) -> datetime | None:
+    if not s:
+        return None
+    try:
+        return datetime.fromisoformat(s.replace("Z", "+00:00"))
+    except ValueError:
+        return None
+
+
+def _not_configured() -> ServiceUnavailableError:
+    return ServiceUnavailableError(
+        "LB 回寫未設定：DDM_LB_API_BASE_URL 未設（v1 直連，設定後才能取得）",
+        detail={"code": ErrorCode.LB_NOT_CONFIGURED},
+    )
+
+
+async def fetch_and_store(
+    session: AsyncSession,
+    *,
+    worksheet_id: _uuid.UUID,
+    worksheet_read: dict,
+    lb_project_id: str,
+    lb_version_id: str,
+    lb_result_id: str,
+    actor: str,
+) -> dict[str, Any]:
+    """呼叫 LB → 解析 → 存快照 → 回 {snapshot_id, summary, diff}（ADR-036 B5 fetch）。"""
+    s = get_settings()
+    if not s.lb_api_base_url:
+        raise _not_configured()
+    auth = (s.lb_auth_header_name, actor) if s.lb_auth_header_name else None
+    url = (
+        f"{s.lb_api_base_url.rstrip('/')}/api/v3/projects/{lb_project_id}"
+        f"/versions/{lb_version_id}/results/{lb_result_id}/writeback"
+    )
+    try:
+        payload = await fetch_writeback(
+            base_url=s.lb_api_base_url, project_id=lb_project_id, version_id=lb_version_id,
+            result_id=lb_result_id, timeout_s=s.lb_timeout_s, auth_header=auth,
+        )
+    except LbUnreachable as exc:
+        raise BadGatewayError(f"LB 不可達或逾時：{exc}", detail={"code": ErrorCode.LB_UNREACHABLE}) from exc
+    except LbRequestFailed as exc:
+        raise BadGatewayError(
+            f"LB 回報請求失敗（HTTP {exc.status_code}）", detail={"code": ErrorCode.LB_UNREACHABLE}
+        ) from exc
+    return await _consume(session, worksheet_id, worksheet_read, payload, url, actor)
+
+
+async def import_and_store(
+    session: AsyncSession,
+    *,
+    worksheet_id: _uuid.UUID,
+    worksheet_read: dict,
+    payload: dict,
+    actor: str,
+) -> dict[str, Any]:
+    """測試／離線驗證：直接吃 payload，走同一解析／存檔路徑（ADR-036 D1）。"""
+    return await _consume(session, worksheet_id, worksheet_read, payload, None, actor)
+
+
+async def _consume(
+    session: AsyncSession,
+    worksheet_id: _uuid.UUID,
+    worksheet_read: dict,
+    payload: dict,
+    source_url: str | None,
+    actor: str,
+) -> dict[str, Any]:
+    parsed = parse(payload)  # 契約不符 → LbWritebackContractMismatch（route 映 422）
+    gids = general_ids_from_read(worksheet_read)
+    agg = aggregate(parsed.rows, general_ids=gids)
+    d = diff(build_most_rows_from_read(worksheet_read), agg)
+    snap_id = await persist(
+        session, worksheet_id=worksheet_id, payload=payload, parsed=parsed,
+        source_url=source_url, actor=actor,
+    )
+    return {"snapshot_id": str(snap_id), "summary": summarize(parsed, agg, d), "diff": diff_to_dict(agg, d)}
+
+
+async def latest(session: AsyncSession, *, worksheet_id: _uuid.UUID, worksheet_read: dict) -> dict[str, Any]:
+    snap = (await session.execute(
+        select(LbWritebackSnapshot)
+        .where(LbWritebackSnapshot.worksheet_id == worksheet_id)
+        .order_by(LbWritebackSnapshot.fetched_at.desc()).limit(1)
+    )).scalar_one_or_none()
+    if snap is None:
+        raise NotFoundError("此 worksheet 尚無 LB 回寫快照", detail={"code": ErrorCode.NOT_FOUND, "resource": "lb_writeback_snapshot"})
+    parsed = parse(snap.payload)
+    gids = general_ids_from_read(worksheet_read)
+    agg = aggregate(parsed.rows, general_ids=gids)
+    d = diff(build_most_rows_from_read(worksheet_read), agg)
+    return {
+        "snapshot_id": str(snap.id), "fetched_at": snap.fetched_at.isoformat() if snap.fetched_at else None,
+        "applied_at": snap.applied_at.isoformat() if snap.applied_at else None,
+        "summary": summarize(parsed, agg, d), "diff": diff_to_dict(agg, d),
+    }
+
+
+async def list_snapshots(session: AsyncSession, *, worksheet_id: _uuid.UUID) -> list[dict[str, Any]]:
+    rows = (await session.execute(
+        select(LbWritebackSnapshot)
+        .where(LbWritebackSnapshot.worksheet_id == worksheet_id)
+        .order_by(LbWritebackSnapshot.fetched_at.desc()).limit(RETENTION_PER_WORKSHEET)
+    )).scalars().all()
+    return [
+        {
+            "snapshot_id": str(s.id),
+            "lb_project_id": s.lb_project_id, "lb_version_id": s.lb_version_id, "lb_result_id": s.lb_result_id,
+            "fetched_at": s.fetched_at.isoformat() if s.fetched_at else None,
+            "applied_at": s.applied_at.isoformat() if s.applied_at else None,
+            "unattended_machine_policy": s.unattended_machine_policy,
+        }
+        for s in rows
+    ]
+
+
+async def count_snapshots(session: AsyncSession, *, worksheet_id: _uuid.UUID) -> int:
+    return (await session.execute(
+        select(func.count()).select_from(LbWritebackSnapshot)
+        .where(LbWritebackSnapshot.worksheet_id == worksheet_id)
+    )).scalar_one()
+
+
+# ── B6：apply-offline（走正門：組內傳染 + R1–R9 + 投影；任一 E 整批 rollback）─────
+
+from ddm_v2.models.v2.worksheet import LevelEntry, WiRow  # noqa: E402
+
+
+async def apply_offline(
+    session: AsyncSession,
+    *,
+    worksheet_id: _uuid.UUID,
+    snapshot_id: _uuid.UUID,
+    wi_row_ids: list[_uuid.UUID],
+    actor: str,
+) -> dict[str, Any]:
+    """套用 LB 的 offline（ADR-036 D2）。走正門：
+    1. 只接受該 snapshot 的 offline_diffs 出現過的 wi_row_id（其餘 422）。
+    2. 寫 level_entries.offline=True ＋**組內傳染**（同 countersignature cub 或同 worker_cub wcub），
+       規則與前端 store.toggleOffline 一致（後端才是權威，client 端只是 UX）。
+    3. 跑 R1–R9（level 驗證）與投影（lb_export_report）；任一 E → 整批 rollback 並回報。
+    4. snapshot 記 applied_at／applied_rows。
+    """
+    from ddm_v2.services.v2 import export_service as exp
+    from ddm_v2.services.v2 import level_validation_service as lvs
+
+    snap = await session.get(LbWritebackSnapshot, snapshot_id)
+    if snap is None or snap.worksheet_id != worksheet_id:
+        raise NotFoundError(
+            "找不到該 worksheet 的回寫快照",
+            detail={"code": ErrorCode.NOT_FOUND, "resource": "lb_writeback_snapshot", "snapshot_id": str(snapshot_id)},
+        )
+
+    # 只接受 offline_diffs 出現過的 wi_row_id（重算 diff 取權威清單）
+    read = await _read(session, worksheet_id)
+    parsed = parse(snap.payload)
+    agg = aggregate(parsed.rows, general_ids=general_ids_from_read(read))
+    d = diff(build_most_rows_from_read(read), agg)
+    diffable = {od["wi_row_id"] for od in d.offline_diffs}
+    req = {str(x) for x in wi_row_ids}
+    bad = req - diffable
+    if bad:
+        raise ValidationError(
+            f"以下列不在此快照的 offline 差異清單中，不可套用：{sorted(bad)}",
+            detail={"code": ErrorCode.VALIDATION_ERROR, "invalid_wi_row_ids": sorted(bad)},
+        )
+
+    # 載入本 worksheet 全部 level_entries（用 wi_row → LevelEntry），算傳染集合
+    entries = (await session.execute(
+        select(LevelEntry).join(WiRow, LevelEntry.wi_row_id == WiRow.id)
+        .where(WiRow.worksheet_id == worksheet_id)
+    )).scalars().all()
+    by_wi = {str(e.wi_row_id): e for e in entries}
+
+    def _group_members(seed_ids: set[str]) -> set[str]:
+        """同 countersignature（cub）或同 worker_cub（wcub）視為同組，一起翻 offline。"""
+        cubs = {(by_wi[i].countersignature or "").strip() for i in seed_ids if i in by_wi}
+        cubs.discard("")
+        wcubs = {(by_wi[i].worker_cub or "").strip() for i in seed_ids if i in by_wi}
+        wcubs.discard("")
+        members = set(seed_ids)
+        for wi, e in by_wi.items():
+            if (e.countersignature or "").strip() in cubs or (e.worker_cub or "").strip() in wcubs:
+                members.add(wi)
+        return members
+
+    applied = _group_members(req)
+    propagated = sorted(applied - req)
+
+    async with session.begin_nested() as sp:
+        for wi in applied:
+            e = by_wi.get(wi)
+            if e is not None:
+                e.offline = True
+        await session.flush()
+
+        # R1–R9 驗證
+        val = await lvs.validate_and_persist(session, worksheet_id, trigger="revalidate", actor=actor)
+        level_ok = bool(val.get("valid", not val.get("issues")))
+        level_issues = val.get("issues") or []
+        # 投影報告（E 碼擋）
+        report = await exp.lb_export_report(session, worksheet_id)
+        proj_errors = report.get("errors") or []
+
+        if not level_ok or proj_errors:
+            await sp.rollback()  # 任一 E → 整批 rollback，一列都不套
+            raise ValidationError(
+                "套用離線設定後驗證未過，已整批取消（未套用任何一列）",
+                detail={
+                    "code": ErrorCode.LEVEL_VALIDATION_FAILED if not level_ok else ErrorCode.LB_EXPORT_BLOCKED,
+                    "level_issues": level_issues,
+                    "projection_errors": [e_.get("code") if isinstance(e_, dict) else str(e_) for e_ in proj_errors],
+                },
+            )
+
+    # 成功：記套用紀錄
+    snap.applied_at = datetime.now(timezone.utc)
+    snap.applied_rows = {"applied": sorted(applied), "propagated": propagated}
+    await session.flush()
+    return {"applied": sorted(applied), "propagated": propagated, "report": {"errors": [], "warnings": report.get("warnings", [])}}
+
+
+async def _read(session: AsyncSession, worksheet_id: _uuid.UUID) -> dict:
+    from ddm_v2.services.v2.worksheet_service import read_worksheet
+    return await read_worksheet(session, worksheet_id)

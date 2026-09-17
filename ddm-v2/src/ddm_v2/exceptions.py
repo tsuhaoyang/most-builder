@@ -67,6 +67,17 @@ class ServiceUnavailableError(DomainError):
     pass
 
 
+class BadGatewayError(DomainError):
+    """Upstream service unreachable / returned error (HTTP 502).
+
+    ADR-034 §A4 加法：ADR-036 D7 的「LB 不可達／逾時／5xx」。與設定未就緒（503，
+    ServiceUnavailableError）分開——502 是「上游確實連了但問不到／回錯」，可重試但成因在上游。
+    原始上游狀態碼寫 log（見 lb_client），不放進對外 message。
+    """
+
+    pass
+
+
 class PayloadTooLargeError(DomainError):
     """Request payload exceeds the allowed limit (HTTP 413).
 

@@ -19,6 +19,7 @@ from sqlalchemy.exc import IntegrityError
 
 from ddm_v2.errors.registry import ErrorCode
 from ddm_v2.exceptions import (
+    BadGatewayError,
     BadRequestError,
     ConflictError,
     DomainError,
@@ -90,6 +91,12 @@ def register_exception_handlers(app: FastAPI) -> None:
         """ADR-034 §A4：503（設定錯誤，可重試）。走 _envelope 享頂層 detail 相容。"""
         error_code = (exc.detail or {}).get("code") or ErrorCode.SERVICE_UNAVAILABLE
         return _envelope(error_code, exc.message, exc.detail, status.HTTP_503_SERVICE_UNAVAILABLE)
+
+    @app.exception_handler(BadGatewayError)
+    async def bad_gateway_handler(request: Request, exc: BadGatewayError) -> JSONResponse:
+        """ADR-034 §A4 加法：502（上游不可達／回錯，ADR-036 D7 的 LB 不可達）。走 _envelope。"""
+        error_code = (exc.detail or {}).get("code") or ErrorCode.LB_UNREACHABLE
+        return _envelope(error_code, exc.message, exc.detail, status.HTTP_502_BAD_GATEWAY)
 
     @app.exception_handler(PayloadTooLargeError)
     async def payload_too_large_handler(request: Request, exc: PayloadTooLargeError) -> JSONResponse:
