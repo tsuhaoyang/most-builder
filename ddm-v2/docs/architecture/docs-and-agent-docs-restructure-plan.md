@@ -1,7 +1,11 @@
 # 文件與 agent 設定重整實作書（MOST／ddm-v2 端）
 
 > **給誰**：執行本重整的 agent（任何工具）。
-> **狀態**：Design Accepted（2026-09-16，Howard 裁決六項——同 LB 端，見 §0.2）。階段一未開工。
+> **狀態**：Design Accepted（2026-09-16，Howard 裁決六項——同 LB 端，見 §0.2）。**已逐階段落地（分支 `chore/agent-docs-shared`）：**
+> - **階段一**（agent 團隊正本＋腳本＋轉接＋CLAUDE/AGENTS）：`aed28d2`、`356f5d0`、`2e46e72`、`9ba4986`；裁決落地 `be5e5a4`。
+> - **WP-D1**（graphify 重建＋盤點）：`0817d9b`（`_inventory.md` 暫存，WP-D3 已刪）。
+> - **WP-D2**（11 領域索引＋DOC_REGISTRY 三層入口＋三裁決＋歷史檔頭＋斷鏈訂正）：`2741657`、`5498648`。
+> - **WP-D3**（`docs_check.py`＋checkpoint 加步驟＋most-doc-sync 要求＋文件規範節＋刪 `_inventory.md`）：本次。
 > **對照**：LB 端同名實作書 `line-balance_stream-weaver_v2/docs/architecture/docs-and-agent-docs-restructure-plan.md`（commit `2b59ddc`），已完整落地並驗收（階段一＋二：`e942faa`…`fcc757c`）。本檔只寫 **MOST 的差異與現況**，共通設計不重抄（DOC_CONVENTION R3）。
 > **分支**：`chore/agent-docs-shared`，自 `feature/lb-projection` 末端（`c9062eb`）分岔——因為重整的素材（ADR-035 全部文件、lb-integration/）都在該分支上。**不 push、不合入**。
 > **不改任何產品程式**。

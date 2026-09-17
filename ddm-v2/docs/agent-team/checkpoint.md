@@ -67,10 +67,10 @@ python3 scripts/agent_team/check_agent_config.py
 
 ## 步驟 6：文件與圖同步
 
-- 若改到 `docs/`：階段二起跑 `python3 scripts/docs_check.py`（斷鏈 error 擋 commit；孤兒／缺狀態標頭／
-  領域索引與 domains.yaml 不一致／graphify 落後為 warning）。**此腳本於階段二 WP-D3 建立**。
-- 若跑動過程式：跑 `graphify update .`（圖需先以 `graphify .` 建立；現有 `graphify-out/` 落後 ADR-035，
-  階段二 WP-D1 會重建），讓知識圖與 HEAD 同步。
+- **若改到 `docs/`：跑 `python3 scripts/docs_check.py`**（斷鏈 error **擋 commit**；孤兒／缺狀態標頭／
+  領域索引與 domains.yaml 不一致／graphify 落後為 warning）。歷史 R2 刪線 `~~…~~` 內的引用不算斷鏈。
+- **若跑動過程式：跑 `graphify update .`** 讓知識圖與 HEAD 同步（**日常用 `graphify update . --code-only`**——
+  本機無 LLM key 時，文件語意抽取會失敗；code-only 走本地 AST、免 key）。圖需先以 `graphify . --code-only` 建立。
 
 ## 步驟 7：收尾
 

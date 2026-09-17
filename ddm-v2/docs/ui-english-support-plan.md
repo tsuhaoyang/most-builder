@@ -1,5 +1,7 @@
 # English Language Support UI Workflow Plan
 
+> ⚠️ **歷史文件（不可作為現況依據）**：本檔為早期英文支援計畫，已被 [ADR-032](decisions/ADR-032-bilingual-ui-and-data-label-layer.md)（雙語 UI／資料標籤層）取代。僅供追溯，**agent 預設不讀**。
+
 ## 📋 Current State Analysis
 
 ### ✅ What Works Now

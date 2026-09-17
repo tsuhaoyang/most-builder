@@ -77,6 +77,7 @@ MOST→LB 匯出的語意以 [MOST_LB_DATA_CONTRACT_SPEC.md](lb-integration/MOST
 | [LB / MOST Auth](architecture/lb-most-auth.md) | 與 LB 共用登入的部署與驗證邊界 | 🔄 |
 | [v2 權威模型與反 Legacy 守則](architecture/v2-authoritative-model-guide.md) | 版本語意、兩層工作台、rule-set 回放與禁止模式 | ✅ |
 | [WI AI Parser](architecture/wi-ai-parser-system-spec.md) | 互動/批次 WI 解析、compiler、審核與 learning loop | 🔄 ADR-026 accepted |
+| [DSX 整合 API 契約（草案）](architecture/dsx-integration-api-contract-draft.md) | DSX 3D 擺放整合的 API 契約草案 | ⏳ 草案——先建 MVP、邊做邊調 |
 | [WI AI Parser 實作規格](llm/wi-ai-parser-implementation-spec.md) | 實作層：契約、模組、DB、prompt、測試與 L0–L4 分期 | 🔄 |
 | [WI AI Parser 交付追蹤](llm/wi-ai-parser-worklog.md) | Phase 狀態、卡點、D3 決策、checkpoint 與驗收紀錄 | 🔄 交付期間持續更新 |
 | [WI AI Eval Reports](llm/eval-reports/README.md) | gold plan 評測輸出（`wi_ai_eval.py`） | 🔄 L3+ |
@@ -143,6 +144,16 @@ Roadmap 只定義時程與退出條件，不定義資料真相。
 | [sample_excel/](sample_excel/) | 1205 Level/敘事來源、1128 WI 範本與詳解參考 |
 | [html_con/](html_con/) | 已退役 UI prototype；依 repo 守則只封存、不作新實作依據 |
 
+## 文件規範
+
+MOST 目前**無獨立 `DOC_CONVENTION.md`**（跨 repo 複製全文會變成第二份權威）。文件撰寫與更新遵循以下**三條硬規則的精神**（權威全文見 LB 版本 [`line-balance_stream-weaver_v2/docs/DOC_CONVENTION.md`](../../../line-balance_stream-weaver_v2/docs/DOC_CONVENTION.md)，**只連結、不複製**）：
+
+- **R1（正文只寫現況）**：正文描述當前有效狀態；過時內容不留在正文當現況。
+- **R2（被取代內容標記後保留）**：被取代／已刪除的敘述用刪線 `~~…~~` 或「已廢止／訂正」標註後保留，不直接刪（可追溯）。`docs_check.py` 對 R2 刪線內的引用不算斷鏈。
+- **R3（單一權威、其他指過去）**：每個概念只有一處定義級敘述，其他地方指過去、不重抄（本 repo 的落點：領域不變量單一真相在 `agent-team/domains.yaml`；領域索引與 ADR 只引用不重定義）。
+
+改任何 `docs/` 後必跑 `python3 scripts/docs_check.py`（見 `agent-team/checkpoint.md` 步驟 6）；`most-doc-sync` 動手前後照此自檢。
+
 ## dev-team（agent 團隊設定）
 
 正本在 `docs/agent-team/`，工具中立；`.kiro/`、`.claude/` 只留薄轉接；repo 根 `AGENTS.md`／`CLAUDE.md` 為薄入口。
@@ -155,6 +166,7 @@ Roadmap 只定義時程與退出條件，不定義資料真相。
 | [agent-team/verification.md](agent-team/verification.md) | 驗證規範（UI Playwright、unit/integration 分開跑、core-logic 黃金） |
 | [agent-team/agents/](agent-team/agents/most-code-reviewer.md) | 三個 agent 角色正本 |
 | [agent-team/decisions.log](agent-team/decisions.log) | 決策追蹤（只由主 context 追加） |
+| [architecture/docs-and-agent-docs-restructure-plan.md](architecture/docs-and-agent-docs-restructure-plan.md) | 本次文件與 agent 設定重整實作書（階段一＋二落地追蹤） |
 
 ## 前瞻計畫（未排程）
 
@@ -175,7 +187,6 @@ Roadmap 只定義時程與退出條件，不定義資料真相。
 | [lb-integration/TICKET_clone_concurrency_version_no.md](lb-integration/TICKET_clone_concurrency_version_no.md)、[TICKET_outbox_claim_pending.md](lb-integration/TICKET_outbox_claim_pending.md) | 工單（並發、outbox） |
 | [llm/wi-ai-parser-worklog.md](llm/wi-ai-parser-worklog.md)、[llm/i18n-worklog.md](llm/i18n-worklog.md) | 交付流水帳（已標歷史檔頭） |
 | [llm/gold-review/](llm/gold-review/README.md) | gold set 覆核過程紀錄 |
-| [_inventory.md](_inventory.md) | WP-D1 盤點暫存（**WP-D3 刪**） |
 
 ## 歷史（不可作為現況依據，agent 預設不讀）
 
@@ -186,6 +197,7 @@ Roadmap 只定義時程與退出條件，不定義資料真相。
 | [architecture/legacy-inventory-and-engine-audit.md](architecture/legacy-inventory-and-engine-audit.md) | Phase-1 legacy 分類與引擎稽核（歷史） |
 | [v3/reference/most-workbench-ui-ux.md](v3/reference/most-workbench-ui-ux.md)、[four-tabs-usage-logic.md](v3/reference/four-tabs-usage-logic.md) | v3 UX 母版參照（歷史畫面） |
 | [roadmap/phase5-i18n-full-bilingual-spec.md](roadmap/phase5-i18n-full-bilingual-spec.md) | 已被 ADR-032 取代（⛔） |
+| [ui-english-support-plan.md](ui-english-support-plan.md) | 早期英文支援計畫，已被 ADR-032 取代 |
 
 ## 已清理內容
 

@@ -11,10 +11,10 @@ tools: [read, write, grep, glob, shell]
 
 ## 文件規範（改任何 docs/ 之前必讀）
 
-MOST 目前**尚無** `DOC_CONVENTION.md`（階段二 WP-D3 才會在 `DOC_REGISTRY.md` 補「文件規範」一節，
-指向 LB 版本的三條硬規則精神）。在此之前，沿用 LB `docs/DOC_CONVENTION.md` 的三條精神：
+MOST 的文件規範在 `docs/DOC_REGISTRY.md`〈文件規範〉一節（三條硬規則的精神＋連結到 LB 版本 `DOC_CONVENTION.md`，
+不複製全文）：
 - **R1**：正文只寫現況。
-- **R2**：被取代的內容標記後保留（劃線／「已廢止」標註），不直接刪。
+- **R2**：被取代的內容標記後保留（刪線 `~~…~~`／「已廢止」標註），不直接刪。
 - **R3**：每個概念只有單一權威定義處，其他地方指過去、不重抄。
 技術內容以 `docs/agent-team/domains.yaml` 指定的權威文件為準。
 
@@ -40,8 +40,8 @@ MOST 目前**尚無** `DOC_CONVENTION.md`（階段二 WP-D3 才會在 `DOC_REGIS
 ## 動手前後（先跑機械檢查，再語意複核）
 
 - 若動到 agent 設定或 `docs/agent-team/`：跑 `python3 scripts/agent_team/check_agent_config.py`（非零退出擋 commit）。
-- 階段二 WP-D3 會新增 docs_check.py（於 scripts/，斷鏈 error 擋、孤兒／缺狀態標頭 warn）——建立後，改 `docs/` 必先跑它才可宣稱「已同步」。
-- **禁止**在沒跑對應腳本的情況下宣稱「已同步」。
+- **改任何 `docs/` 後，必先跑 `python3 scripts/docs_check.py`**（斷鏈 error 擋 commit；孤兒／缺狀態標頭／
+  領域索引不一致 warning），跑過且無 error 之後，才做語意複核。**禁止**在沒跑 `docs_check.py` 的情況下宣稱「已同步」。
 
 ## 撰寫規則
 
