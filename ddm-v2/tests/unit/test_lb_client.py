@@ -57,7 +57,7 @@ async def test_success_returns_payload_and_correct_url():
     finally:
         server.shutdown()
     assert out["contract_version"] == "lb-most-writeback-v1"
-    assert len(out["rows"]) == 33
+    assert len(out["rows"]) == 34
     assert server.received_path == "/api/v3/projects/P1/versions/V1/results/R1/writeback"
 
 

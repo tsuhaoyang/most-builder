@@ -29,7 +29,7 @@ def test_parse_fixture_contract_and_rows():
     assert p.contract_version == "lb-most-writeback-v1"
     assert p.unattended_machine_policy == "free"
     assert p.unattended_machine_policy_source == "persisted"
-    assert len(p.rows) == 33
+    assert len(p.rows) == 34
 
 
 def test_parse_contract_mismatch_raises():
@@ -43,7 +43,7 @@ def test_parse_ignores_unknown_fields():
     payload["rows"][0]["some_future_field"] = "x"
     payload["top_level_future"] = 1
     p = parse(payload)  # 加法相容：未知欄位忽略，不炸
-    assert len(p.rows) == 33
+    assert len(p.rows) == 34
 
 
 def test_parse_missing_required_row_field_raises():
@@ -105,26 +105,69 @@ def test_aggregate_offline_conflict():
 
 # ── diff ───────────────────────────────────────────────────────────────────
 
-def test_diff_matched_unmatched_missing_with_reasons():
+# 黃金複本 24 列 MOST 端：seq1 是 general（take_unit），其餘非 general；本 fixture 無 SIMO 從屬列。
+def _fid(n: int) -> str:
+    return f"00000000-0000-4000-8000-{n:012d}"
+
+
+def _golden_most_rows() -> list[MostRowInfo]:
+    return [
+        MostRowInfo(_fid(n), is_general=(n == 1), is_simo_subordinate=False, offline=(n == 2))
+        for n in range(1, 25)
+    ]
+
+
+def test_diff_general_fixed_matched_24_missing_0_unmatched_0():
+    """LB aac992f 修好 general 血緣後：general 不再 missing；matched 24／missing 0／unmatched 0（ruling a+b）。"""
+    p = parse(_payload())
+    general_ids = {_fid(1)}  # MOST 自己的 is_general（seq1 take_unit）
+    agg = aggregate(p.rows, general_ids=general_ids)
+    d = diff(_golden_most_rows(), agg)
+
+    # (a) general 列不再是 missing
+    gid = _fid(1)
+    assert gid in d.matched
+    assert all(m["wi_row_id"] != gid for m in d.missing)
+    # (b) matched 24、missing 0、unmatched 0
+    assert len(d.matched) == 24
+    assert d.missing == []
+    assert d.unmatched == []
+
+
+def test_diff_general_multistation_not_cross_station_synthetic():
+    """(ruling c) general 即使對到多站也不標 cross_station（ADR-036 D6）。
+    本 fixture 的 general 是 take_unit 單站，故用合成資料補一個多站 general。"""
+    rows = [
+        RowPlacement("wi-gen", 100, False, 0, 0, ["W-0-0"], None),
+        RowPlacement("wi-gen", 101, False, 1, 1, ["W-1-0"], None),  # 不同線/站
+        RowPlacement("wi-gen", 102, False, 2, 2, ["W-2-0"], None),  # 每站一份（general 插回多站）
+    ]
+    agg = aggregate(rows, general_ids={"wi-gen"})
+    mp = agg["wi-gen"]
+    assert mp.stations == {0, 1, 2}          # 多站
+    assert mp.cross_station is False         # general 多站是預期，不標異常
+    # 對照：同樣多站但非 general → 標 cross_station
+    agg_ng = aggregate(rows, general_ids=set())
+    assert agg_ng["wi-gen"].cross_station is True
+
+
+def test_diff_missing_reason_classification_synthetic():
+    """missing reason 分類仍需覆蓋（general_not_written_back 為未來缺口回歸；simo_subordinate；no_result）。
+    用合成 MOST 列（fixture 沒有的 wi_row_id）驗三種 reason。"""
     p = parse(_payload())
     agg = aggregate(p.rows, general_ids=set())
-    # MOST 端：兩個 fixture 有的（matched）＋一個 general（missing→general_not_written_back）
-    # ＋一個 SIMO 從屬列（missing→simo_subordinate）＋一個 offline-only（missing→no_result）
     most = [
-        MostRowInfo("00000000-0000-4000-8000-000000000004", is_general=False, is_simo_subordinate=False, offline=False),
-        MostRowInfo("00000000-0000-4000-8000-000000000006", is_general=False, is_simo_subordinate=False, offline=False),
-        MostRowInfo("wi-general-A", is_general=True, is_simo_subordinate=False, offline=False),
+        MostRowInfo(_fid(4), is_general=False, is_simo_subordinate=False, offline=False),  # matched
+        MostRowInfo("wi-general-gap", is_general=True, is_simo_subordinate=False, offline=False),
         MostRowInfo("wi-simo-sub", is_general=False, is_simo_subordinate=True, offline=False),
-        MostRowInfo("wi-offline-only", is_general=False, is_simo_subordinate=False, offline=True),
+        MostRowInfo("wi-no-result", is_general=False, is_simo_subordinate=False, offline=True),
     ]
     d = diff(most, agg)
-    assert "00000000-0000-4000-8000-000000000004" in d.matched
-    # unmatched：fixture 有但 most 清單沒有的（其餘 21 個 wi）
-    assert len(d.unmatched) == 23 - 2
+    assert _fid(4) in d.matched
     reasons = {m["wi_row_id"]: m["reason"] for m in d.missing}
-    assert reasons["wi-general-A"] == "general_not_written_back"
+    assert reasons["wi-general-gap"] == "general_not_written_back"
     assert reasons["wi-simo-sub"] == "simo_subordinate"
-    assert reasons["wi-offline-only"] == "no_result"
+    assert reasons["wi-no-result"] == "no_result"
 
 
 def test_diff_offline_and_unit_mismatch():

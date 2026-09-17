@@ -61,7 +61,7 @@ async def test_snapshot_and_placements_roundtrip(client, db_session) -> None:
     n = (await db_session.execute(
         select(func.count()).select_from(LbRowPlacement).where(LbRowPlacement.snapshot_id == snap.id)
     )).scalar_one()
-    assert n == len(payload["rows"]) == 33
+    assert n == len(payload["rows"]) == 34
 
     # offline 列的 station_index 為 NULL、workers 為 []
     off = (await db_session.execute(

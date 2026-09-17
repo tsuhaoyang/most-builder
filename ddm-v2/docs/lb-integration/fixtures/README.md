@@ -5,16 +5,16 @@
 | `server_node_worksheet.json` | 投影層**輸入**：一份 server node 組裝 worksheet 的 24 個 motion（七格 TMU、repeat、frequency、vocab、Level System 標註、LB 標記）。形狀＝`ProjectionRow`（實作書 WP2）。`slot_tmus` 為引擎 `computed.breakdown` 的 7 格值（已含 repeat）。 |
 | `server_node_tasks.expected.csv` | 投影層**期望輸出**：34 列 × 24 欄，`\n` 換行、UTF-8 無 BOM。實作必須逐位元相同。 |
 | `server_node_hints.expected.json` | 黃金 hints 快照（ADR-035 D10 B4）：`build_report` 對本 golden 產出的 `hints[]`（確定性提示，§7.2）。首次由 agent 產出經 User 過目後鎖定；= 3 條 `H_TOOL_DECOMPOSED`（scanner {4,6}／electric_driver {9}／torque_driver {13,17}）。machine 三列（L2/N2/P2）已回答，故無 `H_MACHINE_TIME`（只在未答時問）。 |
-| `writeback_sample.json` | LB 回寫消費（ADR-036）**輸入 fixture**：`lb-most-writeback-v1` payload，33 列。**由 LB 端實跑產生，逐位元複製、不得編輯**（來源 repo `line-balance_stream-weaver_v2`、分支 `feature/most-integration-phase2`、commit `84f9689`、原路徑 `test/backend/integration/fixtures/most_integration/writeback_sample.json`；產法：`scripts/gen_writeback_sample.py` 以黃金複本結果呼叫 writeback 端點）。sha256 `45b31dc5…`。**已知缺口**：本版**不含 general 列**——LB 的 general 為求解後插回、取得新 task id，但未登記進站任務清單，故被回寫略過；LB 修正中並會重生含 general 多站的 fixture。MOST 端解析須把 general 列落 `missing` 並以 reason 區分「general 未回寫（LB 缺口）」與「SIMO 從屬列本就不輸出」。 |
+| `writeback_sample.json` | LB 回寫消費（ADR-036）**輸入 fixture**：`lb-most-writeback-v1` payload，34 列（24 個 `source_wi_row_id`）。**由 LB 端實跑產生，逐位元複製、不得編輯**（來源 repo `line-balance_stream-weaver_v2`、分支 `feature/most-integration-phase2`、commit `aac992f`、原路徑 `test/backend/integration/fixtures/most_integration/writeback_sample.json`；產法：`scripts/gen_writeback_sample.py` 以黃金複本結果呼叫 writeback 端點）。sha256 `6a57d0a2…`。**根因與修正**：前一版（commit `84f9689`，33 列）**不含 general 列**——LB 的 general 為求解後插回、取得新 task id，但 `source_wi_row_id` 在插回鏈遺失，導致回寫略過；LB `aac992f`（保留 re-inserted general 的 `source_wi_row_id`，ADR-023 D8/D11）修正後重生，general 列（seq1 take_unit）已回寫。 |
 
-## writeback_sample.json 情境覆蓋（v1，33 列，23 個 source_wi_row_id）
+## writeback_sample.json 情境覆蓋（v2，commit aac992f，34 列，24 個 source_wi_row_id）
 
 - 頂層 `unattended_machine_policy=free`／`_source=persisted`。
-- 工具 episode 三列（acquire/use/release，同站同 worker）：5 組 `source_wi_row_id` 各 3 列（seq 4/6/9/13/17）。
-- offline 列 1 筆（`line_index`/`station_index=null`、`workers=[]`）。
-- 無 worker 列 3 筆（offline ＋ free 機台）。
-- Q>1 `units` 列 5 筆（`[{worker, units}]`）。
-- **無 general 列**（LB 缺口，見上）。
+- **general 列已回寫**（seq1 take_unit，單站；先前 `84f9689` 版遺漏，`aac992f` 修）。
+- 工具 episode 三列（acquire/use/release，同站同 worker）：5 組 `source_wi_row_id` 各 3 列。
+- offline 列（`line_index`/`station_index=null`、`workers=[]`）。
+- Q>1 `units` 列（`[{worker, units}]`）。
+- 本版 general 為 take_unit 型、**單站**；general 多站不標 cross_station（ADR-036 D6）由合成資料測試覆蓋。
 
 
 ## 這份 fixture 證明什麼

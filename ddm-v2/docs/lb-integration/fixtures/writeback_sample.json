@@ -3,7 +3,7 @@
   "project_id": "demo-project",
   "version_id": "demo-version",
   "result_id": "demo-result",
-  "generated_at": "2026-09-17T07:20:10.505498+00:00",
+  "generated_at": "2026-09-17T08:04:24.621467+00:00",
   "unattended_machine_policy": "free",
   "unattended_machine_policy_source": "persisted",
   "rows": [
@@ -226,6 +226,17 @@
     {
       "source_wi_row_id": "00000000-0000-4000-8000-000000000020",
       "task_id": 30,
+      "offline_flag": false,
+      "line_index": 0,
+      "station_index": 0,
+      "workers": [
+        "W-0-0"
+      ],
+      "units": null
+    },
+    {
+      "source_wi_row_id": "00000000-0000-4000-8000-000000000001",
+      "task_id": 35,
       "offline_flag": false,
       "line_index": 0,
       "station_index": 0,
