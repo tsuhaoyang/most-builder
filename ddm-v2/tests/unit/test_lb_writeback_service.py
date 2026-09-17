@@ -46,6 +46,14 @@ def test_parse_ignores_unknown_fields():
     assert len(p.rows) == 33
 
 
+def test_parse_missing_required_row_field_raises():
+    # 必要欄位缺 → Fail-Fast（KeyError），不得靜默塞預設（No error bypass）
+    payload = _payload()
+    del payload["rows"][0]["task_id"]
+    with pytest.raises(KeyError):
+        parse(payload)
+
+
 # ── aggregate ──────────────────────────────────────────────────────────────
 
 def test_aggregate_tool_triple_same_station_one_station():

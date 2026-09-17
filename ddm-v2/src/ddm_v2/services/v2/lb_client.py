@@ -1,7 +1,9 @@
 """LB 回寫 client——`GET …/results/{r}/writeback`（ADR-036 D1／B3；契約 LB §8）。
 
-例外分層**逐字比照 `dsx_client`**（不自創）：連線失敗／逾時／總時限逾時／5xx → `LbUnreachable`；
-4xx → `LbRequestFailed(status)`。log 帶原始狀態碼。
+例外分層**分層原則比照 `dsx_client`**（型別分離、雙層 timeout；不自創新語意）：連線失敗／逾時／總時限
+逾時／5xx／其他非預期狀態 → `LbUnreachable`；4xx → `LbRequestFailed(status)`。log 帶原始狀態碼。
+（dsx_client 對非 2xx 走 `raise_for_status()`；此處為了讓 4xx 與 5xx 走不同例外型別，改為顯式狀態碼分段，
+行為對等：4xx→RequestFailed、5xx/3xx/其他→Unreachable。）
 
 ⚠️ 總時限：`httpx.AsyncClient(timeout=timeout_s)` 是單次操作逾時（connect/read/write/pool 各自計時，
 非總時限）——外面再包 `asyncio.timeout(timeout_s)` 當總時限硬上限，逾時一律視同 `LbUnreachable`
@@ -68,5 +70,9 @@ async def fetch_writeback(
     if resp.status_code >= 500:
         logger.warning("LB writeback 服務錯誤（HTTP %s）：%s", resp.status_code, resp.text)
         raise LbUnreachable(f"LB 回報服務錯誤（HTTP {resp.status_code}）：{resp.text}")
+    if resp.status_code >= 300:
+        # 3xx（httpx 預設不自動跟隨）等非預期狀態：視同服務端問題，不落到 resp.json()。
+        logger.warning("LB writeback 非預期狀態（HTTP %s）：%s", resp.status_code, resp.text)
+        raise LbUnreachable(f"LB 回報非預期狀態（HTTP {resp.status_code}）：{resp.text}")
 
     return resp.json()

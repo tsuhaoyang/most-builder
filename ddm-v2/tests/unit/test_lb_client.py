@@ -121,3 +121,17 @@ async def test_connection_refused_raises_unreachable():
         await fetch_writeback(
             base_url="http://127.0.0.1:1", project_id="P1", version_id="V1", result_id="R1", timeout_s=1.0
         )
+
+
+@pytest.mark.asyncio
+async def test_3xx_non_2xx_raises_unreachable():
+    # 3xx（httpx 預設不跟隨）等非預期狀態不得落到 resp.json()——視同服務端問題
+    server = _start_server(302, {"detail": "redirect"})
+    try:
+        base_url = f"http://127.0.0.1:{server.server_address[1]}"
+        with pytest.raises(LbUnreachable):
+            await fetch_writeback(
+                base_url=base_url, project_id="P1", version_id="V1", result_id="R1", timeout_s=5.0
+            )
+    finally:
+        server.shutdown()
