@@ -94,6 +94,10 @@ class Settings:
     dsx_integration_enabled: bool
     dsx_timeout_s: float
     dsx_ui_url: str | None
+    # ADR-036 D1：LB 回寫消費（v1 直連，不經 gateway）。base_url 未設 → 端點 503。
+    lb_api_base_url: str | None
+    lb_timeout_s: float
+    lb_auth_header_name: str | None
 
 
 @lru_cache(maxsize=1)
@@ -137,6 +141,11 @@ def get_settings() -> Settings:
         # DSX 的 3D 場景 UI 網址（給人看的頁面，不是 data-service API）——與
         # dsx_integration_enabled 無關：a3 距離查詢開關跟能不能看到 UI 網址是分開的兩件事。
         dsx_ui_url=_parse_http_url(os.getenv("DDM_DSX_UI_URL"), env_var="DDM_DSX_UI_URL"),
+        # ADR-036 D1：LB 回寫端點的直連 base URL（None → 回寫端點 503，不靜默失敗）。
+        # lb_auth_header_name 為日後掛 gateway 預留（設了才帶當前使用者身分 header），v1 預設不設。
+        lb_api_base_url=os.getenv("DDM_LB_API_BASE_URL") or None,
+        lb_timeout_s=float(os.getenv("DDM_LB_TIMEOUT_S", "10.0")),
+        lb_auth_header_name=os.getenv("DDM_LB_AUTH_HEADER_NAME") or None,
     )
 
 
