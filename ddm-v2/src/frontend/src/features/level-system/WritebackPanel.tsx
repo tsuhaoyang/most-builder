@@ -32,10 +32,13 @@ export function WritebackPanel({ worksheetId, editable }: { worksheetId: string;
   }, [rows, rowNarr, t])
   const label = (id: string) => stepLabel[id] ?? id.slice(0, 8)
 
+  // 座標常從網址／畫面複製，帶前後空白會被後端格式驗證擋成 422——送出前先去掉
+  const trimmed = { lb_project_id: form.lb_project_id.trim(), lb_version_id: form.lb_version_id.trim(), lb_result_id: form.lb_result_id.trim() }
+
   async function doFetch() {
     setApplyMsg(null)
     try {
-      await fetchWb.mutateAsync(form)
+      await fetchWb.mutateAsync(trimmed)
       await qc.invalidateQueries({ queryKey: ['lb-writeback-latest', worksheetId] })
       setShowForm(false)
     } catch (e) {
@@ -69,7 +72,7 @@ export function WritebackPanel({ worksheetId, editable }: { worksheetId: string;
           value={form[k]} onChange={e => setForm(f => ({ ...f, [k]: e.target.value }))} />
       ))}
       <button data-testid="writeback-fetch-go" className="px-2 py-0.5 rounded bg-sky-600 text-white disabled:opacity-50"
-        disabled={fetchWb.isPending || !form.lb_project_id || !form.lb_version_id || !form.lb_result_id}
+        disabled={fetchWb.isPending || !trimmed.lb_project_id || !trimmed.lb_version_id || !trimmed.lb_result_id}
         onClick={doFetch}>{t('levelSystem.jobs.writeback.refetch')}</button>
     </div>
   )
@@ -104,6 +107,12 @@ export function WritebackPanel({ worksheetId, editable }: { worksheetId: string;
           : <button data-testid="writeback-refetch" className="ml-auto px-2 py-0.5 border rounded" onClick={() => setShowForm(true)}>{t('levelSystem.jobs.writeback.refetch')}</button>)}
       </div>
 
+      {summary.units_baseline?.status === 'unavailable' && (
+        <div data-testid="writeback-units-baseline-unavailable" className="text-[11px] text-amber-800">
+          {t('levelSystem.jobs.writeback.unitsBaselineUnavailable')}
+        </div>
+      )}
+
       {/* 每個 motion 的實際站別／人／件數（使用者語言）＋差異標記 */}
       <div className="space-y-1" data-testid="writeback-placements">
         {Object.entries(diff.motions).map(([wi, mp]) => (
@@ -114,7 +123,13 @@ export function WritebackPanel({ worksheetId, editable }: { worksheetId: string;
                 ? t('levelSystem.jobs.writeback.stationsMulti', { workers: mp.workers.length })
                 : t('levelSystem.jobs.writeback.station', { n: (mp.stations[0] ?? 0) + 1, workers: mp.workers.length })}
             </span>
-            {mp.units_total != null && <span className="text-slate-500">{t('levelSystem.jobs.writeback.units', { n: mp.units_total })}</span>}
+            {mp.units_total != null && (
+              // 只有 LB 標明 cyclic 的才算確定值；其餘（推算、日後新增的來源）一律標推算，出錯時落在保守的一邊
+              <span className="text-slate-500" data-testid={`writeback-units-${wi}`}
+                title={mp.units_source === 'cyclic' ? undefined : t('levelSystem.jobs.writeback.unitsInferredHint')}>
+                {t(mp.units_source === 'cyclic' ? 'levelSystem.jobs.writeback.units' : 'levelSystem.jobs.writeback.unitsInferred', { n: mp.units_total })}
+              </span>
+            )}
             {mp.cross_station && <span data-testid="mark-cross" className="px-1 rounded bg-red-100 text-red-800">{t('levelSystem.jobs.writeback.crossStation')}</span>}
             {mp.offline_conflict && <span className="px-1 rounded bg-amber-100 text-amber-800">{t('levelSystem.jobs.writeback.offlineConflict')}</span>}
           </div>

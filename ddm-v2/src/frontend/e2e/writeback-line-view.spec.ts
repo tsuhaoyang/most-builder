@@ -35,6 +35,13 @@ test('line view shows LB actual result + apply offline', async ({ page, request 
   offRow.source_wi_row_id = replicaIds[2]  // replica 第 3 列（MOST offline=False）→ 與 LB offline=True 成 diff
   const nonOff = fx.rows.filter((x: { offline_flag: boolean }) => !x.offline_flag).slice(0, 3)
   nonOff.forEach((x: { source_wi_row_id: string }, i: number) => { x.source_wi_row_id = replicaIds[i] })
+  // 件數（C＋退路）：fixture 裡單列、units 8、沒有 qty_scope 的 lot 映到複本 G（seq 7，frequency 8）
+  // → 產線視角顯示推算值「共 8 件（推算）」
+  type FxRow = { source_wi_row_id: string; units: Array<{ units: number }> | null }
+  const lotRow = (fx.rows as FxRow[]).find(x => x.units?.length === 1 && x.units[0].units === 8
+    && (fx.rows as FxRow[]).filter(y => y.source_wi_row_id === x.source_wi_row_id).length === 1)
+  expect(lotRow, 'fixture 應有單列 lot（units 8）').toBeTruthy()
+  lotRow!.source_wi_row_id = replicaIds[6]
 
   const imp = await request.post(`/api/v2/worksheets/${wsId}/lb-writeback/import`, { headers: AUTH, data: fx })
   expect(imp.status(), await imp.text()).toBe(200)
@@ -58,6 +65,7 @@ test('line view shows LB actual result + apply offline', async ({ page, request 
   await expect(page.getByTestId('writeback-placements')).toBeVisible()
   // 實際站別文案（使用者語言，不是 station_index=）
   await expect(page.getByTestId('writeback-placements')).toContainText(/第 \d+ 站|station \d+/i)
+  await expect(page.getByTestId(`writeback-units-${replicaIds[6]}`)).toHaveText('共 8 件（推算）')
 
   // 離線差異：勾選 replica 第3列 → 套用 → 成功訊息
   const off = page.getByTestId('writeback-offline-diffs')

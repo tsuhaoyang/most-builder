@@ -1479,6 +1479,9 @@ const en: Widen<typeof zhTW> = {
         station: 'Placed at station {{n}}, done by {{workers}} people',
         stationsMulti: 'At every station (general step), done by {{workers}} people',
         units: '{{n}} units total',
+        unitsInferred: '{{n}} units total (inferred)',
+        unitsInferredHint: "This line-balancing result doesn't mark which row carries the per-unit count, so the largest row value is shown. It will be read directly once line balancing provides it.",
+        unitsBaselineUnavailable: "Unit counts were not checked: this worksheet still has things to fix, so the line-balancing work items can't be built (fix those first).",
         crossStation: '⚠ Same step placed at different stations',
         offlineConflict: '⚠ Offline setting inconsistent',
         missing: {

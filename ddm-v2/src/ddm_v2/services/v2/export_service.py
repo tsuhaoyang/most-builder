@@ -7,6 +7,7 @@ from __future__ import annotations
 
 import io
 import uuid
+from dataclasses import dataclass
 from typing import Any
 
 from sqlalchemy import select
@@ -150,11 +151,17 @@ async def _load_rs_by_row(session: AsyncSession, ws_id: uuid.UUID) -> dict[str, 
     return out
 
 
-async def _project(session: AsyncSession, ws_id: uuid.UUID) -> tuple[ProjectionResult, list]:
-    """組裝 vocab＋rs（service 層）→ 呼叫投影層 project_rows。回 (result, proj_rows)。投影層不碰 DB。"""
+async def _project(
+    session: AsyncSession, ws_id: uuid.UUID, data: dict[str, Any] | None = None
+) -> tuple[ProjectionResult, list]:
+    """組裝 vocab＋rs（service 層）→ 呼叫投影層 project_rows。回 (result, proj_rows)。投影層不碰 DB。
+
+    data：呼叫端已讀好的 read_worksheet 結果（省一次重讀）；None 則自行讀。
+    """
     from ddm_v2.lb_projection.adapter import rows_from_worksheet
 
-    data = await read_worksheet(session, ws_id)
+    if data is None:
+        data = await read_worksheet(session, ws_id)
     vocab = await _load_vocab(session)
     proj_rows = rows_from_worksheet(data, vocab)
     rs_by_row = await _load_rs_by_row(session, ws_id)
@@ -175,6 +182,29 @@ async def to_lb_csv(session: AsyncSession, ws_id: uuid.UUID) -> str:
     if result.errors:
         raise LbExportBlocked(result.errors, result.warnings)
     return result.csv_text
+
+
+@dataclass(frozen=True)
+class ProjectedQuantities:
+    by_row: dict[str, int]   # {wi_row_id: Q}，只列 Q>1
+    error_codes: list[str]   # 投影收集到的 E 碼；非空＝基準不完整（例如 E_LEVEL_INVALID 時 tasks 為空）
+
+
+async def projected_quantities(
+    session: AsyncSession, ws_id: uuid.UUID, *, worksheet_read: dict[str, Any] | None = None
+) -> ProjectedQuantities:
+    """MOST 投影出的每個 motion 的 quantity Q——LB 回寫件數的比對基準（Howard 2026-09-18 裁：用投影 Q、
+    不用 frequency）。同一 motion 拆出的各列 Q 相同（契約 §3.2），取最大值。
+
+    投影層對部分 E 碼是直接拋出而非收集（QuantityError／ToolResolveError／TmuDecompositionError，例如持工具
+    F>1 且 N>1、非整數 frequency）——本函式不吞，交給呼叫端決定如何降級；收集型 E 碼放在 error_codes。
+    """
+    result, _rows = await _project(session, ws_id, worksheet_read)
+    out: dict[str, int] = {}
+    for t in result.tasks:
+        if t.quantity > 1:
+            out[t.source_wi_row_id] = max(out.get(t.source_wi_row_id, 0), t.quantity)
+    return ProjectedQuantities(by_row=out, error_codes=sorted({e.code for e in result.errors}))
 
 
 async def lb_export_report(session: AsyncSession, ws_id: uuid.UUID, *, include_tasks: bool = False) -> dict[str, Any]:

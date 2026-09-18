@@ -53,6 +53,11 @@ def _malformed(exc: wb.LbWritebackMalformed) -> ValidationError:
     return ValidationError(str(exc), detail={"code": ErrorCode.VALIDATION_ERROR})
 
 
+def _stale_snapshot(exc: Exception) -> ValidationError:
+    """已存的快照在現行（較嚴格）驗證下讀不回來（例如早期寬鬆匯入的 payload）：422，請重新取得，不落 500。"""
+    return ValidationError(f"已存的回寫快照不符現行驗證，請重新取得：{exc}", detail={"code": ErrorCode.VALIDATION_ERROR})
+
+
 @router.post("/worksheets/{worksheet_id}/lb-writeback/fetch")
 async def fetch(
     worksheet_id: uuid.UUID, body: FetchIn,
@@ -106,7 +111,10 @@ async def latest(
         read = await wsvc.read_worksheet(session, worksheet_id)
     except wsvc.WorksheetNotFound as exc:
         raise _wsnf(worksheet_id) from exc
-    return await wb.latest(session, worksheet_id=worksheet_id, worksheet_read=read)
+    try:
+        return await wb.latest(session, worksheet_id=worksheet_id, worksheet_read=read)
+    except (wb.LbWritebackContractMismatch, wb.LbWritebackMalformed) as exc:
+        raise _stale_snapshot(exc) from exc
 
 
 @router.get("/worksheets/{worksheet_id}/lb-writeback/snapshots")
@@ -131,3 +139,5 @@ async def apply_offline(
         )
     except wsvc.WorksheetNotFound as exc:
         raise _wsnf(worksheet_id) from exc
+    except (wb.LbWritebackContractMismatch, wb.LbWritebackMalformed) as exc:
+        raise _stale_snapshot(exc) from exc

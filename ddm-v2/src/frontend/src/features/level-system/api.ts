@@ -80,12 +80,17 @@ export interface WbSummary {
   missing: number
   cross_station: string[]
   offline_conflicts: string[]
+  // 件數比對基準：ok＝已用 MOST 投影 Q 比對；unavailable＝MOST 目前投影不出來（reasons＝E 碼），件數沒比；
+  // not_needed＝LB 沒帶件數
+  units_baseline: { status: 'ok' | 'unavailable' | 'not_needed'; reasons: string[] }
 }
 export interface WbMotion {
   task_ids: number[]
   stations: number[]
   workers: string[]
   units_total: number | null
+  // 件數來源：cyclic＝LB 回寫帶 qty_scope、取 cyclic 列；inferred_max＝缺 qty_scope 時各列取最大值的推算值
+  units_source: 'cyclic' | 'inferred_max' | null
   offline: boolean
   cross_station: boolean
   offline_conflict: boolean
@@ -95,7 +100,8 @@ export interface WbDiff {
   unmatched: string[]
   missing: Array<{ wi_row_id: string; reason: string }>
   offline_diffs: Array<{ wi_row_id: string; most_offline: boolean; lb_offline: boolean }>
-  unit_mismatches: Array<{ wi_row_id: string; expected_n: number; units_total: number }>
+  unit_mismatches: Array<{ wi_row_id: string; expected_n: number; units_total: number; units_source: WbMotion['units_source'] }>
+  units_uncomparable: Array<{ wi_row_id: string; expected_n: number; reason: string }>
   motions: Record<string, WbMotion>
 }
 export interface WbLatest {

@@ -12,10 +12,30 @@
 """
 from __future__ import annotations
 
+import logging
 from dataclasses import dataclass, field
-from typing import Any
+from typing import Any, Literal
+from uuid import UUID
 
 WRITEBACK_CONTRACT_VERSION = "lb-most-writeback-v1"
+
+logger = logging.getLogger(__name__)
+
+QtyScope = Literal["setup", "cyclic"]
+UnitsSource = Literal["cyclic", "inferred_max"]
+_QTY_SCOPES: frozenset[str] = frozenset({"setup", "cyclic"})
+
+# 件數來源（MotionPlacement.units_source）：cyclic＝取 qty_scope=="cyclic" 那列；inferred_max＝payload
+# 沒有 qty_scope（舊快照／LB 尚未加欄）時退回「各列 Σunits 取最大值」的推算值。
+UNITS_SOURCE_CYCLIC: UnitsSource = "cyclic"
+UNITS_SOURCE_INFERRED: UnitsSource = "inferred_max"
+
+# 件數比對基準（summary.units_baseline.status）：ok＝已用 MOST 投影 Q 比對；unavailable＝MOST 目前投影不出來
+# （reasons 帶 E 碼），件數沒有比對——不可讀成「一致」；not_needed＝MOST 投影沒有任何 Q>1 的 motion，不必比。
+# 判斷一律以 MOST 投影為準，不從 LB 缺值推論（LB 對 Q>1 也可能不帶 units，例如 lot 被搬站後的重放）。
+UNITS_BASELINE_OK = "ok"
+UNITS_BASELINE_UNAVAILABLE = "unavailable"
+UNITS_BASELINE_NOT_NEEDED = "not_needed"
 
 
 class LbWritebackContractMismatch(Exception):
@@ -49,6 +69,7 @@ class RowPlacement:
     station_index: int | None
     workers: list[str]
     units: list[dict[str, Any]] | None  # [{worker, units}] 或 None
+    qty_scope: QtyScope | None = None  # LB 加欄後才有；缺欄＝None，件數走推算退路
 
 
 @dataclass(frozen=True)
@@ -75,6 +96,7 @@ class MotionPlacement:
     offline_values: set[bool]
     cross_station: bool
     offline_conflict: bool
+    units_source: UnitsSource | None = None  # 無件數為 None
 
 
 @dataclass(frozen=True)
@@ -85,7 +107,7 @@ class MostRowInfo:
     is_general: bool
     is_simo_subordinate: bool
     offline: bool
-    expected_n: int | None = None  # frequency／repeat 的 N（Q>1 才有意義）
+    expected_n: int | None = None  # MOST 投影出的 quantity Q（契約 §3.2；只在 Q>1 時有值）
 
 
 @dataclass
@@ -95,25 +117,85 @@ class WritebackDiff:
     missing: list[dict[str, str]] = field(default_factory=list)  # MOST 有、LB 沒有：{wi_row_id, reason}
     offline_diffs: list[dict[str, Any]] = field(default_factory=list)
     unit_mismatches: list[dict[str, Any]] = field(default_factory=list)
+    # MOST 投影 Q>1、但 LB 沒給出件數（非 offline）：沒得比，明列出來而不是靜默略過
+    units_uncomparable: list[dict[str, Any]] = field(default_factory=list)
 
 
 # ── 純函式 ──────────────────────────────────────────────────────────────────
 
+def _parse_int(raw: Any, name: str, *, nullable: bool = False) -> int | None:
+    """整數欄：bool、小數、字串一律不收（不做 int() 截斷或轉型）；nullable 時 None 放行。"""
+    if raw is None and nullable:
+        return None
+    if isinstance(raw, bool) or not isinstance(raw, int):
+        raise ValueError(f"{name} 必須是整數{'或 null' if nullable else ''}，得 {raw!r}")
+    return raw
+
+
+def _parse_bool(raw: Any, name: str) -> bool:
+    """布林欄：只收 true／false（"false" 字串會被 bool() 變成 True，套 offline 時會寫錯）。"""
+    if not isinstance(raw, bool):
+        raise ValueError(f"{name} 必須是 true／false，得 {raw!r}")
+    return raw
+
+
+def _parse_workers(raw: Any) -> list[str]:
+    if raw is None:
+        return []
+    if not isinstance(raw, list) or not all(isinstance(w, str) and w for w in raw):
+        raise ValueError("workers 必須是非空字串陣列或 null")
+    return list(raw)
+
+
+def _parse_units(raw: Any) -> list[dict[str, Any]] | None:
+    """units：null 或 [{worker: 非空字串, units: 非負整數}]。其餘（字串、物件、小數、NaN、bool、負數）→ ValueError。"""
+    if raw is None:
+        return None
+    if not isinstance(raw, list):
+        raise ValueError("units 必須是陣列或 null")
+    out: list[dict[str, Any]] = []
+    for u in raw:
+        if not isinstance(u, dict):
+            raise ValueError("units 的元素必須是物件")
+        worker, n = u.get("worker"), u.get("units")
+        if not isinstance(worker, str) or not worker:
+            raise ValueError("units.worker 必須是非空字串")
+        if isinstance(n, bool) or not isinstance(n, int) or n < 0:
+            raise ValueError(f"units.units 必須是非負整數，得 {n!r}")
+        out.append({"worker": worker, "units": n})
+    return out
+
+
+def _parse_qty_scope(raw: Any) -> QtyScope | None:
+    """qty_scope：缺欄／null 或 setup｜cyclic（大小寫、空字串、其他值都不收——未知值會讓件數比對失真）。"""
+    if raw is None:
+        return None
+    if not isinstance(raw, str) or raw not in _QTY_SCOPES:
+        raise ValueError(f"qty_scope 只能是 setup／cyclic 或缺欄，得 {raw!r}")
+    return raw  # type: ignore[return-value]
+
+
 def parse(payload: dict) -> ParsedWriteback:
-    """驗契約版本（不符 → LbWritebackContractMismatch）；逐 row 轉 RowPlacement；未知欄位忽略。"""
+    """驗契約版本（不符 → LbWritebackContractMismatch）；逐 row 轉 RowPlacement；未知欄位忽略。
+
+    row 的必要欄位／型別錯（source_wi_row_id 非 UUID、task_id／index 非整數、offline_flag 非布林、workers／units
+    形狀錯、qty_scope 值域外）→ LbWritebackMalformed
+    （路由 422），不讓壞 payload 落到後段變成 500。
+    """
     cv = payload.get("contract_version")
     if cv != WRITEBACK_CONTRACT_VERSION:
         raise LbWritebackContractMismatch(cv)
     try:
         rows = [
             RowPlacement(
-                source_wi_row_id=str(r["source_wi_row_id"]),
-                task_id=int(r["task_id"]),
-                offline_flag=bool(r["offline_flag"]),
-                line_index=r.get("line_index"),
-                station_index=r.get("station_index"),
-                workers=list(r.get("workers") or []),
-                units=r.get("units"),
+                source_wi_row_id=str(UUID(str(r["source_wi_row_id"]))),
+                task_id=_parse_int(r["task_id"], "task_id"),
+                offline_flag=_parse_bool(r["offline_flag"], "offline_flag"),
+                line_index=_parse_int(r.get("line_index"), "line_index", nullable=True),
+                station_index=_parse_int(r.get("station_index"), "station_index", nullable=True),
+                workers=_parse_workers(r.get("workers")),
+                units=_parse_units(r.get("units")),
+                qty_scope=_parse_qty_scope(r.get("qty_scope")),
             )
             for r in payload.get("rows", [])
         ]
@@ -151,11 +233,7 @@ def aggregate(
         stations = {r.station_index for r in rs if r.station_index is not None}
         workers = {w for r in rs for w in r.workers}
         offline_values = {r.offline_flag for r in rs}
-        # units_total：逐 worker 加總（Q>1 才有 units）
-        units_total: int | None = None
-        for r in rs:
-            if r.units:
-                units_total = (units_total or 0) + sum(int(u.get("units", 0)) for u in r.units)
+        units_total, units_source = _motion_units(rs)
         is_general = wi in general_ids
         out[wi] = MotionPlacement(
             source_wi_row_id=wi,
@@ -167,8 +245,27 @@ def aggregate(
             # 跨站：站集合 >1 且非 general（general 多站是預期，不算異常）
             cross_station=(len(stations) > 1 and not is_general),
             offline_conflict=(len(offline_values) > 1),
+            units_source=units_source,
         )
     return out
+
+
+def _motion_units(rs: list[RowPlacement]) -> tuple[int | None, UnitsSource | None]:
+    """一個 motion 的件數（Howard 2026-09-18 裁：C＋退路；ADR-036 D6 待整合架構師修訂）。
+
+    LB 的 setup 列 units 是 used（0／1，跨 worker 加總＝經手人數），不是件數（LB ADR-008 D3）——不能跨列加總
+    （舊做法把工具 1/8/1 加成 10）。每列先逐 worker 加總，再：
+    - payload 有 qty_scope（LB 加欄後）→ 取 cyclic 列的值（持工具 F>1 三列皆 cyclic、值相同，取最大）。
+    - 沒有（舊快照／LB 尚未加欄）→ 退回各列取最大值（cyclic 列 Σ＝Q ≥ setup 列 Σ＝k），標為推算值。
+    Q＝1 的列 LB 不帶 units → (None, None)。
+    """
+    per_row = [(r, sum(u["units"] for u in r.units)) for r in rs if r.units]  # units 已在 parse 驗過形狀
+    if not per_row:
+        return None, None
+    if any(r.qty_scope is not None for r, _ in per_row):
+        cyclic = [n for r, n in per_row if r.qty_scope == "cyclic"]
+        return (max(cyclic), UNITS_SOURCE_CYCLIC) if cyclic else (None, None)
+    return max(n for _, n in per_row), UNITS_SOURCE_INFERRED
 
 
 def diff(
@@ -204,19 +301,27 @@ def diff(
         if m.offline != lb_offline:
             d.offline_diffs.append({"wi_row_id": wi, "most_offline": m.offline, "lb_offline": lb_offline})
 
-    # units 不符（matched 且有 expected_n 且聚合有 units_total）
+    # units 不符（matched 且有 expected_n（MOST 投影 Q）且聚合有 units_total）；
+    # MOST Q>1 而 LB 沒給件數（非 offline）→ units_uncomparable（沒得比，明列，不可讀成一致）
     for wi in d.matched:
         m = most_by_id[wi]
         mp = aggregated[wi]
-        if m.expected_n is not None and mp.units_total is not None and m.expected_n != mp.units_total:
-            d.unit_mismatches.append(
-                {"wi_row_id": wi, "expected_n": m.expected_n, "units_total": mp.units_total}
-            )
+        if m.expected_n is None:
+            continue
+        if mp.units_total is None:
+            if not any(mp.offline_values):
+                d.units_uncomparable.append({"wi_row_id": wi, "expected_n": m.expected_n, "reason": "no_units"})
+        elif m.expected_n != mp.units_total:
+            d.unit_mismatches.append({"wi_row_id": wi, "expected_n": m.expected_n,
+                                      "units_total": mp.units_total, "units_source": mp.units_source})
     return d
 
 
-def build_most_rows_from_read(worksheet_read: dict) -> list[MostRowInfo]:
+def build_most_rows_from_read(worksheet_read: dict, *, projected_quantity: dict[str, int]) -> list[MostRowInfo]:
     """從 read_worksheet 的回應組出 diff 需要的 MostRowInfo（is_general／offline／simo 由 MOST 端資料）。
+
+    projected_quantity：MOST 投影出的 {wi_row_id: Q}（只含 Q>1；`export_service.projected_quantities`）——件數比對
+    的基準。不用 frequency：持工具 F>1、repeat 列的 Q 由投影矩陣決定（契約 §3.2），frequency 對不上。
 
     SIMO 從屬列：`simo_group_id` 非空且非該群組主列——read_worksheet 已正規化 `simo_group_id`
     （標記列非空）；此處保守以「有 simo_group_id」視為從屬（主列不帶標記）。
@@ -225,13 +330,13 @@ def build_most_rows_from_read(worksheet_read: dict) -> list[MostRowInfo]:
     for r in worksheet_read.get("rows", []) or []:
         tags = r.get("lb_tags") or {}
         simo = (r.get("simo_group_id") or "").strip()
-        freq = r.get("frequency")
+        wi = str(r["wi_row_id"])
         out.append(MostRowInfo(
-            wi_row_id=str(r["wi_row_id"]),
+            wi_row_id=wi,
             is_general=bool(tags.get("is_general", False)),
             is_simo_subordinate=bool(simo),
             offline=bool(tags.get("offline", False)),
-            expected_n=int(freq) if (freq is not None and float(freq) > 1) else None,
+            expected_n=projected_quantity.get(wi),
         ))
     return out
 
@@ -245,9 +350,14 @@ def general_ids_from_read(worksheet_read: dict) -> set[str]:
     }
 
 
-def summarize(parsed: ParsedWriteback, agg: dict[str, MotionPlacement], d: WritebackDiff) -> dict[str, Any]:
-    """給端點回應的摘要（人看＋前端用）。"""
+def summarize(
+    parsed: ParsedWriteback, agg: dict[str, MotionPlacement], d: WritebackDiff,
+    units_baseline: dict[str, Any],
+) -> dict[str, Any]:
+    """給端點回應的摘要（人看＋前端用）。units_baseline：件數比對基準狀態（見 UNITS_BASELINE_*）；必填——
+    漏傳就等於無聲宣稱「不必比」。"""
     return {
+        "units_baseline": units_baseline,
         "contract_version": parsed.contract_version,
         "project_id": parsed.project_id,
         "version_id": parsed.version_id,
@@ -272,12 +382,14 @@ def diff_to_dict(agg: dict[str, MotionPlacement], d: WritebackDiff) -> dict[str,
         "missing": d.missing,
         "offline_diffs": d.offline_diffs,
         "unit_mismatches": d.unit_mismatches,
+        "units_uncomparable": d.units_uncomparable,
         "motions": {
             wi: {
                 "task_ids": mp.task_ids,
                 "stations": sorted(mp.stations),
                 "workers": sorted(mp.workers),
                 "units_total": mp.units_total,
+                "units_source": mp.units_source,
                 "offline": any(mp.offline_values) if mp.offline_values else False,
                 "cross_station": mp.cross_station,
                 "offline_conflict": mp.offline_conflict,
@@ -450,12 +562,41 @@ async def _consume(
     parsed = parse(payload)  # 契約不符 → LbWritebackContractMismatch（route 映 422）
     gids = general_ids_from_read(worksheet_read)
     agg = aggregate(parsed.rows, general_ids=gids)
-    d = diff(build_most_rows_from_read(worksheet_read), agg)
+    # 先存快照，再算件數基準與 diff（已知的投影例外在 _units_baseline 降級，不會讓這筆快照跟著失敗）
     snap_id = await persist(
         session, worksheet_id=worksheet_id, payload=payload, parsed=parsed,
         source_url=source_url, actor=actor,
     )
-    return {"snapshot_id": str(snap_id), "summary": summarize(parsed, agg, d), "diff": diff_to_dict(agg, d)}
+    pq, baseline = await _units_baseline(session, worksheet_id, worksheet_read)
+    d = diff(build_most_rows_from_read(worksheet_read, projected_quantity=pq), agg)
+    return {"snapshot_id": str(snap_id), "summary": summarize(parsed, agg, d, baseline), "diff": diff_to_dict(agg, d)}
+
+
+async def _units_baseline(
+    session: AsyncSession, worksheet_id: _uuid.UUID, worksheet_read: dict,
+) -> tuple[dict[str, int], dict[str, Any]]:
+    """件數比對基準＝MOST 目前投影出的 Q。回 (projected_quantity, {status, reasons})。
+
+    - 一律投影（不從 LB 缺值推論「全為 Q=1」）；投影沒有任何 Q>1 → not_needed。
+    - 投影拋出（持工具 F>1 且 N>1、非整數 frequency、工具解析、TMU 分解）或收集到 E 碼 → unavailable＋E 碼：
+      件數不比，但明確標示，回寫端點本身不因 MOST 端工序暫時投影不出來而失敗。
+    """
+    from ddm_v2.lb_projection.precedence import PrecedenceError
+    from ddm_v2.lb_projection.quantity import QuantityError
+    from ddm_v2.lb_projection.tmu import TmuDecompositionError
+    from ddm_v2.lb_projection.tools import ToolResolveError
+    from ddm_v2.services.v2 import export_service as exp
+
+    try:
+        pq = await exp.projected_quantities(session, worksheet_id, worksheet_read=worksheet_read)
+    except (QuantityError, ToolResolveError, TmuDecompositionError, PrecedenceError) as exc:
+        logger.warning("回寫件數基準不可用（worksheet %s 投影失敗）：%s %s", worksheet_id, exc.err.code, exc)
+        return {}, {"status": UNITS_BASELINE_UNAVAILABLE, "reasons": [exc.err.code]}
+    if pq.error_codes:
+        return {}, {"status": UNITS_BASELINE_UNAVAILABLE, "reasons": pq.error_codes}
+    if not pq.by_row:
+        return {}, {"status": UNITS_BASELINE_NOT_NEEDED, "reasons": []}
+    return pq.by_row, {"status": UNITS_BASELINE_OK, "reasons": []}
 
 
 async def latest(session: AsyncSession, *, worksheet_id: _uuid.UUID, worksheet_read: dict) -> dict[str, Any]:
@@ -469,11 +610,12 @@ async def latest(session: AsyncSession, *, worksheet_id: _uuid.UUID, worksheet_r
     parsed = parse(snap.payload)
     gids = general_ids_from_read(worksheet_read)
     agg = aggregate(parsed.rows, general_ids=gids)
-    d = diff(build_most_rows_from_read(worksheet_read), agg)
+    pq, baseline = await _units_baseline(session, worksheet_id, worksheet_read)
+    d = diff(build_most_rows_from_read(worksheet_read, projected_quantity=pq), agg)
     return {
         "snapshot_id": str(snap.id), "fetched_at": snap.fetched_at.isoformat() if snap.fetched_at else None,
         "applied_at": snap.applied_at.isoformat() if snap.applied_at else None,
-        "summary": summarize(parsed, agg, d), "diff": diff_to_dict(agg, d),
+        "summary": summarize(parsed, agg, d, baseline), "diff": diff_to_dict(agg, d),
     }
 
 
@@ -536,7 +678,7 @@ async def apply_offline(
     read = await _read(session, worksheet_id)
     parsed = parse(snap.payload)
     agg = aggregate(parsed.rows, general_ids=general_ids_from_read(read))
-    d = diff(build_most_rows_from_read(read), agg)
+    d = diff(build_most_rows_from_read(read, projected_quantity={}), agg)  # 只取 offline_diffs，不比件數
     diffable = {od["wi_row_id"] for od in d.offline_diffs}
     req = {str(x) for x in wi_row_ids}
     bad = req - diffable

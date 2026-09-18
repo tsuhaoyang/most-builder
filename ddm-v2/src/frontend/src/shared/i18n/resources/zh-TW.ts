@@ -1424,6 +1424,9 @@ const zhTW = {
         station: '排到第 {{n}} 站，{{workers}} 個人做',
         stationsMulti: '每站都有（通用步驟），{{workers}} 個人做',
         units: '共 {{n}} 件',
+        unitsInferred: '共 {{n}} 件（推算）',
+        unitsInferredHint: '產線平衡這份結果沒標出哪一列是逐件的數量，這裡取各列中最大的數；產線平衡補上後會改為直接讀取。',
+        unitsBaselineUnavailable: '件數沒有比對：這份工序表還有要處理的問題，產線平衡的工作項排不出來（先處理完「要處理」的項目）。',
         crossStation: '⚠ 同一步驟被排到不同站',
         offlineConflict: '⚠ 離線設定不一致',
         missing: {

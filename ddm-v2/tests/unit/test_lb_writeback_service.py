@@ -7,11 +7,14 @@ from pathlib import Path
 import pytest
 
 from ddm_v2.services.v2.lb_writeback_service import (
+    UNITS_SOURCE_CYCLIC,
+    UNITS_SOURCE_INFERRED,
     LbWritebackContractMismatch,
     LbWritebackMalformed,
     MostRowInfo,
     RowPlacement,
     aggregate,
+    build_most_rows_from_read,
     diff,
     parse,
 )
@@ -88,11 +91,82 @@ def test_aggregate_general_multistation_not_flagged():
 
 
 def test_aggregate_units_total_and_workers_union():
+    """LB 實跑 fixture 的 seq9（electric_driver，repeat 8）：units 1/8/1。setup 列帶的是 used（經手次數）不是件數，
+    不可加總成 10；fixture 尚無 qty_scope → 退回各列最大值 8，標為推算。"""
     p = parse(_payload())
     agg = aggregate(p.rows, general_ids=set())
-    q = agg["00000000-0000-4000-8000-000000000009"]  # units 1+8+1
-    assert q.units_total == 10
+    q = agg["00000000-0000-4000-8000-000000000009"]
+    assert q.units_total == 8
+    assert q.units_source == UNITS_SOURCE_INFERRED
     assert q.workers == {"W-2-0"}
+    lot = agg["00000000-0000-4000-8000-000000000007"]  # frequency 8（單列 cyclic）
+    assert (lot.units_total, lot.units_source) == (8, UNITS_SOURCE_INFERRED)
+    single = agg["00000000-0000-4000-8000-000000000003"]  # Q=1 → LB 不帶 units
+    assert (single.units_total, single.units_source) == (None, None)
+
+
+def _tool_rows(units: list[list[dict]], scopes: list[str | None]) -> list[RowPlacement]:
+    return [RowPlacement("wi-t", 10 + i, False, 0, 0, sorted({u["worker"] for u in us}), us, scope)
+            for i, (us, scope) in enumerate(zip(units, scopes))]
+
+
+def test_aggregate_units_uses_cyclic_row_when_qty_scope_present():
+    """有 qty_scope（LB 加欄後）→ 取 cyclic 那列；setup 列的 used 不算件數。"""
+    rows = _tool_rows(
+        [[{"worker": "W-0", "units": 1}, {"worker": "W-1", "units": 1}],
+         [{"worker": "W-0", "units": 5}, {"worker": "W-1", "units": 3}],
+         [{"worker": "W-0", "units": 1}, {"worker": "W-1", "units": 1}]],
+        ["setup", "cyclic", "setup"],
+    )
+    mp = aggregate(rows)["wi-t"]
+    assert (mp.units_total, mp.units_source) == (8, UNITS_SOURCE_CYCLIC)
+
+
+def test_aggregate_units_inferred_max_without_qty_scope_multi_worker():
+    """缺 qty_scope → 各列 Σunits 取最大值（cyclic 列 Σ=Q ≥ setup 列 Σ=經手人數）。"""
+    rows = _tool_rows(
+        [[{"worker": "W-0", "units": 1}, {"worker": "W-1", "units": 1}],
+         [{"worker": "W-0", "units": 5}, {"worker": "W-1", "units": 3}],
+         [{"worker": "W-0", "units": 1}, {"worker": "W-1", "units": 1}]],
+        [None, None, None],
+    )
+    mp = aggregate(rows)["wi-t"]
+    assert (mp.units_total, mp.units_source) == (8, UNITS_SOURCE_INFERRED)
+
+
+@pytest.mark.parametrize("scopes, source", [(["cyclic"] * 3, UNITS_SOURCE_CYCLIC), ([None] * 3, UNITS_SOURCE_INFERRED)])
+def test_aggregate_tool_frequency_gt1_all_cyclic_not_tripled(scopes, source):
+    """持工具 frequency F=3：三列皆 cyclic、各 Σ=3。件數是 3，不是 9（舊做法全加總會誤報）。"""
+    rows = _tool_rows([[{"worker": "W-0", "units": 3}]] * 3, scopes)
+    mp = aggregate(rows)["wi-t"]
+    assert (mp.units_total, mp.units_source) == (3, source)
+    most = [MostRowInfo("wi-t", is_general=False, is_simo_subordinate=False, offline=False, expected_n=3)]
+    assert diff(most, aggregate(rows)).unit_mismatches == []
+
+
+def test_aggregate_qty_scope_present_but_no_cyclic_gives_no_count():
+    rows = _tool_rows([[{"worker": "W-0", "units": 1}]] * 2, ["setup", "setup"])
+    mp = aggregate(rows)["wi-t"]
+    assert (mp.units_total, mp.units_source) == (None, None)
+
+
+def test_parse_reads_optional_qty_scope():
+    payload = _payload()
+    payload["rows"][0]["qty_scope"] = "cyclic"
+    p = parse(payload)
+    assert p.rows[0].qty_scope == "cyclic"
+    assert p.rows[1].qty_scope is None  # 缺欄＝None（加法相容）
+
+
+def test_build_most_rows_expected_n_from_projection_not_frequency():
+    """比對基準是 MOST 投影出的 Q（不是 frequency）：frequency 8 但投影沒給 → 不比對；投影給多少就是多少。"""
+    read = {"rows": [
+        {"wi_row_id": "wi-f", "frequency": 8, "lb_tags": {}, "simo_group_id": None},
+        {"wi_row_id": "wi-r", "frequency": 1, "lb_tags": {}, "simo_group_id": None},
+    ]}
+    by_id = {m.wi_row_id: m for m in build_most_rows_from_read(read, projected_quantity={"wi-r": 8})}
+    assert by_id["wi-f"].expected_n is None
+    assert by_id["wi-r"].expected_n == 8
 
 
 def test_aggregate_offline_conflict():
@@ -184,4 +258,65 @@ def test_diff_offline_and_unit_mismatch():
     ]
     d = diff(most, agg)
     assert d.offline_diffs == [{"wi_row_id": "wi-a", "most_offline": False, "lb_offline": True}]
-    assert d.unit_mismatches == [{"wi_row_id": "wi-b", "expected_n": 12, "units_total": 8}]
+    assert d.unit_mismatches == [
+        {"wi_row_id": "wi-b", "expected_n": 12, "units_total": 8, "units_source": UNITS_SOURCE_INFERRED}
+    ]
+
+
+# ── parse 邊界：壞 payload 一律 LbWritebackMalformed（路由 422），不落到後段變 500 ─────────────
+
+def _with_row0(**patch) -> dict:
+    payload = _payload()
+    payload["rows"][0].update(patch)
+    return payload
+
+
+@pytest.mark.parametrize("scope", ["Cyclic", "CYCLIC", " cyclic", "", "auto", 1, False, {}, ["cyclic"]])
+def test_parse_rejects_qty_scope_outside_setup_cyclic(scope):
+    """未知值不收：大小寫漂移或 auto 會讓件數比對靜默失效（有欄但找不到 cyclic → 不比）。"""
+    with pytest.raises(LbWritebackMalformed):
+        parse(_with_row0(qty_scope=scope))
+
+
+@pytest.mark.parametrize("units", [
+    "abc", {"worker": "W", "units": 1}, 5, [1],
+    [{"worker": "W", "units": None}], [{"worker": "W", "units": "8"}], [{"worker": "W", "units": 1.5}],
+    [{"worker": "W", "units": float("nan")}], [{"worker": "W", "units": -1}], [{"worker": "W", "units": True}],
+    [{"units": 1}], [{"worker": "", "units": 1}],
+])
+def test_parse_rejects_malformed_units(units):
+    with pytest.raises(LbWritebackMalformed):
+        parse(_with_row0(units=units))
+
+
+@pytest.mark.parametrize("sid", ["not-a-uuid", "", "00000000-0000-4000-8000-00000000000g"])
+def test_parse_rejects_non_uuid_source_wi_row_id(sid):
+    with pytest.raises(LbWritebackMalformed):
+        parse(_with_row0(source_wi_row_id=sid))
+
+
+def test_diff_lists_units_uncomparable_instead_of_skipping():
+    """MOST 投影 Q>1、LB 沒給件數（非 offline）→ 明列 units_uncomparable；offline 列不列（LB 對 offline 本就不給 units）。"""
+    rows = [
+        RowPlacement("wi-lot", 1, False, 0, 0, ["W-0"], None),
+        RowPlacement("wi-off", 2, True, None, None, [], None),
+    ]
+    most = [
+        MostRowInfo("wi-lot", is_general=False, is_simo_subordinate=False, offline=False, expected_n=8),
+        MostRowInfo("wi-off", is_general=False, is_simo_subordinate=False, offline=True, expected_n=8),
+    ]
+    d = diff(most, aggregate(rows))
+    assert d.units_uncomparable == [{"wi_row_id": "wi-lot", "expected_n": 8, "reason": "no_units"}]
+    assert d.unit_mismatches == []
+
+
+@pytest.mark.parametrize("patch", [
+    {"offline_flag": "false"}, {"offline_flag": 0}, {"offline_flag": None},   # "false" 會被 bool() 變 True
+    {"task_id": 2.9}, {"task_id": "3"}, {"task_id": True},
+    {"station_index": "x"}, {"station_index": 1.5}, {"line_index": [0]},
+    {"workers": "W-0"}, {"workers": [{}]}, {"workers": [""]},
+])
+def test_parse_rejects_loose_field_types(patch):
+    """不做 int()／bool() 轉型：否則 "false" 會變成 offline=True、2.9 被截成 2，壞值到存檔才 500。"""
+    with pytest.raises(LbWritebackMalformed):
+        parse(_with_row0(**patch))

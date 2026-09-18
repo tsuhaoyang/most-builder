@@ -70,7 +70,17 @@ function remapToReplica(payload: WritebackPayload, rows: GoldenRow[]): Writeback
   }
 }
 
-function expectGoldenWriteback(out: WritebackOut, rows: GoldenRow[]): void {
+/** MOST 自己對複本投影出的 quantity Q：{wi_row_id: Q}（lb-report 的 tasks；同一 motion 各列 Q 相同，取最大）。 */
+async function projectedQuantities(request: APIRequestContext, worksheetId: string): Promise<Map<string, number>> {
+  const res = await request.get(`/api/v2/worksheets/${worksheetId}/export/lb-report?include_tasks=true`, { headers: AUTH })
+  expect(res.status(), await res.text()).toBe(200)
+  const tasks = ((await res.json()) as { tasks: Array<{ source_wi_row_id: string; quantity: string | number }> }).tasks
+  const out = new Map<string, number>()
+  for (const t of tasks) out.set(t.source_wi_row_id, Math.max(out.get(t.source_wi_row_id) ?? 0, Number(t.quantity)))
+  return out
+}
+
+function expectGoldenWriteback(out: WritebackOut, rows: GoldenRow[], projectedQ: Map<string, number>): void {
   const { summary, diff } = out
   const ids = rows.map(r => r.id)
 
@@ -107,14 +117,20 @@ function expectGoldenWriteback(out: WritebackOut, rows: GoldenRow[]): void {
     expect(m.cross_station).toBe(false)
   }
 
-  // 件數：frequency>1 的列 units_total == frequency，且 diff 不報 unit_mismatches。
-  // repeat 列（I，repeat_count=8）的件數語意待裁決：LB setup 列帶 used（0／1，跨 worker 加總＝經手人數），
-  // 不是件數，1/8/1 加總為 10；service 的 expected_n 目前只取 frequency、不比 repeat_count，所以不報。
-  // 本輪只斷言它聚成單站（上方工具段）。unit_mismatches 為空同時是這個未決項的絆線：
-  // 若只把 repeat_count 納入 expected_n、卻沒改加總方式，這裡會轉紅。
-  const lots = rows.filter(r => r.frequency > 1)
-  expect(lots).toHaveLength(2)
-  for (const r of lots) expect(diff.motions[r.id].units_total, `lot ${r.id}`).toBe(r.frequency)
+  // 件數（Howard 2026-09-18 裁：C＋退路）：LB 的 setup 列帶 used（0／1，Σ＝經手人數）不是件數，不可跨列加總；
+  // 有 qty_scope 取 cyclic 那列，沒有就各列取最大值（標為推算）。比對基準是 MOST 自己投影出的 Q，不是 frequency。
+  // 每個 motion：Q>1 → units_total == Q；Q=1 → LB 不帶 units（null）。
+  expect(summary.units_baseline).toEqual({ status: 'ok', reasons: [] })  // 已用投影 Q 比對（不是沒比）
+  expect(diff.units_uncomparable).toEqual([])
+  expect([...projectedQ.values()].filter(q => q > 1)).toHaveLength(3)  // G、H（frequency 8）與 I（repeat 8）
+  for (const r of rows) {
+    const q = projectedQ.get(r.id) ?? 1
+    expect(diff.motions[r.id].units_total, `units ${r.id}`).toBe(q > 1 ? q : null)
+  }
+  // 動作 I（seq 9，electric_driver repeat 8）：LB 回 1/8/1，舊做法加總成 10；現在是 8。
+  const actionI = rows[GOLDEN_LETTERS.indexOf('I')]
+  expect(diff.motions[actionI.id].units_total).toBe(8)
+  expect(['cyclic', 'inferred_max']).toContain(diff.motions[actionI.id].units_source)
   expect(diff.unit_mismatches).toEqual([])
 
   // offline：兩邊一致（無差異）；offline 列不排站、無人（LB §8 (b)）
@@ -128,12 +144,14 @@ function expectGoldenWriteback(out: WritebackOut, rows: GoldenRow[]): void {
   }
 }
 
-async function expectLatestMatches(request: APIRequestContext, worksheetId: string, out: WritebackOut, rows: GoldenRow[]) {
+async function expectLatestMatches(
+  request: APIRequestContext, worksheetId: string, out: WritebackOut, rows: GoldenRow[], projectedQ: Map<string, number>,
+) {
   const res = await request.get(`/api/v2/worksheets/${worksheetId}/lb-writeback/latest`, { headers: AUTH })
   expect(res.status(), await res.text()).toBe(200)
   const latest = (await res.json()) as WbLatest
   expect(latest.snapshot_id).toBe(out.snapshot_id)
-  expectGoldenWriteback(latest, rows)
+  expectGoldenWriteback(latest, rows, projectedQ)
 }
 
 test('黃金複本：import LB fixture（依 seq_no 改寫 id）→ 24 motion 全對上', async ({ request }) => {
@@ -147,8 +165,9 @@ test('黃金複本：import LB fixture（依 seq_no 改寫 id）→ 24 motion �
   expect(res.status(), await res.text()).toBe(200)
   const out = (await res.json()) as WritebackOut
   expect(out.summary.result_id).toBe(fx.result_id)
-  expectGoldenWriteback(out, rows)
-  await expectLatestMatches(request, worksheetId, out, rows)
+  const projectedQ = await projectedQuantities(request, worksheetId)
+  expectGoldenWriteback(out, rows, projectedQ)
+  await expectLatestMatches(request, worksheetId, out, rows, projectedQ)
 })
 
 // ── 真機端到端 ────────────────────────────────────────────────────────────
@@ -253,8 +272,9 @@ test('黃金複本：真機端到端 MOST 匯出 → LB 上傳求解 → MOST fe
     expect(out.summary).toMatchObject({
       contract_version: 'lb-most-writeback-v1', project_id: projectId, version_id: 'original', result_id: job.result_id,
     })
-    expectGoldenWriteback(out, rows)
-    await expectLatestMatches(request, worksheetId, out, rows)
+    const projectedQ = await projectedQuantities(request, worksheetId)
+    expectGoldenWriteback(out, rows, projectedQ)
+    await expectLatestMatches(request, worksheetId, out, rows, projectedQ)
   } catch (e) {
     bodyError = e
     throw e
