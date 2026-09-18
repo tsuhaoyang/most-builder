@@ -18,10 +18,19 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import re
 
 import httpx
 
 logger = logging.getLogger(__name__)
+
+# 座標（project／version／result id）會直接成為 LB URL 的路徑段。只允許 [A-Za-z0-9_-]{1,64}：擋 `/`、`..`、
+# 空白、控制字元、`%`（預先編碼的斜線）、`?`／`#` 等——否則可把請求改寫成 LB 主機上的任意路徑，並帶著身分
+# header 發 GET。只做 URL 編碼不夠（仍可能打到別的路徑），所以擋在驗證。LB 實際格式（32 位 hex、UUID、
+# `original`、`v_<hex>`）都在此集合內。路由層 `FetchIn` 用同一個 pattern 回 422；這裡是縱深防線。
+# ⚠️ 只能給 pydantic（Rust regex）或 `fullmatch` 用：Python `re.match`／`search` 的 `$` 會放過結尾換行。
+LB_ID_PATTERN = r"^[A-Za-z0-9_-]{1,64}$"
+_LB_ID_RE = re.compile(LB_ID_PATTERN)
 
 
 class LbUnreachable(Exception):
@@ -63,7 +72,11 @@ async def fetch_writeback(
 
     URL：`{base_url}/api/v3/projects/{p}/versions/{v}/results/{r}/writeback`。
     headers：身分 header 一組（ADR-036 D1 追記；LB 最小需求 X-User-Id/X-Plant-Code/X-Username）。
+    座標不合 `LB_ID_PATTERN` → `ValueError`，不發任何請求（路由層應已先擋成 422；到這裡代表呼叫端漏驗）。
     """
+    for name, value in (("project_id", project_id), ("version_id", version_id), ("result_id", result_id)):
+        if not _LB_ID_RE.fullmatch(value):
+            raise ValueError(f"LB 座標 {name} 格式不合法（只允許 [A-Za-z0-9_-]，1–64 字元）")
     url = (
         f"{base_url.rstrip('/')}/api/v3/projects/{project_id}"
         f"/versions/{version_id}/results/{result_id}/writeback"

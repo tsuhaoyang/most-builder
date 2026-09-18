@@ -314,3 +314,42 @@ async def test_retention_keeps_10(client):
         assert r.status_code == 200
     snaps = (await client.get(f"/api/v2/worksheets/{ws}/lb-writeback/snapshots")).json()["snapshots"]
     assert len(snaps) == wb.RETENTION_PER_WORKSHEET == 10
+
+
+@pytest.mark.parametrize("field", ["lb_project_id", "lb_version_id", "lb_result_id"])
+@pytest.mark.parametrize("value", ["x/../../../admin/users?", "../admin", "a/b", "a%2Fb", "a b", "abc\n", "a" * 65])
+async def test_fetch_rejects_unsafe_lb_ids_422(client, monkeypatch, field, value):
+    """安全修正：座標直接成為 LB URL 路徑段 → 格式不合回 422（ADR-034 信封），且 LB 完全沒收到請求。"""
+    import threading
+    from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+
+    hits: list[str] = []
+
+    class _Rec(BaseHTTPRequestHandler):
+        def do_GET(self):  # noqa: N802
+            hits.append(self.path)
+            self.send_response(200)
+            self.send_header("Content-Length", "2")
+            self.end_headers()
+            self.wfile.write(b"{}")
+
+        def log_message(self, *a):
+            pass
+
+    server = ThreadingHTTPServer(("127.0.0.1", 0), _Rec)
+    threading.Thread(target=server.serve_forever, daemon=True).start()
+    try:
+        monkeypatch.setenv("DDM_LB_API_BASE_URL", f"http://127.0.0.1:{server.server_address[1]}")
+        from ddm_v2.settings import get_settings
+        get_settings.cache_clear()
+        body = {"lb_project_id": "P", "lb_version_id": "V", "lb_result_id": "R", field: value}
+        r = await client.post(f"/api/v2/worksheets/{WS}/lb-writeback/fetch", json=body)
+        assert r.status_code == 422, r.text
+        err = r.json()["error"]
+        assert err["code"] == "VALIDATION_ERROR"
+        assert [e["loc"][-1] for e in err["detail"]["errors"]] == [field]
+        assert hits == []
+    finally:
+        server.shutdown()
+        from ddm_v2.settings import get_settings
+        get_settings.cache_clear()

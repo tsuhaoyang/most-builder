@@ -21,14 +21,16 @@ from ddm_v2.errors.registry import ErrorCode
 from ddm_v2.exceptions import NotFoundError, ValidationError
 from ddm_v2.services.v2 import lb_writeback_service as wb
 from ddm_v2.services.v2 import worksheet_service as wsvc
+from ddm_v2.services.v2.lb_client import LB_ID_PATTERN
 
 router = APIRouter(prefix="/api/v2", tags=["v2-lb-writeback"])
 
 
 class FetchIn(BaseModel):
-    lb_project_id: str = Field(min_length=1)
-    lb_version_id: str = Field(min_length=1)
-    lb_result_id: str = Field(min_length=1)
+    # 三個座標直接成為 LB URL 的路徑段：格式不合（`/`、`..`、空白、控制字元、超長…）→ 422，不呼叫 LB。
+    lb_project_id: str = Field(pattern=LB_ID_PATTERN)
+    lb_version_id: str = Field(pattern=LB_ID_PATTERN)
+    lb_result_id: str = Field(pattern=LB_ID_PATTERN)
 
 
 class ApplyOfflineIn(BaseModel):
