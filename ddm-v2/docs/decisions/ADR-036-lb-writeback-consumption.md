@@ -2,7 +2,7 @@
 
 ## 狀態
 
-🟡 **proposed**（2026-09-17，整合架構師撰寫；三項取捨已由 Howard 2026-09-17 裁決，見 §2 D1／D2／D5）。實作見 `docs/lb-integration/LB_WRITEBACK_CONSUMPTION_IMPLEMENTATION_SPEC.md`。
+🟢 **accepted**（2026-09-18，Howard 核可；三項取捨於 2026-09-17 裁決，見 §2 D1／D2／D5）。實作見 `docs/lb-integration/LB_WRITEBACK_CONSUMPTION_IMPLEMENTATION_SPEC.md`。
 
 - **對應 LB 端**：`lb-most-writeback-v1`，定義於 LB `docs/dev_docs/MOST_INTEGRATION_INPUT_SPEC.md` §8（**該檔是回寫契約的唯一權威**；本 ADR 不重述欄位）、LB ADR-023 D11。LB 落地 commit `adb750b`＋`631e3a5`＋`02dba21`（分支 `feature/most-integration-phase2`，未合入 LB master）。
 - **關聯**：[ADR-035](ADR-035-lb-projection-layer-and-motion-decomposition.md)（MOST→LB 投影；本 ADR 是反方向）、`docs/lb-integration/MOST_LB_CONTRACT.md` D13（屬性可雙向、結構單向）、[ADR-011](ADR-011-schema-evolution-and-contract-stability.md)（加法演進）、[ADR-019](ADR-019-worksheet-access-control.md)（端點權限）、[ADR-034](ADR-034-language-aware-error-contract.md)（錯誤信封）。
@@ -28,6 +28,8 @@ D13 同時定下屬性回流規則：可回流的只有 `offline` 這類標籤�
 - 設計約束：認證只能是**加法**——日後把 MOST 掛到 Traefik 之下時，唯一要改的是 base URL 與「帶上入站身分 header」，解析、資料模型、UI 一律不動。故 client 從一開始就支援可選的身分 header 透傳（`DDM_LB_AUTH_HEADER_NAME`／值取自當前使用者），v1 預設不帶。
 - 設定缺失（`DDM_LB_API_BASE_URL` 未設）→ 503 ＋ 明確訊息（比照 `dsx_service` 既有慣例），不靜默失敗。
 - 另保留 `import`（直接貼上／上傳 payload）路徑：**測試與離線驗證專用**，走同一套解析與驗證程式碼，避免測試繞過產品路徑。
+
+> **D1 追記（2026-09-18，真機驗證發現）**：本節原寫「v1 直連、預設不帶身分 header」——**前提不成立**。實測（LB Phase 2 以 uvicorn 直跑 `:8090`，不經 Traefik）：LB **應用程式本身**就檢查 gateway 身分 header，最小需求是 **三個都要**——`X-User-Id`、`X-Plant-Code`、`X-Username`，缺任一 → 401（writeback 讀取端點亦然）。故 v1 即須帶 header：MOST client 的 `DDM_LB_AUTH_HEADER_NAME`（單一 header）擴為**可設定一組 header**（名稱→值，值可為固定字串或當前使用者員編）。這仍符合本節的「認證只能是加法」——日後掛 Traefik 時只換 base URL 與 header 值來源，解析／資料模型／UI 不動。證據：`GET …/writeback` 帶三 header → 200、少任一 → 401。
 
 ### D2 屬性回流只有 `offline`，人工確認，走 MOST 正門
 （Howard 裁決）匯入後列出「LB 的 `offline_flag` 與 MOST `level_entries.offline` 不一致」的列；IE 勾選後才套用。套用**重用既有存檔路徑的語意**：寫入 `level_entries.offline` 後跑 MOST 自己的組內傳染（同 cub／同 wcub）與 R1–R9 驗證，不得直接 UPDATE 繞過治理。
@@ -76,6 +78,8 @@ D13 同時定下屬性回流規則：可回流的只有 `offline` 這類標籤�
 **正面**：IE 在 MOST 就能看到平衡結果並回答「我這步被排到哪」；offline 有了受控的回流路徑；快照可追溯。
 
 **代價／風險**：多一組表與端點；v1 直連 LB 無認證——**只可在內網／本機使用**，掛 gateway 前不得對外開放（實作書列為禁止事項）；LB 分支尚未合入其 master，端點可用性依賴該分支部署。
+
+**真機驗證（2026-09-18，整合架構師實跑）**：LB Phase 2 直跑 `:8090`（不經 Traefik）→ 建專案（上傳黃金 tasks.csv）→ 求解 → `GET …/writeback`。結果：(a) 契約版本與機台政策欄正確；(b) **`rows` 為 0** —— LB 專案建立時的 CSV 標準化（`infrastructure/csv/csv_service.py::process_uploaded_file`）用寫死的 STD_COL 清單，丟掉 `source_wi_row_id`／`role_type`／`general_role`（存下來 22 欄，上傳為 24 欄），對應鍵在儲存層即斷；影響不只回寫，`role_type=machine`（D9）與 `general_role`（D4）走真實上傳路徑同樣失效。LB 端修正中。(c) MOST `fetch` 對真 LB 回 502 `LB_UNREACHABLE`（HTTP 401），MOST 側管路正確，成因見 D1 追記。
 
 **待裁決（不阻擋實作）**：是否讓回寫結果影響作業版的「秒數」顯示（目前秒數來自 MOST 投影預覽，非 LB 實際排程）；建議 v1 不混用，兩者分開顯示。
 
