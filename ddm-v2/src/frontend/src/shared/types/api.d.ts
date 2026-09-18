@@ -1756,6 +1756,94 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v2/worksheets/{worksheet_id}/lb-writeback/fetch": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Fetch */
+        post: operations["fetch_api_v2_worksheets__worksheet_id__lb_writeback_fetch_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v2/worksheets/{worksheet_id}/lb-writeback/import": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Import Payload
+         * @description 測試／離線驗證用：直接吃回寫 payload 原樣，走同一解析／存檔路徑。
+         */
+        post: operations["import_payload_api_v2_worksheets__worksheet_id__lb_writeback_import_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v2/worksheets/{worksheet_id}/lb-writeback/latest": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Latest */
+        get: operations["latest_api_v2_worksheets__worksheet_id__lb_writeback_latest_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v2/worksheets/{worksheet_id}/lb-writeback/snapshots": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Snapshots */
+        get: operations["snapshots_api_v2_worksheets__worksheet_id__lb_writeback_snapshots_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v2/worksheets/{worksheet_id}/lb-writeback/apply-offline": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Apply Offline */
+        post: operations["apply_offline_api_v2_worksheets__worksheet_id__lb_writeback_apply_offline_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v2/dsx/ui-url": {
         parameters: {
             query?: never;
@@ -1904,6 +1992,13 @@ export interface components {
             roles?: string[];
             /** Site Ids */
             site_ids?: string[];
+        };
+        /** ApplyOfflineIn */
+        ApplyOfflineIn: {
+            /** Snapshot Id */
+            snapshot_id: string;
+            /** Wi Row Ids */
+            wi_row_ids: string[];
         };
         /** AuditLogEntry */
         AuditLogEntry: {
@@ -2143,6 +2238,15 @@ export interface components {
         DsxUiUrlOut: {
             /** Url */
             url?: string | null;
+        };
+        /** FetchIn */
+        FetchIn: {
+            /** Lb Project Id */
+            lb_project_id: string;
+            /** Lb Version Id */
+            lb_version_id: string;
+            /** Lb Result Id */
+            lb_result_id: string;
         };
         /**
          * FromModuleRequest
@@ -7580,6 +7684,185 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["I18nReviewItemOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    fetch_api_v2_worksheets__worksheet_id__lb_writeback_fetch_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                worksheet_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["FetchIn"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    import_payload_api_v2_worksheets__worksheet_id__lb_writeback_import_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                worksheet_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    [key: string]: unknown;
+                };
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    latest_api_v2_worksheets__worksheet_id__lb_writeback_latest_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                worksheet_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    snapshots_api_v2_worksheets__worksheet_id__lb_writeback_snapshots_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                worksheet_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    apply_offline_api_v2_worksheets__worksheet_id__lb_writeback_apply_offline_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                worksheet_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ApplyOfflineIn"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
                 };
             };
             /** @description Validation Error */

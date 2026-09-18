@@ -63,3 +63,74 @@ export const useLbPreview = (worksheetId: string, includeTasks = false) =>
         body,
       ),
   })
+
+// ── ADR-036 F1：LB 回寫消費（作業版產線視角「實際結果」）─────────────────────────
+// 型別鏡像後端 lb_writeback_service 的回應（summarize / diff_to_dict / latest）。
+export interface WbSummary {
+  contract_version: string
+  project_id: string
+  version_id: string
+  result_id: string
+  unattended_machine_policy: string          // free / busy
+  unattended_machine_policy_source: string    // persisted / defaulted
+  rows_in: number
+  motions: number
+  matched: number
+  unmatched: number
+  missing: number
+  cross_station: string[]
+  offline_conflicts: string[]
+}
+export interface WbMotion {
+  task_ids: number[]
+  stations: number[]
+  workers: string[]
+  units_total: number | null
+  offline: boolean
+  cross_station: boolean
+  offline_conflict: boolean
+}
+export interface WbDiff {
+  matched: string[]
+  unmatched: string[]
+  missing: Array<{ wi_row_id: string; reason: string }>
+  offline_diffs: Array<{ wi_row_id: string; most_offline: boolean; lb_offline: boolean }>
+  unit_mismatches: Array<{ wi_row_id: string; expected_n: number; units_total: number }>
+  motions: Record<string, WbMotion>
+}
+export interface WbLatest {
+  snapshot_id: string
+  fetched_at: string | null
+  applied_at: string | null
+  summary: WbSummary
+  diff: WbDiff
+}
+export interface WbApplyResult {
+  applied: string[]
+  propagated: string[]
+  report: { errors: unknown[]; warnings: unknown[] }
+}
+
+/** GET latest 快照（含聚合＋diff）；無快照 → 404（呼叫端以 enabled/isError 處理）。 */
+export const useLbWriteback = (worksheetId: string, enabled = true) =>
+  useQuery({
+    queryKey: ['lb-writeback-latest', worksheetId],
+    queryFn: () => apiGet<WbLatest>(`/api/v2/worksheets/${worksheetId}/lb-writeback/latest`),
+    enabled: !!worksheetId && enabled,
+    retry: false,               // 無快照的 404 不重試
+    refetchOnWindowFocus: false,
+  })
+
+/** POST fetch：以 project/version/result id 呼叫 LB 存快照。 */
+export const useFetchWriteback = (worksheetId: string) =>
+  useMutation({
+    mutationFn: (body: { lb_project_id: string; lb_version_id: string; lb_result_id: string }) =>
+      apiPost<WbLatest>(`/api/v2/worksheets/${worksheetId}/lb-writeback/fetch`, body),
+  })
+
+/** POST apply-offline：勾選的 wi_row_ids 套用 LB 的 offline（走正門，任一 E 整批 rollback）。 */
+export const useApplyOffline = (worksheetId: string) =>
+  useMutation({
+    mutationFn: (body: { snapshot_id: string; wi_row_ids: string[] }) =>
+      apiPost<WbApplyResult>(`/api/v2/worksheets/${worksheetId}/lb-writeback/apply-offline`, body),
+  })

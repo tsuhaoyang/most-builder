@@ -18,6 +18,7 @@ import { buildNotices } from './notices'
 import { JobsFlow } from './JobsFlow'
 import { JobDrawer } from './JobDrawer'
 import { LineView } from './LineView'
+import { WritebackPanel } from './WritebackPanel'
 import { Notices } from './Notices'
 import { DevGrid } from './DevGrid'
 
@@ -256,7 +257,10 @@ export function JobsShell({ activeWs }: { activeWs: string }) {
           {subView === 'flow' ? (
             <JobsFlow report={report} editable={editable} onSelect={setSelectedJobId} selectedJobId={selectedJobId} />
           ) : (
-            <LineView report={report} />
+            <div className="space-y-2">
+              <WritebackPanel worksheetId={activeWs} editable={editable} />
+              <LineView report={report} />
+            </div>
           )}
         </div>
         <div className="rounded-xl border border-slate-200 bg-slate-50/40 p-2">
