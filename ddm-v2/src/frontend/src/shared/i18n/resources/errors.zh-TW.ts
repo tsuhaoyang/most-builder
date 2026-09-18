@@ -100,6 +100,10 @@ const errorsZh: ErrorCatalog = {
   INTERNAL_ERROR: '系統內部錯誤，請稍後再試',
   // ── LB 投影匯出（ADR-035 WP8）────────────────────────────────────────
   LB_EXPORT_BLOCKED: 'LB 匯出被擋：{{count}} 個問題需先修正（詳見報告）',
+  LB_WRITEBACK_CONTRACT_MISMATCH: '產線平衡回寫的契約版本不符，無法解讀（需 LB 端更新）',
+  LB_UNREACHABLE: '連不到產線平衡系統，請確認服務與 DDM_LB_API_BASE_URL',
+  LB_TIMEOUT: '產線平衡系統還在回應中或太慢，請稍後再試',
+  LB_NOT_CONFIGURED: '尚未設定產線平衡系統位址（DDM_LB_API_BASE_URL）',
 }
 
 export default errorsZh

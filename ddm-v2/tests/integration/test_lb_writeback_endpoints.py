@@ -181,6 +181,42 @@ async def test_fetch_lb_unreachable_502(client, monkeypatch):
     get_settings.cache_clear()
 
 
+async def test_fetch_lb_timeout_504(client, monkeypatch):
+    if not await _seeded(client):
+        pytest.skip("demo worksheet 未種")
+    import threading
+    import time
+    from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+
+    class _Slow(BaseHTTPRequestHandler):
+        def do_GET(self):  # noqa: N802
+            time.sleep(1.0)  # 慢於 DDM_LB_TIMEOUT_S=0.2 → 逾時
+            self.send_response(200)
+            self.send_header("Content-Length", "2")
+            self.end_headers()
+            self.wfile.write(b"{}")
+
+        def log_message(self, *a):
+            pass
+
+    server = ThreadingHTTPServer(("127.0.0.1", 0), _Slow)
+    threading.Thread(target=server.serve_forever, daemon=True).start()
+    try:
+        monkeypatch.setenv("DDM_LB_API_BASE_URL", f"http://127.0.0.1:{server.server_address[1]}")
+        monkeypatch.setenv("DDM_LB_TIMEOUT_S", "0.2")
+        from ddm_v2.settings import get_settings
+        get_settings.cache_clear()
+        ws, ids, fx = await _make_worksheet(client)
+        r = await client.post(f"/api/v2/worksheets/{ws}/lb-writeback/fetch",
+                              json={"lb_project_id": "P", "lb_version_id": "V", "lb_result_id": "R"})
+        assert r.status_code == 504, r.text
+        assert r.json()["error"]["code"] == "LB_TIMEOUT"
+    finally:
+        server.shutdown()
+        from ddm_v2.settings import get_settings
+        get_settings.cache_clear()
+
+
 async def test_retention_keeps_10(client):
     if not await _seeded(client):
         pytest.skip("demo worksheet 未種")

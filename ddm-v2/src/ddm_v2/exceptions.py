@@ -70,9 +70,19 @@ class ServiceUnavailableError(DomainError):
 class BadGatewayError(DomainError):
     """Upstream service unreachable / returned error (HTTP 502).
 
-    ADR-034 §A4 加法：ADR-036 D7 的「LB 不可達／逾時／5xx」。與設定未就緒（503，
+    ADR-034 §A4 加法：ADR-036 D7 的「LB 不可達／5xx」。與設定未就緒（503，
     ServiceUnavailableError）分開——502 是「上游確實連了但問不到／回錯」，可重試但成因在上游。
     原始上游狀態碼寫 log（見 lb_client），不放進對外 message。
+    """
+
+    pass
+
+
+class GatewayTimeoutError(DomainError):
+    """Upstream service timed out (HTTP 504).
+
+    ADR-034 §A4 加法：ADR-036 D7 的「LB 逾時」（單次操作／總時限）。與 502（連不到／回錯）分開——
+    504 是「上游還在回或太慢」，稍後再試可能成功。
     """
 
     pass

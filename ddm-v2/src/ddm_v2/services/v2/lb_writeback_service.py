@@ -297,9 +297,15 @@ from sqlalchemy import delete, func, select  # noqa: E402
 from sqlalchemy.ext.asyncio import AsyncSession  # noqa: E402
 
 from ddm_v2.errors.registry import ErrorCode  # noqa: E402
-from ddm_v2.exceptions import BadGatewayError, NotFoundError, ServiceUnavailableError, ValidationError  # noqa: E402
+from ddm_v2.exceptions import (  # noqa: E402
+    BadGatewayError,
+    GatewayTimeoutError,
+    NotFoundError,
+    ServiceUnavailableError,
+    ValidationError,
+)
 from ddm_v2.models.v2.lb_writeback import LbRowPlacement, LbWritebackSnapshot  # noqa: E402
-from ddm_v2.services.v2.lb_client import LbRequestFailed, LbUnreachable, fetch_writeback  # noqa: E402
+from ddm_v2.services.v2.lb_client import LbRequestFailed, LbTimeout, LbUnreachable, fetch_writeback  # noqa: E402
 from ddm_v2.settings import get_settings  # noqa: E402
 
 RETENTION_PER_WORKSHEET = 10  # ADR-036 D4
@@ -391,8 +397,16 @@ async def fetch_and_store(
             base_url=s.lb_api_base_url, project_id=lb_project_id, version_id=lb_version_id,
             result_id=lb_result_id, timeout_s=s.lb_timeout_s, auth_header=auth,
         )
+    except LbTimeout as exc:
+        # 逾時（單次操作／總時限）→ 504：LB 還在回應中或太慢，稍後再試。
+        raise GatewayTimeoutError(
+            "LB 還在回應中或太慢，稍後再試", detail={"code": ErrorCode.LB_TIMEOUT}
+        ) from exc
     except LbUnreachable as exc:
-        raise BadGatewayError(f"LB 不可達或逾時：{exc}", detail={"code": ErrorCode.LB_UNREACHABLE}) from exc
+        # 連不到（連線失敗／5xx／非預期狀態）→ 502。
+        raise BadGatewayError(
+            "連不到 LB，請確認服務與 DDM_LB_API_BASE_URL", detail={"code": ErrorCode.LB_UNREACHABLE}
+        ) from exc
     except LbRequestFailed as exc:
         raise BadGatewayError(
             f"LB 回報請求失敗（HTTP {exc.status_code}）", detail={"code": ErrorCode.LB_UNREACHABLE}

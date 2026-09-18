@@ -68,6 +68,11 @@ export const ERROR_CODES = [
   'I18N_REVIEW_TARGET_MISSING',
   // LB projection export (ADR-035 WP8)
   'LB_EXPORT_BLOCKED',
+  // LB writeback consumption (ADR-036)
+  'LB_WRITEBACK_CONTRACT_MISMATCH',
+  'LB_UNREACHABLE',
+  'LB_TIMEOUT',
+  'LB_NOT_CONFIGURED',
 ] as const
 
 export type ErrorCode = (typeof ERROR_CODES)[number]

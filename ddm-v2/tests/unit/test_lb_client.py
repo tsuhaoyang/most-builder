@@ -13,7 +13,7 @@ from pathlib import Path
 
 import pytest
 
-from ddm_v2.services.v2.lb_client import LbRequestFailed, LbUnreachable, fetch_writeback
+from ddm_v2.services.v2.lb_client import LbRequestFailed, LbTimeout, LbUnreachable, fetch_writeback
 
 FIXTURE = Path(__file__).resolve().parents[2] / "docs" / "lb-integration" / "fixtures" / "writeback_sample.json"
 
@@ -103,11 +103,12 @@ async def test_5xx_raises_unreachable():
 
 
 @pytest.mark.asyncio
-async def test_timeout_raises_unreachable():
+async def test_timeout_raises_lb_timeout():
+    # 逾時 → LbTimeout（LbUnreachable 子類）；路由層映 504
     server = _start_server(200, _payload(), delay_s=1.0)
     try:
         base_url = f"http://127.0.0.1:{server.server_address[1]}"
-        with pytest.raises(LbUnreachable):
+        with pytest.raises(LbTimeout):
             await fetch_writeback(
                 base_url=base_url, project_id="P1", version_id="V1", result_id="R1", timeout_s=0.1
             )
@@ -116,11 +117,13 @@ async def test_timeout_raises_unreachable():
 
 
 @pytest.mark.asyncio
-async def test_connection_refused_raises_unreachable():
-    with pytest.raises(LbUnreachable):
+async def test_connection_refused_raises_unreachable_not_timeout():
+    # 連線被拒 → LbUnreachable，且**不是** LbTimeout（映 502 而非 504）
+    with pytest.raises(LbUnreachable) as ei:
         await fetch_writeback(
             base_url="http://127.0.0.1:1", project_id="P1", version_id="V1", result_id="R1", timeout_s=1.0
         )
+    assert not isinstance(ei.value, LbTimeout)
 
 
 @pytest.mark.asyncio

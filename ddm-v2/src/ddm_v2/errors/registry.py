@@ -78,7 +78,8 @@ class ErrorCode(str, Enum):
 
     # --- LB writeback consumption (ADR-036 B5) ---
     LB_WRITEBACK_CONTRACT_MISMATCH = "LB_WRITEBACK_CONTRACT_MISMATCH"  # 422：contract_version 非 lb-most-writeback-v1
-    LB_UNREACHABLE = "LB_UNREACHABLE"                                  # 502：LB 不可達／逾時／5xx
+    LB_UNREACHABLE = "LB_UNREACHABLE"                                  # 502：LB 連不到／5xx／非預期狀態
+    LB_TIMEOUT = "LB_TIMEOUT"                                          # 504：LB 逾時（單次操作／總時限）
     LB_NOT_CONFIGURED = "LB_NOT_CONFIGURED"                            # 503：DDM_LB_API_BASE_URL 未設
 
     # --- WI context / worksheet codes ---

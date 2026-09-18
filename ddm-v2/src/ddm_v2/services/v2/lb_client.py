@@ -1,9 +1,9 @@
 """LB 回寫 client——`GET …/results/{r}/writeback`（ADR-036 D1／B3；契約 LB §8）。
 
-例外分層**分層原則比照 `dsx_client`**（型別分離、雙層 timeout；不自創新語意）：連線失敗／逾時／總時限
-逾時／5xx／其他非預期狀態 → `LbUnreachable`；4xx → `LbRequestFailed(status)`。log 帶原始狀態碼。
-（dsx_client 對非 2xx 走 `raise_for_status()`；此處為了讓 4xx 與 5xx 走不同例外型別，改為顯式狀態碼分段，
-行為對等：4xx→RequestFailed、5xx/3xx/其他→Unreachable。）
+例外分層**分層原則比照 `dsx_client`**（型別分離、雙層 timeout）：**逾時（單次操作／總時限）→ `LbTimeout`**（呼叫端 504）；
+連線失敗／5xx／其他非預期狀態 → `LbUnreachable`（呼叫端 502）；4xx → `LbRequestFailed(status)`。log 帶原始狀態碼。
+`LbTimeout` 是 `LbUnreachable` 子類——既有「不可達即 502」的 except 不變，路由層先判 LbTimeout→504、再判 LbUnreachable→502。
+（ADR-036 D7 維持 502／504：逾時以子類別分出；裁決見 ADR-036 §5。）
 
 ⚠️ 總時限：`httpx.AsyncClient(timeout=timeout_s)` 是單次操作逾時（connect/read/write/pool 各自計時，
 非總時限）——外面再包 `asyncio.timeout(timeout_s)` 當總時限硬上限，逾時一律視同 `LbUnreachable`
@@ -23,7 +23,15 @@ logger = logging.getLogger(__name__)
 
 
 class LbUnreachable(Exception):
-    """LB 連線失敗、逾時，或回報 5xx 服務錯誤（呼叫端 → 502／504）。"""
+    """LB 連不到（連線失敗）或回報 5xx／非預期狀態（呼叫端 → 502）。"""
+
+
+class LbTimeout(LbUnreachable):
+    """LB 逾時：單次操作逾時（`httpx.TimeoutException`）或總時限逾時（`asyncio.timeout`）（呼叫端 → 504）。
+
+    是 `LbUnreachable` 的子類——既有「不可達即 502」的捕捉不變（LbTimeout is-a LbUnreachable），
+    但路由層先判 LbTimeout → 504、再判 LbUnreachable → 502，讓「太慢/還在回」與「連不到」分開。
+    """
 
 
 class LbRequestFailed(Exception):
@@ -57,12 +65,16 @@ async def fetch_writeback(
         async with asyncio.timeout(timeout_s):
             async with httpx.AsyncClient(timeout=timeout_s) as client:
                 resp = await client.get(url, headers=headers)
+    except httpx.TimeoutException as exc:
+        # 單次操作逾時（connect/read/write/pool）——LB 還在回或太慢。TimeoutException 是 TransportError
+        # 的子類，必須先於 TransportError 捕捉。→ 504。
+        raise LbTimeout(f"LB 逾時（單次操作 {timeout_s}s）：{exc}") from exc
     except httpx.TransportError as exc:
-        # TransportError 涵蓋連線失敗與逾時（TimeoutException 是其子類）——問不到。
-        raise LbUnreachable(f"LB 連線失敗或逾時：{exc}") from exc
+        # 其餘 TransportError＝連線失敗（ConnectError/NetworkError）——連不到。→ 502。
+        raise LbUnreachable(f"LB 連線失敗：{exc}") from exc
     except TimeoutError as exc:
-        # asyncio.timeout 的總時限（httpx 逐段都沒超標但總耗時超過）。
-        raise LbUnreachable(f"LB 總時限逾時（{timeout_s}s）：{exc}") from exc
+        # asyncio.timeout 的總時限（httpx 逐段都沒超標但總耗時超過）——LB 太慢。→ 504。
+        raise LbTimeout(f"LB 總時限逾時（{timeout_s}s）：{exc}") from exc
 
     if 400 <= resp.status_code < 500:
         logger.warning("LB writeback 請求失敗（HTTP %s）：%s", resp.status_code, resp.text)

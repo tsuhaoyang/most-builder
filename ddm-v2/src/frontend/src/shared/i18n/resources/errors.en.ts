@@ -96,6 +96,10 @@ const errorsEn: ErrorCatalog = {
   INTERNAL_ERROR: 'An internal error occurred; please try again later',
   // ── LB projection export (ADR-035 WP8) ──────────────────────────────────
   LB_EXPORT_BLOCKED: 'LB export blocked: {{count}} issue(s) must be fixed first (see report)',
+  LB_WRITEBACK_CONTRACT_MISMATCH: 'Line-balancing writeback contract version mismatch; cannot read (LB update needed)',
+  LB_UNREACHABLE: 'Cannot reach the line-balancing system; check the service and DDM_LB_API_BASE_URL',
+  LB_TIMEOUT: 'The line-balancing system is still responding or too slow; please retry later',
+  LB_NOT_CONFIGURED: 'Line-balancing system address not configured (DDM_LB_API_BASE_URL)',
 }
 
 export default errorsEn

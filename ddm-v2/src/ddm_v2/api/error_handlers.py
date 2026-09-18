@@ -24,6 +24,7 @@ from ddm_v2.exceptions import (
     ConflictError,
     DomainError,
     ForbiddenError,
+    GatewayTimeoutError,
     NotFoundError,
     PayloadTooLargeError,
     RateLimitedError,
@@ -97,6 +98,12 @@ def register_exception_handlers(app: FastAPI) -> None:
         """ADR-034 §A4 加法：502（上游不可達／回錯，ADR-036 D7 的 LB 不可達）。走 _envelope。"""
         error_code = (exc.detail or {}).get("code") or ErrorCode.LB_UNREACHABLE
         return _envelope(error_code, exc.message, exc.detail, status.HTTP_502_BAD_GATEWAY)
+
+    @app.exception_handler(GatewayTimeoutError)
+    async def gateway_timeout_handler(request: Request, exc: GatewayTimeoutError) -> JSONResponse:
+        """ADR-034 §A4 加法：504（上游逾時，ADR-036 D7 的 LB 逾時）。走 _envelope。"""
+        error_code = (exc.detail or {}).get("code") or ErrorCode.LB_TIMEOUT
+        return _envelope(error_code, exc.message, exc.detail, status.HTTP_504_GATEWAY_TIMEOUT)
 
     @app.exception_handler(PayloadTooLargeError)
     async def payload_too_large_handler(request: Request, exc: PayloadTooLargeError) -> JSONResponse:
