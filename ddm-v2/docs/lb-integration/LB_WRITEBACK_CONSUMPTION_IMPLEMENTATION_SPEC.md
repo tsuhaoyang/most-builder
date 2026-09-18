@@ -134,7 +134,7 @@
 | 單元 | `tests/unit/test_lb_writeback_diff.py` | matched／unmatched／missing 三類；SIMO 從屬列的 missing 有 reason |
 | 整合 | `tests/integration/test_lb_writeback_endpoints.py` | import → latest → apply-offline（含傳染與 rollback）；未設定 base URL → 503；LB 不可達（mock httpx）→ 502/504；保留策略只留 10 筆 |
 | E2E | `src/frontend/e2e/writeback-line-view.spec.ts` | import 樣本 → 產線視角顯示站別／人／差異 → 套用離線 → 重新載入仍正確 |
-| **待真機驗證** | （手動） | **LB 起服務後跑一次 `fetch` 全鏈**：目前 `fetch` 只用 mock／本機慢速 server 驗過（逾時 504、連線拒 502），尚未對真實 LB 端點跑過一次完整取數→解析→存快照。LB 起實例後補跑一次並記錄結果。 |
+| **真機驗證（已驗 2026-09-18）** | （手動） | LB 直跑 `:8090`（不經 Traefik）跑 `fetch` 全鏈可行。發現：LB **應用本身**檢查身分 header，最小需 `X-User-Id`＋`X-Plant-Code`＋`X-Username` 三個（缺任一 401）——MOST client 已改帶一組 header（`DDM_LB_AUTH_HEADERS`）。當時 `rows=0` 的成因＝**LB 上傳 CSV 標準化丟欄**（`source_wi_row_id`／`role_type`／`general_role`，STD_COL 寫死 22 欄），對應鍵在儲存層即斷——**LB 端缺陷、非 MOST 問題**，LB 修正中。MOST 側管路（設定讀取／呼叫／錯誤分類／訊息）正確。**待 LB 修好後複驗**：rows 應為 34、diff matched 24／missing 0。 |
 
 **fixture**：`docs/lb-integration/fixtures/writeback_sample.json` —— 由 **LB 端實跑**產生（用 LB 的黃金複本結果呼叫 writeback 端點），不得手寫。取得前先確認 LB 分支 `feature/most-integration-phase2` 可跑；取不到就回報，**不要自己捏一份假的**。
 

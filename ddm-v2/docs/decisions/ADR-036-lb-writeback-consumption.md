@@ -101,3 +101,10 @@ D13 同時定下屬性回流規則：可回流的只有 `offline` 這類標籤�
   `LbTimeout` 為 `LbUnreachable` 子類，既有「不可達即 502」的捕捉語意不破（is-a），只是路由層多一層更精準的判斷。
   新增 `LB_TIMEOUT`（獨立碼，前端 catalog 兩語系齊）而非共用 `LB_UNREACHABLE` 改訊息——獨立碼讓前端可各自在地化、
   日後可對逾時做重試 UI。原始上游狀態碼／逾時秒數仍寫 log。
+- **身分 header 一組（2026-09-18，D1 追記落地）**：真機驗證發現 LB 需三個身分 header（見 §2 D1 追記）。
+  MOST client 的單一 `DDM_LB_AUTH_HEADER_NAME` 擴為 **`DDM_LB_AUTH_HEADERS`**（一組 header，CSV `名稱=值,…`
+  或 JSON；值為固定字串或 `@me`＝當前使用者員編，於呼叫時解析）。舊 `DDM_LB_AUTH_HEADER_NAME`（單一，值＝@me）
+  **保留相容但標為 deprecated**（`settings._parse_lb_headers` 仍讀）——選「保留相容」而非移除：避免既有 .env 靜默失效，
+  且遷移成本低（改一行）。LB 回 401／403（缺 header）→ `LbAuthRequired`（`LbRequestFailed` 子類）→ 路由 502 ＋ 碼
+  **`LB_AUTH_REQUIRED`** ＋ 訊息「LB 需要身分 header（X-User-Id／X-Plant-Code／X-Username），請設定 DDM_LB_AUTH_HEADERS」
+  （兩語系齊）——不靜默送出、不誤導為單純連不到。仍符合 D1「認證只能是加法」：掛 Traefik 時只換 base URL 與 header 值來源。

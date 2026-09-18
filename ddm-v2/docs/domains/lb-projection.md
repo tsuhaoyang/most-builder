@@ -29,7 +29,7 @@ LB 求解結果經 `lb-most-writeback-v1` 契約回寫給 MOST（唯讀快照）
 - 端點（`api/routes/v2/lb_writeback.py`）：`POST …/lb-writeback/fetch`（呼叫 LB）、`/import`（測試離線）、`GET …/latest`、`/snapshots`、`POST …/apply-offline`。錯誤碼 `LB_WRITEBACK_CONTRACT_MISMATCH`(422)／`LB_UNREACHABLE`(502)／`LB_NOT_CONFIGURED`(503)。
 - 聚合規則（ADR-036 D6）：同 `source_wi_row_id` → stations 集合、workers 聯集、units 加總；`cross_station`＝多站且**非 general**（general 判定用 MOST 自己的 `is_general`，不從 payload 猜）。
 - 屬性回流只有 `offline`（D2，走 MOST 組內傳染＋R1–R9，任一 E 整批 rollback）；其餘欄位（workers/station/units/line）唯讀；結構欄不回流（D3）。
-- **待真機驗證**：`fetch` 全鏈目前只用 mock／本機慢速 server 驗過（逾時 504、連線拒 502）；**LB 起服務後需跑一次真實 fetch**（取數→解析→存快照）補驗。
+- **真機驗證（已驗 2026-09-18）**：LB 直跑 `:8090`（不經 Traefik）`fetch` 全鏈可行；LB 應用本身需三個身分 header（`X-User-Id`／`X-Plant-Code`／`X-Username`），MOST client 以 `DDM_LB_AUTH_HEADERS` 帶一組 header（值可為固定字串或 `@me`＝當前使用者員編）。當時 `rows=0` 成因＝LB 上傳 CSV 標準化丟欄（source_wi_row_id/role_type/general_role），**LB 端缺陷、非 MOST**，LB 修正中；待修後複驗 rows=34、matched 24。
 - 權威文件：[ADR-036](../decisions/ADR-036-lb-writeback-consumption.md)、[LB_WRITEBACK_CONSUMPTION_IMPLEMENTATION_SPEC.md](../lb-integration/LB_WRITEBACK_CONSUMPTION_IMPLEMENTATION_SPEC.md)、LB §8。
 
 ## 不變量
