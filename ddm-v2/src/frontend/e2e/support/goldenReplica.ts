@@ -3,10 +3,16 @@
  * （同 seq_kind／tool／frequency／repeat 格位／x_seconds／level／lb_tags）。複本 TMU 與黃金不同
  * （DoD-1 排除 duration 欄），但 22 欄語意逐欄相等。
  * 需先以 API 建 vocab（tool 帶 name_en：scanner／electric driver／torque driver；object/component 若干）。
+ * 列 id 一律隨機（wi_rows.id 是全域主鍵）；要和 fixture 對照時，由呼叫端依 seq_no 改寫 fixture 那一側。
  */
 import type { APIRequestContext } from '@playwright/test'
+import { fileURLToPath } from 'node:url'
+import type { components } from '../../src/shared/types/api'
+import path from 'node:path'
 
 const AUTH = { 'X-Username': 'IEC141289' }
+const HERE = path.dirname(fileURLToPath(import.meta.url))
+export const FIXTURES_DIR = path.resolve(HERE, '..', '..', '..', '..', 'docs', 'lb-integration', 'fixtures')
 
 const TOOLS = [
   { key: 'scanner', name_en: 'scanner' },
@@ -128,7 +134,24 @@ export const JOB_NAME: Record<string, string> = {
   O: '外觀目檢', P1: 'ICT 測試', P2: 'ICT 測試', P3: 'ICT 測試',
 }
 
-export function buildGoldenRows(vocab: ReplicaVocab): Array<Record<string, unknown>> {
+/** 複本 24 列依 seq_no 的字母代號（與 server_node_worksheet.json 的 `letter` 同序；呼叫端對齊檢查用）。 */
+export const GOLDEN_LETTERS: readonly string[] = SPECS.map(s => s.letter)
+
+/** 複本一列（PUT /worksheets/{id} 的 WiRowSaveIn 子集；未用到的選填欄不列）。id 一律隨機。 */
+export interface GoldenRow {
+  id: string; seq_no: number; hand: string
+  sub_activity: string | null; key_parts: string | null
+  object_vocab_id: string | null; tool_vocab_id: string | null
+  frequency: number; wi_group: string | null
+  cycle: Record<string, unknown>
+  // 鍵名與型別跟著後端 LevelFieldsIn（api.d.ts 由 OpenAPI 產）走，後端改名時 typecheck:e2e 會紅。
+  level: Pick<components['schemas']['LevelFieldsIn'],
+    'ascription' | 'level' | 'countersignature' | 'parent_countersignature' | 'order'
+    | 'is_general' | 'general_role' | 'offline' | 'segment' | 'worker_cub'
+    | 'station_pin' | 'merge_lock' | 'machine_unattended' | 'action_type'>
+}
+
+export function buildGoldenRows(vocab: ReplicaVocab): GoldenRow[] {
   const vidOf = (name?: string | null): string | null => {
     if (!name) return null
     return vocab.objects[name] ?? vocab.components[name] ?? null
@@ -153,4 +176,39 @@ export function buildGoldenRows(vocab: ReplicaVocab): Array<Record<string, unkno
       action_type: ACTION[s.letter] ?? null,
     },
   }))
+}
+
+/** 回寫驗證複本所在 worksheet 的標記（model_label）；放在 demo worksheet 同一 SKU 下，一次列表即可找回。 */
+export const WRITEBACK_REPLICA_LABEL = 'e2e: LB writeback golden replica'
+
+/**
+ * 回寫驗證用的複本：在 demo worksheet 的 SKU 下找標記的 draft 重存，找不到才新建（自建重用——不每跑一次
+ * 就多一份 clone；快照受保留策略上限 10 筆）。列 id 每次都是新的隨機值：wi_rows.id 是全域主鍵，
+ * 測試不得佔用任何固定 id。同一份 worksheet 會被重存，不可在共用 dev DB 上同時跑兩次。
+ */
+export async function saveWritebackReplica(
+  request: APIRequestContext,
+  demoWorksheetId: string,
+  vocab: ReplicaVocab,
+): Promise<{ worksheetId: string; rows: GoldenRow[] }> {
+  const ver = await request.get(`/api/v2/worksheets/${demoWorksheetId}/versions`, { headers: AUTH })
+  if (ver.status() !== 200) throw new Error(`讀 demo worksheet 版本失敗：${ver.status()} ${await ver.text()}`)
+  const skuId = ((await ver.json()) as { sku_id: string }).sku_id
+
+  const listed = await request.get(`/api/v2/skus/${skuId}/worksheets`, { headers: AUTH })
+  if (listed.status() !== 200) throw new Error(`列 SKU worksheet 失敗：${listed.status()} ${await listed.text()}`)
+  let worksheetId = ((await listed.json()) as Array<{ worksheet_id: string; status: string; model_label: string | null }>)
+    .find(w => w.model_label === WRITEBACK_REPLICA_LABEL && w.status === 'draft')?.worksheet_id
+  if (!worksheetId) {
+    const created = await request.post(`/api/v2/skus/${skuId}/worksheets`, {
+      headers: AUTH, data: { model_label: WRITEBACK_REPLICA_LABEL },
+    })
+    if (created.status() !== 201) throw new Error(`建複本 worksheet 失敗：${created.status()} ${await created.text()}`)
+    worksheetId = ((await created.json()) as { worksheet_id: string }).worksheet_id
+  }
+
+  const rows = buildGoldenRows(vocab)
+  const saved = await request.put(`/api/v2/worksheets/${worksheetId}`, { headers: AUTH, data: { rows } })
+  if (saved.status() !== 200) throw new Error(`存複本失敗：${saved.status()} ${await saved.text()}`)
+  return { worksheetId, rows }
 }
