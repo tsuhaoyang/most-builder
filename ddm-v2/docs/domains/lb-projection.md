@@ -23,6 +23,14 @@
 - 報告加法欄位：`rows[]`、`hints[]`、`params`、`tasks[]`（`include_tasks`）；`contract_version`＝`most-lb-csv-v1.1`。
 - 過渡守衛狀態：`E_TOOL_ID_SHARED_ACROSS_LOT`（維持 E，見 Spec §7.7）；SIMO 從屬列不輸出（定案）；p2／complexity 恆空（過渡）。
 
+## 回寫（消費，反方向；ADR-036）
+LB 求解結果經 `lb-most-writeback-v1` 契約回寫給 MOST（唯讀快照）。契約欄位權威在 **LB `MOST_INTEGRATION_INPUT_SPEC.md` §8**（本 repo 不重述）。
+- 資料表：`lb_writeback_snapshots`（原始 payload＋政策＋applied_at/applied_rows）＋`lb_row_placements`（逐 task：source_wi_row_id/task_id/line_index/station_index/workers[]/units/offline_flag）。保留最近 10 筆/worksheet。
+- 端點（`api/routes/v2/lb_writeback.py`）：`POST …/lb-writeback/fetch`（呼叫 LB）、`/import`（測試離線）、`GET …/latest`、`/snapshots`、`POST …/apply-offline`。錯誤碼 `LB_WRITEBACK_CONTRACT_MISMATCH`(422)／`LB_UNREACHABLE`(502)／`LB_NOT_CONFIGURED`(503)。
+- 聚合規則（ADR-036 D6）：同 `source_wi_row_id` → stations 集合、workers 聯集、units 加總；`cross_station`＝多站且**非 general**（general 判定用 MOST 自己的 `is_general`，不從 payload 猜）。
+- 屬性回流只有 `offline`（D2，走 MOST 組內傳染＋R1–R9，任一 E 整批 rollback）；其餘欄位（workers/station/units/line）唯讀；結構欄不回流（D3）。
+- 權威文件：[ADR-036](../decisions/ADR-036-lb-writeback-consumption.md)、[LB_WRITEBACK_CONSUMPTION_IMPLEMENTATION_SPEC.md](../lb-integration/LB_WRITEBACK_CONSUMPTION_IMPLEMENTATION_SPEC.md)、LB §8。
+
 ## 不變量
 見 `docs/agent-team/domains.yaml` domain `lb-projection` 的 `invariants`（單一權威，本索引不重抄）。
 

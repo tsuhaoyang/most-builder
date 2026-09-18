@@ -78,3 +78,15 @@ D13 同時定下屬性回流規則：可回流的只有 `offline` 這類標籤�
 **代價／風險**：多一組表與端點；v1 直連 LB 無認證——**只可在內網／本機使用**，掛 gateway 前不得對外開放（實作書列為禁止事項）；LB 分支尚未合入其 master，端點可用性依賴該分支部署。
 
 **待裁決（不阻擋實作）**：是否讓回寫結果影響作業版的「秒數」顯示（目前秒數來自 MOST 投影預覽，非 LB 實際排程）；建議 v1 不混用，兩者分開顯示。
+
+---
+
+## 5. 落地追蹤
+
+實作見 [`docs/lb-integration/LB_WRITEBACK_CONSUMPTION_IMPLEMENTATION_SPEC.md`](../lb-integration/LB_WRITEBACK_CONSUMPTION_IMPLEMENTATION_SPEC.md)。
+
+- **落地（2026-09-17，分支 `feature/lb-writeback`）**：fixture（LB `aac992f` 實跑，含 general）`6e1d139`／`c9a64bf`；
+  B1 資料模型 `d01d8f2`；B3 LB client `62bc5fa`；B4 解析/聚合/差異 `dce1415`；B5 五端點＋三錯誤碼 ＋ B6
+  apply-offline（走正門）`9e4f636`；F1–F4 作業版產線視角實際結果＋離線套用 `b978994`。**未 push、未合入。**
+- **待裁決（logic reviewer 提，不阻擋）**：§2 D7「LB 不可達／逾時 → 502／504」——實作（照抄 dsx_client 例外分層）
+  逾時亦收斂 502，無獨立 504。建議 D7 文字改「502（逾時亦歸 502，與 dsx_client 一致）」或反向要求分出 504。

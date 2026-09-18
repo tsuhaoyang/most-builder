@@ -31,6 +31,7 @@
   `PYTHONPATH=src python scripts/core_logic/run_all.py`（黃金 GM=28／CM=29）。
 - **unit 與 integration 分開跑**（同名 `test_search.py`，一起跑 basename 衝突）。
 - **`.kiro/`、`.claude/` 永不 commit**（gitignore）；正本在 `docs/agent-team/`、腳本在 `scripts/agent_team/`。
+- **LB 回寫（ADR-036）v1 直連無認證，只可內網／本機**：`lb-writeback/fetch` 直連 LB base URL、不經 gateway；掛 Traefik 前不得對外開放（ADR-036 §4／禁止事項）。
 
 ## 架構地圖與常用指令
 
