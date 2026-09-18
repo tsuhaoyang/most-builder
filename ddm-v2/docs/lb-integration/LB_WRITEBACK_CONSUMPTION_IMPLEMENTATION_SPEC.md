@@ -134,6 +134,7 @@
 | 單元 | `tests/unit/test_lb_writeback_diff.py` | matched／unmatched／missing 三類；SIMO 從屬列的 missing 有 reason |
 | 整合 | `tests/integration/test_lb_writeback_endpoints.py` | import → latest → apply-offline（含傳染與 rollback）；未設定 base URL → 503；LB 不可達（mock httpx）→ 502/504；保留策略只留 10 筆 |
 | E2E | `src/frontend/e2e/writeback-line-view.spec.ts` | import 樣本 → 產線視角顯示站別／人／差異 → 套用離線 → 重新載入仍正確 |
+| **待真機驗證** | （手動） | **LB 起服務後跑一次 `fetch` 全鏈**：目前 `fetch` 只用 mock／本機慢速 server 驗過（逾時 504、連線拒 502），尚未對真實 LB 端點跑過一次完整取數→解析→存快照。LB 起實例後補跑一次並記錄結果。 |
 
 **fixture**：`docs/lb-integration/fixtures/writeback_sample.json` —— 由 **LB 端實跑**產生（用 LB 的黃金複本結果呼叫 writeback 端點），不得手寫。取得前先確認 LB 分支 `feature/most-integration-phase2` 可跑；取不到就回報，**不要自己捏一份假的**。
 
