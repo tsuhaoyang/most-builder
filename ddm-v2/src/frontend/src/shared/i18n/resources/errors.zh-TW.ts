@@ -103,6 +103,7 @@ const errorsZh: ErrorCatalog = {
   LB_WRITEBACK_CONTRACT_MISMATCH: '產線平衡回寫的契約版本不符，無法解讀（需 LB 端更新）',
   LB_UNREACHABLE: '連不到產線平衡系統，請確認服務與 DDM_LB_API_BASE_URL',
   LB_TIMEOUT: '產線平衡系統還在回應中或太慢，請稍後再試',
+  LB_AUTH_REQUIRED: '產線平衡系統需要身分 header（X-User-Id／X-Plant-Code／X-Username），請設定 DDM_LB_AUTH_HEADERS',
   LB_NOT_CONFIGURED: '尚未設定產線平衡系統位址（DDM_LB_API_BASE_URL）',
 }
 

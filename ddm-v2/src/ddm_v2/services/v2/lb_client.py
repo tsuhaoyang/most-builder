@@ -9,8 +9,10 @@
 非總時限）——外面再包 `asyncio.timeout(timeout_s)` 當總時限硬上限，逾時一律視同 `LbUnreachable`
 （同 `dsx_client.query_distance` 的做法）。
 
-ADR-036 D1：v1 直連、不經 gateway、預設不帶身分 header；`auth_header` 為日後掛 Traefik 預留
-（設了才帶，值＝當前使用者員編），解析／資料模型／UI 屆時一律不動——認證只能是加法。
+ADR-036 D1（＋2026-09-18 追記）：v1 直連、不經 gateway；但 **LB 應用本身檢查身分 header**（真機驗證），
+最小需求 `X-User-Id`＋`X-Plant-Code`＋`X-Username` 三個都要，缺任一 → 401。故 client 帶一組 header
+（`headers` 參數；由 `DDM_LB_AUTH_HEADERS` 設定，值為固定字串或 `@me`＝當前使用者員編）。這仍是加法——
+日後掛 Traefik 只換 base URL 與 header 值來源，解析／資料模型／UI 不動。401／403 → `LbAuthRequired`（提示設定 header）。
 """
 from __future__ import annotations
 
@@ -43,6 +45,11 @@ class LbRequestFailed(Exception):
         super().__init__(f"LB 回報請求失敗（HTTP {status_code}）：{detail}")
 
 
+class LbAuthRequired(LbRequestFailed):
+    """LB 回報 401／403：缺身分 header（ADR-036 D1 追記——LB 應用本身檢查 gateway 身分 header，
+    最小需求 X-User-Id＋X-Plant-Code＋X-Username 三個都要）。呼叫端 → 明確提示設定 DDM_LB_AUTH_HEADERS。"""
+
+
 async def fetch_writeback(
     *,
     base_url: str,
@@ -50,21 +57,21 @@ async def fetch_writeback(
     version_id: str,
     result_id: str,
     timeout_s: float,
-    auth_header: tuple[str, str] | None = None,
+    headers: dict[str, str] | None = None,
 ) -> dict:
     """呼叫 LB writeback 端點，回原始 payload（dict）。
 
     URL：`{base_url}/api/v3/projects/{p}/versions/{v}/results/{r}/writeback`。
+    headers：身分 header 一組（ADR-036 D1 追記；LB 最小需求 X-User-Id/X-Plant-Code/X-Username）。
     """
     url = (
         f"{base_url.rstrip('/')}/api/v3/projects/{project_id}"
         f"/versions/{version_id}/results/{result_id}/writeback"
     )
-    headers = {auth_header[0]: auth_header[1]} if auth_header else None
     try:
         async with asyncio.timeout(timeout_s):
             async with httpx.AsyncClient(timeout=timeout_s) as client:
-                resp = await client.get(url, headers=headers)
+                resp = await client.get(url, headers=headers or None)
     except httpx.TimeoutException as exc:
         # 單次操作逾時（connect/read/write/pool）——LB 還在回或太慢。TimeoutException 是 TransportError
         # 的子類，必須先於 TransportError 捕捉。→ 504。
@@ -76,6 +83,9 @@ async def fetch_writeback(
         # asyncio.timeout 的總時限（httpx 逐段都沒超標但總耗時超過）——LB 太慢。→ 504。
         raise LbTimeout(f"LB 總時限逾時（{timeout_s}s）：{exc}") from exc
 
+    if resp.status_code in (401, 403):
+        logger.warning("LB writeback 缺身分 header（HTTP %s）：%s", resp.status_code, resp.text)
+        raise LbAuthRequired(resp.status_code, resp.text)
     if 400 <= resp.status_code < 500:
         logger.warning("LB writeback 請求失敗（HTTP %s）：%s", resp.status_code, resp.text)
         raise LbRequestFailed(resp.status_code, resp.text)

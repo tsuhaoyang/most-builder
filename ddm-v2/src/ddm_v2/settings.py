@@ -22,6 +22,36 @@ def _parse_bool(value: str | None, fallback: bool) -> bool:
     return value.strip().lower() in {"1", "true", "yes", "on"}
 
 
+def _parse_lb_headers(multi: str | None, single_name_deprecated: str | None) -> dict[str, str]:
+    """DDM_LB_AUTH_HEADERS → 一組身分 header（名稱→值）。ADR-036 D1 追記。
+
+    支援兩種格式：
+      - CSV：`X-User-Id=devuser,X-Plant-Code=WBTEST,X-Username=devuser`
+      - JSON：`{"X-User-Id": "devuser", ...}`
+    值可為固定字串或 `@me`（＝當前使用者員編，於 client 呼叫時解析）。
+    相容（deprecated）：舊 `DDM_LB_AUTH_HEADER_NAME`（單一 header，值＝@me）仍讀，但建議改用 DDM_LB_AUTH_HEADERS。
+    """
+    if multi:
+        s = multi.strip()
+        if s.startswith("{"):
+            import json
+            try:
+                data = json.loads(s)
+                return {str(k): str(v) for k, v in data.items()}
+            except (ValueError, TypeError):
+                return {}
+        out: dict[str, str] = {}
+        for pair in s.split(","):
+            if "=" in pair:
+                k, v = pair.split("=", 1)
+                if k.strip():
+                    out[k.strip()] = v.strip()
+        return out
+    if single_name_deprecated:  # deprecated 相容：單一 header，值＝@me（原設計）
+        return {single_name_deprecated.strip(): "@me"}
+    return {}
+
+
 def _parse_http_url(value: str | None, *, env_var: str) -> str | None:
     """防禦性 scheme 檢查：這個值會被前端原樣塞進 `<iframe src>`，不是即時漏洞
     （ops 控制的設定值），但把「這是頁面網址」這個不變式寫進程式很便宜。格式不符時
@@ -94,10 +124,11 @@ class Settings:
     dsx_integration_enabled: bool
     dsx_timeout_s: float
     dsx_ui_url: str | None
-    # ADR-036 D1：LB 回寫消費（v1 直連，不經 gateway）。base_url 未設 → 端點 503。
+    # ADR-036 D1（＋2026-09-18 追記）：LB 回寫消費（v1 直連，不經 gateway）。base_url 未設 → 端點 503。
     lb_api_base_url: str | None
     lb_timeout_s: float
-    lb_auth_header_name: str | None
+    # 一組身分 header（名稱→值；值為固定字串或 "@me"＝當前使用者員編）。LB 需 X-User-Id/X-Plant-Code/X-Username。
+    lb_auth_headers: dict[str, str]
 
 
 @lru_cache(maxsize=1)
@@ -141,11 +172,14 @@ def get_settings() -> Settings:
         # DSX 的 3D 場景 UI 網址（給人看的頁面，不是 data-service API）——與
         # dsx_integration_enabled 無關：a3 距離查詢開關跟能不能看到 UI 網址是分開的兩件事。
         dsx_ui_url=_parse_http_url(os.getenv("DDM_DSX_UI_URL"), env_var="DDM_DSX_UI_URL"),
-        # ADR-036 D1：LB 回寫端點的直連 base URL（None → 回寫端點 503，不靜默失敗）。
-        # lb_auth_header_name 為日後掛 gateway 預留（設了才帶當前使用者身分 header），v1 預設不設。
+        # ADR-036 D1（＋2026-09-18 追記）：LB 回寫端點的直連 base URL（None → 回寫端點 503）。
+        # DDM_LB_AUTH_HEADERS＝一組身分 header（LB 需 X-User-Id/X-Plant-Code/X-Username 三個）；
+        # 值可為固定字串或 @me（＝當前使用者員編）。舊 DDM_LB_AUTH_HEADER_NAME（單一）deprecated、仍相容。
         lb_api_base_url=os.getenv("DDM_LB_API_BASE_URL") or None,
         lb_timeout_s=float(os.getenv("DDM_LB_TIMEOUT_S", "10.0")),
-        lb_auth_header_name=os.getenv("DDM_LB_AUTH_HEADER_NAME") or None,
+        lb_auth_headers=_parse_lb_headers(
+            os.getenv("DDM_LB_AUTH_HEADERS"), os.getenv("DDM_LB_AUTH_HEADER_NAME")
+        ),
     )
 
 

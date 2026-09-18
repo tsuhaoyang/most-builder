@@ -305,7 +305,13 @@ from ddm_v2.exceptions import (  # noqa: E402
     ValidationError,
 )
 from ddm_v2.models.v2.lb_writeback import LbRowPlacement, LbWritebackSnapshot  # noqa: E402
-from ddm_v2.services.v2.lb_client import LbRequestFailed, LbTimeout, LbUnreachable, fetch_writeback  # noqa: E402
+from ddm_v2.services.v2.lb_client import (  # noqa: E402
+    LbAuthRequired,
+    LbRequestFailed,
+    LbTimeout,
+    LbUnreachable,
+    fetch_writeback,
+)
 from ddm_v2.settings import get_settings  # noqa: E402
 
 RETENTION_PER_WORKSHEET = 10  # ADR-036 D4
@@ -387,20 +393,23 @@ async def fetch_and_store(
     s = get_settings()
     if not s.lb_api_base_url:
         raise _not_configured()
-    auth = (s.lb_auth_header_name, actor) if s.lb_auth_header_name else None
-    url = (
-        f"{s.lb_api_base_url.rstrip('/')}/api/v3/projects/{lb_project_id}"
-        f"/versions/{lb_version_id}/results/{lb_result_id}/writeback"
-    )
+    # 身分 header（ADR-036 D1 追記）：@me → 當前使用者員編；其餘為固定字串。LB 需三個 header 才 200。
+    headers = {k: (actor if v == "@me" else v) for k, v in (s.lb_auth_headers or {}).items()}
     try:
         payload = await fetch_writeback(
             base_url=s.lb_api_base_url, project_id=lb_project_id, version_id=lb_version_id,
-            result_id=lb_result_id, timeout_s=s.lb_timeout_s, auth_header=auth,
+            result_id=lb_result_id, timeout_s=s.lb_timeout_s, headers=headers or None,
         )
     except LbTimeout as exc:
         # 逾時（單次操作／總時限）→ 504：LB 還在回應中或太慢，稍後再試。
         raise GatewayTimeoutError(
             "LB 還在回應中或太慢，稍後再試", detail={"code": ErrorCode.LB_TIMEOUT}
+        ) from exc
+    except LbAuthRequired as exc:
+        # LB 回 401/403：缺身分 header（D1 追記）→ 502＋明確提示設定 DDM_LB_AUTH_HEADERS。
+        raise BadGatewayError(
+            "LB 需要身分 header（X-User-Id／X-Plant-Code／X-Username），請設定 DDM_LB_AUTH_HEADERS",
+            detail={"code": ErrorCode.LB_AUTH_REQUIRED},
         ) from exc
     except LbUnreachable as exc:
         # 連不到（連線失敗／5xx／非預期狀態）→ 502。
@@ -411,7 +420,11 @@ async def fetch_and_store(
         raise BadGatewayError(
             f"LB 回報請求失敗（HTTP {exc.status_code}）", detail={"code": ErrorCode.LB_UNREACHABLE}
         ) from exc
-    return await _consume(session, worksheet_id, worksheet_read, payload, url, actor)
+    source_url = (
+        f"{s.lb_api_base_url.rstrip('/')}/api/v3/projects/{lb_project_id}"
+        f"/versions/{lb_version_id}/results/{lb_result_id}/writeback"
+    )
+    return await _consume(session, worksheet_id, worksheet_read, payload, source_url, actor)
 
 
 async def import_and_store(

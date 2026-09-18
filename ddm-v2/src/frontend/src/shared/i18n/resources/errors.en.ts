@@ -99,6 +99,7 @@ const errorsEn: ErrorCatalog = {
   LB_WRITEBACK_CONTRACT_MISMATCH: 'Line-balancing writeback contract version mismatch; cannot read (LB update needed)',
   LB_UNREACHABLE: 'Cannot reach the line-balancing system; check the service and DDM_LB_API_BASE_URL',
   LB_TIMEOUT: 'The line-balancing system is still responding or too slow; please retry later',
+  LB_AUTH_REQUIRED: 'The line-balancing system requires identity headers (X-User-Id / X-Plant-Code / X-Username); set DDM_LB_AUTH_HEADERS',
   LB_NOT_CONFIGURED: 'Line-balancing system address not configured (DDM_LB_API_BASE_URL)',
 }
 

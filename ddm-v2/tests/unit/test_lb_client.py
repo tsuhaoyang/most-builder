@@ -62,17 +62,74 @@ async def test_success_returns_payload_and_correct_url():
 
 
 @pytest.mark.asyncio
-async def test_auth_header_passed_through_when_set():
+async def test_headers_passed_through_when_set():
     server = _start_server(200, _payload())
     try:
         base_url = f"http://127.0.0.1:{server.server_address[1]}"
         await fetch_writeback(
             base_url=base_url, project_id="P1", version_id="V1", result_id="R1", timeout_s=5.0,
-            auth_header=("X-Username", "IEC141289"),
+            headers={"X-User-Id": "devuser", "X-Plant-Code": "WBTEST", "X-Username": "devuser"},
         )
     finally:
         server.shutdown()
-    assert server.received_headers.get("X-Username") == "IEC141289"
+    # 三個身分 header 都要送達（ADR-036 D1 追記：LB 最小需求）
+    assert server.received_headers.get("X-User-Id") == "devuser"
+    assert server.received_headers.get("X-Plant-Code") == "WBTEST"
+    assert server.received_headers.get("X-Username") == "devuser"
+
+
+def _start_auth_server():
+    """stub：三個身分 header（X-User-Id/X-Plant-Code/X-Username）全到 → 200，缺任一 → 401。"""
+    import threading
+    from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+
+    class _H(BaseHTTPRequestHandler):
+        def do_GET(self):  # noqa: N802
+            need = ("X-User-Id", "X-Plant-Code", "X-Username")
+            ok = all(self.headers.get(h) for h in need)
+            body = (json.dumps(_payload()) if ok else json.dumps({"detail": "missing gateway headers"})).encode()
+            self.send_response(200 if ok else 401)
+            self.send_header("Content-Length", str(len(body)))
+            self.end_headers()
+            self.wfile.write(body)
+
+        def log_message(self, *a):
+            pass
+
+    srv = ThreadingHTTPServer(("127.0.0.1", 0), _H)
+    threading.Thread(target=srv.serve_forever, daemon=True).start()
+    return srv
+
+
+@pytest.mark.asyncio
+async def test_full_headers_200_and_parses():
+    srv = _start_auth_server()
+    try:
+        base_url = f"http://127.0.0.1:{srv.server_address[1]}"
+        out = await fetch_writeback(
+            base_url=base_url, project_id="P", version_id="V", result_id="R", timeout_s=5.0,
+            headers={"X-User-Id": "devuser", "X-Plant-Code": "WBTEST", "X-Username": "devuser"},
+        )
+        assert out["contract_version"] == "lb-most-writeback-v1"
+        assert len(out["rows"]) == 34
+    finally:
+        srv.shutdown()
+
+
+@pytest.mark.asyncio
+async def test_missing_header_raises_auth_required():
+    from ddm_v2.services.v2.lb_client import LbAuthRequired
+    srv = _start_auth_server()
+    try:
+        base_url = f"http://127.0.0.1:{srv.server_address[1]}"
+        with pytest.raises(LbAuthRequired) as ei:
+            await fetch_writeback(
+                base_url=base_url, project_id="P", version_id="V", result_id="R", timeout_s=5.0,
+                headers={"X-User-Id": "devuser"},  # 缺 X-Plant-Code / X-Username → 401
+            )
+        assert ei.value.status_code == 401
+    finally:
+        srv.shutdown()
 
 
 @pytest.mark.asyncio

@@ -217,6 +217,93 @@ async def test_fetch_lb_timeout_504(client, monkeypatch):
         get_settings.cache_clear()
 
 
+async def test_fetch_lb_auth_required_502(client, monkeypatch):
+    """LB 需三個身分 header，未設 DDM_LB_AUTH_HEADERS → LB 回 401 → 502 LB_AUTH_REQUIRED，訊息可辨識。"""
+    if not await _seeded(client):
+        pytest.skip("demo worksheet 未種")
+    import threading
+    from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+
+    class _Auth(BaseHTTPRequestHandler):
+        def do_GET(self):  # noqa: N802
+            need = ("X-User-Id", "X-Plant-Code", "X-Username")
+            ok = all(self.headers.get(h) for h in need)
+            body = (json.dumps({"contract_version": "lb-most-writeback-v1", "rows": []})
+                    if ok else json.dumps({"detail": "missing gateway headers"})).encode()
+            self.send_response(200 if ok else 401)
+            self.send_header("Content-Length", str(len(body)))
+            self.end_headers()
+            self.wfile.write(body)
+
+        def log_message(self, *a):
+            pass
+
+    server = ThreadingHTTPServer(("127.0.0.1", 0), _Auth)
+    threading.Thread(target=server.serve_forever, daemon=True).start()
+    try:
+        monkeypatch.setenv("DDM_LB_API_BASE_URL", f"http://127.0.0.1:{server.server_address[1]}")
+        monkeypatch.delenv("DDM_LB_AUTH_HEADERS", raising=False)
+        monkeypatch.delenv("DDM_LB_AUTH_HEADER_NAME", raising=False)
+        from ddm_v2.settings import get_settings
+        get_settings.cache_clear()
+        ws, ids, fx = await _make_worksheet(client)
+        r = await client.post(f"/api/v2/worksheets/{ws}/lb-writeback/fetch",
+                              json={"lb_project_id": "P", "lb_version_id": "V", "lb_result_id": "R"})
+        assert r.status_code == 502, r.text
+        assert r.json()["error"]["code"] == "LB_AUTH_REQUIRED"
+        assert "DDM_LB_AUTH_HEADERS" in r.json()["error"]["message"]
+    finally:
+        server.shutdown()
+        from ddm_v2.settings import get_settings
+        get_settings.cache_clear()
+
+
+async def test_fetch_full_headers_reaches_lb(client, monkeypatch):
+    """設 DDM_LB_AUTH_HEADERS 三個 header → LB 收到全部 → 200（此處 stub 回空 rows，驗管路通）。"""
+    if not await _seeded(client):
+        pytest.skip("demo worksheet 未種")
+    import threading
+    from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+
+    seen = {}
+
+    class _Auth(BaseHTTPRequestHandler):
+        def do_GET(self):  # noqa: N802
+            for h in ("X-User-Id", "X-Plant-Code", "X-Username"):
+                seen[h] = self.headers.get(h)
+            ok = all(seen.get(h) for h in ("X-User-Id", "X-Plant-Code", "X-Username"))
+            body = json.dumps({"contract_version": "lb-most-writeback-v1", "project_id": "P",
+                               "version_id": "V", "result_id": "R", "unattended_machine_policy": "free",
+                               "unattended_machine_policy_source": "persisted", "rows": []}).encode()
+            self.send_response(200 if ok else 401)
+            self.send_header("Content-Length", str(len(body)))
+            self.end_headers()
+            self.wfile.write(body)
+
+        def log_message(self, *a):
+            pass
+
+    server = ThreadingHTTPServer(("127.0.0.1", 0), _Auth)
+    threading.Thread(target=server.serve_forever, daemon=True).start()
+    try:
+        monkeypatch.setenv("DDM_LB_API_BASE_URL", f"http://127.0.0.1:{server.server_address[1]}")
+        monkeypatch.setenv("DDM_LB_AUTH_HEADERS", "X-User-Id=devuser,X-Plant-Code=WBTEST,X-Username=@me")
+        from ddm_v2.settings import get_settings
+        get_settings.cache_clear()
+        ws, ids, fx = await _make_worksheet(client)
+        r = await client.post(f"/api/v2/worksheets/{ws}/lb-writeback/fetch",
+                              json={"lb_project_id": "P", "lb_version_id": "V", "lb_result_id": "R"})
+        assert r.status_code == 200, r.text
+        # 三個 header 都送達；@me 解析為當前使用者員編（IEC141289）
+        assert seen["X-User-Id"] == "devuser"
+        assert seen["X-Plant-Code"] == "WBTEST"
+        assert seen["X-Username"] == "IEC141289"
+    finally:
+        server.shutdown()
+        from ddm_v2.settings import get_settings
+        get_settings.cache_clear()
+
+
 async def test_retention_keeps_10(client):
     if not await _seeded(client):
         pytest.skip("demo worksheet 未種")
