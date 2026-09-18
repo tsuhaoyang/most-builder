@@ -28,6 +28,14 @@ class LbWritebackContractMismatch(Exception):
         )
 
 
+class LbWritebackMalformed(Exception):
+    """回寫 payload 契約版本對，但 row 缺必要欄位／型別錯（route 映 422，不落 500）。"""
+
+    def __init__(self, detail: str) -> None:
+        self.detail = detail
+        super().__init__(f"回寫 payload 格式錯誤：{detail}")
+
+
 # ── 資料型別（純資料，無 IO）────────────────────────────────────────────────
 
 @dataclass(frozen=True)
@@ -96,18 +104,21 @@ def parse(payload: dict) -> ParsedWriteback:
     cv = payload.get("contract_version")
     if cv != WRITEBACK_CONTRACT_VERSION:
         raise LbWritebackContractMismatch(cv)
-    rows = [
-        RowPlacement(
-            source_wi_row_id=str(r["source_wi_row_id"]),
-            task_id=int(r["task_id"]),
-            offline_flag=bool(r["offline_flag"]),
-            line_index=r.get("line_index"),
-            station_index=r.get("station_index"),
-            workers=list(r.get("workers") or []),
-            units=r.get("units"),
-        )
-        for r in payload.get("rows", [])
-    ]
+    try:
+        rows = [
+            RowPlacement(
+                source_wi_row_id=str(r["source_wi_row_id"]),
+                task_id=int(r["task_id"]),
+                offline_flag=bool(r["offline_flag"]),
+                line_index=r.get("line_index"),
+                station_index=r.get("station_index"),
+                workers=list(r.get("workers") or []),
+                units=r.get("units"),
+            )
+            for r in payload.get("rows", [])
+        ]
+    except (KeyError, TypeError, ValueError) as exc:
+        raise LbWritebackMalformed(f"row 缺必要欄位或型別錯：{exc}") from exc
     return ParsedWriteback(
         contract_version=cv,
         project_id=str(payload.get("project_id", "")),

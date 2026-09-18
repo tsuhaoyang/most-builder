@@ -47,6 +47,10 @@ def _contract_mismatch(exc: wb.LbWritebackContractMismatch) -> ValidationError:
     return ValidationError(str(exc), detail={"code": ErrorCode.LB_WRITEBACK_CONTRACT_MISMATCH, "got": exc.got})
 
 
+def _malformed(exc: wb.LbWritebackMalformed) -> ValidationError:
+    return ValidationError(str(exc), detail={"code": ErrorCode.VALIDATION_ERROR})
+
+
 @router.post("/worksheets/{worksheet_id}/lb-writeback/fetch")
 async def fetch(
     worksheet_id: uuid.UUID, body: FetchIn,
@@ -65,6 +69,8 @@ async def fetch(
         )
     except wb.LbWritebackContractMismatch as exc:
         raise _contract_mismatch(exc) from exc
+    except wb.LbWritebackMalformed as exc:
+        raise _malformed(exc) from exc
 
 
 @router.post("/worksheets/{worksheet_id}/lb-writeback/import")
@@ -84,6 +90,8 @@ async def import_payload(
         )
     except wb.LbWritebackContractMismatch as exc:
         raise _contract_mismatch(exc) from exc
+    except wb.LbWritebackMalformed as exc:
+        raise _malformed(exc) from exc
 
 
 @router.get("/worksheets/{worksheet_id}/lb-writeback/latest")

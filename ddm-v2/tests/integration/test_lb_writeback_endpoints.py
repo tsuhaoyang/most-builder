@@ -128,6 +128,31 @@ async def test_apply_offline_rejects_row_not_in_diffs(client):
     assert r.status_code == 422
 
 
+async def test_apply_offline_rollback_on_projection_error_no_partial_apply(client):
+    """B6 核心保證：套用後任一 E（此處用離散 level 觸發投影 E_LEVEL_INVALID/DISCRETE）→ 整批 rollback，
+    一列都不套（level_entries.offline 全未變）。"""
+    if not await _seeded(client):
+        pytest.skip("demo worksheet 未種")
+    new = (await client.post(f"/api/v2/worksheets/{WS}/clone")).json()["new_worksheet_id"]
+    loose = str(uuid.uuid4())
+    # 離散 level "1/2"（a/b 跳號）→ 投影 E_LEVEL_DISCRETE_UNSUPPORTED / E_LEVEL_INVALID
+    rows = [_row(1, loose, {"level": "1/2"})]
+    assert (await client.put(f"/api/v2/worksheets/{new}", json={"rows": rows})).status_code == 200
+    fx = _fixture()
+    off_row = next(x for x in fx["rows"] if x["offline_flag"])
+    off_row["source_wi_row_id"] = loose
+    imp = (await client.post(f"/api/v2/worksheets/{new}/lb-writeback/import", json=fx)).json()
+    if loose not in {od["wi_row_id"] for od in imp["diff"]["offline_diffs"]}:
+        pytest.skip("此環境未產生 offline_diff（離散 level 可能先擋 diff）")
+    r = await client.post(f"/api/v2/worksheets/{new}/lb-writeback/apply-offline",
+                          json={"snapshot_id": imp["snapshot_id"], "wi_row_ids": [loose]})
+    assert r.status_code == 422, r.text
+    # 一列都不套：offline 仍為 False
+    read = (await client.get(f"/api/v2/worksheets/{new}")).json()
+    row = next(x for x in read["rows"] if x["wi_row_id"] == loose)
+    assert row["lb_tags"]["offline"] is False
+
+
 async def test_fetch_not_configured_503(client, monkeypatch):
     if not await _seeded(client):
         pytest.skip("demo worksheet 未種")

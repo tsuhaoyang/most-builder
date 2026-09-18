@@ -8,6 +8,7 @@ import pytest
 
 from ddm_v2.services.v2.lb_writeback_service import (
     LbWritebackContractMismatch,
+    LbWritebackMalformed,
     MostRowInfo,
     RowPlacement,
     aggregate,
@@ -47,10 +48,10 @@ def test_parse_ignores_unknown_fields():
 
 
 def test_parse_missing_required_row_field_raises():
-    # 必要欄位缺 → Fail-Fast（KeyError），不得靜默塞預設（No error bypass）
+    # 必要欄位缺 → Fail-Fast（LbWritebackMalformed，route 映 422），不得靜默塞預設（No error bypass）
     payload = _payload()
     del payload["rows"][0]["task_id"]
-    with pytest.raises(KeyError):
+    with pytest.raises(LbWritebackMalformed):
         parse(payload)
 
 
