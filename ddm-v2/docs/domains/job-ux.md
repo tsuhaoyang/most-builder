@@ -25,5 +25,5 @@
 見 `docs/agent-team/domains.yaml` domain `job-ux` 的 `invariants`（單一權威，本索引不重抄）。
 
 ## 測試與已知缺口
-- 測試：e2e `level-jobs-logic.spec.ts`（純邏輯 19）、`level-jobs-golden.spec.ts`（DoD-1 兩路徑）、`level-jobs-ui.spec.ts`、`level-jobs-f7.spec.ts`、`level-jobs-plaindiag.spec.ts`、`level-hydrate-tags.spec.ts`、`writeback-line-view.spec.ts`（回寫區塊顯示＋套用離線）、`level-jobs-screenshot.spec.ts`（設計截圖；預設寫 `test-results/`，`UPDATE_SCREENSHOTS=1` 才覆寫 `docs/lb-integration/screenshots/`）。
-- 缺口：~~無（剛落地，文件齊備）。~~ 回寫區塊（ADR-036 F2）：UI 尚未顯示件數不符／無法比對的警告，且 `GET latest` 的任何讀取錯誤都顯示「尚無結果」引導文案——清單見 [LB 回寫消費實作書](../lb-integration/LB_WRITEBACK_CONSUMPTION_IMPLEMENTATION_SPEC.md) §7。
+- 測試：e2e `level-jobs-logic.spec.ts`（純邏輯 19）、`level-jobs-golden.spec.ts`（DoD-1 兩路徑）、`level-jobs-ui.spec.ts`、`level-jobs-f7.spec.ts`、`level-jobs-plaindiag.spec.ts`、`level-hydrate-tags.spec.ts`、`writeback-line-view.spec.ts`（回寫區塊顯示＋套用離線，含套用報告降級提示不該出現的斷言）、`level-jobs-screenshot.spec.ts`（設計截圖；預設寫 `test-results/`，`UPDATE_SCREENSHOTS=1` 才覆寫 `docs/lb-integration/screenshots/`）。
+- 缺口：~~無（剛落地，文件齊備）。~~ 回寫區塊（ADR-036 F2）：UI 尚未顯示件數不符／無法比對的警告，且 `GET latest` 的任何讀取錯誤都顯示「尚無結果」引導文案 → [BL-ENG-3](../BACKLOG.md)（把異常講成正常，三處同一類）；清單與細節見 [LB 回寫消費實作書](../lb-integration/LB_WRITEBACK_CONSUMPTION_IMPLEMENTATION_SPEC.md) §7。

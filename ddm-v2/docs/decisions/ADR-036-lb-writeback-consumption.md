@@ -29,7 +29,7 @@ D13 同時定下屬性回流規則：可回流的只有 `offline` 這類標籤�
 - 設定缺失（`DDM_LB_API_BASE_URL` 未設）→ 503 ＋ 明確訊息（比照 `dsx_service` 既有慣例），不靜默失敗。
 - 另保留 `import`（直接貼上／上傳 payload）路徑：**測試與離線驗證專用**，走同一套解析與驗證程式碼，避免測試繞過產品路徑。
 
-> **D1 追記（2026-09-18，真機驗證發現）**：本節原寫「v1 直連、預設不帶身分 header」——**前提不成立**。實測（LB Phase 2 以 uvicorn 直跑 `:8090`，不經 Traefik）：LB **應用程式本身**就檢查 gateway 身分 header，最小需求是 **三個都要**——`X-User-Id`、`X-Plant-Code`、`X-Username`，缺任一 → 401（writeback 讀取端點亦然）。故 v1 即須帶 header：MOST client 的 `DDM_LB_AUTH_HEADER_NAME`（單一 header）擴為**可設定一組 header**（名稱→值，值可為固定字串或當前使用者員編）。這仍符合本節的「認證只能是加法」——日後掛 Traefik 時只換 base URL 與 header 值來源，解析／資料模型／UI 不動。證據：`GET …/writeback` 帶三 header → 200、少任一 → 401。
+> **D1 追記（2026-09-18，真機驗證發現）**：本節原寫「v1 直連、預設不帶身分 header」——**前提不成立**。實測（LB Phase 2 以 uvicorn 直跑 `:8090`，不經 Traefik）：LB **應用程式本身**就檢查 gateway 身分 header，最小需求是 **三個都要**——`X-User-Id`、`X-Plant-Code`、`X-Username`，缺任一 → 401（writeback 讀取端點亦然）。故 v1 即須帶 header：MOST client 的 `DDM_LB_AUTH_HEADER_NAME`（單一 header）擴為**可設定一組 header**（名稱→值，值可為固定字串或當前使用者員編）。這仍符合本節的「認證只能是加法」——日後掛 Traefik 時只換 base URL 與 header 值來源，解析／資料模型／UI 不動。證據：`GET …/writeback` 帶三 header → 200、少任一 → 401。header **值**的預設配置（`X-User-Id`／`X-Username` 用 `@me`、固定字串屬例外）見 §4〈身分 header 的限制與預設配置〉，本節不重述。
 
 ### D2 屬性回流只有 `offline`，人工確認，走 MOST 正門
 （Howard 裁決）匯入後列出「LB 的 `offline_flag` 與 MOST `level_entries.offline` 不一致」的列；IE 勾選後才套用。套用**重用既有存檔路徑的語意**：寫入 `level_entries.offline` 後跑 MOST 自己的組內傳染（同 cub／同 wcub）與 R1–R9 驗證，不得直接 UPDATE 繞過治理。
@@ -68,7 +68,7 @@ D13 同時定下屬性回流規則：可回流的只有 `offline` 這類標籤�
 > 1. **跨 row 加總錯**。依 LB 端 `docs/adr/ADR-008`（quantity lot `units[s,w]`）D3，Q>1 lot 的 **setup 列**（acquire／release）`units` 記的是 `used`（0／1，跨 worker 加總＝經手人數），**只有 cyclic 列才是件數**。黃金複本動作 I（`electric_driver`，Q=8）三列回 1／8／1，逐列加總得 **10**，實為 **8**。
 > 2. **比對基準錯**。`frequency` 是 motion 層的次數；投影會把持工具 motion 拆成三列，拿 `frequency` 比會對「持工具且 F>1」產生 3F 的假警報。基準應為投影後的 Q。
 > 缺陷為 2026-09-18 真機複驗（§4）所暴露；此前未被發現，是因為比對只看 `frequency` 一欄。
-> **跨 repo 未結項**：LB `MOST_INTEGRATION_INPUT_SPEC.md` §8 尚未定義 `rows[].qty_scope`（LB 端票 B20）。補上前 MOST 顯示的件數一律是 `inferred_max` 推算值。值域必須釘死為小寫 `setup`／`cyclic`、Q=1 不輸出該欄（null）、不得出現 `auto` 等第三值——否則依 D7 追記第 2 點會整份 422。
+> **跨 repo 未結項**：LB `MOST_INTEGRATION_INPUT_SPEC.md` §8 尚未定義 `rows[].qty_scope`（LB 端票 B20）。補上前 MOST 顯示的件數一律是 `inferred_max` 推算值。值域必須釘死為小寫 `setup`／`cyclic`、Q=1 不輸出該欄（null）、不得出現 `auto` 等第三值——否則依 D7 追記（2026-09-18）第 2 點會整份 422。
 > 已知限制（UI 覆蓋範圍等）見 [實作書](../lb-integration/LB_WRITEBACK_CONSUMPTION_IMPLEMENTATION_SPEC.md) §7，本 ADR 不重述。
 
 ### D7 驗證與失敗處理
@@ -84,6 +84,13 @@ D13 同時定下屬性回流規則：可回流的只有 `offline` 這類標籤�
 > 4. **已存快照在現行驗證下讀不回**（驗證收緊前寬鬆匯入的 payload）→ `latest`／`apply-offline` 回 422「請重新取得」，不落 500。與 D4(c) 不衝突：D4(c) 的「契約升版後舊快照仍可解讀」指**原始 payload 留存、事後可解析**，不等於 API 一定讀得回；讀不回就重新取得。
 >
 > 其餘 row 欄位型別錯（`task_id`／index 非整數、`offline_flag` 非布林、`workers`／`units` 形狀錯）同屬整份 422——這部分是 `79d8e4f` 的審查修正（Howard 核可文件化，非獨立裁決），清單見實作書 §2 B4-1。
+
+> **D7 追記（2026-09-21，Howard 指示「照 fetch 的降級模式、本輪不重構投影層」；`a85d89d`）：`apply-offline` 的兩個 500 收掉——一個改 422，一個降級不擋。**
+> 1. **body 的 id 非 UUID → 422**（原本在路由內轉型，落成**無信封 500**）：`snapshot_id`／`wi_row_ids` 改以 UUID 型別收。判準同上方 2026-09-18 追記第 3 點（canonical／32 位無連字號／`{…}`／`urn:uuid:`／大小寫皆放行並正規化），差別是 pydantic 的 parser 比 `uuid.UUID()` **略嚴**——連字號放在怪位置的字串它不收；對正常輸入兩者等價，該邊界以 reject 案例釘住。`wi_row_ids` 另設上限（見實作書 §2 B5）：ADR-034 §D5 的信封會原樣回吐每一筆壞值，無上限時一份壞 payload 會被放大數倍。
+> 2. **投影報告拋例外 → 不 5xx、不 rollback，回 200 並明確標示**：投影層有幾類例外是直接拋出、不收進 `ProjectionResult.errors`（根因＝[BL-ENG-2](../BACKLOG.md)），撞上時 E 碼那一關**無從判定**。照 `fetch` 的 `units_baseline` 同一套降級模式：`report.status="unavailable"` ＋ E 碼與完整診斷，**離線設定照常套用**，R1–R9 仍照常擋。被投影**收集**（而非拋出）的 E 碼行為完全不變——仍整批 rollback ＋ 422。回應欄位形狀見實作書 §2 B6，本節不重述。
+> 3. **這一條不是加法演進（[ADR-011](ADR-011-schema-evolution-and-contract-stability.md) 的明列例外）**：`report.errors` 原本**恆為 `[]`**，現在 `status="unavailable"` 時是 **`null`**（`warnings` 同）。刻意如此——`[]` 等於對消費端斷言「檢查過、沒問題」，但這裡是「沒算出來」；只讀 `errors`、不讀 `status` 的既有消費端**應該炸**，不該把降級讀成一切正常。既有欄位的型別變更必須明記，否則下一個人會當成加法。
+> 4. **降級要留痕**：降級若只活在當下的回應，重整後畫面只剩「已套用」，事後查不到。`applied_rows`（jsonb）是這條路徑唯一的痕跡，故一併記下**套用者**（與快照 `created_by`＝取得者未必是同一人）與報告狀態／E 碼／完整診斷，並由 `latest`／`snapshots` 帶出（欄位見實作書 §2 B6）。
+> 5. **取捨自覺（fail-open）**：實際逃得到這條路的是三類（`QuantityError`／`ToolResolveError`／`TmuDecompositionError`；`PrecedenceError` 在投影層內就被接住轉成收集型 E），而它們本身都攜帶確定的 E 碼，因此「降級 200」等於**閘門跑不起來時放行**。Howard 2026-09-21 裁定本輪維持降級、不重構投影層；收斂根因時要不要翻成 fail-closed（把 E 碼餵進 `proj_errors` → 整批 rollback ＋ 422 `LB_EXPORT_BLOCKED`）是 [BL-ENG-2](../BACKLOG.md) 的待裁項——屬**使用者可見的行為翻轉**，不得當成重構順手做掉。
 
 ---
 
@@ -104,7 +111,13 @@ D13 同時定下屬性回流規則：可回流的只有 `offline` 這類標籤�
 
 **代價／風險**：多一組表與端點；v1 直連 LB 無認證——**只可在內網／本機使用**，掛 gateway 前不得對外開放（實作書列為禁止事項）；LB 分支尚未合入其 master，端點可用性依賴該分支部署。
 
-**身分 header 的限制（2026-09-18 資安複核）**：`DDM_LB_AUTH_HEADERS` 是 MOST **自稱**的身分，LB 不驗（v1 直連、不經 gateway）。值設固定字串時，所有 analyst 在 LB 端共用同一個身分——LB 的紀錄看不出是誰取的（confused deputy）；`@me` 則帶當前使用者員編（來源是 MOST 這端的 gateway-trust 身分）。建議 `X-Username`／`X-User-Id` 用 `@me`、只有 `X-Plant-Code` 用固定值。這不是認證，只是讓 LB 的紀錄能對回真正的操作者；真正的認證仍等掛 gateway（D1）。
+**身分 header 的限制與預設配置（2026-09-18 資安複核；2026-09-21 Howard 裁：由「建議」改為預設＋例外）**：`DDM_LB_AUTH_HEADERS` 是 MOST **自稱**的身分，LB 不驗（v1 直連、不經 gateway）。值設固定字串時，所有 analyst 在 LB 端共用同一個身分——LB 的紀錄看不出是誰取的（confused deputy）；`@me` 則帶當前使用者員編（來源是 MOST 這端的 gateway-trust 身分）。故配置規則為：
+
+- **預設**：`X-User-Id`／`X-Username` 一律設 `@me`。MOST 這端本來就有當前使用者（actor），用 `@me` 沒有額外成本，LB 的紀錄才對得回真正的操作者。
+- **例外**：設固定字串屬例外，**必須在 `.env` 就地以註解註明理由**（為什麼這台／這個用途不能帶操作者）。沒有就地理由的固定身分字串視為設定錯誤。
+- `X-Plant-Code` **維持固定值**（廠別是環境屬性，不是個人身分）。
+
+~~建議 `X-Username`／`X-User-Id` 用 `@me`、只有 `X-Plant-Code` 用固定值。~~（2026-09-21 起不再只是建議，見上。）這不是認證，只是讓 LB 的紀錄能對回真正的操作者；真正的認證仍等掛 gateway（D1）。
 
 **真機驗證（2026-09-18，整合架構師實跑）**：LB Phase 2 直跑 `:8090`（不經 Traefik）→ 建專案（上傳黃金 tasks.csv）→ 求解 → `GET …/writeback`。結果：(a) 契約版本與機台政策欄正確；(b) **`rows` 為 0** —— LB 專案建立時的 CSV 標準化（`infrastructure/csv/csv_service.py::process_uploaded_file`）用寫死的 STD_COL 清單，丟掉 `source_wi_row_id`／`role_type`／`general_role`（存下來 22 欄，上傳為 24 欄），對應鍵在儲存層即斷；影響不只回寫，`role_type=machine`（D9）與 `general_role`（D4）走真實上傳路徑同樣失效。~~LB 端修正中。~~ **已修**（LB `c0cb244`；複驗見下段）。(c) MOST `fetch` 對真 LB 回 502 `LB_UNREACHABLE`（HTTP 401），MOST 側管路正確，成因見 D1 追記。
 
@@ -134,11 +147,18 @@ D13 同時定下屬性回流規則：可回流的只有 `offline` 這類標籤�
   日後可對逾時做重試 UI。原始上游狀態碼／逾時秒數仍寫 log。
 - **身分 header 一組（2026-09-18，D1 追記落地；`224e143`）**：真機驗證發現 LB 需三個身分 header（見 §2 D1 追記）。
   MOST client 的單一 `DDM_LB_AUTH_HEADER_NAME` 擴為 **`DDM_LB_AUTH_HEADERS`**（一組 header，CSV `名稱=值,…`
-  或 JSON；值為固定字串或 `@me`＝當前使用者員編，於呼叫時解析）。舊 `DDM_LB_AUTH_HEADER_NAME`（單一，值＝@me）
+  或 JSON；值為固定字串或 `@me`＝當前使用者員編，於呼叫時解析；**哪個 header 該用哪種值見 §4**）。舊 `DDM_LB_AUTH_HEADER_NAME`（單一，值＝@me）
   **保留相容但標為 deprecated**（`settings._parse_lb_headers` 仍讀）——選「保留相容」而非移除：避免既有 .env 靜默失效，
   且遷移成本低（改一行）。LB 回 401／403（缺 header）→ `LbAuthRequired`（`LbRequestFailed` 子類）→ 路由 502 ＋ 碼
   **`LB_AUTH_REQUIRED`** ＋ 訊息「LB 需要身分 header（X-User-Id／X-Plant-Code／X-Username），請設定 DDM_LB_AUTH_HEADERS」
   （兩語系齊）——不靜默送出、不誤導為單純連不到。仍符合 D1「認證只能是加法」：掛 Traefik 時只換 base URL 與 header 值來源。
 - **黃金複本不佔固定 id（2026-09-18，Howard 裁；`959f4f1`＋`6b9fa7b`）**：複驗初期沿用 fixture 固定 id 建黃金複本，因 `wi_rows.id` 是全域主鍵而清掉了共用 dev DB 的 worksheet `e9299cab`。Howard 裁定佔用固定 id 是測試設計缺陷：`959f4f1` 記錄把該 worksheet 原樣還原的資料操作；`6b9fa7b` 把複本改為一律隨機 id（離線 `import` 依 seq_no 改寫 fixture 的 `source_wi_row_id`），並把真機全鏈自動化（§4 複驗）。
-- **LB 座標格式驗證（2026-09-18，Howard 裁：現在修、不開票；`dcbb9a5`）**：見 §2 D7 追記第 1 點。
-- **件數語意（2026-09-18，Howard 裁：C＋退路；`79d8e4f`）**：見 §2 D6 件數註記。API 加法欄位 `diff.motions.<wi_row_id>.units_source`、`diff.units_uncomparable`、`summary.units_baseline`（`summary.motions` 是計數，不是這裡的物件；定義見實作書 §2 B4）；同一 commit 收緊 payload 驗證並讓讀不回的舊快照回 422（§2 D7 追記第 2–4 點）。已知限制見實作書 §7。
+- **LB 座標格式驗證（2026-09-18，Howard 裁：現在修、不開票；`dcbb9a5`）**：見 §2 D7 追記（2026-09-18）第 1 點。
+- **件數語意（2026-09-18，Howard 裁：C＋退路；`79d8e4f`）**：見 §2 D6 件數註記。API 加法欄位 `diff.motions.<wi_row_id>.units_source`、`diff.units_uncomparable`、`summary.units_baseline`（`summary.motions` 是計數，不是這裡的物件；定義見實作書 §2 B4）；同一 commit 收緊 payload 驗證並讓讀不回的舊快照回 422（§2 D7 追記（2026-09-18）第 2–4 點）。已知限制見實作書 §7。
+- **`apply-offline` 的兩個 500（2026-09-21，Howard 指示：照 fetch 的降級模式、本輪不重構投影層；`a85d89d`）**：見 §2 D7
+  追記（2026-09-21）。body 的 `snapshot_id`／`wi_row_ids` 改收 UUID 型別（非 UUID → 422，另設筆數上限）；投影報告拋例外
+  → 200 ＋ `report.status="unavailable"`，`errors`／`warnings` 轉 `null`——**既有欄位的型別變更，不是加法**（追記第 3 點）。
+  降級一併留痕於 `applied_rows`（套用者、報告狀態、E 碼、完整診斷），由 `latest`／`snapshots` 帶出，UI 為常駐一行（欄位與
+  testid 見實作書 §2 B6／§3 F2）。同一 commit 補齊回寫五支端點的 RBAC 測試（viewer 打寫入端點 → 403；[BL-ENG-4](../BACKLOG.md)
+  的主要範圍，權限規則本身不變）。後續 `603b83f` 收掉「留痕本身會 500」的兩條（NaN／inf 的 params、無長度上限的
+  `message`）並把絆線測試收緊——**降級路徑的任何一段都不准再丟出無信封 500**，做法見實作書 §2 B6-4。

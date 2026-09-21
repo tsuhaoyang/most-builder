@@ -46,13 +46,13 @@ MOST→LB 匯出的語意以 [MOST_LB_DATA_CONTRACT_SPEC.md](lb-integration/MOST
 | motion-module | [domains/motion-module.md](domains/motion-module.md) | 動作範本庫／WI 大綱 | BL-DOC-3 |
 | nlp-compiler | [domains/nlp-compiler.md](domains/nlp-compiler.md) | NL→MOST 編譯與 LLM planner | BL-DOC-2 |
 | rule-set | [domains/rule-set.md](domains/rule-set.md) | 版本治理與回放 | **BL-DOC-1** |
-| lb-projection | [domains/lb-projection.md](domains/lb-projection.md) | motion→task 投影與匯出契約 | — |
-| job-ux | [domains/job-ux.md](domains/job-ux.md) | 作業版（反投影，無 LLM） | — |
+| lb-projection | [domains/lb-projection.md](domains/lb-projection.md) | motion→task 投影與匯出契約 | BL-ENG-1／BL-ENG-2 |
+| job-ux | [domains/job-ux.md](domains/job-ux.md) | 作業版（反投影，無 LLM） | BL-ENG-3 |
 | i18n | [domains/i18n.md](domains/i18n.md) | 雙語標籤與錯誤信封 | — |
 | excel-import | [domains/excel-import.md](domains/excel-import.md) | Excel／CSV 匯入 | BL-DOC-5 |
 | auth-rbac | [domains/auth-rbac.md](domains/auth-rbac.md) | 認證／RBAC／稽核／搜尋 | BL-DOC-4 |
 
-有程式、缺單一權威規格的區域列於 [BACKLOG.md](BACKLOG.md)（BL-DOC-1…5，優先序見該檔）；對應領域索引誠實標「現況以程式為準」。
+[BACKLOG.md](BACKLOG.md) 收**兩類票**（2026-09-21 起，分類定義見該檔檔頭）：**BL-DOC-1…5**＝有程式、缺單一權威規格的區域（對應領域索引誠實標「現況以程式為準」，不現場編規格）；**BL-ENG-1…3**＝程式／UI 的已知缺陷或待統一項（讓文件裡的「另案」有編號可追）。優先序見該檔。
 
 ## 核心邏輯
 

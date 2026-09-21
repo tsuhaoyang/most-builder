@@ -1,8 +1,13 @@
-# docs BACKLOG — 文件缺口票（WP-D1 盤點 → WP-D2 開票）
+# docs BACKLOG — 缺口票
 
-> **性質**：有程式、缺單一權威規格的區域。**不得現場編規格**（WP-D2 只開票、領域索引誠實標「現況以程式為準」）；
-> 補 spec 需另行排程並經核准。優先序由 Howard 裁定（2026-09-17）。
-> 每票：領域、現況、影響、建議補的 spec 範圍。
+> **兩類票**（2026-09-21 起）：
+> - **`BL-DOC-n` 文件缺口票**（WP-D1 盤點 → WP-D2 開票）：有程式、缺單一權威規格的區域。**不得現場編規格**
+>   （只開票、領域索引誠實標「現況以程式為準」）；補 spec 需另行排程並經核准。
+>   每票：領域、現況、影響、建議補的 spec 範圍。
+> - **`BL-ENG-n` 工程票**：程式／UI 的已知缺陷或待統一項，開票是為了讓「另案」有編號可追。
+>   每票：領域、現況、影響、建議做法、對應文件。
+>
+> 優先序由 Howard 裁定（2026-09-17）。
 
 ## BL-DOC-1（最高）— rule-set 生命週期規格
 - 領域：`rule-set`
@@ -33,3 +38,154 @@
 - 現況：ADR-013 僅骨架（2KB）；staging→submit、column_map、TARGET_FIELDS、profile 重用的細節散在 `import_service.py`。
 - 影響：匯入兩階段流程與欄位對應規則無完整 spec。
 - 建議 spec 範圍：staging schema、column_map 驗證（缺 description 擋）、TARGET_FIELDS（含 wi_group）、rule-set 缺庫時 fallback 的報告義務、profile 重用。
+
+---
+
+# 工程票（BL-ENG）
+
+## BL-ENG-1 — offline 組內傳染兩份實作，統一為共用函式
+- 領域：`lb-projection`（回寫 apply-offline）、`job-ux`（作業版 store）
+- 現況：同一條「同 `countersignature` cub 或同 `worker_cub` wcub 一起翻 offline」的規則有兩份實作——後端
+  `src/ddm_v2/services/v2/lb_writeback_service.py` 的 `_group_members()`（權威），前端
+  `src/frontend/src/features/level-system/store.ts` 的 `toggleOffline()`（UX 即時回饋）。後端註解自述「規則與前端一致」，
+  但一致性只靠人維護，沒有任何測試或守衛把兩邊綁在一起。
+- 影響：任一側改了傳染規則（例如日後把 `segment` 或 `station_pin` 納入同組），另一側會靜默不同步：前端顯示的
+  連動範圍與後端實際寫入的不一致，IE 勾選後看到的結果和畫面預期不同。
+- 建議做法：把傳染規則抽成單一來源（後端純函式 ＋ 前端以相同輸入呼叫，或前端改為送出後以後端回應的 `propagated`
+  為準、不自行預測），並補一條「兩側對同一組輸入得到相同傳染集合」的測試。
+- 一併處理（2026-09-21 審查發現）：兩份實作的**比對判準本身**也不一致——後端 `_group_members()` 以原始字串比對
+  `countersignature`／`worker_cub`，前端 store 走 `mappers.group_id` 的數值判準。即使規則文字一致，前後空白或
+  `"01"` vs `1` 這類寫法差異就會讓兩邊算出不同的組。統一時要連判準一起定死（以哪一側為準需在票內裁定）。
+- 對應文件：實作書 `LB_WRITEBACK_CONSUMPTION_IMPLEMENTATION_SPEC.md` §2 B6-2 與 §7 (f) 指向本票。
+
+## BL-ENG-2 — 投影層「拋出例外」而非「收集 E 碼」
+- 領域：`lb-projection`
+- 現況：`src/ddm_v2/lb_projection/` 對部分 E 碼是直接 `raise`（`QuantityError`／`ToolResolveError`／
+  `TmuDecompositionError`／`PrecedenceError`），不像其餘 E 碼收進 `ProjectionResult.errors`。`project_rows()` 只捕捉
+  `PrecedenceError`。凡是呼叫投影的路徑都要各自防守：回寫件數基準已降級（`_units_baseline` 標
+  `units_baseline=unavailable`）、apply-offline 的投影報告已降級（`report.status=unavailable`），但
+  `GET /export/lb-report`、`GET /export/lb-csv` 對同一批 worksheet 仍會落成無信封 500。
+- 影響：使用者存得進去的 worksheet 狀態（例如持工具列同時設 frequency>1 與 repeat>1、非整數 frequency）會讓
+  匯出端點 500；每個呼叫端都要重複寫一次 try/except，漏一個就是 500。`export.py` 對 lb-report 宣稱的「永遠回報告」
+  也因此不成立。
+- 建議做法：把四類例外在投影層收成 E 碼（`ProjectionResult.errors`），讓「E 碼擋、不拋例外」成為單一規則；
+  之後移除各呼叫端的防守性 try/except。**動到投影層必跑黃金驗收**（`tests/unit/test_lb_projection_golden.py`
+  逐位元 34 列、`scripts/core_logic/run_all.py` 不受影響）。
+- **完成條件要先裁決一件事（2026-09-21，lb-projection reviewer 提案，待 Howard 裁）**：實際逃得到降級路徑的是**三類**
+  （`QuantityError`／`ToolResolveError`／`TmuDecompositionError`；`PrecedenceError` 在 `project.py` 內就被接住
+  轉成收集型 E，服務端仍列著它只是縱深），而這三類**都攜帶確定的 E 碼**，所以 apply-offline 目前的降級
+  等於「閘門跑不起來時放行」（fail-open）。reviewer 主張把 E 碼餵進
+  `proj_errors`（約三行）即可整批 rollback ＋ 422 `LB_EXPORT_BLOCKED`（fail-closed）；Howard 在 2026-09-21 指定
+  本輪維持降級 200。本票收斂時會**翻轉這個行為**，屬於使用者可見的變更，不得當成重構順手做掉——
+  需 Howard 明示採 fail-open 或 fail-closed，並同步實作書 §7 (g) 與 UI 文案。
+- **降級跳過的那一關，正好包含這個操作自己可能製造出來的 E**（2026-09-21 查證）：`E_OFFLINE_INCONSISTENT`
+  是收集型，由 validator 在 `project_rows` 最尾端產生；三類拋出型例外全在它之前拋出，投影一拋例外
+  validator 根本沒跑。而傳染與投影的分組判準不等價——傳染用 `countersignature` 原字串相等、投影的 group
+  用 `cub\d+` 取出的數字，`"cub1"` 與 `"cub01"` 不互相傳染卻落進同一個 group。正常情況這一關會擋，
+  降級時不會。機率低但路徑真實。（分組判準本身見 BL-ENG-1。）
+- **收斂時必須守住的三件事（2026-09-21 lb-projection reviewer）**：
+  (1) 不得改用 `report_status`／`report_errors` 這兩個 key 表達別的意思——既有歷史列會被誤讀；
+  (2) 收斂後 `detail.projection_errors` 別再只留裸 code，否則新路徑保留的資訊反而比現在少；
+  (3) `lb_writeback_service` 目前是**手抄**一份 `lb_projection/report.py` 的 `_err_dict`；那邊哪天加第 5 欄，
+      這份持久化的複本會無聲落後、落差烙進歷史列。收斂時把 `_err_dict` 匯出共用。
+- 對應文件：ADR-035（投影層 E/W 碼）、實作書 §7 (g) 與本票。
+
+## BL-ENG-3 — 回寫產線視角把異常講成正常（五處，同一類）
+- 領域：`job-ux`（`src/frontend/src/features/level-system/WritebackPanel.tsx`）
+- 現況：
+  1. `GET …/lb-writeback/latest` 的**任何**失敗（404／5xx／舊快照 422）都落到同一分支，畫面顯示
+     「這份工序表還沒有產線平衡的實際結果」——把「讀取失敗」說成「還沒有結果」。
+  2. 站別文案只看 `stations.length > 1` 就顯示「每站都有（通用步驟）」，非通用動作被排到多站時，會同時出現
+     「每站都有（通用步驟）」與「⚠ 同一步驟被排到不同站」兩句互相矛盾的話。
+  3. offline 動作的 `stations` 為空，`(stations[0] ?? 0) + 1` 算出 1，顯示成「排到第 1 站，0 個人做」——
+     實際是離線先做、不排站。
+  4.（2026-09-21 新增）apply-offline 降級時，`applied_report_reasons`（E 碼）**存了但畫面從不顯示**，
+     作業者看得到「那一關沒跑」卻查不到原因。`levelSystem.plain.*` 已有這四類 E 碼的中英可執行文案，
+     缺的是把 code 接上去：但 `reasons` 目前只帶裸 code（`[exc.err.code]`），不帶 `wi_row_id`／params，
+     直接餵 `plainDiag` 會渲染出 `{{step}}` 空洞殘句。要指路得先讓 reasons 帶上 `exc.err.wi_row_id`
+     （後端已有、目前只寫進 log）。**2026-09-21 更新**：完整診斷已改為存進 `applied_rows.report_errors`
+     並由 `latest`／apply 回應帶出（`{code, wi_row_id, message, params}`，形狀與 `plainDiag` 吃的
+     `LbReportDiag` 逐欄相同，`stepOf` 直接傳 `WritebackPanel` 既有的 `label`）——**接線本身現在只差 UI**。
+     接上去之前要先修一個既存的鍵名不匹配：`notices.ts` 讀 `params.freq`，投影層存的是 `params.frequency`
+     （`lb_projection/quantity.py`），`E_TOOL_FRACTIONAL_FREQUENCY` 會渲染成「（目前 ）」。
+     建議改 `params.freq ?? params.frequency`（加法、不動投影層、不必重跑黃金驗收）。
+     另注意：此時 `GET /export/report` 本身也 500（BL-ENG-2），作業版的「要處理」清單同樣是空的——
+     兩票要一起看才有完整的下一步。
+  5.（2026-09-21 新增，**嚴重度最高的一處**）`JobsShell.tsx` 的預覽 `onError` **只有 422 會設 `previewError`**，
+     其他狀態碼（含投影例外造成的 500）只 `setUpdating(false)`、**不清掉上一次成功的 `report`**。於是
+     `ready===true`、`errCount===0` → 頂端顯示綠色 pill「可以交出」，且「儲存並交給產線平衡」按鈕是 enabled，
+     按下去導向的 `/export/lb-csv` 對同一份工序表會落成 500。預設子檢視就是這個視角（產線視角要手動切）。
+     **修法（job-ux reviewer 2026-09-21 提供，約 8 行、0 個新 i18n key）**：加 `previewUnavailable` state；
+     `onSuccess` 清成 false；`onError` 的非-422 分支設 `setReport(null)` ＋ `setPreviewUnavailable(true)`；
+     **`{!ready && !previewUnavailable && <preview-updating>}`**（這一行就是「會永遠停在更新中」的解——
+     不加這一攔截才會卡住，不是不能修）；pill 加第三態 `pill-preview-unavailable`，可直接用既有但零引用的
+     `levelSystem.jobs.preview.failed`（zh/en 都已存在）；匯出按鈕 `disabled` 加 `|| previewUnavailable`。
+     reviewer 的評估：正常路徑逐位元不變，既有 e2e（`pill-ok`／`preview-updating`）不受影響。
+     **注意**：預覽失敗不只源自 BL-ENG-2（DB 中斷、gateway 逾時、部署中都會），所以這個第三態是常設需求，
+     不是 BL-ENG-2 的附屬品——修好根因後仍應保留。
+- 影響：四者都讓異常看起來像正常狀態，IE 不會去查。這是同一類錯誤（顯示層沒有分辨資料的語意），分開修會東補西補。
+- 建議做法：一次處理顯示語意——讀取失敗與「無快照」分開（沿用 ADR-034 catalog 的訊息）、站別文案改依
+  `cross_station`／`is_general`／`offline` 決定、offline 用作業版既有的「離線先做」用語；並補 e2e 斷言三種狀態。
+- 對應文件：實作書 §3 F2、§7 (d)(e) 與本票。
+
+## BL-ENG-4 — 回寫五支端點沒有 RBAC 測試
+- 領域：`auth-rbac`（`src/ddm_v2/api/routes/v2/lb_writeback.py`）
+- 現況：五支端點的權限已依 ADR-019 標好（讀 viewer+、寫 `require_role("analyst")`），但整合測試一律以具權限的
+  client 呼叫，沒有任何一支驗證「viewer 打寫入端點得 403」。權限裝飾被誤刪或誤改成 `current_user` 時，測試全綠。
+- 影響：回寫是**會改別人工序表**的寫入路徑（apply-offline 直接改 `lb_tags.offline`），權限退化不會被擋住。
+- **本輪已補（2026-09-21）**：`tests/integration/test_lb_writeback_endpoints.py` 加了兩組參數化測試——
+  `fetch`／`import`／`apply-offline` 以 viewer 身分 → 403，`latest`／`snapshots` → 不得 403。突變驗證：
+  把 apply-offline 的 `require_role("analyst")` 降成 `current_user` → 該測試轉紅。
+  作法不需要新 fixture（票原本寫「主要成本是 conftest fixture」是錯的）：丟一個從未出現過的員編當
+  `X-Username`，`current_user` 就 JIT 出 `roles=[]` 的 viewer（既有 pattern 在
+  `tests/integration/test_i18n_review_mutations.py` 的 `_viewer_headers`）。
+- **剩餘範圍**：其餘 v2 端點的 RBAC 覆蓋率未盤點；本票縮小為「把同一組 viewer 斷言推廣到其他寫入端點」。
+- 對應文件：ADR-019、`docs/architecture/rbac-spec.md`。
+
+## BL-ENG-5 — apply-offline 的留痕會被蓋掉、被刪掉，且「被 E 碼擋下」那條完全不留紀錄
+- 領域：`lb-projection`（回寫）、`auth-rbac`（稽核）
+- 現況（2026-09-21 lb-projection reviewer 逐行查證）：`applied_rows` 是**整份覆寫**的 JSONB，不是 append-only。
+  1. **被蓋**：同一快照可被套用第二次（每次重算 `offline_diffs`，其他仍有差異的列仍在清單內）。
+     「投影壞掉時套 A（unavailable）→ 修好後套 B（ok）」會把 `report_status`／`report_errors` 蓋成 ok／空，
+     降級那次的紀錄與前端琥珀提示一起消失。
+  2. **被刪**：`_enforce_retention` 按 `fetched_at` 刪第 10 筆以後的快照，**不看 `applied_at`**。
+     再 fetch 10 次，「沒跑投影就套用」的證據連同 payload 一起刪掉。
+  3. **擋下那條不留紀錄**：E 碼存在 → rollback ＋ 422，整件事**完全沒有紀錄**，且 `detail.projection_errors`
+     只留裸 code。「jsonb 歷史現在不存、日後救不回」這個理由同樣適用於它。
+- 影響：回寫是會改別人工序表的寫入路徑，而本 service **沒有任何 audit 寫入**（grep `audit|log_action|AuditLog`
+  無結果），`applied_rows` 是唯一痕跡——而它會被蓋、會被刪。事後要問「這批 offline 是誰在什麼狀態下套的」答不出來。
+- 建議做法：改用現成的 append-only 設施 `workflow_audit_log`（`services/v2/audit_service.py`，ADR-018 裁決 3
+  「僅追加」）。**不是順手改**：`entity_type` 值域在 DB CHECK 裡，加值要走 migration，屬決策層級。
+  `level_validation_runs` 不能代替（同 `input_hash` 直接回既有列，是內容鍵不是動作紀錄）。
+- 對應文件：ADR-018（稽核）、ADR-036、ADR-019。
+
+## BL-ENG-6 — 422 信封原樣回吐輸入值，缺 body 大小上限
+- 領域：全域（`src/ddm_v2/api/error_handlers.py`）
+- 現況（2026-09-21 資安審查實測，fastapi 0.141.1／pydantic 2.13.4）：`VALIDATION_ERROR` 的 detail 直接用
+  `jsonable_encoder(exc.errors())`，pydantic 每筆錯誤都帶 `input`（原樣輸入值）。
+  回寫 `apply-offline` 加了 `max_length=1000` 之後，1000 筆以內的天花板約 285 KB（最壞比例仍 60×：
+  1000 個空字串 4 KB → 247 KB）；超過上限雖只剩一筆 `too_long`，但它的 `input` **是整份 list**——
+  4 MB 請求換 3.9 MB 回應（1:1），100 MB 換 100 MB。全專案沒有 body 大小上限（uvicorn 未設，
+  只有 `import_excel.py` 自己擋上傳檔 10 MiB），而 ADR-036 §4 的回寫又是不經 gateway 直連。
+  同一支路由的 `import` 端點 `payload: dict` 也完全無上限。
+- 影響：單一請求即可讓後端讀入整包 body 再序列化一份回吐，放大或等量；這是全端點共通面，不只回寫。
+- 建議做法：在 `error_handlers` 截斷（留前 N 筆錯誤、砍過長 `input`）——一改全端點受益。
+  **注意**：ADR-034 §D5 明寫 detail「原封不動」，所以這是**契約變更**，要 ADR 追記，不是順手改。
+  另可在部署層（uvicorn／Traefik）加 body 上限，但掛 gateway 前不成立。
+- 對應文件：ADR-034 §D5、ADR-036 §4。
+
+## BL-ENG-7 — level 範圍展開無上界：11 字元的輸入可讓每次讀取吃掉數十 GB
+- 領域：`most-engine`／`level-system`（`src/ddm_v2/most_engine/level.py`、`src/ddm_v2/schemas/v2/most.py`）
+- 現況（2026-09-21 資安審查實測）：`_parse_level` 對 `a~b` 直接 `set(range(lo, hi + 1))`，**沒有跨距上限**；
+  上游 `level` 在 schema 是裸 `str | None`（無 `pattern`、無 `max_length`），DB 是 `Text`。
+  於是 `level="1~999999999"`（11 字元）存得進去、存檔不擋，之後**每一次**投影都會展開這個集合——
+  實測 `1~5000000` 為 0.39 秒／294 MB，外推 `1~999999999` 約 57 GB／77 秒。
+  同類的還有 `level='1/'*200000+'1'`（400 KB）可通過 `_parse_level` 與 R1–R9。
+- 影響：任何 analyst 存一次，之後**每個 viewer** 呼叫 `lb-writeback/latest`（或任何走投影的端點）都會觸發，
+  形同放在資料裡的定時炸彈；不需要重複發請求。ADR-036 §4 的回寫又是不經 gateway 直連。
+- 建議做法：**需要 Howard 先裁一件事——合法 level 的上界是多少**（工程上 level 是動作層級，實務值遠小於 100）。
+  裁定後兩邊一起收：schema 加 `pattern`／`max_length`（擋掉超長與超大數字），`level.py` 對跨距加明確上限並
+  回既有的 `R7_LEVEL_FORMAT`。**動到 level → 必過 `PYTHONPATH=src python scripts/core_logic/run_all.py`
+  （黃金 GM=28／CM=29）**，所以不是順手改。
+- 一併緩解：同一個 pattern 也會擋掉 BL-ENG-5 提到的「400 KB message 進 jsonb 並每次回吐」（該處已先截到 500 字）。
+- 對應文件：`docs/core-logic/`（level 規則）、ADR-036 §4。
