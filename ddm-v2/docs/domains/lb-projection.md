@@ -38,4 +38,4 @@ LB 求解結果經 `lb-most-writeback-v1` 契約回寫給 MOST（唯讀快照）
 
 ## 測試與已知缺口
 - 測試：`tests/unit/test_lb_projection_*.py`（golden、tmu、tools、quantity、validator、report、hints）、`tests/integration/test_export.py`、`test_export_lb_preview.py`、`test_lb_projection_adapter_equiv.py`；e2e `level-jobs-golden.spec.ts`（DoD-1）。回寫（ADR-036）的測試清單見實作書 §4。
-- 缺口：投影——~~無。~~ ~~無（剛落地，文件齊備）。~~ 數類例外直接拋出、不收 E 碼（逃得出投影的是三類；`lb-report`／`lb-csv` 仍會 500）→ [BL-ENG-2](../BACKLOG.md)。回寫（ADR-036）——已知限制（件數基準是現況投影、跨線漂移偵測不到、placements 無 `qty_scope`、UI 未顯示件數警告等）＋ offline 組內傳染兩份實作 → [BL-ENG-1](../BACKLOG.md)；~~D6「件數」一條待整合架構師修訂~~（2026-09-21 已修訂）、LB §8 尚未定義 `rows[].qty_scope`：**清單與細節見實作書 §7**（本索引不重抄）。
+- 缺口：投影——~~無。~~ ~~無（剛落地，文件齊備）。~~ 數類例外直接拋出、不收 E 碼（逃得出投影的是三類；`lb-report`／`lb-csv` 仍會 500）→ [BL-ENG-2](../BACKLOG.md)。回寫（ADR-036）——已知限制（件數基準是現況投影、跨線漂移偵測不到、placements 無 `qty_scope`、UI 未顯示件數警告等）＋ offline 組內傳染兩份實作 → [BL-ENG-1](../BACKLOG.md)；~~D6「件數」一條待整合架構師修訂~~（2026-09-21 已修訂）、~~LB §8 尚未定義 `rows[].qty_scope`~~（2026-09-21 LB 已定義並輸出，件數改走確定值）、LB 頂層 `export_warnings` 已實作但 MOST 尚未消費 → [BL-ENG-10](../BACKLOG.md)：**清單與細節見實作書 §7**（本索引不重抄）。

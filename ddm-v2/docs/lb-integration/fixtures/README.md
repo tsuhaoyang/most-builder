@@ -44,6 +44,7 @@
   MOST 的 parser 對「缺欄」與「顯式 null」一視同仁（都是 `None` → 走推算退路），兩種都要有測試覆蓋。
   黃金三列（task 13/14/15，electric_driver repeat 8）為 `setup`／`cyclic`／`setup`，units 1／8／1
   → 件數取 cyclic 列＝**8**（確定值，`units_source="cyclic"`）。
+- **不帶頂層 `export_warnings`**：該欄 LB 於 `bb0d340`（晚於 `106bf14`）才實作，故這份 fixture 沒有；MOST 端也尚未消費（已知限制見實作書 §7 (h)）。下次 re-vendor 會開始帶——parser 忽略未知頂層欄位，不會因此壞掉。
 - 工具 episode 三列（acquire/use/release，同站同 worker）：5 組 `source_wi_row_id` 各 3 列。
 - offline 列（`line_index`/`station_index=null`、`workers=[]`）。
 - Q>1 `units` 列（`[{worker, units}]`）。

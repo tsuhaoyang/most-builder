@@ -4,7 +4,7 @@
 
 🟢 **accepted**（2026-09-18，Howard 核可；三項取捨於 2026-09-17 裁決，見 §2 D1／D2／D5）。D6「件數」一條已於 2026-09-21 由整合架構師修訂（見 §2 D6 件數修訂）。實作見 `docs/lb-integration/LB_WRITEBACK_CONSUMPTION_IMPLEMENTATION_SPEC.md`。
 
-- **對應 LB 端**：`lb-most-writeback-v1`，定義於 LB `docs/dev_docs/MOST_INTEGRATION_INPUT_SPEC.md` §8（**該檔是回寫契約的唯一權威**；本 ADR 不重述欄位）、LB ADR-023 D11。LB 落地 commit `adb750b`＋`631e3a5`＋`02dba21`；真機驗證另依賴 LB 兩個修正：`aac992f`（插回的 general 保留 `source_wi_row_id`，回寫不再漏 general）、`c0cb244`（上傳 CSV 標準化保留 MOST 擴充欄，見 §4）（皆在分支 `feature/most-integration-phase2`，未合入 LB master）。
+- **對應 LB 端**：`lb-most-writeback-v1`，定義於 LB `docs/dev_docs/MOST_INTEGRATION_INPUT_SPEC.md` §8（**該檔是回寫契約的唯一權威**；本 ADR 不重述欄位）、LB ADR-023 D11。LB 落地 commit `adb750b`＋`631e3a5`＋`02dba21`；真機驗證另依賴 LB 兩個修正：`aac992f`（插回的 general 保留 `source_wi_row_id`，回寫不再漏 general）、`c0cb244`（上傳 CSV 標準化保留 MOST 擴充欄，見 §4）（皆在分支 `feature/most-integration-phase2`，未合入 LB master；**LB 後續的回寫工作已移到 `integration/phase2-docs`**——`rows[].qty_scope`、`export_warnings`、fixture 決定性化只在該分支上，見 §4）。
 - **關聯**：[ADR-035](ADR-035-lb-projection-layer-and-motion-decomposition.md)（MOST→LB 投影；本 ADR 是反方向）、`docs/lb-integration/MOST_LB_CONTRACT.md` D13（屬性可雙向、結構單向）、[ADR-011](ADR-011-schema-evolution-and-contract-stability.md)（加法演進）、[ADR-019](ADR-019-worksheet-access-control.md)（端點權限）、[ADR-034](ADR-034-language-aware-error-contract.md)（錯誤信封）。
 
 ---
@@ -59,8 +59,8 @@ D13 同時定下屬性回流規則：可回流的只有 `offline` 這類標籤�
 - **站別**：取所有 row 的 `station_index` 集合。集合大小 >1 → 標 `cross_station`（工具 episode 依 LB ADR-023 D3 應同站，跨站代表結果來自舊版或人工編輯）；general 列的多站是**預期**，不標異常。
 - **人**：`workers` 取聯集。
 - **件數**：`units` 僅 Q>1 出現，**不可跨 row 加總**（理由見下方修訂追記）。取值：先逐 row 把 `units[]` 的各 worker 值相加（同一 row 可能多人分攤），再依 `qty_scope` 取值——
-  - payload 有 `qty_scope`（LB §8 加欄後）→ 取 `qty_scope == "cyclic"` 的 row 值（持工具 motion 的 use 列為 cyclic；若多列皆 cyclic 且值相同，取 max）。標 `units_source=cyclic`＝**確定值**。
-  - payload 無 `qty_scope`（舊快照／LB 尚未加欄）→ 取各 row 值的**最大值**（cyclic 列的 Σ＝Q ≥ setup 列的 Σ＝經手人數）。標 `units_source=inferred_max`＝**推算值，UI 必須標示**。
+  - payload 有 `qty_scope`（**現行主路徑**，LB 自 `64e4abd` 起輸出）→ 取 `qty_scope == "cyclic"` 的 row 值（持工具 motion 的 use 列為 cyclic；若多列皆 cyclic 且值相同，取 max）。標 `units_source=cyclic`＝**確定值**。
+  - payload 無 `qty_scope`（**退路**：LB 加欄前存下的舊快照，會在 DB 裡存在很久）→ 取各 row 值的**最大值**（cyclic 列的 Σ＝Q ≥ setup 列的 Σ＝經手人數）。標 `units_source=inferred_max`＝**推算值，UI 必須標示**。主路徑通了也不撤這條退路。
   - 有 `qty_scope` 但無任何 cyclic 列、或無任何 row 帶 `units` → 無件數。
 - **件數的比對基準**：與 **MOST 自己投影出的 `quantity` Q**（契約 §3.2 實際送給 LB 的值）對照，**不是** motion 層的 `frequency`／`repeat_count`。基準狀態三選一，寫在 `summary.units_baseline.status`：
   - `ok`＝已用投影 Q 比對；兩邊都有值且不符 → `diff.unit_mismatches`（警告）。
@@ -75,7 +75,9 @@ D13 同時定下屬性回流規則：可回流的只有 `offline` 這類標籤�
 > 1. **跨 row 加總錯**。依 LB 端 `docs/adr/ADR-008`（quantity lot `units[s,w]`）D3，Q>1 lot 的 **setup 列**（acquire／release）`units` 記的是 `used`（0／1，跨 worker 加總＝經手人數），**只有 cyclic 列才是件數**。黃金複本動作 I（`electric_driver`，Q=8）三列回 1／8／1，逐列加總得 **10**，實為 **8**。
 > 2. **比對基準錯**。`frequency` 是 motion 層的次數；投影會把持工具 motion 拆成三列，拿 `frequency` 比會對「持工具且 F>1」產生 3F 的假警報。基準應為投影後的 Q。
 > 缺陷為 2026-09-18 真機複驗（§4）所暴露；此前未被發現，是因為比對只看 `frequency` 一欄。
-> **跨 repo 未結項**：LB `MOST_INTEGRATION_INPUT_SPEC.md` §8 尚未定義 `rows[].qty_scope`（LB 端票 B20）。補上前 MOST 顯示的件數一律是 `inferred_max` 推算值。值域必須釘死為小寫 `setup`／`cyclic`、Q=1 不輸出該欄（null）、不得出現 `auto` 等第三值——否則依 D7 追記（2026-09-18）第 2 點會整份 422。
+> **跨 repo 未結項（2026-09-21 已結）**：~~LB `MOST_INTEGRATION_INPUT_SPEC.md` §8 尚未定義 `rows[].qty_scope`（LB 端票 B20）。補上前 MOST 顯示的件數一律是 `inferred_max` 推算值。~~ LB §8 **已定義並實際輸出** `rows[].qty_scope`（LB `64e4abd`，該 commit 自述關閉 B20）；值由 LB 依 ADR-008 D3 的 `resolve_qty_scope()` 決議、非 CSV 透傳，故 `auto` 不會上線。**MOST 端不需改程式**——`79d8e4f` 的「C＋退路」本來就同時支援兩條路徑。值域仍釘死為小寫 `setup`／`cyclic`，其他值依 D7 追記（2026-09-18）第 2 點整份 422。
+> **Q=1 的表示法有兩種，都合法**：LB 契約的字面是「不輸出該欄（`null`／缺欄）」，而黃金 fixture（LB `106bf14`）實際是**34 列都有 `qty_scope` 這個 key、Q=1 時值為顯式 `null`**。MOST 的 parser 對「缺欄」與「顯式 `null`」**一視同仁**（都成為 `None`，走推算退路），兩種都有測試覆蓋（`tests/unit/test_lb_writeback_service.py` 的 `test_parse_reads_optional_qty_scope` 與 `test_parse_treats_missing_qty_scope_key_same_as_null`）。~~Q=1 不輸出該欄（null）~~ 這種寫法會讓下一個人把顯式 `null` 讀成契約違反，故改為本條。
+> LB §8 整節**仍在演進**（同日另加頂層 `export_warnings`，見 §4「跨 repo 未結」），**不是定稿**。
 > 已知限制（UI 覆蓋範圍等）見 [實作書](../lb-integration/LB_WRITEBACK_CONSUMPTION_IMPLEMENTATION_SPEC.md) §7，本 ADR 不重述。
 
 ### D7 驗證與失敗處理
@@ -128,11 +130,15 @@ D13 同時定下屬性回流規則：可回流的只有 `offline` 這類標籤�
 
 **真機驗證（2026-09-18，整合架構師實跑）**：LB Phase 2 直跑 `:8090`（不經 Traefik）→ 建專案（上傳黃金 tasks.csv）→ 求解 → `GET …/writeback`。結果：(a) 契約版本與機台政策欄正確；(b) **`rows` 為 0** —— LB 專案建立時的 CSV 標準化（`infrastructure/csv/csv_service.py::process_uploaded_file`）用寫死的 STD_COL 清單，丟掉 `source_wi_row_id`／`role_type`／`general_role`（存下來 22 欄，上傳為 24 欄），對應鍵在儲存層即斷；影響不只回寫，`role_type=machine`（D9）與 `general_role`（D4）走真實上傳路徑同樣失效。~~LB 端修正中。~~ **已修**（LB `c0cb244`；複驗見下段）。(c) MOST `fetch` 對真 LB 回 502 `LB_UNREACHABLE`（HTTP 401），MOST 側管路正確，成因見 D1 追記。
 
-**複驗（2026-09-18，LB 修正後）**：LB `feature/most-integration-phase2` 含 `c0cb244`（上傳標準化保留擴充欄）與 `aac992f`（general 保留 `source_wi_row_id`），直跑 `:8090`。全鏈改為自動化端到端（`src/frontend/e2e/writeback-golden-replica.spec.ts`，`@slow`）：MOST 建黃金複本（隨機 id，不佔 `wi_rows` 全域主鍵）→ 匯出 lb-csv → 上傳 LB 建專案 → 求解 → MOST `fetch` → 刪除該 LB 專案。結果：rows 34、matched 24／missing 0／unmatched 0；general 單列單站；工具五組 acquire／use／release 各聚成單站、無 `cross_station`；Q>1 三個 motion（G、H `frequency=8`；I `repeat_count=8`）`units_total` 皆 8、`unit_mismatches` 空、件數比對基準 `ok`；offline 列無站無人、無 offline 差異；`GET latest` 讀回一致。複驗同時暴露 D6 件數規則的缺陷：同一份黃金快照動作 I 依 D6 逐列加總得 10，依 Howard 裁決改為 8（標推算 `inferred_max`——LB §8 尚未輸出 `qty_scope`），見 D6 件數註記。
+**複驗（2026-09-18，LB 修正後）**：LB `feature/most-integration-phase2` 含 `c0cb244`（上傳標準化保留擴充欄）與 `aac992f`（general 保留 `source_wi_row_id`），直跑 `:8090`。全鏈改為自動化端到端（`src/frontend/e2e/writeback-golden-replica.spec.ts`，`@slow`）：MOST 建黃金複本（隨機 id，不佔 `wi_rows` 全域主鍵）→ 匯出 lb-csv → 上傳 LB 建專案 → 求解 → MOST `fetch` → 刪除該 LB 專案。結果：rows 34、matched 24／missing 0／unmatched 0；general 單列單站；工具五組 acquire／use／release 各聚成單站、無 `cross_station`；Q>1 三個 motion（G、H `frequency=8`；I `repeat_count=8`）`units_total` 皆 8、`unit_mismatches` 空、件數比對基準 `ok`；offline 列無站無人、無 offline 差異；`GET latest` 讀回一致。複驗同時暴露 D6 件數規則的缺陷：同一份黃金快照動作 I 依 D6 逐列加總得 10，依 Howard 裁決改為 8（**當時**標推算 `inferred_max`——LB §8 那時尚未輸出 `qty_scope`），見 D6 件數註記。
+
+> **追記（2026-09-21，fixture re-vendor `4b89bca`）**：LB 補上 `rows[].qty_scope`（`64e4abd`）並把黃金 fixture 的產生器決定性化（`106bf14`）後，MOST 重新 vendor 了那份 fixture。同一個動作 I 的件數仍是 **8**，但走的是 **cyclic 主路徑**（`units_source="cyclic"`＝確定值），不再是上文那個 `inferred_max` 推算值；UI 也不再掛「推算」tooltip。推算退路只留給 LB 加欄前存下的舊快照（D6 第二條），並以「剝掉 `qty_scope` 的同一份 fixture」維持覆蓋。fixture 的來源 commit／sha256／ortools 版本／產法與 re-vendor 時的處置＝[`fixtures/README.md`](../lb-integration/fixtures/README.md)（唯一權威，本 ADR 不重抄）。
 
 **待裁決（不阻擋實作）**：是否讓回寫結果影響作業版的「秒數」顯示（目前秒數來自 MOST 投影預覽，非 LB 實際排程）；建議 v1 不混用，兩者分開顯示。
 
-**跨 repo 未結（不阻擋實作）**：D6「件數」已於 2026-09-21 修訂（見 §2 D6 件數修訂）。仍待 LB：`MOST_INTEGRATION_INPUT_SPEC.md` §8 定義 `rows[].qty_scope`（LB 票 B20）；補上前，MOST 顯示的件數一律是推算值（`inferred_max`）。
+**跨 repo 未結（不阻擋實作）**：D6「件數」已於 2026-09-21 修訂（見 §2 D6 件數修訂）。~~仍待 LB：`MOST_INTEGRATION_INPUT_SPEC.md` §8 定義 `rows[].qty_scope`（LB 票 B20）；補上前，MOST 顯示的件數一律是推算值（`inferred_max`）。~~ **已結**（LB `64e4abd`，2026-09-21；MOST 端無需改程式，見 §2 D6 件數修訂）。
+
+**改由 MOST 端承接的一項**：LB §8 已定義並實作頂層 `export_warnings`（LB `b90c611` 定義、`bb0d340` 實作），**MOST 尚未消費**——Howard 2026-09-21 裁定本輪不做，等 LB §8 定稿後再給消費規則。後果（LB 丟掉／降級的列會被 MOST 講成「沒有結果」「沒給件數」）記在[實作書](../lb-integration/LB_WRITEBACK_CONSUMPTION_IMPLEMENTATION_SPEC.md) §7 (h)，票號 [BL-ENG-10](../BACKLOG.md)；本 ADR 不重述。
 
 ---
 

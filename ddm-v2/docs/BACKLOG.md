@@ -191,3 +191,63 @@
   （黃金 GM=28／CM=29）**，所以不是順手改。
 - 一併緩解：同一個 pattern 也會擋掉 BL-ENG-5 提到的「400 KB message 進 jsonb 並每次回吐」（該處已先截到 500 字）。
 - 對應文件：`docs/core-logic/`（level 規則）、ADR-036 §4。
+
+## BL-ENG-8 — outbox 整合測試會被共用 dev DB 的既有資料擠掉（已在紅）
+- 領域：`wi-workbench`／測試基礎建設（`tests/integration/test_outbox_api.py`）
+- 現況（2026-09-21 查證）：`test_claim_pending_and_mark_published` 先建一筆事件，再 `claim_pending(db_session, limit=50)`
+  然後從結果裡找自己那筆。共用 dev DB 目前有 **272 筆 `published_at IS NULL`** 的 outbox 事件，`limit=50`
+  取的是最舊的 50 筆——新建的那筆永遠不在裡面，`assert len(ours) == 1` 得到 0。**現在就是紅的**，
+  且與任何程式改動無關（在乾淨工作樹上同樣失敗，2026-09-21 以 `git stash` 驗過）。
+- 為什麼會一直惡化：outbox 沒有消費端（publisher 卡在 ADR-027 R0 待裁），所以未發布筆數只增不減。
+- 影響：一支與本功能無關的測試長期紅，會把「整合測試全綠」這個訊號廢掉——下一個人看到 1 failed 會習慣性略過。
+- 建議做法（二擇一，屬測試設計決策）：(a) 測試改為只 claim 自己那筆（依 `run_id`／`id` 過濾後再 claim，
+  或把 `limit` 提高到「保證涵蓋」不可行——資料會繼續長），(b) 測試自備乾淨的 outbox 範圍（例如在交易內先把
+  既有 pending 標記為已發布——但本測試走 conftest 外層交易會 rollback，可行性要確認）。
+  **不要用「清掉 dev DB 既有資料」解**（那是別人的資料；2026-09-18 已有前例）。
+- 對應文件：ADR-027（outbox）。
+
+## BL-ENG-9 — 件數聚合的三個「把不確定講成確定／靜默消失」
+- 領域：`lb-projection`（`_motion_units`）、`job-ux`（`WritebackPanel`）
+- 現況（2026-09-21 job-ux reviewer 查證，皆無測試覆蓋）：
+  1. **多列 cyclic 值不一致時靜默取大**：`_motion_units` 對 `qty_scope=="cyclic"` 的列取 `max`，docstring
+     假設「值相同」，但 parse 不檢查。LB 若回兩列 cyclic 且值不同，MOST 取大的那個並標 `units_source="cyclic"`
+     ——UI 顯示成**確定值**。這正是「把不確定講成確定」。
+  2. **部分標註 → 件數整個消失**：若一部分列有 `qty_scope`、而真正 cyclic 的那列沒有，會走進 cyclic 分支
+     得到 `(None, None)`：UI 的件數整行不顯示，`unit_mismatches` 也跳過比對——失敗是靜默的。
+  3. **`unit_mismatches` 有型別但沒有畫面**：`api.ts` 宣告了、`WritebackPanel` 不渲染、i18n 無對應 key。
+     LB 件數與 MOST 投影 Q 不符時，UI 仍平鋪直敘「共 8 件」。對作業者而言，這比 cyclic／inferred 之分更關鍵
+     （與 BL-ENG-3 同一類：顯示層沒有分辨資料的語意）。
+- **lb-projection reviewer 的建議解（2026-09-21）：不是 422，是「不可判定」。** 422 的既有判準是「格式／值域錯、
+  整份不可解讀」（D7 追記）；多列 cyclic 值不一致是**內容矛盾、不是格式錯**，回 422 會讓 IE 連站別／人／
+  offline 差異都看不到——把局部不可信放大成整份不可用，與 D6 的 `units_baseline=unavailable`、D2／D7 的降級
+  模式相反。LB 自己也是這個哲學（守恆檢查失敗時輸出 `units: null` ＋ WARN，唯讀端點不因資料缺陷整份失敗）。
+  具體做法：件數判為不可判定（`units_total=None`，**不得標 `units_source="cyclic"`**），列入 `units_uncomparable`
+  並加新 reason（如 `cyclic_conflict`／`partial_scope`）。**一併要修**：`units_uncomparable` 現在只在 MOST
+  投影 Q>1 時才列，Q=1 或投影不可用時完全無聲。
+- **另一個同源的不同步（2026-09-21 兩席各自指出）**：`LbRowPlacement` 這張正規化表**沒有 `qty_scope` 欄**。
+  目前功能正確（`latest` 重新 parse `snap.payload`），但這張表已與 payload 不同步——日後有人改讀 placements
+  算件數會無聲拿到錯答案。收斂時一併補欄或在表上標明「件數不得由此表推導」。
+- 3 併入 BL-ENG-3 一起處理顯示語意。
+- 對應文件：ADR-036 D6、實作書 §2 B4。
+
+## BL-ENG-10 — LB `export_warnings` 尚未消費：MOST 會把「LB 丟掉的列」講成「沒有結果」
+- 領域：`lb-projection`（回寫消費）
+- 狀態：**本輪不做**（Howard 2026-09-21：「LB 這輪還在做 export_warnings，這一輪不要動它，等 LB 的 §8
+  定稿我再給你消費規則」）。開票只為留下已查證的事實，不要在拿到消費規則前自行實作。
+- 現況（2026-09-21 主 context 於 LB repo 查證；**票面初稿寫錯，此處為更正版**）：LB 正本
+  `MOST_INTEGRATION_INPUT_SPEC.md` 已宣告頂層 `export_warnings`「恆存在」（`units_degraded`／
+  `dropped_rows`／`truncated`），**而且已經實作**（LB `bb0d340`，文件 `b90c611`；HEAD `1454b05` 上
+  `git grep -c export_warnings -- src` 命中 3 檔，`writeback_use_case.py` 會組出並放進回應）。
+  初稿寫「全 repo 零命中、尚未實作」是錯的。
+  fixture 不帶這個欄位**仍然對**，但理由是 `106bf14` **早於** `bb0d340`，不是 LB 沒做——
+  下次 re-vendor 就會開始帶（MOST parser 忽略未知頂層欄位，不會因此壞掉）。
+- 影響：MOST 端**完全沒有解析**這個欄位。LB 若丟掉某些列，MOST 會把它們算進 `missing`，UI 講成
+  「這一步沒有產線平衡結果」——真相是「LB 有結果、只是被丟掉了」。**合理但錯誤的故事**，
+  屬 BL-ENG-3／BL-ENG-9 同一類。
+  至於 `units_degraded`：LB 對違反 ADR-008 D3 的列**把 `units` 降成 `null`** 並登記在該清單
+  （`writeback_use_case.py` 的 `_units_if_valid`：「Degrade, do not Fail-Fast」），所以 MOST 這邊
+  讀到的是「LB 沒給件數」→ 走 `units_uncomparable`／推算退路，**不會顯示一個錯的件數**。
+  初稿寫「會被當成正常值顯示」也是錯的——真正的損失是**不知道為什麼沒有件數**。
+- 建議做法：等 LB §8 定稿 → Howard 給消費規則 → 解析並在 UI 分辨「沒有結果」與「被丟掉／被降級」，
+  同時在實作書 §7 把這條已知限制撤下。
+- 對應文件：LB `MOST_INTEGRATION_INPUT_SPEC.md` §8、實作書 §7、ADR-036 D6。
