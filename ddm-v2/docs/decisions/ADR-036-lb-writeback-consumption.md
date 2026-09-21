@@ -37,6 +37,13 @@ D13 同時定下屬性回流規則：可回流的只有 `offline` 這類標籤�
 - 不自動套用的理由：LB 的結果編輯是 what-if 性質；自動覆蓋等於讓 LB 成為 MOST 屬性的第二權威，D13 明文禁止。
 - `offline` 以外的欄位（`workers`／`station_index`／`units`／`line_index`）**一律唯讀**，只顯示、不回流。
 
+> **D2 追記（2026-09-21，Howard 裁：維持此行為、本輪不重構投影層；`a85d89d`＋`603b83f`）：正門的「投影 E 關」在跑不起來時被跳過，而不是擋下。**
+> 本節的「走正門」原本是無條件的——寫入 → 組內傳染 → R1–R9 → 投影報告（`lb_export_report`）的 E 碼，任一 E 整批 rollback。現況多了一個條件：
+> - **被跳過的只有「投影報告的 E 碼」那一關**。寫入 `level_entries.offline`、組內傳染、R1–R9 一律照跑；投影**收集到**的 E 碼也照常整批 rollback ＋ 422。只有投影**拋例外**（逃得出投影的三類，見 §2 D7 追記 2026-09-21 第 5 點）時這一關**無從判定**——不是判定為「沒問題」。
+> - **為什麼不 rollback**：那幾類例外反映的是 MOST 端工序此刻投影不出來，與使用者要套用的 `offline` 標記無關；連帶取消離線設定，等於用一個使用者無法自行解決的狀況，擋住一件本來就該做的事。故改採 `fetch` 的 `units_baseline` 同一套降級模式：照常套用，但把「這一關沒跑」在回應與留痕裡**明講**（`report.status="unavailable"` ＋ E 碼；欄位形狀見實作書 §2 B6，本節不重述）。**這是 fail-open**，取捨與翻轉風險見 §2 D7 追記（2026-09-21）第 5 點。
+> - **留痕在哪**：`lb_writeback_snapshots.applied_rows`（套用者、報告狀態、E 碼、完整診斷）。這條路徑**沒有任何稽核寫入**，`applied_rows` 是唯一的痕跡；由 `latest`／`snapshots` 帶出。
+> - **留痕的保存期限＝該快照的壽命**：依 D4 每 worksheet 只留最近 10 筆（按 `fetched_at` 排序，**不看有沒有套用紀錄**），第 11 次 `fetch` 起最舊的一筆連同它的 `applied_rows` 一併刪除——**該次降級的紀錄就此消失，事後無處可查**。要長期保存得另開稽核，本輪未做。
+
 ### D3 結構欄不回流
 `predecessors`／`group`／`atomic_group`／`duration` 等結構與工時欄，LB 端本就不輸出；MOST 端也不得從其他來源反推寫回。工序結構與 TMU 的權威永遠在 MOST（D13、ADR-014／028）。
 
@@ -87,7 +94,7 @@ D13 同時定下屬性回流規則：可回流的只有 `offline` 這類標籤�
 
 > **D7 追記（2026-09-21，Howard 指示「照 fetch 的降級模式、本輪不重構投影層」；`a85d89d`）：`apply-offline` 的兩個 500 收掉——一個改 422，一個降級不擋。**
 > 1. **body 的 id 非 UUID → 422**（原本在路由內轉型，落成**無信封 500**）：`snapshot_id`／`wi_row_ids` 改以 UUID 型別收。判準同上方 2026-09-18 追記第 3 點（canonical／32 位無連字號／`{…}`／`urn:uuid:`／大小寫皆放行並正規化），差別是 pydantic 的 parser 比 `uuid.UUID()` **略嚴**——連字號放在怪位置的字串它不收；對正常輸入兩者等價，該邊界以 reject 案例釘住。`wi_row_ids` 另設上限（見實作書 §2 B5）：ADR-034 §D5 的信封會原樣回吐每一筆壞值，無上限時一份壞 payload 會被放大數倍。
-> 2. **投影報告拋例外 → 不 5xx、不 rollback，回 200 並明確標示**：投影層有幾類例外是直接拋出、不收進 `ProjectionResult.errors`（根因＝[BL-ENG-2](../BACKLOG.md)），撞上時 E 碼那一關**無從判定**。照 `fetch` 的 `units_baseline` 同一套降級模式：`report.status="unavailable"` ＋ E 碼與完整診斷，**離線設定照常套用**，R1–R9 仍照常擋。被投影**收集**（而非拋出）的 E 碼行為完全不變——仍整批 rollback ＋ 422。回應欄位形狀見實作書 §2 B6，本節不重述。
+> 2. **投影報告拋例外 → 不 5xx、不 rollback，回 200 並明確標示**：投影層有幾類例外是直接拋出、不收進 `ProjectionResult.errors`（根因＝[BL-ENG-2](../BACKLOG.md)），撞上時 E 碼那一關**無從判定**。照 `fetch` 的 `units_baseline` 同一套降級模式：`report.status="unavailable"` ＋ E 碼與完整診斷，**離線設定照常套用**，R1–R9 仍照常擋。被投影**收集**（而非拋出）的 E 碼行為完全不變——仍整批 rollback ＋ 422。**正門語意的變更（跳過的是哪一關、留痕在哪與留多久）記在 §2 D2 追記（2026-09-21），本節不重述**；回應欄位形狀見實作書 §2 B6。
 > 3. **這一條不是加法演進（[ADR-011](ADR-011-schema-evolution-and-contract-stability.md) 的明列例外）**：`report.errors` 原本**恆為 `[]`**，現在 `status="unavailable"` 時是 **`null`**（`warnings` 同）。刻意如此——`[]` 等於對消費端斷言「檢查過、沒問題」，但這裡是「沒算出來」；只讀 `errors`、不讀 `status` 的既有消費端**應該炸**，不該把降級讀成一切正常。既有欄位的型別變更必須明記，否則下一個人會當成加法。
 > 4. **降級要留痕**：降級若只活在當下的回應，重整後畫面只剩「已套用」，事後查不到。`applied_rows`（jsonb）是這條路徑唯一的痕跡，故一併記下**套用者**（與快照 `created_by`＝取得者未必是同一人）與報告狀態／E 碼／完整診斷，並由 `latest`／`snapshots` 帶出（欄位見實作書 §2 B6）。
 > 5. **取捨自覺（fail-open）**：實際逃得到這條路的是三類（`QuantityError`／`ToolResolveError`／`TmuDecompositionError`；`PrecedenceError` 在投影層內就被接住轉成收集型 E），而它們本身都攜帶確定的 E 碼，因此「降級 200」等於**閘門跑不起來時放行**。Howard 2026-09-21 裁定本輪維持降級、不重構投影層；收斂根因時要不要翻成 fail-closed（把 E 碼餵進 `proj_errors` → 整批 rollback ＋ 422 `LB_EXPORT_BLOCKED`）是 [BL-ENG-2](../BACKLOG.md) 的待裁項——屬**使用者可見的行為翻轉**，不得當成重構順手做掉。

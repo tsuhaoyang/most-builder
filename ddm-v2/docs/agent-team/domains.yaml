@@ -267,7 +267,7 @@ domains:
       - 回寫（ADR-036）只回流 offline，且必走 MOST 組內傳染與 R1–R9 驗證；其餘欄位（workers/station/units/line）唯讀；結構欄不回流。general 判定用 MOST 自己的 is_general，不從 LB payload 猜
       - 回寫件數（Howard 2026-09-18 裁；ADR-036 D6 件數一條已於 2026-09-21 修訂）不跨列加總（setup 列 units 是 used、不是件數）；該 motion 帶 units 的列有 qty_scope 就取 cyclic 列，都沒有才退回各列最大值並標 inferred_max；比對基準是 MOST 投影 quantity Q（不用 frequency）；**件數基準**的投影失敗不得讓 import／fetch／latest 失敗（標 units_baseline unavailable＋E 碼；apply-offline 另走 lb_export_report，不在此條）
       - 回寫 payload 驗證失敗（契約版本、缺必要欄位、型別、qty_scope 值域、source_wi_row_id 非 UUID）→ 整份 422 且不存快照（parse 先於 persist）；已存快照在現行驗證下讀不回 → 422，不得 500
-      - apply-offline 的 body id（snapshot_id／wi_row_ids）非 UUID → 422，不得落成無信封 500；投影拋例外（_projection_raises() 的四類）→ 端點仍 200 且離線照常套用，report.status 標 unavailable＋E 碼、errors／warnings 給 null（不得給 []），並把狀態與完整診斷留在 applied_rows（ADR-036 D7 追記 2026-09-21；形狀見實作書 §2 B6）
+      - apply-offline 的 body id（snapshot_id／wi_row_ids）非 UUID → 422，不得落成無信封 500；投影拋例外（逃得出投影的三類；_projection_raises() 另列 PrecedenceError 只是縱深）→ 端點仍 200 且離線照常套用，report.status 標 unavailable＋E 碼、errors／warnings 給 null（不得給 []），並把狀態與完整診斷留在 applied_rows（ADR-036 D2／D7 追記 2026-09-21；形狀見實作書 §2 B6）
       - 回寫的聚合／diff 重算一律對快照 payload 重新 parse，不得從 lb_row_placements 反推（placements 無 qty_scope）
       - 任何把外部輸入拼進 LB URL 的路徑都要用 LB_ID_PATTERN（lb_client.py，^[A-Za-z0-9_-]{1,64}$）驗證——路由層 422 且不呼叫 LB、client 再擋一次（縱深）；只做 URL 編碼不夠（ADR-036 D7 追記）
 

@@ -68,7 +68,9 @@
 - 影響：使用者存得進去的 worksheet 狀態（例如持工具列同時設 frequency>1 與 repeat>1、非整數 frequency）會讓
   匯出端點 500；每個呼叫端都要重複寫一次 try/except，漏一個就是 500。`export.py` 對 lb-report 宣稱的「永遠回報告」
   也因此不成立。
-- 建議做法：把四類例外在投影層收成 E 碼（`ProjectionResult.errors`），讓「E 碼擋、不拋例外」成為單一規則；
+- 建議做法：把這幾類例外在投影層收成 E 碼（`ProjectionResult.errors`），讓「E 碼擋、不拋例外」成為單一規則
+  （`QuantityError`／`ToolResolveError`／`TmuDecompositionError` 是真的會逃出去的三類；`PrecedenceError` 已在
+  `project_rows` 內被接住轉成收集型 E，收斂時順手把那段 try/except 也收掉）；
   之後移除各呼叫端的防守性 try/except。**動到投影層必跑黃金驗收**（`tests/unit/test_lb_projection_golden.py`
   逐位元 34 列、`scripts/core_logic/run_all.py` 不受影響）。
 - **完成條件要先裁決一件事（2026-09-21，lb-projection reviewer 提案，待 Howard 裁）**：實際逃得到降級路徑的是**三類**
@@ -100,7 +102,7 @@
   3. offline 動作的 `stations` 為空，`(stations[0] ?? 0) + 1` 算出 1，顯示成「排到第 1 站，0 個人做」——
      實際是離線先做、不排站。
   4.（2026-09-21 新增）apply-offline 降級時，`applied_report_reasons`（E 碼）**存了但畫面從不顯示**，
-     作業者看得到「那一關沒跑」卻查不到原因。`levelSystem.plain.*` 已有這四類 E 碼的中英可執行文案，
+     作業者看得到「那一關沒跑」卻查不到原因。`levelSystem.plain.*` 已有這幾類 E 碼的中英可執行文案，
      缺的是把 code 接上去：但 `reasons` 目前只帶裸 code（`[exc.err.code]`），不帶 `wi_row_id`／params，
      直接餵 `plainDiag` 會渲染出 `{{step}}` 空洞殘句。要指路得先讓 reasons 帶上 `exc.err.wi_row_id`
      （後端已有、目前只寫進 log）。**2026-09-21 更新**：完整診斷已改為存進 `applied_rows.report_errors`

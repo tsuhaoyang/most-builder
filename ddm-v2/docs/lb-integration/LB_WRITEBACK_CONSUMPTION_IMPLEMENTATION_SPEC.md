@@ -112,7 +112,7 @@
    - `units_uncomparable: [{wi_row_id, expected_n, reason: "no_units"}]`：MOST 投影 Q>1、聚合後沒有件數、且該 motion **在 LB 回寫裡不是 offline**（用 LB 的 `offline_flag` 判斷，不是 MOST 的 offline）——沒得比，明列出來，不可讀成一致。`reason` 目前恆為 `no_units`：「LB 完全沒帶 units」與「有 `qty_scope` 但沒有 cyclic 列」落在同一桶，日後要分辨需加 reason 值（加法）。
 4. **件數比對基準** `summary.units_baseline = {status, reasons}`（`_units_baseline`）：一律以 MOST 投影判斷，不從 LB 缺值推論。
    - `ok`：已用投影 Q 比對；`not_needed`：MOST 投影沒有任何 Q>1 的 motion。
-   - `unavailable`：投影拋出（`QuantityError`／`ToolResolveError`／`TmuDecompositionError`／`PrecedenceError`）或收集到 E 碼→ `reasons` 帶 E 碼、件數不比；**回寫端點本身不因此失敗**（不 500），快照照存。`unavailable` 不等於「一致」。（這是**呼叫端的防守**，不是投影層的規則——根因與待修見 §7 (g)／[BL-ENG-2](../BACKLOG.md)。）
+   - `unavailable`：投影拋出（逃得出來的三類，見 §7 (g)）或收集到 E 碼→ `reasons` 帶 E 碼、件數不比；**回寫端點本身不因此失敗**（不 500），快照照存。`unavailable` 不等於「一致」。（這是**呼叫端的防守**，不是投影層的規則——根因與待修見 §7 (g)／[BL-ENG-2](../BACKLOG.md)。）
    - `import`／`fetch` 先存快照再算基準；`apply-offline` 重算 diff 只取 `offline_diffs`，不比件數。
 5. `persist(session, worksheet_id, payload, parsed, source_url, actor) -> snapshot_id`（含保留策略）。placements 不存 `qty_scope`（見 B2 注意）。
 
@@ -148,7 +148,7 @@
 1. 只接受 `offline_diffs` 裡出現過的 `wi_row_id`（其餘 → 422）。
 2. 寫 `level_entries.offline=True`；**接著跑組內傳染**（同 `countersignature` cub 或同 `worker_cub` wcub 視為同組，一起翻）。現況：傳染在 `lb_writeback_service._group_members` **自成一份**（規則對齊前端 `store.toggleOffline`，後端為權威）；~~重用作業版／既有存檔路徑的傳染實作，不要另寫一份~~——兩份規則各寫一次有漂移風險，**統一為共用函式**：已開票 [BL-ENG-1](../BACKLOG.md)（原記「另案」，2026-09-21 給票號；做法與影響見該票，本節不重抄）。
 3. 跑 `level` 驗證（R1–R9）與投影預覽（`lb_export_report`）；投影**收集到**的任一 E 碼 → 整批 rollback 並回報（不可只套一半）。
-   - **投影預覽拋例外**（§7 (g)；清單的單一來源＝`lb_writeback_service._projection_raises()`，有絆線測試盯著投影層新增的例外類別，§4）→ **不 rollback、不 5xx**：端點仍 200、離線設定照常套用，R1–R9 仍照常擋，報告標 `unavailable`（下一點）。決策與理由（含 fail-open 的自覺）見 ADR-036 §2 D7 追記（2026-09-21）第 2 點；根因見 §7 (g)／[BL-ENG-2](../BACKLOG.md)。
+   - **投影預覽拋例外**（§7 (g)；清單的單一來源＝`lb_writeback_service._projection_raises()`，有絆線測試盯著投影層新增的例外類別，§4）→ **不 rollback、不 5xx**：端點仍 200、離線設定照常套用，R1–R9 仍照常擋，報告標 `unavailable`（下一點）。**正門的哪一關被跳過、為什麼不 rollback、留痕留多久＝ADR-036 §2 D2 追記（2026-09-21）**；HTTP／回應契約面見同檔 D7 追記（2026-09-21）；根因見 §7 (g)／[BL-ENG-2](../BACKLOG.md)。
 4. 回 `{applied: [...], propagated: [...], report: {...}}`。`report` 的形狀（**本節為單一權威**，2026-09-21 `a85d89d`）：
 
    | 欄 | `status="ok"` | `status="unavailable"` |
@@ -170,6 +170,7 @@
    - `report_status`／`report_reasons`／`report_errors`＝上表的 `status`／`reasons`／`reason_details`（同值）。降級若只活在當下回應，重整後畫面只剩「已套用」，事後查不到。
 
    讀取端帶出：`GET …/latest` → `applied_report_status`／`applied_report_reasons`／`applied_report_errors`；`GET …/snapshots` 每筆 → 前兩者（下一次 fetch 會產生新快照、`latest` 只回最新那筆；歷史清單不帶狀態的話，舊那筆的降級紀錄整個 API 都讀不到——本 service 沒有其他稽核寫入）。套用前或舊快照無這些鍵 → `null`／`[]`，不誤報。
+   **留痕的保存期限＝該快照的壽命**：B1 的保留策略只留最近 10 筆（按 `fetched_at`，不看有沒有套用紀錄），被淘汰的快照連同 `applied_rows` 一併刪，且本路徑**沒有其他稽核寫入**——後果見 ADR-036 §2 D2 追記（2026-09-21）。
 
 ---
 

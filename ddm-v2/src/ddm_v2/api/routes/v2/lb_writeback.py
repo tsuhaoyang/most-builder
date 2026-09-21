@@ -40,7 +40,7 @@ class FetchIn(BaseModel):
 class ApplyOfflineIn(BaseModel):
     # UUID 型別：非 UUID → 422 VALIDATION_ERROR（原本在 route 內 uuid.UUID() 轉換，會落成無信封 500）。
     # 接受 canonical／32 位無連字號／`{…}`／`urn:uuid:`／大小寫不敏感，並正規化。pydantic 的 UUID parser
-    # 比 D7 追記第 3 點的 `uuid.UUID()` **略嚴**（怪位置的連字號它不收）——刻意如此，兩者對正常輸入等價。
+    # 比 D7 追記（2026-09-18）第 3 點的 `uuid.UUID()` **略嚴**（怪位置的連字號它不收）——刻意如此，兩者對正常輸入等價。
     # max_length：pydantic 對 list 逐項收集錯誤、每筆都回吐輸入值，無上限時回應會被放大數倍（實測 5000 筆
     # 壞值 → 回應 1.47 MB／約 6.7×）。設上限後只剩一筆 too_long，回應 ≈ 請求大小（1:1）——壓掉的是**放大
     # 倍率**，不是絕對大小（信封原樣回吐 `exc.errors()` 是 ADR-034 §D5 的契約，全域也沒有 body 大小上限）。

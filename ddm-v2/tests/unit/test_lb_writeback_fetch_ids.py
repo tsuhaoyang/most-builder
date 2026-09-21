@@ -144,7 +144,7 @@ def _apply_body(**override):
 ])
 def test_apply_offline_in_accepts_uuid_forms_and_normalizes(value):
     """接受 canonical／32 位無連字號／大括號／urn／大小寫，並正規化為小寫連字號形式。
-    注意：pydantic 的 parser 比 D7 追記第 3 點的 `uuid.UUID()` **略嚴**（怪位置的連字號它不收），
+    注意：pydantic 的 parser 比 D7 追記（2026-09-18）第 3 點的 `uuid.UUID()` **略嚴**（怪位置的連字號它不收），
     兩者對正常輸入等價；那個邊界由下面 reject 清單的 `cb43da2198fd-...` 釘住。"""
     body = ApplyOfflineIn(**_apply_body(snapshot_id=value, wi_row_ids=[value]))
     assert str(body.snapshot_id) == _UUID
