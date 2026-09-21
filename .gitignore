@@ -21,3 +21,6 @@ ddm-v3/
 .playwright-mcp/
 *.png
 !ddm-v2/docs/**/*.png
+
+# 外部素材（Level System 原始資料夾），不進版控（2026-09-21）
+minimost_level/

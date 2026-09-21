@@ -16,3 +16,6 @@ data/*.corrupt-*.json
 # The .kiro/skills/graphify + .kiro/steering/graphify.md ARE committed; only the
 # generated graph output is local (11MB graph.json, machine-path sidecars, cache).
 graphify-out/
+
+# 一次性的外部素材／草稿，不進版控（2026-09-21）
+imx_four_scenarios_cookbook*.csv
