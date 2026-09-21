@@ -3,7 +3,7 @@
 > **語意權威**：回寫契約 `lb-most-writeback-v1` 的欄位定義在 **LB** `docs/dev_docs/MOST_INTEGRATION_INPUT_SPEC.md` §8——本檔**不重述欄位**，衝突時以 LB 該節為準並回報。
 > **決策邊界**：[ADR-036](../decisions/ADR-036-lb-writeback-consumption.md)（D1–D7）。ADR 沒涵蓋的設計問題：停下來問 Howard。
 > **分支**：`feature/lb-writeback`，自 `chore/agent-docs-shared` 末端分岔（帶著文件重整的檢查機制與領域索引）。**不 push、不合入**。
-> **狀態**：Design Accepted（2026-09-17）。未開工。
+> **狀態**：✅ 已落地（2026-09-18；B1–B6＋F1–F4 與後續修正，分支 `feature/lb-writeback`，未 push、未合入；commit 清單見 ADR-036 §5）。件數規則依 Howard 2026-09-18 裁決（§2 B4），ADR-036 D6「件數」一條待整合架構師修訂。已知限制見 §7。~~Design Accepted（2026-09-17）。未開工。~~
 
 ---
 
@@ -67,25 +67,54 @@
 
 索引：`(snapshot_id)`、`(snapshot_id, source_wi_row_id)`。
 
+> **注意（2026-09-18）**：`lb_row_placements` **沒有 `qty_scope` 欄**（建表時 LB 回寫尚無此欄）。所有重算——`latest` 的聚合／diff、`apply-offline` 的 offline 差異清單——一律對快照 `payload` 重新 `parse`，**不讀 placements**；placements 只是逐列落地的查詢便利，不是重算來源。要讓 placements 帶 `qty_scope` 需加法 migration（另案，見 §7 (c)）。
+
 ---
 
 ## 2. 後端工作包
 
 ### B3 LB client（`services/v2/lb_client.py`）
-- `async def fetch_writeback(*, base_url, project_id, version_id, result_id, timeout_s, auth_header: tuple[str,str] | None = None) -> dict`
+- `async def fetch_writeback(*, base_url, project_id, version_id, result_id, timeout_s, headers: dict[str, str] | None = None) -> dict`（~~`auth_header: tuple[str,str] | None = None`~~——2026-09-18 改為一組 header，ADR-036 D1 追記）
+- 座標驗證：三個座標先以 `LB_ID_PATTERN`（`^[A-Za-z0-9_-]{1,64}$`，定義於 `src/ddm_v2/services/v2/lb_client.py`，路由共用同一常數）`fullmatch`；不合 → `ValueError`、**不發任何請求**。這是縱深防線——路由層應已先回 422（B5；ADR-036 D7 追記 1）。⚠️ 只能用 pydantic `pattern` 或 `re.fullmatch`：Python `re.match`／`search` 的 `$` 會放過結尾換行。
 - URL：`{base_url}/api/v3/projects/{p}/versions/{v}/results/{r}/writeback`。
-- 比照 `dsx_client` 的錯誤分類（**逐字照抄它的例外分層，不要自創**）：`httpx.TransportError`／總時限逾時 → `LbUnreachable`；4xx → `LbRequestFailed(status)`；5xx → `LbUnreachable`。log 帶原始狀態碼。
-- 設定（`settings.py`，加法）：`DDM_LB_API_BASE_URL`（None → 端點 503）、`DDM_LB_TIMEOUT_S`（預設 10）、`DDM_LB_AUTH_HEADER_NAME`（選填；設了才帶，值＝當前使用者員編——**為日後掛 gateway 預留，v1 預設不設**）。
+- 例外分層（分層原則比照 `dsx_client`：型別分離、單次操作逾時＋`asyncio.timeout` 總時限雙層）；log 帶原始狀態碼：
+
+  | 情況 | 例外 | 端點結果（B5） |
+  |---|---|---|
+  | 單次操作逾時（`httpx.TimeoutException`）／總時限逾時（`asyncio.timeout`） | `LbTimeout`（`LbUnreachable` 子類） | 504 `LB_TIMEOUT` |
+  | 連線失敗（其餘 `httpx.TransportError`）、5xx、3xx 等非預期狀態 | `LbUnreachable` | 502 `LB_UNREACHABLE` |
+  | 401／403（缺身分 header） | `LbAuthRequired`（`LbRequestFailed` 子類） | 502 `LB_AUTH_REQUIRED` |
+  | 其他 4xx（如座標在 LB 不存在） | `LbRequestFailed(status)` | 502 `LB_UNREACHABLE`（訊息帶 HTTP 狀態） |
+
+  ~~比照 `dsx_client` 的錯誤分類（逐字照抄它的例外分層，不要自創）：`httpx.TransportError`／總時限逾時 → `LbUnreachable`；4xx → `LbRequestFailed(status)`；5xx → `LbUnreachable`。~~（逾時分出 `LbTimeout`、401／403 分出 `LbAuthRequired`，ADR-036 §5。）
+- 設定（`settings.py`，加法）：`DDM_LB_API_BASE_URL`（None → 端點 503）、`DDM_LB_TIMEOUT_S`（預設 10）、`DDM_LB_AUTH_HEADERS`（一組身分 header：CSV `名稱=值,…` 或 JSON；值為固定字串或 `@me`＝當前使用者員編，呼叫時解析；LB 最小需 `X-User-Id`＋`X-Plant-Code`＋`X-Username`，ADR-036 D1 追記）。~~`DDM_LB_AUTH_HEADER_NAME`（選填；設了才帶，值＝當前使用者員編——為日後掛 gateway 預留，v1 預設不設）~~——deprecated，仍相容讀取（單一 header、值＝`@me`；ADR-036 §5）。
 
 ### B4 解析與比對（`services/v2/lb_writeback_service.py`，純函式優先）
 1. `parse(payload) -> ParsedWriteback`：驗 `contract_version`（不符 → `LbWritebackContractMismatch`）；逐 row 轉 `RowPlacement`；未知欄位忽略（加法相容）。
-2. `aggregate(rows) -> dict[wi_row_id, MotionPlacement]`（D6）：`stations: set[int]`、`workers: set[str]`、`units_total: int | None`、`offline_values: set[bool]`、`task_ids: list[int]`、`cross_station: bool`（`len(stations)>1` 且該列非 general）、`offline_conflict: bool`。
+   row 驗證（任一不合 → `LbWritebackMalformed` → 整份 422 `VALIDATION_ERROR`、不存快照；ADR-036 D7 追記 2／3）：
+   - 缺必要欄位（`source_wi_row_id`／`task_id`／`offline_flag`）→ 整份 422（其餘欄位缺欄視同 null／預設）。
+   - `source_wi_row_id`：`uuid.UUID()` 解析得動即放行（32 位無連字號、`{…}`、`urn:uuid:` 會正規化為小寫連字號形式）；解析不動 → 422。合法 UUID 但不屬本 worksheet → `unmatched`，不擋。
+   - `task_id` 整數（必填）；`line_index`／`station_index` 整數，或 null／缺欄（offline 列即為 null）——bool、小數、字串一律不收（不截斷、不轉型）。
+   - `offline_flag`：只收 JSON `true`／`false`（`"false"` 字串會被 `bool()` 變成 True）。
+   - `workers`：字串陣列，**元素不可為空字串、但可以是空陣列**（LB §8 的 offline 列與 policy free 的機台列就是 `[]`）；null／缺欄 → `[]`。`units`：null 或 `[{worker: 非空字串, units: 非負整數}]`。
+   - `qty_scope`（選填，LB §8 尚未定義）：缺欄／null，或 `setup`／`cyclic`（大小寫須相符）；其他值（含 `auto`、空字串）→ 422。
+2. `aggregate(rows) -> dict[wi_row_id, MotionPlacement]`（D6）：`stations: set[int]`、`workers: set[str]`、`units_total: int | None`、`units_source: "cyclic" | "inferred_max" | None`、`offline_values: set[bool]`、`task_ids: list[int]`、`cross_station: bool`（`len(stations)>1` 且該列非 general）、`offline_conflict: bool`。
    - general 判定用 MOST 自己的 `level_entries.is_general`，**不要**從 LB payload 猜。
+   - **件數**（Howard 2026-09-18 裁決「C＋退路」；ADR-036 D6「件數」一條待整合架構師修訂）：每列先逐 worker 加總，**不跨列加總**——LB 的 setup 列 `units` 是 `used`（0／1，經手次數，LB ADR-008 D3），不是件數。
+     - **該 motion 中帶 `units` 的列**任一列有 `qty_scope` → 取 `qty_scope=="cyclic"` 那列的值（持工具 F>1 的三列皆 cyclic、值相同，取最大）→ `units_source="cyclic"`；有 `qty_scope` 卻沒有 cyclic 列 → `(None, None)`。
+     - 該 motion 帶 `units` 的列都沒有 `qty_scope`（舊快照／LB 尚未加欄）→ 退回各列取最大值（cyclic 列 Σ＝Q ≥ setup 列 Σ＝經手人數）→ `units_source="inferred_max"`（推算值，UI 必須標示，F2）。
+     - Q＝1 的 motion LB 不帶 `units` → `units_total=None`、`units_source=None`。
+     - ~~逐 worker、逐列加總~~（舊做法把工具 1／8／1 加成 10）。
 3. `diff(worksheet_rows, aggregated) -> WritebackDiff`：
    - `matched` / `unmatched`（LB 有、MOST 沒有）/ `missing`（MOST 有、LB 沒有；SIMO 從屬列與 general 以外的 missing 要能分辨，回傳 reason hint）。
    - `offline_diffs: [{wi_row_id, most_offline, lb_offline}]`。
-   - `unit_mismatches`：`units_total` 與該列 `frequency`／repeat 的 N 不符。
-4. `persist(session, worksheet_id, payload, parsed, source_url, actor) -> snapshot_id`（含保留策略）。
+   - `unit_mismatches: [{wi_row_id, expected_n, units_total, units_source}]`：`units_total` 與 **MOST 投影出的 quantity Q**（`expected_n`；`export_service.projected_quantities`，只含 Q>1，同一 motion 拆出的各列 Q 相同取最大）不符。~~`units_total` 與該列 `frequency`／repeat 的 N 不符~~——不用 `frequency`：持工具 F>1、repeat 列的 Q 由投影矩陣決定（契約 §3.2），`frequency` 對不上。
+   - `units_uncomparable: [{wi_row_id, expected_n, reason: "no_units"}]`：MOST 投影 Q>1、聚合後沒有件數、且該 motion **在 LB 回寫裡不是 offline**（用 LB 的 `offline_flag` 判斷，不是 MOST 的 offline）——沒得比，明列出來，不可讀成一致。`reason` 目前恆為 `no_units`：「LB 完全沒帶 units」與「有 `qty_scope` 但沒有 cyclic 列」落在同一桶，日後要分辨需加 reason 值（加法）。
+4. **件數比對基準** `summary.units_baseline = {status, reasons}`（`_units_baseline`）：一律以 MOST 投影判斷，不從 LB 缺值推論。
+   - `ok`：已用投影 Q 比對；`not_needed`：MOST 投影沒有任何 Q>1 的 motion。
+   - `unavailable`：投影拋出（`QuantityError`／`ToolResolveError`／`TmuDecompositionError`／`PrecedenceError`）或收集到 E 碼→ `reasons` 帶 E 碼、件數不比；**回寫端點本身不因此失敗**（不 500），快照照存。`unavailable` 不等於「一致」。
+   - `import`／`fetch` 先存快照再算基準；`apply-offline` 重算 diff 只取 `offline_diffs`，不比件數。
+5. `persist(session, worksheet_id, payload, parsed, source_url, actor) -> snapshot_id`（含保留策略）。placements 不存 `qty_scope`（見 B2 注意）。
 
 ### B5 端點（`api/routes/v2/lb_writeback.py`，權限比照 ADR-019：讀 viewer+、寫 IE+）
 | 方法 | 路徑 | 用途 |
@@ -96,11 +125,26 @@
 | GET | `/api/v2/worksheets/{id}/lb-writeback/snapshots` | 最近 10 筆摘要（供切換檢視） |
 | POST | `/api/v2/worksheets/{id}/lb-writeback/apply-offline` | body `{snapshot_id, wi_row_ids: [...]}` → 套用（D2） |
 
-錯誤碼（`errors/registry.py` 加法 ＋ 前端 catalog 同步，ADR-034）：`LB_WRITEBACK_CONTRACT_MISMATCH`、`LB_UNREACHABLE`、`LB_NOT_CONFIGURED`。
+**座標格式**：`FetchIn` 三欄 `Field(pattern=LB_ID_PATTERN)`（`^[A-Za-z0-9_-]{1,64}$`，與 B3 同一常數）；不合 → 422 `VALIDATION_ERROR`，**不呼叫 LB**（ADR-036 D7 追記 1）。`import` 的 body 不組 URL，不受此限。
+
+錯誤碼（`errors/registry.py` 加法 ＋ 前端 catalog 同步，ADR-034）：
+
+| 碼 | HTTP | 情況 |
+|---|---|---|
+| `LB_WRITEBACK_CONTRACT_MISMATCH` | 422 | `contract_version` 不是 `lb-most-writeback-v1`（D7） |
+| `VALIDATION_ERROR` | 422 | 座標格式不合（不呼叫 LB）；payload row 格式錯（B4-1，不存快照）；`latest`／`apply-offline` 讀到不符現行驗證的舊快照（請重新取得）；`apply-offline` 的列不在 `offline_diffs`（B6） |
+| `LB_UNREACHABLE` | 502 | 連線失敗、LB 5xx／3xx、其他 4xx（訊息帶 HTTP 狀態） |
+| `LB_AUTH_REQUIRED` | 502 | LB 回 401／403（缺身分 header；提示設定 `DDM_LB_AUTH_HEADERS`） |
+| `LB_TIMEOUT` | 504 | 單次操作或總時限逾時 |
+| `LB_NOT_CONFIGURED` | 503 | `DDM_LB_API_BASE_URL` 未設 |
+| `LEVEL_VALIDATION_FAILED`／`LB_EXPORT_BLOCKED` | 422 | `apply-offline` 套用後 R1–R9 或投影出 E 碼 → 整批 rollback（B6-3） |
+| `NOT_FOUND` | 404 | worksheet 不存在；`latest` 無快照；`apply-offline` 找不到該 worksheet 的快照 |
+
+（`LB_*` 原規劃三條；`LB_TIMEOUT`、`LB_AUTH_REQUIRED` 於 2026-09-18 加法新增，ADR-036 §5。表中其餘為既有共用碼，非本實作新增。）
 
 ### B6 `apply-offline`（D2 的「走正門」）
 1. 只接受 `offline_diffs` 裡出現過的 `wi_row_id`（其餘 → 422）。
-2. 寫 `level_entries.offline`；**接著跑 MOST 既有的組內傳染**（同 `countersignature` 的 cub、同 `worker_cub`）——重用作業版／既有存檔路徑的傳染實作，不要另寫一份。
+2. 寫 `level_entries.offline=True`；**接著跑組內傳染**（同 `countersignature` cub 或同 `worker_cub` wcub 視為同組，一起翻）。現況：傳染在 `lb_writeback_service._group_members` **自成一份**（規則對齊前端 `store.toggleOffline`，後端為權威）；~~重用作業版／既有存檔路徑的傳染實作，不要另寫一份~~——兩份規則各寫一次有漂移風險，**統一為共用函式另案**。
 3. 跑 `level` 驗證（R1–R9）與投影預覽（`lb_export_report`）；任一 E 碼 → 整批 rollback 並回報（不可只套一半）。
 4. 回 `{applied: [...], propagated: [...], report: {...}}`；在 `lb_writeback_snapshots` 記一筆套用紀錄（新欄 `applied_at`／`applied_rows jsonb`，同 migration）。
 
@@ -111,17 +155,19 @@
 ### F1 資料與 hook
 `features/level-system/api.ts` 加 `useLbWriteback(worksheetId)`（GET latest）、`useFetchWriteback()`、`useApplyOffline()`。型別鏡像後端回應。
 
-### F2 產線視角「實際結果」區塊（`LineView.tsx`）
+### F2 產線視角「實際結果」區塊（~~`LineView.tsx`~~ → `WritebackPanel.tsx`，由 `JobsShell.tsx` 在產線視角的 `LineView` 上方渲染）
 - 頂部一列：來源座標（project／version／result）、取得時間、機台政策（`busy` 時標「以人力計」）、「重新取得」按鈕（開小表單填三個 id）。
-- 每個作業方塊下方顯示：`第 n 站 · k 人`（多站 general → `每站`）、Q>1 顯示件數分配。
+- **逐步驟（motion）一列**顯示（~~每個作業方塊下方~~——現況是產線視角上方的獨立區塊，不掛在作業方塊下）：`第 n 站 · k 人`（多站 general → `每站`）、Q>1 顯示總件數：`units_source=cyclic` →「共 n 件」；其餘（`inferred_max`、日後新增的來源）一律「共 n 件（推算）」＋說明 tooltip——出錯時落在保守的一邊。~~Q>1 顯示件數分配~~（逐 worker 分配未實作，只顯示總數）。
+- `summary.units_baseline.status=unavailable` → 區塊頂部提示「件數沒有比對」（先處理「要處理」的項目）。
+- **尚未顯示**：`diff.unit_mismatches`／`diff.units_uncomparable` 的警告（ADR-036 D6 要求警告；§7 (d)）。
 - 三種差異標記：`cross_station`（⚠ 同一動作被排到不同站）、`missing`（LB 沒有這一步的結果）、`offline_conflict`。
-- 無快照時顯示引導文案與「取得結果」按鈕，不報錯。
+- 無快照時顯示引導文案（`noSnapshot`）與「取得結果」按鈕，不報錯。**現況**：`GET latest` 的**任何**讀取錯誤（404 無快照、5xx、舊快照 422）都走同一個分支，因此失敗原因不會顯示在此區塊——取得／套用的失敗訊息才會顯示（`fetchFailed`／`applyFailed`）。
 
 ### F3 離線差異套用
 差異清單（每列：步驟、MOST 現值、LB 值）＋ 勾選 ＋「套用勾選的離線設定」；送出後顯示套用結果與傳染到哪些列；失敗（E 碼）顯示原因且**不套用任何一列**。
 
 ### F4 i18n
-`levelSystem.jobs.writeback.*`（zh-TW／en），至少：`title`、`source`、`fetchedAt`、`policyBusy`、`refetch`、`noSnapshot`、`station`、`workers`、`unitsPerWorker`、`crossStation`、`missing`、`offlineConflict`、`applyOffline`、`applied`、`applyFailed`、錯誤碼三條。**文案要用使用者語言**（「這一步被排到第 3 站，2 個人做」而不是 `station_index=2`）。
+`levelSystem.jobs.writeback.*`（zh-TW／en 對稱）現行 key：`title`、`source`、`fetchedAt`、`policyBusy`、`fetch`、`refetch`、`noSnapshot`、`field.{lb_project_id,lb_version_id,lb_result_id}`、`station`、`stationsMulti`、`units`、`unitsInferred`、`unitsInferredHint`、`unitsBaselineUnavailable`、`crossStation`、`offlineConflict`、`missing.{general_not_written_back,simo_subordinate,no_result}`、`offlineTitle`、`offlineVals`、`applyOffline`、`applied`、`propagated`、`appliedAt`、`applyFailed`、`fetchFailed`、`stepLabel`。`LB_*` 錯誤碼五條（B5 表其餘列是既有的共用碼：`VALIDATION_ERROR`／`NOT_FOUND`／`LEVEL_VALIDATION_FAILED`／`LB_EXPORT_BLOCKED`）在錯誤 catalog：`src/frontend/src/shared/i18n/resources/errors.zh-TW.ts`／`errors.en.ts`，清單 `src/frontend/src/shared/i18n/errorCodes.ts`。原規劃清單中的 ~~`workers`~~ 併入 `station`／`stationsMulti` 的 `{{workers}}` 參數；~~`unitsPerWorker`~~ **從未實作**（畫面只顯示總件數）。**文案要用使用者語言**（「這一步被排到第 3 站，2 個人做」而不是 `station_index=2`）。
 
 ---
 
@@ -129,12 +175,16 @@
 
 | 層 | 檔 | 內容 |
 |---|---|---|
-| 單元 | `tests/unit/test_lb_writeback_parse.py` | 契約版本不符擋；未知欄位忽略；欄位型別 |
-| 單元 | `tests/unit/test_lb_writeback_aggregate.py` | 工具三列同站 → 1 站；跨站 → `cross_station`；general 多站不算異常；units 加總；offline 衝突 |
-| 單元 | `tests/unit/test_lb_writeback_diff.py` | matched／unmatched／missing 三類；SIMO 從屬列的 missing 有 reason |
-| 整合 | `tests/integration/test_lb_writeback_endpoints.py` | import → latest → apply-offline（含傳染與 rollback）；未設定 base URL → 503；LB 不可達（mock httpx）→ 502/504；保留策略只留 10 筆 |
-| E2E | `src/frontend/e2e/writeback-line-view.spec.ts` | import 樣本 → 產線視角顯示站別／人／差異 → 套用離線 → 重新載入仍正確 |
-| **真機驗證（已驗 2026-09-18；LB 修正後全鏈複驗通過 2026-09-18，units 語意一項未決）** | `src/frontend/e2e/writeback-golden-replica.spec.ts`：①離線 `import`——複本用隨機 id，fixture 的 `source_wi_row_id` 依 seq_no 改寫成複本 id 後餵入；②真機端到端（`@slow`，約 1 分鐘）——MOST 建複本 → 匯出 lb-csv → 上傳 LB 建專案 → 求解 → MOST `fetch` → 刪除該 LB 專案（清理失敗即測試失敗）。未設 `E2E_LB_BASE_URL` 即 skip；設了卻缺 `E2E_LB_AUTH_HEADERS` 的三個身分 header（或只設了後者）直接失敗。兩條跑同一組斷言，並以 `GET latest` 讀回再驗 | **第一輪（管路）**：LB 直跑 `:8090`（不經 Traefik）跑 `fetch` 全鏈可行。發現：LB **應用本身**檢查身分 header，最小需 `X-User-Id`＋`X-Plant-Code`＋`X-Username` 三個（缺任一 401）——MOST client 已改帶一組 header（`DDM_LB_AUTH_HEADERS`）。當時 `rows=0` 的成因＝**LB 上傳 CSV 標準化丟欄**（`source_wi_row_id`／`role_type`／`general_role`，STD_COL 寫死 22 欄），LB 端缺陷、非 MOST 問題。**複驗（LB `feature/most-integration-phase2` 含修正 `c0cb244` 後）**：先以沿用 fixture 固定 id 的複本對既有 result 呼叫 `fetch` 驗過；該做法讓測試佔用 `wi_rows` 全域主鍵，撞到 dev DB 既有列，已改為上述不佔 id 的設計（Howard 裁，2026-09-18）。端到端實跑結果：rows 34、matched 24／missing 0／unmatched 0；general（seq1 take_unit）已回寫、單列單站；工具五組 acquire／use／release 各聚成單站、無 `cross_station`；`frequency=8` 的兩列 `units_total=8`（`unit_mismatches` 為空，但目前只比 frequency 列）；offline 列無站無人、無 offline 差異；`GET latest` 讀回一致。離線 `import` 路徑同組斷言通過。**未決（待裁決）**：repeat 列（seq9，`repeat_count=8`）在 fixture（LB 實跑）中 LB 回 units 1/8/1——setup 列帶的是 `used`（0／1，跨 worker 加總＝經手人數），不是件數（LB ADR-008 D3）——`aggregate` 加總得 10；`diff` 只比 `frequency`、未比 `repeat_count`（D6 寫「frequency／repeat_count」）。e2e 暫只斷言該列聚成單站。 |
+| 單元 | `tests/unit/test_lb_writeback_service.py` | parse：契約版本不符擋、未知欄位忽略、缺必要欄位、型別收緊（bool／小數／字串）、`source_wi_row_id` 非 UUID、`units` 形狀、`qty_scope` 值域外 → Malformed；aggregate：工具三列同站 → 1 站、跨站 → `cross_station`、general 多站不算異常、workers 聯集、件數（cyclic 列／`inferred_max`／持工具 F>1 三列 cyclic 不乘 3／有 `qty_scope` 無 cyclic → None）、offline 衝突；diff：三類與 missing reason、fixture matched 24／missing 0／unmatched 0、offline 差異、以投影 Q 比出 `unit_mismatches`、`units_uncomparable`；`expected_n` 取投影 Q 不取 frequency |
+| 單元 | `tests/unit/test_lb_client.py` | 起本機 HTTP server（不 mock httpx）：成功與 URL、header 透傳、401 → `LbAuthRequired`、其他 4xx → `LbRequestFailed`、5xx／3xx／連線拒絕 → `LbUnreachable`、逾時 → `LbTimeout` |
+| 單元 | `tests/unit/test_lb_writeback_fetch_ids.py` | 座標格式：LB 現行格式放行；路徑改寫字元（`../`、`%2F`、`?`、`#`、空白、控制字元、結尾換行、全形、零寬、超長…）→ 422；非字串 JSON 不轉型；client 防線零請求 |
+| 整合 | `tests/integration/test_lb_writeback_endpoints.py` | import → latest → snapshots；契約不符 422；apply-offline（組內傳染、不在差異清單 422、投影 E 碼整批 rollback）；未設定 base URL → 503；不可達 → 502；逾時 → 504；缺 header → 502 `LB_AUTH_REQUIRED`；三 header 帶齊可達；保留只留 10 筆；惡意座標 → 422 且假 LB 零請求 |
+| 整合 | `tests/integration/test_lb_writeback_units.py` | 件數語意：投影 Q 為基準、持工具 F>1 無假警報、以投影 Q 比出不符、repeat 列比投影 Q 不比 frequency、投影失敗 → `units_baseline=unavailable` 不 500、payload 無 units → `units_uncomparable`、未知 `qty_scope` → 422、全 Q=1 → `not_needed`、舊快照 `latest` → 422 |
+| 整合 | `tests/integration/test_lb_writeback_model.py` | B1 資料模型 roundtrip、FK cascade |
+| E2E | `src/frontend/e2e/writeback-line-view.spec.ts` | import 樣本 → 產線視角顯示站別／人／差異（含「共 8 件（推算）」）→ 套用離線 → 重新載入仍正確 |
+| **真機驗證（已驗 2026-09-18；LB 修正後全鏈複驗通過 2026-09-18；~~units 語意一項未決~~ units 語意已裁 2026-09-18）** | `src/frontend/e2e/writeback-golden-replica.spec.ts`：①離線 `import`——複本用隨機 id，fixture 的 `source_wi_row_id` 依 seq_no 改寫成複本 id 後餵入；②真機端到端（`@slow`，約 1 分鐘）——MOST 建複本 → 匯出 lb-csv → 上傳 LB 建專案 → 求解 → MOST `fetch` → 刪除該 LB 專案（清理失敗即測試失敗）。未設 `E2E_LB_BASE_URL` 即 skip；設了卻缺 `E2E_LB_AUTH_HEADERS` 的三個身分 header（或只設了後者）直接失敗。兩條跑同一組斷言，並以 `GET latest` 讀回再驗 | **第一輪（管路）**：LB 直跑 `:8090`（不經 Traefik）跑 `fetch` 全鏈可行。發現：LB **應用本身**檢查身分 header，最小需 `X-User-Id`＋`X-Plant-Code`＋`X-Username` 三個（缺任一 401）——MOST client 已改帶一組 header（`DDM_LB_AUTH_HEADERS`）。當時 `rows=0` 的成因＝**LB 上傳 CSV 標準化丟欄**（`source_wi_row_id`／`role_type`／`general_role`，STD_COL 寫死 22 欄），LB 端缺陷、非 MOST 問題。**複驗（LB `feature/most-integration-phase2` 含修正 `c0cb244` 後）**：先以沿用 fixture 固定 id 的複本對既有 result 呼叫 `fetch` 驗過；該做法讓測試佔用 `wi_rows` 全域主鍵，撞到 dev DB 既有列，已改為上述不佔 id 的設計（Howard 裁，2026-09-18）。端到端實跑結果：rows 34、matched 24／missing 0／unmatched 0；general（seq1 take_unit）已回寫、單列單站；工具五組 acquire／use／release 各聚成單站、無 `cross_station`；~~`frequency=8` 的兩列 `units_total=8`（`unit_mismatches` 為空，但目前只比 frequency 列）~~ Q>1 三個 motion（G、H `frequency=8`；I `repeat_count=8`）`units_total` 皆 8，以 MOST 投影 Q 比對：`unit_mismatches` 空、`units_uncomparable` 空、`summary.units_baseline` 為 `ok`；offline 列無站無人、無 offline 差異；`GET latest` 讀回一致。離線 `import` 路徑同組斷言通過。~~**未決（待裁決）**：repeat 列（seq9，`repeat_count=8`）在 fixture（LB 實跑）中 LB 回 units 1/8/1——setup 列帶的是 `used`（0／1，跨 worker 加總＝經手人數），不是件數（LB ADR-008 D3）——`aggregate` 加總得 10；`diff` 只比 `frequency`、未比 `repeat_count`（D6 寫「frequency／repeat_count」）。e2e 暫只斷言該列聚成單站。~~ **已裁（Howard 2026-09-18，C＋退路；規則見 B4-2／B4-3）**：同一份黃金快照動作 I（seq9，LB units 1／8／1）`units_total` 舊 10 → 新 8（`inferred_max`——LB §8 尚未輸出 `qty_scope`）；e2e 改為逐 motion 比投影 Q，並斷言動作 I＝8。 |
+
+（原規劃的 ~~`tests/unit/test_lb_writeback_parse.py`~~／~~`tests/unit/test_lb_writeback_aggregate.py`~~／~~`tests/unit/test_lb_writeback_diff.py`~~ 三檔未建立，內容併入 `tests/unit/test_lb_writeback_service.py`。）
 
 **fixture**：`docs/lb-integration/fixtures/writeback_sample.json` —— 由 **LB 端實跑**產生（用 LB 的黃金複本結果呼叫 writeback 端點），不得手寫。取得前先確認 LB 分支 `feature/most-integration-phase2` 可跑；取不到就回報，**不要自己捏一份假的**。
 
@@ -155,3 +205,21 @@
 4. 不自己捏 fixture（§4）。
 5. 不繞過組內傳染與 R1–R9 直接 UPDATE `level_entries`。
 6. LB repo 唯讀。
+
+---
+
+## 7. 已知限制（2026-09-18，Howard 裁：寫進文件，不阻擋）
+
+(a) **件數比對基準是 MOST「現在」的投影**，不是匯出當時的：worksheet 在匯出後被改過（frequency／repeat／工具），`unit_mismatches` 反映的是「LB 那次結果 vs MOST 現況」，不是 LB 求解錯誤。
+
+(b) **站別聚合只看 `station_index`、不看 `line_index`**：多線結果時，同一 motion 被排到不同線的同號站不會標 `cross_station`，跨線漂移偵測不到。
+
+(c) **`lb_row_placements` 沒存 `qty_scope`**：重算一律以快照 `payload` 為準（B2 注意）；若日後要從 placements 查件數，需先加法 migration 補欄。
+
+(d) **UI 尚未顯示 `unit_mismatches`／`units_uncomparable` 的警告**：ADR-036 D6 寫的是「不一致 → 警告」，目前只到 API 回應（F2 只顯示件數與推算標示、基準不可用提示）。
+
+(e) **回寫區塊不區分讀取錯誤**：`GET latest` 的任何失敗（404 無快照、5xx、舊快照 422）都顯示「尚無結果」引導文案（F2），失敗原因不會顯示在該區塊。
+
+(f) **offline 組內傳染有兩份實作**：後端 `lb_writeback_service._group_members` 與前端 `store.toggleOffline` 各寫一次，規則對齊靠人維持（B6-2）；統一為共用函式另案。
+
+另：ADR-036 D6「件數」一條待整合架構師修訂；LB §8 尚未定義 `rows[].qty_scope`，補上前件數一律為推算值（`inferred_max`）。

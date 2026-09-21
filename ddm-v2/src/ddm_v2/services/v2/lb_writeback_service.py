@@ -4,9 +4,9 @@
 聚合規則見 ADR-036 D6；驗證與三類（matched/unmatched/missing）見 D7。
 
 **general 判定用 MOST 自己的 is_general**（`level_entries.is_general`），不從 LB payload 猜（ADR-036 D6）。
-**已知缺口（LB 修正中）**：本版 fixture 不含 general 列（LB 的 general 求解後插回、取得新 task id，
-未登記進站清單而被回寫略過）。因此 general 列會落在 `missing`，reason 須能分辨：
-- `general_not_written_back`：MOST 端是 general 列，但回寫沒有它（LB 缺口，會修）。
+LB 自 aac992f 起會回寫 general（插回的 general 保留 source_wi_row_id；2026-09-18 真機複驗確認）。
+missing 的 reason 須能分辨：
+- `general_not_written_back`：MOST 端是 general 列，但回寫沒有它——代表回歸或 LB 版本過舊，要查。
 - `simo_subordinate`：SIMO 從屬列，MOST 本就不輸出（ADR-023 D10 追記），非缺口、正常。
 - `no_result`：其餘 MOST 有、回寫沒有（如 offline 列不在結果、或該列未被排）。
 """
@@ -286,7 +286,7 @@ def diff(
     for wi in sorted(most_ids - agg_ids):
         m = most_by_id[wi]
         if m.is_general:
-            reason = "general_not_written_back"   # LB 缺口（會修）
+            reason = "general_not_written_back"   # LB 應回寫 general（aac992f 起）；出現＝回歸或舊版 LB
         elif m.is_simo_subordinate:
             reason = "simo_subordinate"            # 本就不輸出（正常）
         else:

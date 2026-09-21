@@ -323,7 +323,7 @@ Kahn 拓撲排序，就緒集合以 `(seq_no, part_index)` 最小者優先（par
 | `p2` | 恆空 | ~~LB 端規劃者覆蓋~~ **MOST 維持恆空**；LB 值域：Q=1 需 `p2 ≥ 2`、Q>1 可 `p2 ≥ 1`（LB `e3fb862`） |
 | 「lot 必須同一人一氣完成」 | ~~不可表達~~ **LB 已支援** | ~~LB 允許 `p2=1` 或 atomic 對 Q>1 定義為 Σused=1~~ **LB 已支援 Q>1 的 `p2=1`（該批由恰一人完成）**（LB `e3fb862`） |
 | `complexity_level` | 恆空 | ~~LB 擬刪~~ **LB 已退出求解路徑，僅顯示**（LB `139c9fe`） |
-| **回寫契約 `lb-most-writeback-v1`** | MOST 端消費尚未實作 | **LB 已提供純讀端點 `GET …/results/{result_id}/writeback`**（扁平 `rows[]`，每 task 一筆；`workers` 為清單；不含結構欄與 SIMO 從屬列）（LB `adb750b`、`631e3a5`、`02dba21`） |
+| **回寫契約 `lb-most-writeback-v1`** | ~~MOST 端消費尚未實作~~ **MOST 端已消費**（[ADR-036](../decisions/ADR-036-lb-writeback-consumption.md)；實作見 [`LB_WRITEBACK_CONSUMPTION_IMPLEMENTATION_SPEC.md`](LB_WRITEBACK_CONSUMPTION_IMPLEMENTATION_SPEC.md)；分支 `feature/lb-writeback`，未合入） | **LB 已提供純讀端點 `GET …/results/{result_id}/writeback`**（扁平 `rows[]`，每 task 一筆；`workers` 為清單；不含結構欄與 SIMO 從屬列）（LB `adb750b`、`631e3a5`、`02dba21`）。待 LB 補：`rows[].qty_scope`（補上前 MOST 件數為推算值，見實作書 §7） |
 
 ---
 

@@ -37,6 +37,7 @@
 | [ADR-033-llm-planner-scope-narrowing.md](ADR-033-llm-planner-scope-narrowing.md) | LLM planner 範圍收窄（`quantity`／距離不再由模型產出） | 🟢 accepted |
 | [ADR-034-language-aware-error-contract.md](ADR-034-language-aware-error-contract.md) | 語言感知錯誤契約：RFC 9457 對齊、穩定 code＋結構化 detail、前端 catalog 組句 | 🟢 accepted |
 | [ADR-035-lb-projection-layer-and-motion-decomposition.md](ADR-035-lb-projection-layer-and-motion-decomposition.md) | **LB 投影層**：持工具 motion 確定性拆 acquire/use/release、`repeat_count` 為 cyclic 乘數、compiler `resolve_multiplier`、分層 DAG 傳遞縮減、`level_entries` 六個 LB 標記欄、匯出前 E/W 碼；最高原則＝`lb-integration/MOST_LB_DATA_CONTRACT_SPEC.md` | 🟢 accepted（2026-09-12，Howard 核可） |
+| [ADR-036-lb-writeback-consumption.md](ADR-036-lb-writeback-consumption.md) | **LB 回寫消費**（反方向）：唯讀快照＋逐列放置、屬性回流只有 `offline` 且走 MOST 正門（組內傳染＋R1–R9）、結構欄不回流、一 motion 對多 task 的聚合、驗證與失敗處理；契約欄位權威在 LB `MOST_INTEGRATION_INPUT_SPEC.md` §8 | 🟢 accepted（2026-09-18，Howard 核可；D6「件數」一條待整合架構師修訂） |
 
 ## 狀態說明
 

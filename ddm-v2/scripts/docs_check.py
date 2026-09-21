@@ -50,18 +50,13 @@ CROSS_REPO_LB_PREFIXES = ("src/optimization/", "src/shared/domain/", "src/result
 # 產生檔（由工具生成，非手寫源碼；可能未生成或 gitignore）。
 GENERATED_ALLOWLIST = {
     "src/shared/types/api.d.ts",  # 由 npm run gen:api 自 OpenAPI 產生
+    "src/frontend/openapi.json",  # 由後端 OpenAPI 匯出（gitignore；乾淨檢出不存在）
 }
 # 設計期規劃、尚未建的腳本（llm spec 記錄設計意圖；worklog 已自註不存在）。
 FORWARD_REF_ALLOWLIST = {
     "scripts/dev_seed_ai_bundles.py",
     "scripts/build_option_embeddings.py",
     "scripts/prune_ai_runs.py",
-    # ADR-036 回寫實作書預告、尚未建（B5／測試階段會建；B5 前不做，等 LB 新 fixture）：
-    "tests/unit/test_lb_writeback_parse.py",
-    "tests/unit/test_lb_writeback_aggregate.py",
-    "tests/unit/test_lb_writeback_diff.py",
-    "tests/integration/test_lb_writeback_endpoints.py",
-    "src/frontend/e2e/writeback-line-view.spec.ts",
     # LB 端產法／原始 fixture 路徑（跨 repo，記於 MOST fixture README 的來源出處，非 MOST 檔）：
     "scripts/gen_writeback_sample.py",
     "test/backend/integration/fixtures/most_integration/writeback_sample.json",
@@ -244,7 +239,7 @@ def check_domain_index_matches() -> None:
 def check_graph_freshness() -> None:
     graph = DDM / "graphify-out" / "graph.json"
     if not graph.is_file():
-        warn("graphify 圖不存在（ddm-v2/graphify-out/graph.json）；跑 `graphify .`")
+        warn("graphify 圖不存在（ddm-v2/graphify-out/graph.json）；跑 `graphify . --code-only` 建圖")
         return
     built = json.loads(graph.read_text(encoding="utf-8")).get("built_at_commit")
     if not built:
@@ -260,7 +255,7 @@ def check_graph_freshness() -> None:
     except ValueError:
         n = GRAPH_LAG_THRESHOLD + 1
     if n > GRAPH_LAG_THRESHOLD:
-        warn(f"graphify 圖落後 HEAD {n} 個 commit（built={built[:7]}）；跑 `graphify update .`（日常用 --code-only）")
+        warn(f"graphify 圖落後 HEAD {n} 個 commit（built={built[:7]}）；跑 `graphify update .`（只重抽程式、免 LLM key；不接 --code-only，那是完整建圖的參數）")
     else:
         ok(f"graphify 圖落後 {n} commit（未超門檻 {GRAPH_LAG_THRESHOLD}）")
 

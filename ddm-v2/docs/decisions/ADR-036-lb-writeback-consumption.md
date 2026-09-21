@@ -2,9 +2,9 @@
 
 ## 狀態
 
-🟢 **accepted**（2026-09-18，Howard 核可；三項取捨於 2026-09-17 裁決，見 §2 D1／D2／D5）。實作見 `docs/lb-integration/LB_WRITEBACK_CONSUMPTION_IMPLEMENTATION_SPEC.md`。
+🟢 **accepted**（2026-09-18，Howard 核可；三項取捨於 2026-09-17 裁決，見 §2 D1／D2／D5）——**D6「件數」一條待整合架構師修訂**（見 §2 D6 件數註記）。實作見 `docs/lb-integration/LB_WRITEBACK_CONSUMPTION_IMPLEMENTATION_SPEC.md`。
 
-- **對應 LB 端**：`lb-most-writeback-v1`，定義於 LB `docs/dev_docs/MOST_INTEGRATION_INPUT_SPEC.md` §8（**該檔是回寫契約的唯一權威**；本 ADR 不重述欄位）、LB ADR-023 D11。LB 落地 commit `adb750b`＋`631e3a5`＋`02dba21`（分支 `feature/most-integration-phase2`，未合入 LB master）。
+- **對應 LB 端**：`lb-most-writeback-v1`，定義於 LB `docs/dev_docs/MOST_INTEGRATION_INPUT_SPEC.md` §8（**該檔是回寫契約的唯一權威**；本 ADR 不重述欄位）、LB ADR-023 D11。LB 落地 commit `adb750b`＋`631e3a5`＋`02dba21`；真機驗證另依賴 LB 兩個修正：`aac992f`（插回的 general 保留 `source_wi_row_id`，回寫不再漏 general）、`c0cb244`（上傳 CSV 標準化保留 MOST 擴充欄，見 §4）（皆在分支 `feature/most-integration-phase2`，未合入 LB master）。
 - **關聯**：[ADR-035](ADR-035-lb-projection-layer-and-motion-decomposition.md)（MOST→LB 投影；本 ADR 是反方向）、`docs/lb-integration/MOST_LB_CONTRACT.md` D13（屬性可雙向、結構單向）、[ADR-011](ADR-011-schema-evolution-and-contract-stability.md)（加法演進）、[ADR-019](ADR-019-worksheet-access-control.md)（端點權限）、[ADR-034](ADR-034-language-aware-error-contract.md)（錯誤信封）。
 
 ---
@@ -54,11 +54,21 @@ D13 同時定下屬性回流規則：可回流的只有 `offline` 這類標籤�
 - **件數**：`units` 僅 Q>1 出現，逐 worker 加總後與 MOST 的 `frequency`／`repeat_count` 對照，不一致 → 警告。
 - **offline**：多筆若不一致 → 警告（LB 端本就要求同群組一致）。
 
+> **D6 件數註記（2026-09-18）**：上列「件數」一條 Howard 2026-09-18 指出**有誤**（LB 的 setup 列 `units` 是 `used`、不是件數，逐列加總會把持工具 motion 灌大——黃金動作 I 得 10、實為 8），**待整合架構師修訂**；本註記不改 D6 決策內容。修訂落筆前，現行實作依 Howard 同日裁決——**規則見 [實作書](../lb-integration/LB_WRITEBACK_CONSUMPTION_IMPLEMENTATION_SPEC.md) §2 B4、已知限制見該書 §7**（本 ADR 不重述）。「不一致 → 警告」目前只到 API，UI 尚未顯示（同該書 §7）。
+
 ### D7 驗證與失敗處理
 - `contract_version != "lb-most-writeback-v1"` → **擋**（ADR-034 信封，`code=LB_WRITEBACK_CONTRACT_MISMATCH`）。
 - `rows[].source_wi_row_id` 不屬於本 worksheet → **不擋**，記為 `unmatched`（可能是別的 worksheet 的結果）。
 - worksheet 有列但回寫沒有 → 記為 `missing`（SIMO 從屬列本就不輸出；offline 列可能不在結果；IE 需要看得到）。
 - LB 不可達／逾時 → 502／504 ＋ 原始狀態碼寫 log，不靜默當成空結果。
+
+> **D7 追記（2026-09-18，Howard 裁決）**：以下一律回 **422**（ADR-034 信封，`code=VALIDATION_ERROR`）。
+> 1. **LB 座標格式**：`lb_project_id`／`lb_version_id`／`lb_result_id` 必須符合 `^[A-Za-z0-9_-]{1,64}$`，不合 → 422、**不呼叫 LB**。理由：三個座標直接成為 LB URL 的路徑段，`/`、`..`、`%2F`、`?`、`#` 等可把請求改寫成 LB 主機上的任意路徑、且帶著身分 header 發 GET；只做 URL 編碼仍可能打到別的路徑，故擋在驗證。這是對 LB id 格式的**假設**（LB 現行 project＝32 位 hex、version＝`original`／`v_<hex>`、result＝UUID，皆在集合內）；LB 若改 id 格式須先同步本條。client 以同一規則再擋一次（縱深防線）。
+> 2. **`rows[].qty_scope` 值域**：只收 `setup`／`cyclic` 或缺欄（null）；其他值（含大小寫不符、空字串、`auto`）→ 整份 422、不存快照。理由：未知值會讓件數取值（D6 件數註記）失真，寧可擋下也不猜。
+> 3. **`rows[].source_wi_row_id` 不是 UUID** → 整份 422、不存快照（對應鍵本身壞了，不是「別份 worksheet 的列」）。判準是 `uuid.UUID()` 解析得動：32 位無連字號、`{…}`、`urn:uuid:` 等非正規形式**放行並正規化為小寫連字號形式**再比對。合法 UUID 但不屬本 worksheet 仍照上方記 `unmatched`，不擋。
+> 4. **已存快照在現行驗證下讀不回**（驗證收緊前寬鬆匯入的 payload）→ `latest`／`apply-offline` 回 422「請重新取得」，不落 500。與 D4(c) 不衝突：D4(c) 的「契約升版後舊快照仍可解讀」指**原始 payload 留存、事後可解析**，不等於 API 一定讀得回；讀不回就重新取得。
+>
+> 其餘 row 欄位型別錯（`task_id`／index 非整數、`offline_flag` 非布林、`workers`／`units` 形狀錯）同屬整份 422——這部分是 `79d8e4f` 的審查修正（Howard 核可文件化，非獨立裁決），清單見實作書 §2 B4-1。
 
 ---
 
@@ -79,9 +89,15 @@ D13 同時定下屬性回流規則：可回流的只有 `offline` 這類標籤�
 
 **代價／風險**：多一組表與端點；v1 直連 LB 無認證——**只可在內網／本機使用**，掛 gateway 前不得對外開放（實作書列為禁止事項）；LB 分支尚未合入其 master，端點可用性依賴該分支部署。
 
-**真機驗證（2026-09-18，整合架構師實跑）**：LB Phase 2 直跑 `:8090`（不經 Traefik）→ 建專案（上傳黃金 tasks.csv）→ 求解 → `GET …/writeback`。結果：(a) 契約版本與機台政策欄正確；(b) **`rows` 為 0** —— LB 專案建立時的 CSV 標準化（`infrastructure/csv/csv_service.py::process_uploaded_file`）用寫死的 STD_COL 清單，丟掉 `source_wi_row_id`／`role_type`／`general_role`（存下來 22 欄，上傳為 24 欄），對應鍵在儲存層即斷；影響不只回寫，`role_type=machine`（D9）與 `general_role`（D4）走真實上傳路徑同樣失效。LB 端修正中。(c) MOST `fetch` 對真 LB 回 502 `LB_UNREACHABLE`（HTTP 401），MOST 側管路正確，成因見 D1 追記。
+**身分 header 的限制（2026-09-18 資安複核）**：`DDM_LB_AUTH_HEADERS` 是 MOST **自稱**的身分，LB 不驗（v1 直連、不經 gateway）。值設固定字串時，所有 analyst 在 LB 端共用同一個身分——LB 的紀錄看不出是誰取的（confused deputy）；`@me` 則帶當前使用者員編（來源是 MOST 這端的 gateway-trust 身分）。建議 `X-Username`／`X-User-Id` 用 `@me`、只有 `X-Plant-Code` 用固定值。這不是認證，只是讓 LB 的紀錄能對回真正的操作者；真正的認證仍等掛 gateway（D1）。
+
+**真機驗證（2026-09-18，整合架構師實跑）**：LB Phase 2 直跑 `:8090`（不經 Traefik）→ 建專案（上傳黃金 tasks.csv）→ 求解 → `GET …/writeback`。結果：(a) 契約版本與機台政策欄正確；(b) **`rows` 為 0** —— LB 專案建立時的 CSV 標準化（`infrastructure/csv/csv_service.py::process_uploaded_file`）用寫死的 STD_COL 清單，丟掉 `source_wi_row_id`／`role_type`／`general_role`（存下來 22 欄，上傳為 24 欄），對應鍵在儲存層即斷；影響不只回寫，`role_type=machine`（D9）與 `general_role`（D4）走真實上傳路徑同樣失效。~~LB 端修正中。~~ **已修**（LB `c0cb244`；複驗見下段）。(c) MOST `fetch` 對真 LB 回 502 `LB_UNREACHABLE`（HTTP 401），MOST 側管路正確，成因見 D1 追記。
+
+**複驗（2026-09-18，LB 修正後）**：LB `feature/most-integration-phase2` 含 `c0cb244`（上傳標準化保留擴充欄）與 `aac992f`（general 保留 `source_wi_row_id`），直跑 `:8090`。全鏈改為自動化端到端（`src/frontend/e2e/writeback-golden-replica.spec.ts`，`@slow`）：MOST 建黃金複本（隨機 id，不佔 `wi_rows` 全域主鍵）→ 匯出 lb-csv → 上傳 LB 建專案 → 求解 → MOST `fetch` → 刪除該 LB 專案。結果：rows 34、matched 24／missing 0／unmatched 0；general 單列單站；工具五組 acquire／use／release 各聚成單站、無 `cross_station`；Q>1 三個 motion（G、H `frequency=8`；I `repeat_count=8`）`units_total` 皆 8、`unit_mismatches` 空、件數比對基準 `ok`；offline 列無站無人、無 offline 差異；`GET latest` 讀回一致。複驗同時暴露 D6 件數規則的缺陷：同一份黃金快照動作 I 依 D6 逐列加總得 10，依 Howard 裁決改為 8（標推算 `inferred_max`——LB §8 尚未輸出 `qty_scope`），見 D6 件數註記。
 
 **待裁決（不阻擋實作）**：是否讓回寫結果影響作業版的「秒數」顯示（目前秒數來自 MOST 投影預覽，非 LB 實際排程）；建議 v1 不混用，兩者分開顯示。
+
+**待修訂（不阻擋實作）**：D6「件數」一條由整合架構師修訂（見 D6 件數註記）。LB §8 尚未定義 `rows[].qty_scope`；補上前，MOST 顯示的件數一律是推算值（`inferred_max`）。
 
 ---
 
@@ -92,7 +108,7 @@ D13 同時定下屬性回流規則：可回流的只有 `offline` 這類標籤�
 - **落地（2026-09-17，分支 `feature/lb-writeback`）**：fixture（LB `aac992f` 實跑，含 general）`6e1d139`／`c9a64bf`；
   B1 資料模型 `d01d8f2`；B3 LB client `62bc5fa`；B4 解析/聚合/差異 `dce1415`；B5 五端點＋三錯誤碼 ＋ B6
   apply-offline（走正門）`9e4f636`；F1–F4 作業版產線視角實際結果＋離線套用 `b978994`。**未 push、未合入。**
-- **502／504（已裁：維持 502／504，逾時以子類別分出，2026-09-18 Howard）**：§2 D7「LB 不可達／逾時 → 502／504」
+- **502／504（已裁：維持 502／504，逾時以子類別分出，2026-09-18 Howard；`47bc3bc`）**：§2 D7「LB 不可達／逾時 → 502／504」
   維持。實作以最小改動達成——`lb_client` 加 `LbTimeout(LbUnreachable)`，只在單次操作逾時（`httpx.TimeoutException`）
   與總時限逾時（`asyncio.timeout`）時拋；其餘連線失敗、5xx、非預期狀態仍為 `LbUnreachable`。路由層先判
   `LbTimeout` → **504**（`GatewayTimeoutError`，`LB_TIMEOUT`，訊息「LB 還在回應中或太慢，稍後再試」）、
@@ -101,10 +117,13 @@ D13 同時定下屬性回流規則：可回流的只有 `offline` 這類標籤�
   `LbTimeout` 為 `LbUnreachable` 子類，既有「不可達即 502」的捕捉語意不破（is-a），只是路由層多一層更精準的判斷。
   新增 `LB_TIMEOUT`（獨立碼，前端 catalog 兩語系齊）而非共用 `LB_UNREACHABLE` 改訊息——獨立碼讓前端可各自在地化、
   日後可對逾時做重試 UI。原始上游狀態碼／逾時秒數仍寫 log。
-- **身分 header 一組（2026-09-18，D1 追記落地）**：真機驗證發現 LB 需三個身分 header（見 §2 D1 追記）。
+- **身分 header 一組（2026-09-18，D1 追記落地；`224e143`）**：真機驗證發現 LB 需三個身分 header（見 §2 D1 追記）。
   MOST client 的單一 `DDM_LB_AUTH_HEADER_NAME` 擴為 **`DDM_LB_AUTH_HEADERS`**（一組 header，CSV `名稱=值,…`
   或 JSON；值為固定字串或 `@me`＝當前使用者員編，於呼叫時解析）。舊 `DDM_LB_AUTH_HEADER_NAME`（單一，值＝@me）
   **保留相容但標為 deprecated**（`settings._parse_lb_headers` 仍讀）——選「保留相容」而非移除：避免既有 .env 靜默失效，
   且遷移成本低（改一行）。LB 回 401／403（缺 header）→ `LbAuthRequired`（`LbRequestFailed` 子類）→ 路由 502 ＋ 碼
   **`LB_AUTH_REQUIRED`** ＋ 訊息「LB 需要身分 header（X-User-Id／X-Plant-Code／X-Username），請設定 DDM_LB_AUTH_HEADERS」
   （兩語系齊）——不靜默送出、不誤導為單純連不到。仍符合 D1「認證只能是加法」：掛 Traefik 時只換 base URL 與 header 值來源。
+- **黃金複本不佔固定 id（2026-09-18，Howard 裁；`959f4f1`＋`6b9fa7b`）**：複驗初期沿用 fixture 固定 id 建黃金複本，因 `wi_rows.id` 是全域主鍵而清掉了共用 dev DB 的 worksheet `e9299cab`。Howard 裁定佔用固定 id 是測試設計缺陷：`959f4f1` 記錄把該 worksheet 原樣還原的資料操作；`6b9fa7b` 把複本改為一律隨機 id（離線 `import` 依 seq_no 改寫 fixture 的 `source_wi_row_id`），並把真機全鏈自動化（§4 複驗）。
+- **LB 座標格式驗證（2026-09-18，Howard 裁：現在修、不開票；`dcbb9a5`）**：見 §2 D7 追記第 1 點。
+- **件數語意（2026-09-18，Howard 裁：C＋退路；`79d8e4f`）**：見 §2 D6 件數註記。API 加法欄位 `diff.motions.<wi_row_id>.units_source`、`diff.units_uncomparable`、`summary.units_baseline`（`summary.motions` 是計數，不是這裡的物件；定義見實作書 §2 B4）；同一 commit 收緊 payload 驗證並讓讀不回的舊快照回 422（§2 D7 追記第 2–4 點）。已知限制見實作書 §7。

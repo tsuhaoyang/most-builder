@@ -1485,7 +1485,7 @@ const en: Widen<typeof zhTW> = {
         crossStation: '⚠ Same step placed at different stations',
         offlineConflict: '⚠ Offline setting inconsistent',
         missing: {
-          general_not_written_back: 'General step not written back (known line-balancing gap, being fixed)',
+          general_not_written_back: 'This result is missing the general action (line balancing should include it). Re-run the optimization in line balancing, then fetch with the new result id; if it is still missing, report it to the administrator',
           simo_subordinate: 'SIMO subordinate step is never in line balancing (normal)',
           no_result: 'Line balancing has no result for this step',
         },

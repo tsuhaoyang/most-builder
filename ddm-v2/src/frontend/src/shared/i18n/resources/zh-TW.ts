@@ -1430,7 +1430,7 @@ const zhTW = {
         crossStation: '⚠ 同一步驟被排到不同站',
         offlineConflict: '⚠ 離線設定不一致',
         missing: {
-          general_not_written_back: '通用步驟未回寫（產線平衡端已知缺口，修正中）',
+          general_not_written_back: '這份結果裡沒有這個通用動作（產線平衡應該要有）。請在產線平衡重新最佳化，再用新的結果編號取得；仍然沒有請通報管理員',
           simo_subordinate: 'SIMO 從屬步驟本就不進產線平衡（正常）',
           no_result: '產線平衡沒有這一步的結果',
         },

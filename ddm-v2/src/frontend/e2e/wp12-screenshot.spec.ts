@@ -1,14 +1,21 @@
 /**
  * WP12 截圖：Level System LB 標記 UI（供 Howard 看設計）。
- * 存 docs/lb-integration/screenshots/level-system-lb-tags.png。需 dev server（5173，暴露 __ddmTest）。
+ * 預設寫本測試的輸出目錄（test-results/，gitignore）；帶 UPDATE_SCREENSHOTS=1 才覆寫版控的
+ * docs/lb-integration/screenshots/level-system-lb-tags.png。需 dev server（5173，暴露 __ddmTest）。
  *
  * 流程：API 建一個含三列的 worksheet → 設 activeWs（元件載入真實列）→ 待 hydrate →
  *       用 store hook 套 wcub/offline/action_type/merge_lock（hydrate 後不還原 wcub，故此處手動套以展示 UI）
  *       → 切 level tab → 截圖。
  */
 import { test, expect } from '@playwright/test'
+import path from 'node:path'
+import { FIXTURES_DIR } from './support/goldenReplica'
 
-const SHOT = '../../docs/lb-integration/screenshots/level-system-lb-tags.png'
+const SHOT_NAME = 'level-system-lb-tags.png'
+const shot = (): string =>
+  process.env.UPDATE_SCREENSHOTS === '1'
+    ? path.resolve(FIXTURES_DIR, '..', 'screenshots', SHOT_NAME)
+    : test.info().outputPath(SHOT_NAME)
 const AUTH = { 'X-Username': 'IEC141289' }
 const WS = '55555555-5555-5555-5555-555555555555'
 const OBJ = '66666666-6666-6666-6666-666666666666'
@@ -62,7 +69,7 @@ test('capture Level System LB tags UI', async ({ page, request }) => {
   await page.waitForTimeout(600)
   // 等 Level System 標題出現（非空狀態）再截；截圖是設計產物，不作硬性斷言 gate
   await page.getByText('Level System').first().waitFor({ timeout: 5000 }).catch(() => {})
-  await page.screenshot({ path: SHOT, fullPage: true })
+  await page.screenshot({ path: shot(), fullPage: true })
   const emptyNotice = await page.getByText('請先從分析案件開啟工時表').count().catch(() => 0)
   if (emptyNotice > 0) console.warn('[wp12-screenshot] rendered empty-state; check activeWs/rows timing')
   expect(true).toBe(true)

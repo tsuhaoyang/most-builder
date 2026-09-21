@@ -43,7 +43,7 @@
 
 - `ddm-v2/graphify-out/` 已於 WP-D1 重建並與 HEAD 同步（9323 節點）。回答 codebase 問題先 `graphify query "<問題>"`，
   改完程式 `graphify update .`；維護時機見 checkpoint。
-- **日常只跑 `graphify . --code-only`**（本機無 LLM key）：文件／paper／image 的**語意抽取需 LLM key**
+- **日常＝`graphify update .`（只重抽程式、免 key、不接 `--code-only`）；重建整張圖才用 `graphify . --code-only`**（本機無 LLM key）：文件／paper／image 的**語意抽取需 LLM key**
   （GEMINI／ANTHROPIC／OPENAI 等）；code-only 走本地 AST、免 key，足夠日常程式圖維護。docs 的盤點與索引改由
   `DOC_REGISTRY.md` 三層入口＋領域索引處理，不依賴圖的語意層。
 

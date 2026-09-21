@@ -26,15 +26,15 @@
 ## 回寫（消費，反方向；ADR-036）
 LB 求解結果經 `lb-most-writeback-v1` 契約回寫給 MOST（唯讀快照）。契約欄位權威在 **LB `MOST_INTEGRATION_INPUT_SPEC.md` §8**（本 repo 不重述）。
 - 資料表：`lb_writeback_snapshots`（原始 payload＋政策＋applied_at/applied_rows）＋`lb_row_placements`（逐 task：source_wi_row_id/task_id/line_index/station_index/workers[]/units/offline_flag）。保留最近 10 筆/worksheet。
-- 端點（`api/routes/v2/lb_writeback.py`）：`POST …/lb-writeback/fetch`（呼叫 LB）、`/import`（測試離線）、`GET …/latest`、`/snapshots`、`POST …/apply-offline`。錯誤碼 `LB_WRITEBACK_CONTRACT_MISMATCH`(422)／`LB_UNREACHABLE`(502)／`LB_NOT_CONFIGURED`(503)。
-- 聚合規則（ADR-036 D6）：同 `source_wi_row_id` → stations 集合、workers 聯集、units 加總；`cross_station`＝多站且**非 general**（general 判定用 MOST 自己的 `is_general`，不從 payload 猜）。
+- 端點（`api/routes/v2/lb_writeback.py`）：`POST …/lb-writeback/fetch`（呼叫 LB）、`/import`（測試離線）、`GET …/latest`、`/snapshots`、`POST …/apply-offline`。錯誤碼 `LB_WRITEBACK_CONTRACT_MISMATCH`(422)／`LB_UNREACHABLE`(502)／`LB_AUTH_REQUIRED`(502，缺身分 header)／`LB_TIMEOUT`(504)／`LB_NOT_CONFIGURED`(503)；LB 座標不合 `LB_ID_PATTERN`、payload row 格式錯（含 `qty_scope` 值域外、`source_wi_row_id` 非 UUID）、舊快照讀不回 → `VALIDATION_ERROR`(422)，座標錯不呼叫 LB（ADR-036 D7 追記；完整表見實作書 §2 B5）。
+- 聚合規則（ADR-036 D6）：同 `source_wi_row_id` → stations 集合、workers 聯集、~~units 加總~~ **件數不跨列加總**（規則見實作書 §2 B4；硬約束見 domains.yaml；D6「件數」一條待整合架構師修訂）；`cross_station`＝多站且**非 general**（general 判定用 MOST 自己的 `is_general`，不從 payload 猜）。
 - 屬性回流只有 `offline`（D2，走 MOST 組內傳染＋R1–R9，任一 E 整批 rollback）；其餘欄位（workers/station/units/line）唯讀；結構欄不回流（D3）。
-- **真機驗證（已驗 2026-09-18）**：LB 直跑 `:8090`（不經 Traefik）`fetch` 全鏈可行；LB 應用本身需三個身分 header（`X-User-Id`／`X-Plant-Code`／`X-Username`），MOST client 以 `DDM_LB_AUTH_HEADERS` 帶一組 header（值可為固定字串或 `@me`＝當前使用者員編）。當時 `rows=0` 成因＝LB 上傳 CSV 標準化丟欄（source_wi_row_id/role_type/general_role），**LB 端缺陷、非 MOST**，LB 修正中；待修後複驗 rows=34、matched 24。
+- **真機驗證（已驗 2026-09-18；LB 修正後已複驗 2026-09-18）**：LB 直跑 `:8090`（不經 Traefik）`fetch` 全鏈可行；LB 應用本身需三個身分 header（`X-User-Id`／`X-Plant-Code`／`X-Username`），MOST client 以 `DDM_LB_AUTH_HEADERS` 帶一組 header（值可為固定字串或 `@me`＝當前使用者員編）。第一輪 `rows=0` 成因＝LB 上傳 CSV 標準化丟欄（source_wi_row_id/role_type/general_role），**LB 端缺陷、非 MOST**，~~LB 修正中；待修後複驗 rows=34、matched 24~~ LB `c0cb244` 已修。複驗（LB 分支含 `c0cb244`＋`aac992f`；自動化端到端 `src/frontend/e2e/writeback-golden-replica.spec.ts`，`@slow`，開關 `E2E_LB_BASE_URL`＋`E2E_LB_AUTH_HEADERS`）：rows 34、matched 24／missing 0／unmatched 0，Q>1 三個 motion 件數皆 8、無不符。細節見 ADR-036 §4。
 - 權威文件：[ADR-036](../decisions/ADR-036-lb-writeback-consumption.md)、[LB_WRITEBACK_CONSUMPTION_IMPLEMENTATION_SPEC.md](../lb-integration/LB_WRITEBACK_CONSUMPTION_IMPLEMENTATION_SPEC.md)、LB §8。
 
 ## 不變量
 見 `docs/agent-team/domains.yaml` domain `lb-projection` 的 `invariants`（單一權威，本索引不重抄）。
 
 ## 測試與已知缺口
-- 測試：`tests/unit/test_lb_projection_*.py`（golden、tmu、tools、quantity、validator、report、hints）、`tests/integration/test_export.py`、`test_export_lb_preview.py`、`test_lb_projection_adapter_equiv.py`；e2e `level-jobs-golden.spec.ts`（DoD-1）。
-- 缺口：無（剛落地，文件齊備）。
+- 測試：`tests/unit/test_lb_projection_*.py`（golden、tmu、tools、quantity、validator、report、hints）、`tests/integration/test_export.py`、`test_export_lb_preview.py`、`test_lb_projection_adapter_equiv.py`；e2e `level-jobs-golden.spec.ts`（DoD-1）。回寫（ADR-036）的測試清單見實作書 §4。
+- 缺口：投影——無。~~無（剛落地，文件齊備）。~~ 回寫（ADR-036）——已知限制（件數基準是現況投影、跨線漂移偵測不到、placements 無 `qty_scope`、UI 未顯示件數警告等）＋ D6「件數」一條待整合架構師修訂、LB §8 尚未定義 `rows[].qty_scope`：**清單與細節見實作書 §7**（本索引不重抄）。

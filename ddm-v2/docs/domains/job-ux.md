@@ -11,7 +11,7 @@
 - [ADR-035](../decisions/ADR-035-lb-projection-layer-and-motion-decomposition.md) — D10 修訂：作業版（預設）＋進階檢視（IE），反投影形式定義
 
 ## 程式入口
-- 路徑：`src/frontend/src/features/level-system/**`（`LevelSystem.tsx`、`JobsShell.tsx`、`JobsFlow.tsx`、`JobDrawer.tsx`、`Notices.tsx`、`notices.ts`、`LineView.tsx`、`DevGrid.tsx`、`AdvancedView.tsx`、`jobs.ts`、`jobsActions.ts`、`jobsModel.ts`、`layers.ts`、`store.ts`、`logic.ts`、`api.ts`）
+- 路徑：`src/frontend/src/features/level-system/**`（`LevelSystem.tsx`、`JobsShell.tsx`、`JobsFlow.tsx`、`JobDrawer.tsx`、`Notices.tsx`、`notices.ts`、`LineView.tsx`、`WritebackPanel.tsx`（LB 回寫實際結果區塊，ADR-036 F2）、`DevGrid.tsx`、`AdvancedView.tsx`、`jobs.ts`、`jobsActions.ts`、`jobsModel.ts`、`layers.ts`、`store.ts`、`logic.ts`、`api.ts`）
 - graphify 錨點：`jobsFromStore`、`JobsShell`、`derive`、`buildNotices`、`applyBaseline`、`useLbPreview`
 - `graphify explain "<anchor>"` 展開。
 
@@ -25,5 +25,5 @@
 見 `docs/agent-team/domains.yaml` domain `job-ux` 的 `invariants`（單一權威，本索引不重抄）。
 
 ## 測試與已知缺口
-- 測試：e2e `level-jobs-logic.spec.ts`（純邏輯 19）、`level-jobs-golden.spec.ts`（DoD-1 兩路徑）、`level-jobs-ui.spec.ts`、`level-jobs-f7.spec.ts`、`level-jobs-plaindiag.spec.ts`、`level-hydrate-tags.spec.ts`。
-- 缺口：無（剛落地，文件齊備）。
+- 測試：e2e `level-jobs-logic.spec.ts`（純邏輯 19）、`level-jobs-golden.spec.ts`（DoD-1 兩路徑）、`level-jobs-ui.spec.ts`、`level-jobs-f7.spec.ts`、`level-jobs-plaindiag.spec.ts`、`level-hydrate-tags.spec.ts`、`writeback-line-view.spec.ts`（回寫區塊顯示＋套用離線）、`level-jobs-screenshot.spec.ts`（設計截圖；預設寫 `test-results/`，`UPDATE_SCREENSHOTS=1` 才覆寫 `docs/lb-integration/screenshots/`）。
+- 缺口：~~無（剛落地，文件齊備）。~~ 回寫區塊（ADR-036 F2）：UI 尚未顯示件數不符／無法比對的警告，且 `GET latest` 的任何讀取錯誤都顯示「尚無結果」引導文案——清單見 [LB 回寫消費實作書](../lb-integration/LB_WRITEBACK_CONSUMPTION_IMPLEMENTATION_SPEC.md) §7。

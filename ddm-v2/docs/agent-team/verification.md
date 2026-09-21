@@ -15,8 +15,8 @@
   或前端熱重載 `npm run dev`（:5173，proxy /api → :8099；DEV 版才有 `window.__ddmTest` hook）。
 - 用 Playwright 走**真實使用者流程**：`E2E_BASE_URL=http://127.0.0.1:8099 npx playwright test`
   （需要 DEV hook 的 store 測試改用 :5173）。
-- 驗證用的 spec 要**明確呼叫 `page.screenshot(...)`**，存到 `docs/lb-integration/screenshots/`（設計產物）或 `test-results/`；
-  截圖涵蓋關鍵狀態（操作前、操作後、pill 狀態、通知）。
+- 驗證用的 spec 要**明確呼叫 `page.screenshot(...)`**；截圖涵蓋關鍵狀態（操作前、操作後、pill 狀態、通知）。
+  **輸出位置**：預設寫該次測試的輸出目錄（`test-results/`，gitignore）；要更新版控的 `docs/lb-integration/screenshots/`（設計產物）才帶 `UPDATE_SCREENSHOTS=1`（嚴格字面 `1`）——平常跑 e2e 不該改動文件截圖（`level-jobs-screenshot.spec.ts`、`wp12-screenshot.spec.ts` 已照此實作）。
 - 能攔截 API 的就 `page.waitForResponse(...)` 斷言後端契約（狀態碼、關鍵欄位），不要只看 UI 沒報錯。
 
 單元測試（vitest／pytest）仍要跑，但**不能取代** UI 端到端截圖驗證——單元綠不等於使用者操作正確。
@@ -38,5 +38,5 @@
 
 ## 4. 收尾
 
-- 驗證用臨時檔（截圖除外）清掉。設計截圖存 `docs/lb-integration/screenshots/` 供追溯（已追蹤）；
+- 驗證用臨時檔（截圖除外）清掉。設計截圖存 `docs/lb-integration/screenshots/` 供追溯（已追蹤；更新要帶 `UPDATE_SCREENSHOTS=1`）；
   臨時 spec／test-results 不 commit。

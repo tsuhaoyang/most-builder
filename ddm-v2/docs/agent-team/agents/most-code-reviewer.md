@@ -49,7 +49,7 @@ tools: [read, grep, glob, shell]
 
 ## 工具與測試指令（MOST 實際）
 
-- 先 `graphify query "<你要找的東西>"` 定位（圖需先 `graphify .` 建；現有圖可能落後），再 grep。
+- 先 `graphify query "<你要找的東西>"` 定位（圖需先 `graphify . --code-only` 建；現有圖可能落後），再 grep。
 - unit 與 integration **必須分開跑**（兩邊有同名 `test_search.py`，一起跑 basename 衝突）：
   - `PYTHONPATH=src pytest tests/unit`
   - `PYTHONPATH=src DATABASE_URL=... pytest tests/integration`

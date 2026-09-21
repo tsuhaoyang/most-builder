@@ -2,8 +2,9 @@
 
 5 端點：fetch（呼叫 LB 存快照）／import（測試離線驗證，走同一解析）／latest／snapshots／apply-offline（B6）。
 權限（ADR-019）：讀 viewer+（current_user）、寫 IE+（require_role("analyst")）。
-錯誤（ADR-034 單一信封）：contract 不符 → 422（LB_WRITEBACK_CONTRACT_MISMATCH）；
-LB 不可達 → 502（LB_UNREACHABLE，service 已映 BadGatewayError）；未設定 → 503（LB_NOT_CONFIGURED）。
+錯誤（ADR-034 單一信封）：contract 不符 → 422（LB_WRITEBACK_CONTRACT_MISMATCH）；座標格式／payload 格式錯、
+舊快照讀不回 → 422（VALIDATION_ERROR）；LB 不可達 → 502（LB_UNREACHABLE）；LB 缺身分 header → 502
+（LB_AUTH_REQUIRED）；LB 逾時 → 504（LB_TIMEOUT）；未設定 → 503（LB_NOT_CONFIGURED）。
 
 ⚠️ v1 直連 LB 無認證，只可內網／本機（ADR-036 §4；掛 gateway 前不得對外開放）。
 """

@@ -281,7 +281,7 @@
 - 關卡：`e2e/i18n-hardcoded-zh.spec.ts`、`e2e/i18n-review.spec.ts` 綠；`e2e/level-jobs-ui.spec.ts` 含切 en 的斷言（§8.3）。
 
 ### F9 E2E 與截圖
-- `e2e/level-jobs-ui.spec.ts`（§8.3）、`e2e/level-jobs-screenshot.spec.ts` → `docs/lb-integration/screenshots/level-jobs-flow.png`、`level-jobs-drawer.png`、`level-jobs-line.png`（zh-TW）＋ `level-jobs-flow.en.png`。
+- `e2e/level-jobs-ui.spec.ts`（§8.3）、`e2e/level-jobs-screenshot.spec.ts` → `level-jobs-flow.png`、`level-jobs-drawer.png`、`level-jobs-line.png`（zh-TW）＋ `level-jobs-flow.en.png`。**輸出位置（2026-09-18 起）**：預設寫該次測試的輸出目錄（`test-results/`，gitignore）；要更新版控的 `docs/lb-integration/screenshots/` 才帶 `UPDATE_SCREENSHOTS=1`（嚴格字面 `1`）——平常跑 e2e 不該改動文件截圖。路徑相對 spec 檔解析，不隨執行目錄跑掉。`wp12-screenshot.spec.ts` 同此規則。
 
 ---
 
@@ -521,7 +521,7 @@
 | `e2e/level-hydrate-tags.spec.ts` | F1 |
 | `e2e/level-jobs-ui.spec.ts`（preview_server） | clone demo ws → API PUT 6 列（`wi_group`「裝 HDD」×3、「鎖螺絲」×3，皆 freq 1，第 4–6 列 object＝OBJ）→ 開 level tab → 兩張作業卡、兩排（baseline）→ 點「◀ 跟上一排一起做」→ 同一排 → 開「裝 HDD」抽屜 → 勾「同一個工站」→ 等預覽（`preview.updating` 消失）→ 「儲存並交給產線平衡」→ `GET lb-report` 的 `groups` 有 1 組含 3 個 task；`errors=[]`。反例：勾「同一個人」於含 freq>1 的作業 → 勾選框 disabled 且顯示 `q.personBlocked`。i18n：`PATCH /me/locale` 攔截為 en（沿用 `locale-switcher.spec.ts` 手法）→ 卡片按鈕文字為英文、通知句為英文。 |
 | `e2e/level-jobs-golden.spec.ts` | **黃金複本**（§0.4 修訂）：`e2e/support/goldenReplica.ts` 以真實 `CycleIn` 建 24 列（vocab 經 API 建立或重用：object 類＋ tool 類 `scanner`／`electric_driver`／`torque_driver` 帶 `name_en`；GM／CM 依 fixture `seq_kind`；I 列 use 格 `repeat_count=8`；G／H `frequency=8`；L2／N2／P2 `x_seconds` 3／2／20；tool 列帶 `tool_vocab_id`；level／lb_tags／`wi_group` 照附錄 A.5）→ PUT → UI 開啟 → `jobsFromStore` 11 作業（透過 `__ddmTest`）→ 「儲存並交給產線平衡」→ `lb-csv` 與 expected **除 `duration`、`divisible` 外逐欄相等**（csv 解析後逐欄，不用字串 replace；`divisible` 差異只允許 task 31）。另斷言 `tasks_out==34`、`errors==[]`（**DoD-1**） |
-| `e2e/level-jobs-screenshot.spec.ts` | 三張 zh-TW＋一張 en |
+| `e2e/level-jobs-screenshot.spec.ts` | 三張 zh-TW＋一張 en（預設寫 `test-results/`；`UPDATE_SCREENSHOTS=1` 才覆寫 docs，見 F9） |
 
 ---
 
@@ -539,7 +539,7 @@
 | 7 | F3–F6 | F2, B3 | 手動走通黃金 11 作業；`level-jobs-ui` 綠 |
 | 8 | F7 | F1 | 四路徑 UI 帶 wiGroup；AI 草稿 sourceText |
 | 9 | F8 | 全程 | `i18n-hardcoded-zh`／`i18n-review` 綠；en 截圖 |
-| 10 | F9 | 7 | `level-jobs-golden` 綠（DoD-1）；截圖入 docs |
+| 10 | F9 | 7 | `level-jobs-golden` 綠（DoD-1）；截圖入 docs（需 `UPDATE_SCREENSHOTS=1`） |
 | 11 | 文件（§11） | 全部 | DOC_REGISTRY 狀態更新 |
 
 **F2 的 11 作業測試不綠不得進 F3**（避免把錯的反投影做成 UI）。

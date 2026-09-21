@@ -100,8 +100,8 @@ MOST→LB 匯出的語意以 [MOST_LB_DATA_CONTRACT_SPEC.md](lb-integration/MOST
 | [MOST↔LB 整合契約（討論紀錄）](lb-integration/MOST_LB_CONTRACT.md) | D1–D18 逐題裁決史；已由 Spec 正式化 | 📌 討論紀錄 |
 | [LB Task CSV 輸入契約（LB 端提供）](lb-integration/TASK_CSV_INPUT_CONTRACT.md) | LB 讀什麼（以 LB 程式碼為準） | 📌 對接參考 |
 | [IE 審查](lb-integration/IE_REVIEW_MOST_LB_CONTRACT.md) | H1–H6 缺口審查；H2/H3/H6 已解 | 📌 |
-| [ADR-036](decisions/ADR-036-lb-writeback-consumption.md) | LB 回寫消費：唯讀快照＋屬性回流走正門（只回流 offline） | 🟡 proposed（2026-09-17；三取捨已裁決） |
-| [LB 回寫消費實作書](lb-integration/LB_WRITEBACK_CONSUMPTION_IMPLEMENTATION_SPEC.md) | 消費 `lb-most-writeback-v1`：資料模型、LB client、解析/聚合/差異、五端點、apply-offline、作業版產線視角 | ✅ 已落地（feature/lb-writeback，`6e1d139`..`b978994`；B1–B6＋F1–F4，fixture 由 LB `aac992f` 實跑） |
+| [ADR-036](decisions/ADR-036-lb-writeback-consumption.md) | LB 回寫消費：唯讀快照＋屬性回流走正門（只回流 offline） | 🟢 accepted（2026-09-18；三取捨 2026-09-17 裁決；D6「件數」一條待整合架構師修訂） |
+| [LB 回寫消費實作書](lb-integration/LB_WRITEBACK_CONSUMPTION_IMPLEMENTATION_SPEC.md) | 消費 `lb-most-writeback-v1`：資料模型、LB client、解析/聚合/差異、五端點、apply-offline、作業版產線視角 | ✅ 已落地（feature/lb-writeback，`6e1d139`..`79d8e4f`；B1–B6＋F1–F4，fixture 由 LB `aac992f` 實跑；真機端到端複驗、座標格式驗證、件數語意見 ADR-036 §5） |
 
 ## 架構決策
 

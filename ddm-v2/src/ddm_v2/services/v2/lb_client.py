@@ -6,8 +6,8 @@
 （ADR-036 D7 維持 502／504：逾時以子類別分出；裁決見 ADR-036 §5。）
 
 ⚠️ 總時限：`httpx.AsyncClient(timeout=timeout_s)` 是單次操作逾時（connect/read/write/pool 各自計時，
-非總時限）——外面再包 `asyncio.timeout(timeout_s)` 當總時限硬上限，逾時一律視同 `LbUnreachable`
-（同 `dsx_client.query_distance` 的做法）。
+非總時限）——外面再包 `asyncio.timeout(timeout_s)` 當總時限硬上限；兩種逾時都拋 `LbTimeout`
+（`LbUnreachable` 的子類，呼叫端 504；總時限做法同 `dsx_client.query_distance`）。
 
 ADR-036 D1（＋2026-09-18 追記）：v1 直連、不經 gateway；但 **LB 應用本身檢查身分 header**（真機驗證），
 最小需求 `X-User-Id`＋`X-Plant-Code`＋`X-Username` 三個都要，缺任一 → 401。故 client 帶一組 header

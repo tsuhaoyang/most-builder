@@ -15,7 +15,7 @@
 #   - 來源範本：line-balance_stream-weaver_v2/docs/agent-team/domains.yaml（commit 2b59ddc）。
 
 version: 1
-updated: 2026-09-16
+updated: 2026-09-21
 
 # 不歸任何領域的業務檔白名單（check_agent_config.py check_8 消費）。
 # 判準：純結構／框架接線／設定／通用基底，無業務邏輯，改它不需要領域守衛。每條附理由。
@@ -229,6 +229,8 @@ domains:
       - "src/ddm_v2/services/v2/lb_writeback_service.py"
       - "src/ddm_v2/api/routes/v2/lb_writeback.py"
       - "src/ddm_v2/models/v2/lb_writeback.py"
+      - "src/frontend/e2e/writeback-*.spec.ts"       # 回寫 e2e 斷言 ADR-036 D6／D7 語意（與 job-ux 取聯集）
+      - "src/frontend/e2e/support/goldenReplica.ts"  # 投影／回寫共用的黃金複本
     docs:
       - docs/lb-integration/MOST_LB_DATA_CONTRACT_SPEC.md
       - docs/decisions/ADR-035-lb-projection-layer-and-motion-decomposition.md
@@ -243,12 +245,17 @@ domains:
       - SIMO 從屬列不輸出、p2 恆空、complexity_level 恆空（ADR-035 D9 過渡守衛；SIMO 為定案，其餘為過渡）
       - repeat_counts 由 slot_inputs 推導（不得硬寫空 dict）；clone 保留全部 9 個 LB tag 欄
       - 回寫（ADR-036）只回流 offline，且必走 MOST 組內傳染與 R1–R9 驗證；其餘欄位（workers/station/units/line）唯讀；結構欄不回流。general 判定用 MOST 自己的 is_general，不從 LB payload 猜
+      - 回寫件數（Howard 2026-09-18 裁；ADR-036 D6 件數一條待整合架構師修訂）不跨列加總（setup 列 units 是 used、不是件數）；該 motion 帶 units 的列有 qty_scope 就取 cyclic 列，都沒有才退回各列最大值並標 inferred_max；比對基準是 MOST 投影 quantity Q（不用 frequency）；**件數基準**的投影失敗不得讓 import／fetch／latest 失敗（標 units_baseline unavailable＋E 碼；apply-offline 另走 lb_export_report，不在此條）
+      - 回寫 payload 驗證失敗（契約版本、缺必要欄位、型別、qty_scope 值域、source_wi_row_id 非 UUID）→ 整份 422 且不存快照（parse 先於 persist）；已存快照在現行驗證下讀不回 → 422，不得 500
+      - 回寫的聚合／diff 重算一律對快照 payload 重新 parse，不得從 lb_row_placements 反推（placements 無 qty_scope）
+      - 任何把外部輸入拼進 LB URL 的路徑都要用 LB_ID_PATTERN（lb_client.py，^[A-Za-z0-9_-]{1,64}$）驗證——路由層 422 且不呼叫 LB、client 再擋一次（縱深）；只做 URL 編碼不夠（ADR-036 D7 追記）
 
   - id: job-ux
     title: 作業版（Level System job-oriented UX，反投影）
     anchors: [jobsFromStore, JobsShell, derive, buildNotices, applyBaseline, useLbPreview]
     paths:
       - "src/frontend/src/features/level-system/**"
+      - "src/frontend/e2e/**"          # e2e 斷言的就是領域語意（2026-09-18 Howard：原本 map 對 e2e 零命中）
     docs:
       - docs/lb-integration/LEVEL_SYSTEM_JOB_UX_IMPLEMENTATION_SPEC.md
       - docs/decisions/ADR-035-lb-projection-layer-and-motion-decomposition.md
