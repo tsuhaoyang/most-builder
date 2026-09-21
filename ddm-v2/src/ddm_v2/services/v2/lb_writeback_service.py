@@ -578,6 +578,30 @@ async def _consume(
     return {"snapshot_id": str(snap_id), "summary": summarize(parsed, agg, d, baseline), "diff": diff_to_dict(agg, d)}
 
 
+# 留痕的 message 直接吃工序表欄位（例如 level 原字串，schema 上沒有長度上限），不截斷的話
+# 會原樣進 jsonb，並在之後每一次 latest 回應裡回吐。診斷用不到那麼長。
+_ERR_MESSAGE_MAX = 500
+
+
+def _jsonable_err(err: Any) -> dict[str, Any]:
+    """把 ProjectionError 壓成可寫進 jsonb 的 dict。
+
+    這段程式存在的理由就是「投影出問題時不准 500」，所以它自己**不准失敗**：
+    - `allow_nan=False`：NaN／inf 穿得過 `default=str`，但 PostgreSQL jsonb 直接拒收，
+      會在 commit 時炸（frequency 是 Numeric，`CHECK (frequency > 0)` 擋不住 NaN）。
+    - `default=str`：Decimal／date 之類壓成字串。
+    - 壓不平就整個放棄 params（留 code／message 仍足以診斷），絕不把例外往外丟。
+    """
+    params: Any = None
+    if err.params:
+        try:
+            params = json.loads(json.dumps(err.params, allow_nan=False, default=str))
+        except (TypeError, ValueError) as exc:  # 不可序列化／NaN／inf
+            logger.warning("投影錯誤 %s 的 params 無法序列化，已捨棄：%s", err.code, type(exc).__name__)
+    message = (err.message or "")[:_ERR_MESSAGE_MAX]
+    return {"code": err.code, "wi_row_id": err.wi_row_id, "message": message, "params": params}
+
+
 def _projection_raises() -> tuple[type[Exception], ...]:
     """投影層**直接拋出**（而非收集進 `ProjectionResult.errors`）的四類例外——根因見 BL-ENG-2。
 
@@ -764,13 +788,7 @@ async def apply_offline(
             report_status, report_reasons = REPORT_STATUS_UNAVAILABLE, [exc.err.code]
             # 連 wi_row_id／params 一起留下：applied_rows 是 jsonb 歷史，現在不存，日後補欄也救不回
             # 已寫進去的那些。UI 要把 E 碼翻成「第 n 步：…」需要這些欄（levelSystem.plain.* 的模板參數）。
-            report_errors = [{
-                "code": exc.err.code, "wi_row_id": exc.err.wi_row_id,
-                "message": exc.err.message,
-                # params 的值由投影層決定（今天是 float／str／dict[str,int]，都安全）。日後若混進
-                # Decimal 之類，直接寫 jsonb 會在 commit 時炸——那正是這段想避免的 500，所以先壓平。
-                "params": json.loads(json.dumps(exc.err.params, default=str)) if exc.err.params else None,
-            }]
+            report_errors = [_jsonable_err(exc.err)]
 
         if not level_ok or proj_errors:
             await sp.rollback()  # 任一 E → 整批 rollback，一列都不套

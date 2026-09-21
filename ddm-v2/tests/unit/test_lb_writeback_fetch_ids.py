@@ -175,7 +175,11 @@ def test_apply_offline_in_rejects_oversized_wi_row_ids():
 
 def test_projection_raises_covers_every_projection_exception():
     """絆線：投影層日後新增例外類別而沒被 `_projection_raises()` 接住 → apply-offline／fetch 會回到 500。
-    這支測試不看實作細節，只看「lb_projection 裡所有 Exception 子類都在清單裡」。"""
+
+    範圍限於 `lb_projection` 各模組**直接定義**的 Exception 子類（不遞迴子套件）。**不涵蓋**投影過程中
+    由別處拋出的例外——例如 `tmu.decompose_engine` 會經 `most_engine.calculate` 拋 `SequenceError`；
+    那條路今天不活（`project.py` 走 `decompose_static`），接上去時這支測試不會變紅。
+    """
     import importlib
     import inspect
     import pkgutil
@@ -192,3 +196,38 @@ def test_projection_raises_covers_every_projection_exception():
             if issubclass(obj, Exception) and obj.__module__ == m.__name__
         }
     assert declared - caught == set(), f"投影層新增了沒被接住的例外：{declared - caught}"
+
+    # 只「接住」不夠：處理器會讀 exc.err.code／wi_row_id／message／params，沒有 err 的例外
+    # 被加進清單後會在 except 區塊裡丟 AttributeError——仍是無信封 500，而且更難追。
+    for cls in caught:
+        assert "err" in inspect.signature(cls.__init__).parameters, f"{cls.__name__} 沒有 err 參數"
+
+
+@pytest.mark.parametrize("params", [
+    None,
+    {"frequency": 1.5},                        # quantity.py 實際會塞的形狀
+    {"counts": {"3": 2, "4": None}},           # tmu.py 實際會塞的形狀
+    {"frequency": float("nan")},               # jsonb 拒收 → 不處理的話會在 commit 時 500
+    {"frequency": float("inf")},
+    {"x": object()},                           # 不可序列化
+])
+def test_jsonable_err_never_raises_and_output_is_strict_json(params):
+    """留痕本身不准失敗：這段程式存在的理由就是「投影出問題時不准 500」。"""
+    import json as _json
+
+    from ddm_v2.lb_projection.errors import ProjectionError
+    from ddm_v2.services.v2.lb_writeback_service import _jsonable_err
+
+    out = _jsonable_err(ProjectionError("E_X", None, "msg", params))
+    # allow_nan=False：PostgreSQL jsonb 不收 NaN／Infinity，這裡先擋住
+    _json.loads(_json.dumps(out, allow_nan=False))
+    assert out["code"] == "E_X"
+
+
+def test_jsonable_err_truncates_long_message():
+    """message 直接吃工序表欄位（level 原字串無長度上限），不截斷會整包進 jsonb 並每次回吐。"""
+    from ddm_v2.lb_projection.errors import ProjectionError
+    from ddm_v2.services.v2.lb_writeback_service import _ERR_MESSAGE_MAX, _jsonable_err
+
+    out = _jsonable_err(ProjectionError("E_X", None, "長" * 100000, None))
+    assert len(out["message"]) == _ERR_MESSAGE_MAX

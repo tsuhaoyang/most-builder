@@ -241,3 +241,6 @@ async def test_apply_offline_with_projection_failure_is_200_and_marked(client):
     assert len(det) == 1 and det[0]["code"] == "E_TOOL_FREQ_AND_REPEAT"
     assert det[0]["wi_row_id"] == tool_row and det[0]["message"]
     assert rep["reason_details"] == det
+    # 兩份表達同一件事（裸碼是完整診斷的投影）——沒有斷言釘住就會漂移
+    assert rep["reasons"] == [d["code"] for d in rep["reason_details"]]
+    assert latest["applied_report_reasons"] == [d["code"] for d in det]
