@@ -1495,6 +1495,7 @@ const en: Widen<typeof zhTW> = {
         applied: 'Applied offline setting to {{count}} steps.',
         propagated: 'Propagated to: {{steps}}.',
         appliedAt: 'Offline settings applied at {{at}}.',
+        applyReportUnavailable: "When these settings were applied, this worksheet couldn't be turned into line-balancing work items, so the line-balancing checks that would normally block the whole batch didn't run. The offline settings themselves were applied.",
         applyFailed: 'Apply failed, whole batch cancelled (no step applied): {{message}}',
         fetchFailed: 'Fetch failed: {{message}}',
         stepLabel: 'Step {{n}} “{{name}}”',

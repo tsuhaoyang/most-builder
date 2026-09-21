@@ -1,4 +1,6 @@
-"""LB 座標格式驗證（安全修正）：三個座標直接成為 LB URL 的路徑段，必須擋住路徑改寫。
+"""回寫端點的 id 驗證：LB 座標（fetch）與 apply-offline 的 UUID 欄位。
+
+座標（安全修正）：三個座標直接成為 LB URL 的路徑段，必須擋住路徑改寫。
 
 `lb_project_id="x/../../../admin/users?"` 原本會讓 MOST 帶著身分 header 對 LB 主機的
 `/api/admin/users` 發 GET。修正：路由層 `FetchIn` 以 `LB_ID_PATTERN` 回 422；`lb_client.fetch_writeback`
@@ -12,7 +14,7 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 import pytest
 from pydantic import ValidationError
 
-from ddm_v2.api.routes.v2.lb_writeback import FetchIn
+from ddm_v2.api.routes.v2.lb_writeback import ApplyOfflineIn, FetchIn
 from ddm_v2.services.v2.lb_client import fetch_writeback
 
 VALID_IDS = [
@@ -122,3 +124,71 @@ async def test_client_valid_ids_still_reach_lb():
                         "/results/cb43da21-98fd-4fad-a799-148eea42b778/writeback"]
     finally:
         server.shutdown()
+
+
+# ── apply-offline：snapshot_id／wi_row_ids 收 UUID 型別（非 UUID 原本在 route 內轉換 → 無信封 500）──
+
+_UUID = "cb43da21-98fd-4fad-a799-148eea42b778"
+
+
+def _apply_body(**override):
+    return {"snapshot_id": _UUID, "wi_row_ids": [_UUID], **override}
+
+
+@pytest.mark.parametrize("value", [
+    _UUID,
+    _UUID.replace("-", ""),              # 32 位無連字號
+    "{" + _UUID + "}",                   # 大括號
+    "urn:uuid:" + _UUID,                 # urn 形式
+    _UUID.upper(),                       # 大寫
+])
+def test_apply_offline_in_accepts_uuid_forms_and_normalizes(value):
+    """接受 canonical／32 位無連字號／大括號／urn／大小寫，並正規化為小寫連字號形式。
+    注意：pydantic 的 parser 比 D7 追記第 3 點的 `uuid.UUID()` **略嚴**（怪位置的連字號它不收），
+    兩者對正常輸入等價；那個邊界由下面 reject 清單的 `cb43da2198fd-...` 釘住。"""
+    body = ApplyOfflineIn(**_apply_body(snapshot_id=value, wi_row_ids=[value]))
+    assert str(body.snapshot_id) == _UUID
+    assert [str(x) for x in body.wi_row_ids] == [_UUID]
+
+
+@pytest.mark.parametrize("bad", [
+    "not-a-uuid", "", "  ", _UUID[:-1], 123, None, {}, [_UUID],
+    "cb43da2198fd-4fad-a799-148eea42b778",  # 連字號位置怪：stdlib uuid.UUID() 收、pydantic 拒（刻意從嚴）
+])
+def test_apply_offline_in_rejects_non_uuid_snapshot_id(bad):
+    with pytest.raises(ValidationError):
+        ApplyOfflineIn(**_apply_body(snapshot_id=bad))
+
+
+@pytest.mark.parametrize("bad", [[], ["not-a-uuid"], [_UUID, "x"], _UUID, [123], [None]])
+def test_apply_offline_in_rejects_bad_wi_row_ids(bad):
+    with pytest.raises(ValidationError):
+        ApplyOfflineIn(**_apply_body(wi_row_ids=bad))
+
+
+def test_apply_offline_in_rejects_oversized_wi_row_ids():
+    """上限：pydantic 對 list 逐項收集錯誤並回吐輸入值，無上限時一份壞 payload 會被放大成巨大回應。"""
+    with pytest.raises(ValidationError):
+        ApplyOfflineIn(**_apply_body(wi_row_ids=[_UUID] * 1001))
+    ApplyOfflineIn(**_apply_body(wi_row_ids=[_UUID] * 1000))  # 剛好上限仍可用
+
+
+def test_projection_raises_covers_every_projection_exception():
+    """絆線：投影層日後新增例外類別而沒被 `_projection_raises()` 接住 → apply-offline／fetch 會回到 500。
+    這支測試不看實作細節，只看「lb_projection 裡所有 Exception 子類都在清單裡」。"""
+    import importlib
+    import inspect
+    import pkgutil
+
+    import ddm_v2.lb_projection as pkg
+    from ddm_v2.services.v2.lb_writeback_service import _projection_raises
+
+    caught = set(_projection_raises())
+    declared = set()
+    for mod in pkgutil.iter_modules(pkg.__path__):
+        m = importlib.import_module(f"{pkg.__name__}.{mod.name}")
+        declared |= {
+            obj for _, obj in inspect.getmembers(m, inspect.isclass)
+            if issubclass(obj, Exception) and obj.__module__ == m.__name__
+        }
+    assert declared - caught == set(), f"投影層新增了沒被接住的例外：{declared - caught}"

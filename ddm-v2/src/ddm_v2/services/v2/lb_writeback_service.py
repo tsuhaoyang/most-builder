@@ -12,6 +12,7 @@ missing 的 reason 須能分辨：
 """
 from __future__ import annotations
 
+import json
 import logging
 from dataclasses import dataclass, field
 from typing import Any, Literal
@@ -36,6 +37,11 @@ UNITS_SOURCE_INFERRED: UnitsSource = "inferred_max"
 UNITS_BASELINE_OK = "ok"
 UNITS_BASELINE_UNAVAILABLE = "unavailable"
 UNITS_BASELINE_NOT_NEEDED = "not_needed"
+
+# apply-offline 的投影報告狀態（同一降級模式）：ok＝報告算得出來（E 碼照常擋並整批 rollback）；
+# unavailable＝投影此刻拋例外（reasons 附 E 碼），E 碼那一關無從判定，端點仍回 200 並明確標示。
+REPORT_STATUS_OK = "ok"
+REPORT_STATUS_UNAVAILABLE = "unavailable"
 
 
 class LbWritebackContractMismatch(Exception):
@@ -572,6 +578,20 @@ async def _consume(
     return {"snapshot_id": str(snap_id), "summary": summarize(parsed, agg, d, baseline), "diff": diff_to_dict(agg, d)}
 
 
+def _projection_raises() -> tuple[type[Exception], ...]:
+    """投影層**直接拋出**（而非收集進 `ProjectionResult.errors`）的四類例外——根因見 BL-ENG-2。
+
+    收斂根因前，每個呼叫投影的路徑都要各自降級（不得讓端點落成無信封 500）；這裡是那份清單的單一來源。
+    延遲 import：投影層不該在 service 匯入時被拉進來。
+    """
+    from ddm_v2.lb_projection.precedence import PrecedenceError
+    from ddm_v2.lb_projection.quantity import QuantityError
+    from ddm_v2.lb_projection.tmu import TmuDecompositionError
+    from ddm_v2.lb_projection.tools import ToolResolveError
+
+    return (QuantityError, ToolResolveError, TmuDecompositionError, PrecedenceError)
+
+
 async def _units_baseline(
     session: AsyncSession, worksheet_id: _uuid.UUID, worksheet_read: dict,
 ) -> tuple[dict[str, int], dict[str, Any]]:
@@ -581,16 +601,14 @@ async def _units_baseline(
     - 投影拋出（持工具 F>1 且 N>1、非整數 frequency、工具解析、TMU 分解）或收集到 E 碼 → unavailable＋E 碼：
       件數不比，但明確標示，回寫端點本身不因 MOST 端工序暫時投影不出來而失敗。
     """
-    from ddm_v2.lb_projection.precedence import PrecedenceError
-    from ddm_v2.lb_projection.quantity import QuantityError
-    from ddm_v2.lb_projection.tmu import TmuDecompositionError
-    from ddm_v2.lb_projection.tools import ToolResolveError
     from ddm_v2.services.v2 import export_service as exp
 
     try:
         pq = await exp.projected_quantities(session, worksheet_id, worksheet_read=worksheet_read)
-    except (QuantityError, ToolResolveError, TmuDecompositionError, PrecedenceError) as exc:
-        logger.warning("回寫件數基準不可用（worksheet %s 投影失敗）：%s %s", worksheet_id, exc.err.code, exc)
+    except _projection_raises() as exc:
+        logger.warning(
+            "回寫件數基準不可用（worksheet %s 投影失敗）：%s（列 %s）", worksheet_id, exc.err.code, exc.err.wi_row_id
+        )
         return {}, {"status": UNITS_BASELINE_UNAVAILABLE, "reasons": [exc.err.code]}
     if pq.error_codes:
         return {}, {"status": UNITS_BASELINE_UNAVAILABLE, "reasons": pq.error_codes}
@@ -615,6 +633,9 @@ async def latest(session: AsyncSession, *, worksheet_id: _uuid.UUID, worksheet_r
     return {
         "snapshot_id": str(snap.id), "fetched_at": snap.fetched_at.isoformat() if snap.fetched_at else None,
         "applied_at": snap.applied_at.isoformat() if snap.applied_at else None,
+        "applied_report_status": (snap.applied_rows or {}).get("report_status"),
+        "applied_report_reasons": (snap.applied_rows or {}).get("report_reasons") or [],
+        "applied_report_errors": (snap.applied_rows or {}).get("report_errors") or [],
         "summary": summarize(parsed, agg, d, baseline), "diff": diff_to_dict(agg, d),
     }
 
@@ -631,6 +652,10 @@ async def list_snapshots(session: AsyncSession, *, worksheet_id: _uuid.UUID) -> 
             "lb_project_id": s.lb_project_id, "lb_version_id": s.lb_version_id, "lb_result_id": s.lb_result_id,
             "fetched_at": s.fetched_at.isoformat() if s.fetched_at else None,
             "applied_at": s.applied_at.isoformat() if s.applied_at else None,
+            # 下一次 fetch 會產生新快照、latest 只回最新那筆；歷史清單不帶狀態的話，
+            # 舊那筆的降級紀錄就整個 API 都讀不到了（本 service 沒有其他稽核寫入）
+            "applied_report_status": (s.applied_rows or {}).get("report_status"),
+            "applied_report_reasons": (s.applied_rows or {}).get("report_reasons") or [],
             "unattended_machine_policy": s.unattended_machine_policy,
         }
         for s in rows
@@ -662,6 +687,8 @@ async def apply_offline(
     2. 寫 level_entries.offline=True ＋**組內傳染**（同 countersignature cub 或同 worker_cub wcub），
        規則與前端 store.toggleOffline 一致（後端才是權威，client 端只是 UX）。
     3. 跑 R1–R9（level 驗證）與投影（lb_export_report）；任一 E → 整批 rollback 並回報。
+       投影**拋例外**（BL-ENG-2 的四類）時無從判定 E 碼那一關：不 rollback、不 500，回應的 `report.status`
+       標 `unavailable`＋E 碼（同 fetch 的 units_baseline 降級模式）；R1–R9 仍照常擋。
     4. snapshot 記 applied_at／applied_rows。
     """
     from ddm_v2.services.v2 import export_service as exp
@@ -721,9 +748,29 @@ async def apply_offline(
         val = await lvs.validate_and_persist(session, worksheet_id, trigger="revalidate", actor=actor)
         level_ok = bool(val.get("valid", not val.get("issues")))
         level_issues = val.get("issues") or []
-        # 投影報告（E 碼擋）
-        report = await exp.lb_export_report(session, worksheet_id)
-        proj_errors = report.get("errors") or []
+        # 投影報告（E 碼擋）；投影拋例外 → 降級標示，不 rollback、不 500
+        report_status, report_reasons, report_errors = REPORT_STATUS_OK, [], []
+        try:
+            report = await exp.lb_export_report(session, worksheet_id)
+            proj_errors = report.get("errors") or []
+        except _projection_raises() as exc:
+            logger.warning(
+                "apply-offline 的投影報告不可用（worksheet %s 投影失敗）：%s（列 %s）",
+                worksheet_id, exc.err.code, exc.err.wi_row_id,
+            )
+            # errors／warnings 給 None 而不是 []：[] 等於對消費端斷言「沒有錯誤也沒有警告」，
+            # 但這裡是「沒算出來」。只讀 errors 不讀 status 的消費端應該炸，不該讀成一切正常。
+            report, proj_errors = {"errors": None, "warnings": None}, []
+            report_status, report_reasons = REPORT_STATUS_UNAVAILABLE, [exc.err.code]
+            # 連 wi_row_id／params 一起留下：applied_rows 是 jsonb 歷史，現在不存，日後補欄也救不回
+            # 已寫進去的那些。UI 要把 E 碼翻成「第 n 步：…」需要這些欄（levelSystem.plain.* 的模板參數）。
+            report_errors = [{
+                "code": exc.err.code, "wi_row_id": exc.err.wi_row_id,
+                "message": exc.err.message,
+                # params 的值由投影層決定（今天是 float／str／dict[str,int]，都安全）。日後若混進
+                # Decimal 之類，直接寫 jsonb 會在 commit 時炸——那正是這段想避免的 500，所以先壓平。
+                "params": json.loads(json.dumps(exc.err.params, default=str)) if exc.err.params else None,
+            }]
 
         if not level_ok or proj_errors:
             await sp.rollback()  # 任一 E → 整批 rollback，一列都不套
@@ -738,9 +785,23 @@ async def apply_offline(
 
     # 成功：記套用紀錄
     snap.applied_at = datetime.now(timezone.utc)
-    snap.applied_rows = {"applied": sorted(applied), "propagated": propagated}
+    snap.applied_rows = {
+        "applied": sorted(applied), "propagated": propagated,
+        "applied_by": actor,                 # 套用者（快照的 created_by 記的是取得的人，不是套用的人）
+        "report_status": report_status,      # 投影那一關有沒有跑得起來——只活在當下回應會事後查不到
+        "report_reasons": report_reasons,    # 裸 E 碼（相容既有讀取端）
+        "report_errors": report_errors,      # 完整 ProjectionError（code/wi_row_id/message/params）
+    }
     await session.flush()
-    return {"applied": sorted(applied), "propagated": propagated, "report": {"errors": [], "warnings": report.get("warnings", [])}}
+    return {
+        "applied": sorted(applied), "propagated": propagated,
+        "report": {
+            "status": report_status, "reasons": report_reasons, "reason_details": report_errors,
+            # status=="ok" 時 errors 必為空（非空早已 rollback）；unavailable 時為 null＝沒算出來
+            "errors": [] if report_status == REPORT_STATUS_OK else None,
+            "warnings": report.get("warnings"),
+        },
+    }
 
 
 async def _read(session: AsyncSession, worksheet_id: _uuid.UUID) -> dict:

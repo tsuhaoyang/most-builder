@@ -73,6 +73,8 @@ test('line view shows LB actual result + apply offline', async ({ page, request 
   await page.getByTestId(`writeback-offline-${replicaIds[2]}`).check()
   await page.getByTestId('writeback-apply-offline').click()
   await expect(page.getByTestId('writeback-apply-msg')).toBeVisible({ timeout: 10000 })
+  // 這份工序表投影得出來 → 降級那行不該出現（條件寫錯會讓它永遠亮著，這條反向斷言零成本擋住）
+  await expect(page.getByTestId('writeback-apply-report-unavailable')).toHaveCount(0)
 
   // 讀回：該列 offline 已生效
   const read = await (await request.get(`/api/v2/worksheets/${wsId}`, { headers: AUTH })).json() as { rows: Array<{ wi_row_id: string; lb_tags: { offline: boolean } }> }

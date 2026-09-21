@@ -108,13 +108,33 @@ export interface WbLatest {
   snapshot_id: string
   fetched_at: string | null
   applied_at: string | null
+  // 套用當下投影那一關的狀態（存進 applied_rows，重整後仍在）；舊快照沒有這兩欄 → undefined
+  applied_report_status?: 'ok' | 'unavailable' | null
+  applied_report_reasons?: string[]
+  // 完整診斷（code/wi_row_id/message/params）——日後要把 E 碼翻成「第 n 步：…」需要它
+  applied_report_errors?: WbReportError[]
   summary: WbSummary
   diff: WbDiff
+}
+export interface WbReportError {
+  code: string
+  wi_row_id: string | null
+  message: string
+  params?: Record<string, unknown> | null
 }
 export interface WbApplyResult {
   applied: string[]
   propagated: string[]
-  report: { errors: unknown[]; warnings: unknown[] }
+  // status：ok＝投影報告算得出來（E 碼照常擋並整批取消）；unavailable＝投影此刻拋例外（reasons 附 E 碼），
+  // E 碼那一關無從判定——離線設定仍已套用（R1–R9 照常擋），但不可讀成「投影沒問題」
+  // errors／warnings 在 unavailable 時是 null（＝沒算出來），不是 []（＝算過、沒問題）
+  report: {
+    status: 'ok' | 'unavailable'
+    reasons: string[]
+    reason_details: WbReportError[]
+    errors: unknown[] | null
+    warnings: unknown[] | null
+  }
 }
 
 /** GET latest 快照（含聚合＋diff）；無快照 → 404（呼叫端以 enabled/isError 處理）。 */

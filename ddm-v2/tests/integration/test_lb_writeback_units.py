@@ -63,7 +63,7 @@ async def _projected(client, ws: str) -> dict[str, list[tuple[int, str | None]]]
 
 
 def _payload(tool_row: str, lot_row: str, *, tool_units: int | list[int | None], lot_units: int | None,
-             scopes: list) -> dict:
+             scopes: list, lot_offline: bool = False) -> dict:
     per_row = tool_units if isinstance(tool_units, list) else [tool_units] * len(scopes)
 
     def _units(worker: str, n: int | None):
@@ -73,8 +73,9 @@ def _payload(tool_row: str, lot_row: str, *, tool_units: int | list[int | None],
              "station_index": 0, "workers": ["W-0-0"], "units": _units("W-0-0", n),
              **({"qty_scope": s} if s is not None else {})}
             for i, (s, n) in enumerate(zip(scopes, per_row))]
-    rows.append({"source_wi_row_id": lot_row, "task_id": 4, "offline_flag": False, "line_index": 0,
-                 "station_index": 1, "workers": ["W-1-0"], "units": _units("W-1-0", lot_units)})
+    rows.append({"source_wi_row_id": lot_row, "task_id": 4, "offline_flag": lot_offline,
+                 "line_index": None if lot_offline else 0, "station_index": None if lot_offline else 1,
+                 "workers": [] if lot_offline else ["W-1-0"], "units": None if lot_offline else _units("W-1-0", lot_units)})
     return {"contract_version": "lb-most-writeback-v1", "project_id": "p", "version_id": "original",
             "result_id": "r", "unattended_machine_policy": "free", "unattended_machine_policy_source": "persisted",
             "rows": rows}
@@ -205,3 +206,38 @@ async def test_latest_with_stale_snapshot_is_422_not_500(client, db_session):
     assert r.status_code == 422, r.text
     assert r.json()["error"]["code"] == "VALIDATION_ERROR"
     assert "請重新取得" in r.json()["error"]["message"]
+
+
+async def test_apply_offline_with_projection_failure_is_200_and_marked(client):
+    """apply-offline 的投影報告拋例外（持工具 F=3 且 N=3）：不 500、不整批取消——離線設定照常套用，
+    但 report.status 標 unavailable＋E 碼（E 碼那一關無從判定，不可讀成「投影沒問題」）。R1–R9 仍照常擋。"""
+    ws, tool_row, lot_row = await _worksheet(client, tool_freq=3, tool_cycle=_cm_repeat(3))
+    payload = _payload(tool_row, lot_row, tool_units=3, lot_units=None, scopes=[None] * 3, lot_offline=True)
+    imp = await client.post(f"/api/v2/worksheets/{ws}/lb-writeback/import", json=payload)
+    assert imp.status_code == 200, imp.text
+    body = imp.json()
+    assert lot_row in {od["wi_row_id"] for od in body["diff"]["offline_diffs"]}, body["diff"]["offline_diffs"]
+
+    r = await client.post(f"/api/v2/worksheets/{ws}/lb-writeback/apply-offline",
+                          json={"snapshot_id": body["snapshot_id"], "wi_row_ids": [lot_row]})
+    assert r.status_code == 200, r.text
+    rep = r.json()["report"]
+    assert rep["status"] == "unavailable"
+    assert rep["reasons"] == ["E_TOOL_FREQ_AND_REPEAT"]
+    # errors／warnings 必須是 null：[] 會讓只讀 errors 的消費端讀成「檢查過、沒問題」
+    assert rep["errors"] is None and rep["warnings"] is None
+    assert lot_row in r.json()["applied"]
+
+    read = (await client.get(f"/api/v2/worksheets/{ws}")).json()
+    row = next(x for x in read["rows"] if x["wi_row_id"] == lot_row)
+    assert row["lb_tags"]["offline"] is True
+    # 降級狀態要留得住：只活在當下回應的話，重整後畫面只剩綠色「已套用」＝把異常講成正常
+    latest = (await client.get(f"/api/v2/worksheets/{ws}/lb-writeback/latest")).json()
+    assert latest["applied_at"] is not None
+    assert latest["applied_report_status"] == "unavailable"
+    assert latest["applied_report_reasons"] == ["E_TOOL_FREQ_AND_REPEAT"]
+    # 完整診斷也要留住：applied_rows 是 jsonb 歷史，現在不存，日後補欄救不回已寫的那些
+    det = latest["applied_report_errors"]
+    assert len(det) == 1 and det[0]["code"] == "E_TOOL_FREQ_AND_REPEAT"
+    assert det[0]["wi_row_id"] == tool_row and det[0]["message"]
+    assert rep["reason_details"] == det

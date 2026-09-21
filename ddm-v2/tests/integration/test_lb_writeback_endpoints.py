@@ -353,3 +353,58 @@ async def test_fetch_rejects_unsafe_lb_ids_422(client, monkeypatch, field, value
         server.shutdown()
         from ddm_v2.settings import get_settings
         get_settings.cache_clear()
+
+
+@pytest.mark.parametrize("body", [
+    {"snapshot_id": "not-a-uuid", "wi_row_ids": ["cb43da21-98fd-4fad-a799-148eea42b778"]},
+    {"snapshot_id": "cb43da21-98fd-4fad-a799-148eea42b778", "wi_row_ids": ["nope"]},
+    {"snapshot_id": "cb43da21-98fd-4fad-a799-148eea42b778", "wi_row_ids": []},
+])
+async def test_apply_offline_non_uuid_is_422(client, body):
+    """非 UUID／空清單 → 422 信封（原本在 route 內 uuid.UUID() 轉換，會落成無信封 500）。"""
+    r = await client.post(f"/api/v2/worksheets/{WS}/lb-writeback/apply-offline", json=body)
+    assert r.status_code == 422, r.text
+    assert r.json()["error"]["code"] == "VALIDATION_ERROR"
+
+
+async def test_apply_offline_accepts_non_canonical_uuid(client):
+    """32 位無連字號的 id 可被 uuid.UUID 解析 → 放行並正規化（ADR-036 D7 追記第 3 點同判準）。"""
+    if not await _seeded(client):
+        pytest.skip("demo worksheet 未種")
+    ws, ids, fx = await _make_worksheet(client)
+    imp = (await client.post(f"/api/v2/worksheets/{ws}/lb-writeback/import", json=fx)).json()
+    r = await client.post(f"/api/v2/worksheets/{ws}/lb-writeback/apply-offline", json={
+        "snapshot_id": imp["snapshot_id"].replace("-", ""),
+        "wi_row_ids": [ids["loose"].replace("-", "")],
+    })
+    assert r.status_code == 200, r.text
+    assert ids["loose"] in r.json()["applied"]
+    assert r.json()["report"]["status"] == "ok"
+
+
+# ── RBAC（ADR-019）：寫 IE+、讀 viewer+ ────────────────────────────────
+# 用「從未出現過的員編」讓 current_user JIT 出 roles=[] 的 viewer（沿用 test_i18n_review_mutations 的作法）；
+# JIT 建出來的 app_users 列在 conftest 的外層交易裡會被 rollback，不污染共用 dev DB。
+def _viewer_headers() -> dict[str, str]:
+    return {"X-Username": f"wbviewer_{uuid.uuid4().hex[:6]}"}
+
+
+@pytest.mark.parametrize("suffix,body", [
+    ("fetch", {"lb_project_id": "p" * 32, "lb_version_id": "original", "lb_result_id": str(uuid.uuid4())}),
+    ("import", {"contract_version": "lb-most-writeback-v1"}),
+    ("apply-offline", {"snapshot_id": str(uuid.uuid4()), "wi_row_ids": [str(uuid.uuid4())]}),
+])
+async def test_writeback_writes_require_analyst(client, suffix, body):
+    """viewer 打三支寫入端點 → 403。require_role 是 sub-dependency，在 body／DB 查詢之前就擋下，
+    所以不必先建 worksheet；用隨機 worksheet_id 即可。"""
+    ws = str(uuid.uuid4())
+    r = await client.post(f"/api/v2/worksheets/{ws}/lb-writeback/{suffix}", json=body, headers=_viewer_headers())
+    assert r.status_code == 403, f"{suffix}: {r.status_code} {r.text}"
+
+
+@pytest.mark.parametrize("suffix", ["latest", "snapshots"])
+async def test_writeback_reads_allow_viewer(client, suffix):
+    """viewer 讀 latest／snapshots 不得 403（ADR-019 Option A：讀對已登入者全開）。"""
+    ws = str(uuid.uuid4())
+    r = await client.get(f"/api/v2/worksheets/{ws}/lb-writeback/{suffix}", headers=_viewer_headers())
+    assert r.status_code != 403, f"{suffix}: {r.text}"

@@ -1440,6 +1440,7 @@ const zhTW = {
         applied: '已套用 {{count}} 個步驟的離線設定。',
         propagated: '連動到：{{steps}}。',
         appliedAt: '離線設定已於 {{at}} 套用。',
+        applyReportUnavailable: '套用當時，這份工序表轉不成產線平衡的工作項，因此平常會擋下整批的那些檢查沒能執行；離線設定本身已套用。',
         applyFailed: '套用失敗，已整批取消（未套用任何一步）：{{message}}',
         fetchFailed: '取得失敗：{{message}}',
         stepLabel: '第 {{n}} 步「{{name}}」',

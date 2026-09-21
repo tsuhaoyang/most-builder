@@ -54,6 +54,7 @@ export function WritebackPanel({ worksheetId, editable }: { worksheetId: string;
       const propagated = res.propagated.length
         ? t('levelSystem.jobs.writeback.propagated', { steps: res.propagated.map(label).join(t('levelSystem.listSeparator')) })
         : ''
+      // 降級不寫進這則一次性訊息——它會被下一個動作蓋掉；改由下方常駐那行講（狀態存在 applied_rows）
       setApplyMsg(t('levelSystem.jobs.writeback.applied', { count: res.applied.length }) + (propagated ? ` ${propagated}` : ''))
       setChecked(new Set())
       await qc.invalidateQueries({ queryKey: ['lb-writeback-latest', worksheetId] })
@@ -93,6 +94,8 @@ export function WritebackPanel({ worksheetId, editable }: { worksheetId: string;
   if (wb.isLoading || !wb.data) return null
 
   const { summary, diff, fetched_at, applied_at } = wb.data
+  // 非 'ok' 一律當成「那一關沒跑起來」（舊快照無此欄＝undefined，不誤報）
+  const applyDegraded = wb.data.applied_report_status != null && wb.data.applied_report_status !== 'ok'
   const busy = summary.unattended_machine_policy === 'busy'
 
   return (
@@ -160,6 +163,11 @@ export function WritebackPanel({ worksheetId, editable }: { worksheetId: string;
         </div>
       )}
       {applied_at && <div className="text-[11px] text-emerald-700">{t('levelSystem.jobs.writeback.appliedAt', { at: new Date(applied_at).toLocaleString() })}</div>}
+      {applyDegraded && (
+        <div data-testid="writeback-apply-report-unavailable" className="text-[11px] text-amber-700">
+          {t('levelSystem.jobs.writeback.applyReportUnavailable')}
+        </div>
+      )}
       {applyMsg && <div data-testid="writeback-apply-msg" className="text-[11px] text-slate-700">{applyMsg}</div>}
     </div>
   )
