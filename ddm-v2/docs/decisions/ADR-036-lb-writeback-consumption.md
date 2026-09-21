@@ -2,7 +2,7 @@
 
 ## 狀態
 
-🟢 **accepted**（2026-09-18，Howard 核可；三項取捨於 2026-09-17 裁決，見 §2 D1／D2／D5）——**D6「件數」一條待整合架構師修訂**（見 §2 D6 件數註記）。實作見 `docs/lb-integration/LB_WRITEBACK_CONSUMPTION_IMPLEMENTATION_SPEC.md`。
+🟢 **accepted**（2026-09-18，Howard 核可；三項取捨於 2026-09-17 裁決，見 §2 D1／D2／D5）。D6「件數」一條已於 2026-09-21 由整合架構師修訂（見 §2 D6 件數修訂）。實作見 `docs/lb-integration/LB_WRITEBACK_CONSUMPTION_IMPLEMENTATION_SPEC.md`。
 
 - **對應 LB 端**：`lb-most-writeback-v1`，定義於 LB `docs/dev_docs/MOST_INTEGRATION_INPUT_SPEC.md` §8（**該檔是回寫契約的唯一權威**；本 ADR 不重述欄位）、LB ADR-023 D11。LB 落地 commit `adb750b`＋`631e3a5`＋`02dba21`；真機驗證另依賴 LB 兩個修正：`aac992f`（插回的 general 保留 `source_wi_row_id`，回寫不再漏 general）、`c0cb244`（上傳 CSV 標準化保留 MOST 擴充欄，見 §4）（皆在分支 `feature/most-integration-phase2`，未合入 LB master）。
 - **關聯**：[ADR-035](ADR-035-lb-projection-layer-and-motion-decomposition.md)（MOST→LB 投影；本 ADR 是反方向）、`docs/lb-integration/MOST_LB_CONTRACT.md` D13（屬性可雙向、結構單向）、[ADR-011](ADR-011-schema-evolution-and-contract-stability.md)（加法演進）、[ADR-019](ADR-019-worksheet-access-control.md)（端點權限）、[ADR-034](ADR-034-language-aware-error-contract.md)（錯誤信封）。
@@ -51,10 +51,25 @@ D13 同時定下屬性回流規則：可回流的只有 `offline` 這類標籤�
 投影層會把持工具 motion 拆成 acquire／use／release、general 列每站各插一份，因此同一 `source_wi_row_id` 可能對到多筆 row：
 - **站別**：取所有 row 的 `station_index` 集合。集合大小 >1 → 標 `cross_station`（工具 episode 依 LB ADR-023 D3 應同站，跨站代表結果來自舊版或人工編輯）；general 列的多站是**預期**，不標異常。
 - **人**：`workers` 取聯集。
-- **件數**：`units` 僅 Q>1 出現，逐 worker 加總後與 MOST 的 `frequency`／`repeat_count` 對照，不一致 → 警告。
+- **件數**：`units` 僅 Q>1 出現，**不可跨 row 加總**（理由見下方修訂追記）。取值：先逐 row 把 `units[]` 的各 worker 值相加（同一 row 可能多人分攤），再依 `qty_scope` 取值——
+  - payload 有 `qty_scope`（LB §8 加欄後）→ 取 `qty_scope == "cyclic"` 的 row 值（持工具 motion 的 use 列為 cyclic；若多列皆 cyclic 且值相同，取 max）。標 `units_source=cyclic`＝**確定值**。
+  - payload 無 `qty_scope`（舊快照／LB 尚未加欄）→ 取各 row 值的**最大值**（cyclic 列的 Σ＝Q ≥ setup 列的 Σ＝經手人數）。標 `units_source=inferred_max`＝**推算值，UI 必須標示**。
+  - 有 `qty_scope` 但無任何 cyclic 列、或無任何 row 帶 `units` → 無件數。
+- **件數的比對基準**：與 **MOST 自己投影出的 `quantity` Q**（契約 §3.2 實際送給 LB 的值）對照，**不是** motion 層的 `frequency`／`repeat_count`。基準狀態三選一，寫在 `summary.units_baseline.status`：
+  - `ok`＝已用投影 Q 比對；兩邊都有值且不符 → `diff.unit_mismatches`（警告）。
+  - `unavailable`＝MOST 此刻投影不出來（投影拋出或帶 E 碼，`reasons` 附 E 碼）→ **不得讀成「一致」**，端點仍回 200。
+  - `not_needed`＝投影結果沒有任何 Q>1 的 motion。
+  - MOST 投影 Q>1、LB 卻沒給件數（非 offline）→ 列入 `diff.units_uncomparable` 明列，不靜默略過。
+  - 判斷一律以 **MOST 投影**為準，不從「LB 沒帶 units」反推不必比（LB 對 Q>1 也可能不帶 units）。
 - **offline**：多筆若不一致 → 警告（LB 端本就要求同群組一致）。
 
-> **D6 件數註記（2026-09-18）**：上列「件數」一條 Howard 2026-09-18 指出**有誤**（LB 的 setup 列 `units` 是 `used`、不是件數，逐列加總會把持工具 motion 灌大——黃金動作 I 得 10、實為 8），**待整合架構師修訂**；本註記不改 D6 決策內容。修訂落筆前，現行實作依 Howard 同日裁決——**規則見 [實作書](../lb-integration/LB_WRITEBACK_CONSUMPTION_IMPLEMENTATION_SPEC.md) §2 B4、已知限制見該書 §7**（本 ADR 不重述）。「不一致 → 警告」目前只到 API，UI 尚未顯示（同該書 §7）。
+> **D6 件數修訂（2026-09-21，整合架構師；裁決 2026-09-18 Howard「C＋退路」，實作 `79d8e4f`）**
+> 原文為「逐 worker 加總後與 MOST 的 `frequency`／`repeat_count` 對照」，**有兩處錯**，已改寫於上：
+> 1. **跨 row 加總錯**。依 LB 端 `docs/adr/ADR-008`（quantity lot `units[s,w]`）D3，Q>1 lot 的 **setup 列**（acquire／release）`units` 記的是 `used`（0／1，跨 worker 加總＝經手人數），**只有 cyclic 列才是件數**。黃金複本動作 I（`electric_driver`，Q=8）三列回 1／8／1，逐列加總得 **10**，實為 **8**。
+> 2. **比對基準錯**。`frequency` 是 motion 層的次數；投影會把持工具 motion 拆成三列，拿 `frequency` 比會對「持工具且 F>1」產生 3F 的假警報。基準應為投影後的 Q。
+> 缺陷為 2026-09-18 真機複驗（§4）所暴露；此前未被發現，是因為比對只看 `frequency` 一欄。
+> **跨 repo 未結項**：LB `MOST_INTEGRATION_INPUT_SPEC.md` §8 尚未定義 `rows[].qty_scope`（LB 端票 B20）。補上前 MOST 顯示的件數一律是 `inferred_max` 推算值。值域必須釘死為小寫 `setup`／`cyclic`、Q=1 不輸出該欄（null）、不得出現 `auto` 等第三值——否則依 D7 追記第 2 點會整份 422。
+> 已知限制（UI 覆蓋範圍等）見 [實作書](../lb-integration/LB_WRITEBACK_CONSUMPTION_IMPLEMENTATION_SPEC.md) §7，本 ADR 不重述。
 
 ### D7 驗證與失敗處理
 - `contract_version != "lb-most-writeback-v1"` → **擋**（ADR-034 信封，`code=LB_WRITEBACK_CONTRACT_MISMATCH`）。
@@ -97,7 +112,7 @@ D13 同時定下屬性回流規則：可回流的只有 `offline` 這類標籤�
 
 **待裁決（不阻擋實作）**：是否讓回寫結果影響作業版的「秒數」顯示（目前秒數來自 MOST 投影預覽，非 LB 實際排程）；建議 v1 不混用，兩者分開顯示。
 
-**待修訂（不阻擋實作）**：D6「件數」一條由整合架構師修訂（見 D6 件數註記）。LB §8 尚未定義 `rows[].qty_scope`；補上前，MOST 顯示的件數一律是推算值（`inferred_max`）。
+**跨 repo 未結（不阻擋實作）**：D6「件數」已於 2026-09-21 修訂（見 §2 D6 件數修訂）。仍待 LB：`MOST_INTEGRATION_INPUT_SPEC.md` §8 定義 `rows[].qty_scope`（LB 票 B20）；補上前，MOST 顯示的件數一律是推算值（`inferred_max`）。
 
 ---
 
