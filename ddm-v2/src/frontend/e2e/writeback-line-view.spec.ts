@@ -46,7 +46,10 @@ test('line view shows LB actual result + apply offline（件數兩條路徑）',
     const singles = rs.filter(x => !x.offline_flag
       && rs.filter(y => y.source_wi_row_id === x.source_wi_row_id).length === 1)
     expect(singles.length, 'fixture 應有至少 3 個非 offline 的單列 motion').toBeGreaterThanOrEqual(3)
-    singles.slice(0, 3).forEach((x, i) => { x.source_wi_row_id = replicaIds[i] })
+    // 避開 replicaIds[2]（已給 offline 列）：重複指派會讓該 motion 變成「offline 列＋非 offline 列」
+    // 的混合，意外帶上 offline_conflict——不是這支測試要測的東西
+    const targets = [0, 1, 3].map(i => replicaIds[i])
+    singles.slice(0, 3).forEach((x, i) => { x.source_wi_row_id = targets[i] })
     const lotRow = rs.find(x => x.units?.length === 1 && x.units[0].units === 8
       && rs.filter(y => y.source_wi_row_id === x.source_wi_row_id).length === 1)
     expect(lotRow, 'fixture 應有單列 lot（units 8）').toBeTruthy()
@@ -63,10 +66,12 @@ test('line view shows LB actual result + apply offline（件數兩條路徑）',
 
   // 進該工序表的產線視角。第二次 import 後要重載頁面（react-query 快取），而重載會清掉
   // active worksheet 與分頁狀態——所以整段要能重跑，不能只 reload 了事。
+  await page.goto('/')
+  const hasHook = await page.evaluate(() => !!(window as unknown as Record<string, unknown>).__ddmTest)
+  test.skip(!hasHook, '需 dev server 暴露 __ddmTest')  // 條件在本 test 內不變，只檢一次——放進 openLineView
+  // 的話，第二次呼叫觸發 skip 會把「路徑一已驗完、路徑二沒驗」整支標成 skipped，讀起來像沒問題
   const openLineView = async () => {
     await page.goto('/')
-    const hasHook = await page.evaluate(() => !!(window as unknown as Record<string, unknown>).__ddmTest)
-    test.skip(!hasHook, '需 dev server 暴露 __ddmTest')
     await page.evaluate((id) => {
       const t = (window as unknown as { __ddmTest: { workspace: { getState: () => { setActiveWs: (i: string) => void } } } }).__ddmTest
       t.workspace.getState().setActiveWs(id)

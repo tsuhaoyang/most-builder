@@ -128,12 +128,20 @@ def test_aggregate_units_total_and_workers_union():
     assert (single.units_total, single.units_source) == (None, None)
 
 
-def test_aggregate_units_fallback_when_fixture_has_no_qty_scope():
+@pytest.mark.parametrize("strip", [
+    "pop",   # LB 加欄前的舊快照：根本沒有這個 key
+    "null",  # 有 key 但值為 null：真 fixture 的 Q=1 列就是這樣，兩者必須等價
+])
+def test_aggregate_units_fallback_when_fixture_has_no_qty_scope(strip):
     """退路不能因為主路徑通了就失去覆蓋：DB 裡的舊快照沒有 qty_scope，而且會存在很久。
-    拿同一份 fixture 剝掉 qty_scope（＝LB 加欄前的樣子）→ 同樣得 8，但標為推算。"""
+    拿同一份 fixture 去掉 qty_scope → 同樣得 8，但標為推算。
+    兩種「沒有」都要測：只測 `pop` 的話，退路日後若改以 `"qty_scope" in row` 判斷，不會有測試變紅。"""
     payload = _payload()
     for row in payload["rows"]:
-        row.pop("qty_scope", None)
+        if strip == "pop":
+            row.pop("qty_scope", None)
+        else:
+            row["qty_scope"] = None
     agg = aggregate(parse(payload).rows, general_ids=set())
     q = agg["00000000-0000-4000-8000-000000000009"]
     assert (q.units_total, q.units_source) == (8, UNITS_SOURCE_INFERRED)  # 1/8/1 取最大值

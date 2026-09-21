@@ -173,17 +173,20 @@ test('黃金複本：import LB fixture（依 seq_no 改寫 id）→ 24 motion �
     { name: '帶 qty_scope → 件數取 cyclic 列（確定值）', stripScope: false, source: 'cyclic' as const },
     { name: '無 qty_scope（舊快照）→ 各列取最大值（推算）', stripScope: true, source: 'inferred_max' as const },
   ]) {
-    const fx = JSON.parse(readFileSync(path.join(FIXTURES_DIR, 'writeback_sample.json'), 'utf-8')) as WritebackPayload
-    if (stripScope) for (const r of fx.rows as Array<Record<string, unknown>>) delete r.qty_scope
+    // test.step：expectGoldenWriteback 的約 30 條斷言都在同一個呼叫點，不包 step 的話紅了分不出是哪條路徑
+    await test.step(name, async () => {
+      const fx = JSON.parse(readFileSync(path.join(FIXTURES_DIR, 'writeback_sample.json'), 'utf-8')) as WritebackPayload
+      if (stripScope) for (const r of fx.rows as Array<Record<string, unknown>>) delete r.qty_scope
 
-    const res = await request.post(`/api/v2/worksheets/${worksheetId}/lb-writeback/import`, {
-      headers: AUTH, data: remapToReplica(fx, rows),
+      const res = await request.post(`/api/v2/worksheets/${worksheetId}/lb-writeback/import`, {
+        headers: AUTH, data: remapToReplica(fx, rows),
+      })
+      expect(res.status(), await res.text()).toBe(200)
+      const out = (await res.json()) as WritebackOut
+      expect(out.summary.result_id).toBe(fx.result_id)
+      expectGoldenWriteback(out, rows, projectedQ, source)
+      await expectLatestMatches(request, worksheetId, out, rows, projectedQ, source)
     })
-    expect(res.status(), `${name}: ${await res.text()}`).toBe(200)
-    const out = (await res.json()) as WritebackOut
-    expect(out.summary.result_id, name).toBe(fx.result_id)
-    expectGoldenWriteback(out, rows, projectedQ, source)
-    await expectLatestMatches(request, worksheetId, out, rows, projectedQ, source)
   }
 })
 
