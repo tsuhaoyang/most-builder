@@ -113,6 +113,10 @@ domains:
       - "src/ddm_v2/seed/v2/rule_set_seed.py"
       - "src/ddm_v2/seed/v2/rule_set_seed_v2.py"
       - "src/ddm_v2/seed/v2/policy_seed.py"
+      # e2e：字典／同義詞／下架徽章（ADR-023 D4、ADR-024 §5）
+      - "src/frontend/e2e/dictionary.spec.ts"
+      - "src/frontend/e2e/d8-real.spec.ts"
+      - "src/frontend/e2e/d11-*.spec.ts"
     docs:
       - docs/decisions/ADR-023-dictionary-governance-unification.md
       - docs/decisions/ADR-025-import-template-matching-p2.md
@@ -128,6 +132,9 @@ domains:
       - "src/ddm_v2/most_engine/level.py"
       - "src/ddm_v2/services/v2/level_validation_service.py"
       - "src/ddm_v2/models/v2/level_validation.py"
+      # e2e：lb_tags 還原與 LB 標記 UI
+      - "src/frontend/e2e/level-hydrate-tags.spec.ts"
+      - "src/frontend/e2e/wp12-*.spec.ts"
     docs:
       - docs/core-logic/level-system-core-logic-spec.md
       - docs/decisions/ADR-028-most-engine-boundary-validation-and-single-authority.md
@@ -155,6 +162,11 @@ domains:
       - "src/frontend/src/features/workbench-v3/**"
       - "src/frontend/src/features/cases/**"
       - "src/frontend/src/features/catalog/**"
+      # e2e：工作台 NL 草稿、WI Set、單一伺服器 smoke
+      - "src/frontend/e2e/workbench-nl-*.spec.ts"
+      - "src/frontend/e2e/support/workbenchNlMocks.ts"
+      - "src/frontend/e2e/wi-set-add.spec.ts"
+      - "src/frontend/e2e/smoke.spec.ts"
     docs:
       - docs/architecture/data-model-and-storage-spec.md
       - docs/decisions/ADR-020-simo-contribution-semantics.md
@@ -189,6 +201,9 @@ domains:
       - "src/ddm_v2/schemas/v2/vocab.py"
       - "src/frontend/src/features/wi-project/**"
       - "src/frontend/src/features/master-data/**"
+      # e2e：WI Set 與 motion-module publish 動線
+      - "src/frontend/e2e/wi-set-add.spec.ts"
+      - "src/frontend/e2e/smoke.spec.ts"
     docs:
       - docs/decisions/ADR-025-import-template-matching-p2.md
       - docs/architecture/data-model-and-storage-spec.md
@@ -211,6 +226,9 @@ domains:
       - "src/ddm_v2/api/routes/v2/parse_jobs.py"
       - "src/ddm_v2/api/routes/v2/ai_review.py"
       - "src/ddm_v2/models/v2/ai_ops.py"
+      # e2e：NL→MOST 草稿的守門與多動作
+      - "src/frontend/e2e/workbench-nl-*.spec.ts"
+      - "src/frontend/e2e/support/workbenchNlMocks.ts"
     docs:
       - docs/decisions/ADR-033-llm-planner-scope-narrowing.md
     keywords: [compiler, 編譯, nl, 自然語言, llm, planner, 草稿, draft, quantity policy, rule_based, lexicon]
@@ -231,6 +249,8 @@ domains:
       - "src/ddm_v2/models/v2/lb_writeback.py"
       - "src/frontend/e2e/writeback-*.spec.ts"       # 回寫 e2e 斷言 ADR-036 D6／D7 語意（與 job-ux 取聯集）
       - "src/frontend/e2e/support/goldenReplica.ts"  # 投影／回寫共用的黃金複本
+      - "src/frontend/e2e/level-jobs-golden.spec.ts"
+      - "src/frontend/e2e/wp12-*.spec.ts"
     docs:
       - docs/lb-integration/MOST_LB_DATA_CONTRACT_SPEC.md
       - docs/decisions/ADR-035-lb-projection-layer-and-motion-decomposition.md
@@ -245,7 +265,7 @@ domains:
       - SIMO 從屬列不輸出、p2 恆空、complexity_level 恆空（ADR-035 D9 過渡守衛；SIMO 為定案，其餘為過渡）
       - repeat_counts 由 slot_inputs 推導（不得硬寫空 dict）；clone 保留全部 9 個 LB tag 欄
       - 回寫（ADR-036）只回流 offline，且必走 MOST 組內傳染與 R1–R9 驗證；其餘欄位（workers/station/units/line）唯讀；結構欄不回流。general 判定用 MOST 自己的 is_general，不從 LB payload 猜
-      - 回寫件數（Howard 2026-09-18 裁；ADR-036 D6 件數一條待整合架構師修訂）不跨列加總（setup 列 units 是 used、不是件數）；該 motion 帶 units 的列有 qty_scope 就取 cyclic 列，都沒有才退回各列最大值並標 inferred_max；比對基準是 MOST 投影 quantity Q（不用 frequency）；**件數基準**的投影失敗不得讓 import／fetch／latest 失敗（標 units_baseline unavailable＋E 碼；apply-offline 另走 lb_export_report，不在此條）
+      - 回寫件數（Howard 2026-09-18 裁；ADR-036 D6 件數一條已於 2026-09-21 修訂）不跨列加總（setup 列 units 是 used、不是件數）；該 motion 帶 units 的列有 qty_scope 就取 cyclic 列，都沒有才退回各列最大值並標 inferred_max；比對基準是 MOST 投影 quantity Q（不用 frequency）；**件數基準**的投影失敗不得讓 import／fetch／latest 失敗（標 units_baseline unavailable＋E 碼；apply-offline 另走 lb_export_report，不在此條）
       - 回寫 payload 驗證失敗（契約版本、缺必要欄位、型別、qty_scope 值域、source_wi_row_id 非 UUID）→ 整份 422 且不存快照（parse 先於 persist）；已存快照在現行驗證下讀不回 → 422，不得 500
       - 回寫的聚合／diff 重算一律對快照 payload 重新 parse，不得從 lb_row_placements 反推（placements 無 qty_scope）
       - 任何把外部輸入拼進 LB URL 的路徑都要用 LB_ID_PATTERN（lb_client.py，^[A-Za-z0-9_-]{1,64}$）驗證——路由層 422 且不呼叫 LB、client 再擋一次（縱深）；只做 URL 編碼不夠（ADR-036 D7 追記）
@@ -255,7 +275,13 @@ domains:
     anchors: [jobsFromStore, JobsShell, derive, buildNotices, applyBaseline, useLbPreview]
     paths:
       - "src/frontend/src/features/level-system/**"
-      - "src/frontend/e2e/**"          # e2e 斷言的就是領域語意（2026-09-18 Howard：原本 map 對 e2e 零命中）
+      # e2e 斷言的就是領域語意（2026-09-18 Howard：原本 map 對 e2e 零命中）。2026-09-21 由 `e2e/**`
+      # 收斂為本領域自己的 spec：全部命中 job-ux 會讓其他領域的 e2e 看起來「審過了」，比零命中更危險。
+      - "src/frontend/e2e/level-jobs-*.spec.ts"
+      - "src/frontend/e2e/level-hydrate-tags.spec.ts"
+      - "src/frontend/e2e/writeback-*.spec.ts"
+      - "src/frontend/e2e/ux-compliance.spec.ts"
+      - "src/frontend/e2e/support/goldenReplica.ts"
     docs:
       - docs/lb-integration/LEVEL_SYSTEM_JOB_UX_IMPLEMENTATION_SPEC.md
       - docs/decisions/ADR-035-lb-projection-layer-and-motion-decomposition.md
@@ -279,6 +305,11 @@ domains:
       - "src/frontend/src/shared/i18n/**"
       - "src/frontend/src/features/dictionaries/**"
       - "src/frontend/src/features/dictionary/**"
+      # e2e：雙語守衛、覆核頁、語言切換、locale 前置、兩語系診斷碼
+      - "src/frontend/e2e/i18n-*.spec.ts"
+      - "src/frontend/e2e/locale-switcher.spec.ts"
+      - "src/frontend/e2e/global-setup.ts"
+      - "src/frontend/e2e/level-jobs-plaindiag.spec.ts"
     docs:
       - docs/decisions/ADR-032-bilingual-ui-and-data-label-layer.md
       - docs/decisions/ADR-034-language-aware-error-contract.md
@@ -305,6 +336,7 @@ domains:
       - "src/ddm_v2/models/v2/dsx_suggestion.py"
       - "src/frontend/src/features/import/**"
       - "src/frontend/src/features/export/**"
+      - "src/frontend/e2e/d10-*.spec.ts"
     docs:
       - docs/decisions/ADR-013-excel-import-architecture.md
     keywords: [import, 匯入, excel, csv, target_fields, column map, 欄位對應, staging, dsx, wi_group]
@@ -332,6 +364,9 @@ domains:
       - "src/frontend/src/features/layout/**"
       - "src/frontend/src/features/dashboard/**"
       - "src/frontend/src/shared/**"
+      # e2e：角色可見性斷言（viewer 看不到使用者管理／DSX 入口、覆核頁權限）
+      - "src/frontend/e2e/ux-compliance.spec.ts"
+      - "src/frontend/e2e/i18n-review.spec.ts"
     docs:
       - docs/decisions/ADR-019-worksheet-access-control.md
       - docs/architecture/rbac-spec.md
