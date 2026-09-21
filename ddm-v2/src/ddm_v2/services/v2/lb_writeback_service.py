@@ -603,7 +603,10 @@ def _jsonable_err(err: Any) -> dict[str, Any]:
 
 
 def _projection_raises() -> tuple[type[Exception], ...]:
-    """投影層**直接拋出**（而非收集進 `ProjectionResult.errors`）的四類例外——根因見 BL-ENG-2。
+    """投影層**直接拋出**（而非收集進 `ProjectionResult.errors`）的例外——根因見 BL-ENG-2。
+
+    實際逃得出投影的是前三類；`PrecedenceError` 在 `project_rows` 內就被接住轉成收集型 E，
+    這裡仍列著它只是縱深（留著無害）。
 
     收斂根因前，每個呼叫投影的路徑都要各自降級（不得讓端點落成無信封 500）；這裡是那份清單的單一來源。
     延遲 import：投影層不該在 service 匯入時被拉進來。
