@@ -26,6 +26,27 @@ def _payload() -> dict:
     return json.loads(FIXTURE.read_text(encoding="utf-8"))
 
 
+def test_vendored_fixture_is_the_pinned_lb_artifact():
+    """絆線：這份 fixture 是 LB 端的產物，逐位元 vendor、**不得編輯**——但 README 的那句話原本沒有任何
+    機械保證。這支測試就是保證。
+
+    紅了代表有人動過它（re-vendor、或 end-of-file-fixer 補了換行）。**正確的反應是刻意更新這裡的常數
+    與 `fixtures/README.md` 的 sha／LB commit／ortools 版本，不是重跑產生器把它弄綠**——LB 的決定性
+    是經驗性的（求解從未在 time limit 前跑完，靠 incumbent 早定；`max_deterministic_time` 未接），
+    換一個 ortools build 就可能得到另一組等價最優解。
+    """
+    import hashlib
+    from collections import Counter
+
+    assert hashlib.sha256(FIXTURE.read_bytes()).hexdigest() == \
+        "c38b03dfb6577ed9c4177a72c5ac95a9f543ebb83dba66d691d65a97f0c0c9b3"
+    rows = _payload()["rows"]
+    assert len(rows) == 34
+    assert len({r["source_wi_row_id"] for r in rows}) == 24
+    # 件數語意的形狀（ADR-036 D6）：只有 cyclic 列是件數，setup 列是 used
+    assert Counter(r.get("qty_scope") for r in rows) == Counter({None: 29, "cyclic": 3, "setup": 2})
+
+
 # ── parse ──────────────────────────────────────────────────────────────────
 
 def test_parse_fixture_contract_and_rows():
@@ -63,9 +84,10 @@ def test_parse_missing_required_row_field_raises():
 def test_aggregate_tool_triple_same_station_one_station():
     p = parse(_payload())
     agg = aggregate(p.rows, general_ids=set())
-    tri = agg["00000000-0000-4000-8000-000000000004"]  # tasks 4,5,6 都 station 0
+    tri = agg["00000000-0000-4000-8000-000000000004"]  # tasks 4,5,6 都同一站
     assert tri.task_ids == [4, 5, 6]
-    assert tri.stations == {0}
+    # 「同一站」才是這支測試要證的事；站號幾號是求解器這次挑的，釘它只會在 re-vendor 時 churn
+    assert len(tri.stations) == 1
     assert tri.cross_station is False
 
 
@@ -91,18 +113,32 @@ def test_aggregate_general_multistation_not_flagged():
 
 
 def test_aggregate_units_total_and_workers_union():
-    """LB 實跑 fixture 的 seq9（electric_driver，repeat 8）：units 1/8/1。setup 列帶的是 used（經手次數）不是件數，
-    不可加總成 10；fixture 尚無 qty_scope → 退回各列最大值 8，標為推算。"""
+    """LB 實跑 fixture 的 seq9（electric_driver，repeat 8）：units 1/8/1，三列 setup／cyclic／setup。
+    setup 列帶的是 used（經手次數）不是件數，不可加總成 10；fixture 自 LB `106bf14` 起帶 qty_scope
+    → 直接取 cyclic 那列＝8（確定值，不再是推算）。"""
     p = parse(_payload())
     agg = aggregate(p.rows, general_ids=set())
     q = agg["00000000-0000-4000-8000-000000000009"]
     assert q.units_total == 8
-    assert q.units_source == UNITS_SOURCE_INFERRED
-    assert q.workers == {"W-2-0"}
+    assert q.units_source == UNITS_SOURCE_CYCLIC
+    assert len(q.workers) == 1  # 三列同一人；是誰由求解器決定，不釘
     lot = agg["00000000-0000-4000-8000-000000000007"]  # frequency 8（單列 cyclic）
-    assert (lot.units_total, lot.units_source) == (8, UNITS_SOURCE_INFERRED)
-    single = agg["00000000-0000-4000-8000-000000000003"]  # Q=1 → LB 不帶 units
+    assert (lot.units_total, lot.units_source) == (8, UNITS_SOURCE_CYCLIC)
+    single = agg["00000000-0000-4000-8000-000000000003"]  # Q=1 → LB 不帶 units、qty_scope 為 null
     assert (single.units_total, single.units_source) == (None, None)
+
+
+def test_aggregate_units_fallback_when_fixture_has_no_qty_scope():
+    """退路不能因為主路徑通了就失去覆蓋：DB 裡的舊快照沒有 qty_scope，而且會存在很久。
+    拿同一份 fixture 剝掉 qty_scope（＝LB 加欄前的樣子）→ 同樣得 8，但標為推算。"""
+    payload = _payload()
+    for row in payload["rows"]:
+        row.pop("qty_scope", None)
+    agg = aggregate(parse(payload).rows, general_ids=set())
+    q = agg["00000000-0000-4000-8000-000000000009"]
+    assert (q.units_total, q.units_source) == (8, UNITS_SOURCE_INFERRED)  # 1/8/1 取最大值
+    lot = agg["00000000-0000-4000-8000-000000000007"]
+    assert (lot.units_total, lot.units_source) == (8, UNITS_SOURCE_INFERRED)
 
 
 def _tool_rows(units: list[list[dict]], scopes: list[str | None]) -> list[RowPlacement]:
@@ -155,7 +191,15 @@ def test_parse_reads_optional_qty_scope():
     payload["rows"][0]["qty_scope"] = "cyclic"
     p = parse(payload)
     assert p.rows[0].qty_scope == "cyclic"
-    assert p.rows[1].qty_scope is None  # 缺欄＝None（加法相容）
+    assert p.rows[1].qty_scope is None  # 顯式 null → None（新 fixture 每列都有 key；缺欄的路徑見下一支）
+
+
+def test_parse_treats_missing_qty_scope_key_same_as_null():
+    """缺欄＝None（加法相容）：LB 加欄前的舊快照沒有這個 key，必須與顯式 null 等價。"""
+    payload = _payload()
+    for row in payload["rows"]:
+        row.pop("qty_scope", None)
+    assert all(r.qty_scope is None for r in parse(payload).rows)
 
 
 def test_build_most_rows_expected_n_from_projection_not_frequency():

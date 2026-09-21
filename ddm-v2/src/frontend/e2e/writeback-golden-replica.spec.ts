@@ -80,7 +80,11 @@ async function projectedQuantities(request: APIRequestContext, worksheetId: stri
   return out
 }
 
-function expectGoldenWriteback(out: WritebackOut, rows: GoldenRow[], projectedQ: Map<string, number>): void {
+// unitsSource：離線兩條路徑各自確定（cyclic／inferred_max）；真機那條交給部署中的 LB 版本決定 → null＝兩者皆可。
+function expectGoldenWriteback(
+  out: WritebackOut, rows: GoldenRow[], projectedQ: Map<string, number>,
+  unitsSource: 'cyclic' | 'inferred_max' | null = null,
+): void {
   const { summary, diff } = out
   const ids = rows.map(r => r.id)
 
@@ -130,7 +134,8 @@ function expectGoldenWriteback(out: WritebackOut, rows: GoldenRow[], projectedQ:
   // 動作 I（seq 9，electric_driver repeat 8）：LB 回 1/8/1，舊做法加總成 10；現在是 8。
   const actionI = rows[GOLDEN_LETTERS.indexOf('I')]
   expect(diff.motions[actionI.id].units_total).toBe(8)
-  expect(['cyclic', 'inferred_max']).toContain(diff.motions[actionI.id].units_source)
+  if (unitsSource) expect(diff.motions[actionI.id].units_source).toBe(unitsSource)
+  else expect(['cyclic', 'inferred_max']).toContain(diff.motions[actionI.id].units_source)
   expect(diff.unit_mismatches).toEqual([])
 
   // offline：兩邊一致（無差異）；offline 列不排站、無人（LB §8 (b)）
@@ -146,28 +151,40 @@ function expectGoldenWriteback(out: WritebackOut, rows: GoldenRow[], projectedQ:
 
 async function expectLatestMatches(
   request: APIRequestContext, worksheetId: string, out: WritebackOut, rows: GoldenRow[], projectedQ: Map<string, number>,
+  unitsSource: 'cyclic' | 'inferred_max' | null = null,
 ) {
   const res = await request.get(`/api/v2/worksheets/${worksheetId}/lb-writeback/latest`, { headers: AUTH })
   expect(res.status(), await res.text()).toBe(200)
   const latest = (await res.json()) as WbLatest
   expect(latest.snapshot_id).toBe(out.snapshot_id)
-  expectGoldenWriteback(latest, rows, projectedQ)
+  expectGoldenWriteback(latest, rows, projectedQ, unitsSource)
 }
 
 test('黃金複本：import LB fixture（依 seq_no 改寫 id）→ 24 motion 全對上', async ({ request }) => {
   test.skip(!(await seeded(request)), 'demo worksheet 未種')
   const { worksheetId, rows } = await saveWritebackReplica(request, DEMO_WS, await ensureReplicaVocab(request))
-  const fx = JSON.parse(readFileSync(path.join(FIXTURES_DIR, 'writeback_sample.json'), 'utf-8')) as WritebackPayload
-
-  const res = await request.post(`/api/v2/worksheets/${worksheetId}/lb-writeback/import`, {
-    headers: AUTH, data: remapToReplica(fx, rows),
-  })
-  expect(res.status(), await res.text()).toBe(200)
-  const out = (await res.json()) as WritebackOut
-  expect(out.summary.result_id).toBe(fx.result_id)
   const projectedQ = await projectedQuantities(request, worksheetId)
-  expectGoldenWriteback(out, rows, projectedQ)
-  await expectLatestMatches(request, worksheetId, out, rows, projectedQ)
+
+  // 件數的兩條路徑都要覆蓋：fixture 自 LB `106bf14` 起帶 qty_scope（件數＝cyclic 列，確定值），但 DB 裡
+  // 沒有 qty_scope 的舊快照會存在很久——退路不能因為主路徑通了就失去覆蓋（Howard 2026-09-21 F4）。
+  // 兩條在**同一份複本**內先後 import（第二次產生新快照，保留策略上限 10）——拆成兩個 test 會讓每跑一次
+  // 在共用 dev DB 留下兩份工序表（worksheet 無 DELETE 端點，清不掉）。
+  for (const { name, stripScope, source } of [
+    { name: '帶 qty_scope → 件數取 cyclic 列（確定值）', stripScope: false, source: 'cyclic' as const },
+    { name: '無 qty_scope（舊快照）→ 各列取最大值（推算）', stripScope: true, source: 'inferred_max' as const },
+  ]) {
+    const fx = JSON.parse(readFileSync(path.join(FIXTURES_DIR, 'writeback_sample.json'), 'utf-8')) as WritebackPayload
+    if (stripScope) for (const r of fx.rows as Array<Record<string, unknown>>) delete r.qty_scope
+
+    const res = await request.post(`/api/v2/worksheets/${worksheetId}/lb-writeback/import`, {
+      headers: AUTH, data: remapToReplica(fx, rows),
+    })
+    expect(res.status(), `${name}: ${await res.text()}`).toBe(200)
+    const out = (await res.json()) as WritebackOut
+    expect(out.summary.result_id, name).toBe(fx.result_id)
+    expectGoldenWriteback(out, rows, projectedQ, source)
+    await expectLatestMatches(request, worksheetId, out, rows, projectedQ, source)
+  }
 })
 
 // ── 真機端到端 ────────────────────────────────────────────────────────────

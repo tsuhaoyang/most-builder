@@ -63,7 +63,7 @@ async def _projected(client, ws: str) -> dict[str, list[tuple[int, str | None]]]
 
 
 def _payload(tool_row: str, lot_row: str, *, tool_units: int | list[int | None], lot_units: int | None,
-             scopes: list, lot_offline: bool = False) -> dict:
+             scopes: list, lot_offline: bool = False, lot_scope: str | None = None) -> dict:
     per_row = tool_units if isinstance(tool_units, list) else [tool_units] * len(scopes)
 
     def _units(worker: str, n: int | None):
@@ -75,7 +75,8 @@ def _payload(tool_row: str, lot_row: str, *, tool_units: int | list[int | None],
             for i, (s, n) in enumerate(zip(scopes, per_row))]
     rows.append({"source_wi_row_id": lot_row, "task_id": 4, "offline_flag": lot_offline,
                  "line_index": None if lot_offline else 0, "station_index": None if lot_offline else 1,
-                 "workers": [] if lot_offline else ["W-1-0"], "units": None if lot_offline else _units("W-1-0", lot_units)})
+                 "workers": [] if lot_offline else ["W-1-0"], "units": None if lot_offline else _units("W-1-0", lot_units),
+                 **({"qty_scope": lot_scope} if lot_scope is not None else {})})
     return {"contract_version": "lb-most-writeback-v1", "project_id": "p", "version_id": "original",
             "result_id": "r", "unattended_machine_policy": "free", "unattended_machine_policy_source": "persisted",
             "rows": rows}
@@ -104,33 +105,42 @@ async def test_tool_frequency_gt1_no_false_mismatch(client, scopes, source):
     assert r.json()["summary"]["units_baseline"] == {"status": "ok", "reasons": []}
 
 
-async def test_mismatch_compares_against_projected_quantity(client):
-    """LB 件數與投影 Q 不符才報；比對基準是投影 Q（此列 8）。"""
+@pytest.mark.parametrize("lot_scope, source", [
+    (None, "inferred_max"),      # 舊快照／LB 加欄前——DB 裡會存在很久，退路必須一直有覆蓋
+    ("cyclic", "cyclic"),        # LB 加欄後（fixture 自 106bf14 起）
+])
+async def test_mismatch_compares_against_projected_quantity(client, lot_scope, source):
+    """LB 件數與投影 Q 不符才報；比對基準是投影 Q（此列 8）。兩種件數來源都要報得出來。"""
     ws, tool_row, lot_row = await _worksheet(client)
     r = await client.post(f"/api/v2/worksheets/{ws}/lb-writeback/import",
-                          json=_payload(tool_row, lot_row, tool_units=3, lot_units=7, scopes=[None] * 3))
+                          json=_payload(tool_row, lot_row, tool_units=3, lot_units=7, scopes=[None] * 3,
+                                        lot_scope=lot_scope))
     assert r.status_code == 200, r.text
     assert r.json()["diff"]["unit_mismatches"] == [
-        {"wi_row_id": lot_row, "expected_n": 8, "units_total": 7, "units_source": "inferred_max"}
+        {"wi_row_id": lot_row, "expected_n": 8, "units_total": 7, "units_source": source}
     ]
     latest = (await client.get(f"/api/v2/worksheets/{ws}/lb-writeback/latest")).json()
     assert latest["diff"]["unit_mismatches"] == r.json()["diff"]["unit_mismatches"]
 
 
-async def test_repeat_row_compares_against_projected_q_not_frequency(client):
+@pytest.mark.parametrize("scopes, source", [
+    ([None] * 3, "inferred_max"),                  # 舊快照
+    (["setup", "cyclic", "setup"], "cyclic"),      # LB 加欄後：黃金三列的形狀
+])
+async def test_repeat_row_compares_against_projected_q_not_frequency(client, scopes, source):
     """持工具 repeat 4、frequency 1：投影 Q=4（三列 Q=4）。LB 1/3/1 → mismatch expected_n=4——拿 frequency 當基準
     （1）會完全不比，這個案例分得出比對基準是投影 Q。"""
     ws, tool_row, lot_row = await _worksheet(client, tool_freq=1, tool_cycle=_cm_repeat(4))
     assert sorted((await _projected(client, ws))[tool_row]) == [(4, "cyclic"), (4, "setup"), (4, "setup")]
     ok = await client.post(f"/api/v2/worksheets/{ws}/lb-writeback/import",
-                           json=_payload(tool_row, lot_row, tool_units=[1, 4, 1], lot_units=8, scopes=[None] * 3))
+                           json=_payload(tool_row, lot_row, tool_units=[1, 4, 1], lot_units=8, scopes=scopes))
     assert ok.status_code == 200, ok.text
     assert ok.json()["diff"]["motions"][tool_row]["units_total"] == 4
     assert ok.json()["diff"]["unit_mismatches"] == []
     bad = await client.post(f"/api/v2/worksheets/{ws}/lb-writeback/import",
-                            json=_payload(tool_row, lot_row, tool_units=[1, 3, 1], lot_units=8, scopes=[None] * 3))
+                            json=_payload(tool_row, lot_row, tool_units=[1, 3, 1], lot_units=8, scopes=scopes))
     assert bad.json()["diff"]["unit_mismatches"] == [
-        {"wi_row_id": tool_row, "expected_n": 4, "units_total": 3, "units_source": "inferred_max"}
+        {"wi_row_id": tool_row, "expected_n": 4, "units_total": 3, "units_source": source}
     ]
 
 

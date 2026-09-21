@@ -57,9 +57,15 @@ async def _make_worksheet(client) -> tuple[str, dict, dict]:
     assert r.status_code == 200, r.text
 
     # 重映 fixture：挑一個 offline=True 的列給 loose、兩個非 offline 給 cub1/cub2，其餘略去 source（→unmatched 不計）
+    # 挑列用**語意條件**而非檔案順序：vendor 換版時 34 列的順序會變（2026-09-21 的 106bf14 就重排過），
+    # 依順序挑會讓測到的情境悄悄換掉（單列 motion ↔ 工具三列之一）而測試照樣綠。
     fx = _fixture()
     off_row = next(x for x in fx["rows"] if x["offline_flag"])
-    non_off = [x for x in fx["rows"] if not x["offline_flag"]][:2]
+    single_ids = {i for i in {x["source_wi_row_id"] for x in fx["rows"]}
+                  if sum(1 for y in fx["rows"] if y["source_wi_row_id"] == i) == 1}
+    non_off = [x for x in fx["rows"]
+               if not x["offline_flag"] and x["source_wi_row_id"] in single_ids][:2]
+    assert len(non_off) == 2, "fixture 應有至少兩個非 offline 的單列 motion"
     off_row["source_wi_row_id"] = loose
     non_off[0]["source_wi_row_id"] = cub1
     non_off[1]["source_wi_row_id"] = cub2
@@ -78,8 +84,8 @@ async def test_import_latest_and_snapshots(client):
 
     latest = await client.get(f"/api/v2/worksheets/{ws}/lb-writeback/latest")
     assert latest.status_code == 200
-    # 重映會把某工具三列拆一列出來，motions 可能 24 或 25；核心是 latest 能組出摘要
-    assert latest.json()["summary"]["motions"] >= 24
+    # 只重映單列 motion（見 _make_worksheet），不會把工具三列拆開 → motions 恆為 24
+    assert latest.json()["summary"]["motions"] == 24
 
     snaps = await client.get(f"/api/v2/worksheets/{ws}/lb-writeback/snapshots")
     assert len(snaps.json()["snapshots"]) == 1

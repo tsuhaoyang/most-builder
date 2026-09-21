@@ -3,7 +3,7 @@
   "project_id": "demo-project",
   "version_id": "demo-version",
   "result_id": "demo-result",
-  "generated_at": "2026-09-17T08:04:24.621467+00:00",
+  "generated_at": "2026-09-21T00:00:00+00:00",
   "unattended_machine_policy": "free",
   "unattended_machine_policy_source": "persisted",
   "rows": [
@@ -14,7 +14,8 @@
       "line_index": null,
       "station_index": null,
       "workers": [],
-      "units": null
+      "units": null,
+      "qty_scope": null
     },
     {
       "source_wi_row_id": "00000000-0000-4000-8000-000000000003",
@@ -25,40 +26,8 @@
       "workers": [
         "W-0-0"
       ],
-      "units": null
-    },
-    {
-      "source_wi_row_id": "00000000-0000-4000-8000-000000000004",
-      "task_id": 4,
-      "offline_flag": false,
-      "line_index": 0,
-      "station_index": 0,
-      "workers": [
-        "W-0-0"
-      ],
-      "units": null
-    },
-    {
-      "source_wi_row_id": "00000000-0000-4000-8000-000000000004",
-      "task_id": 5,
-      "offline_flag": false,
-      "line_index": 0,
-      "station_index": 0,
-      "workers": [
-        "W-0-0"
-      ],
-      "units": null
-    },
-    {
-      "source_wi_row_id": "00000000-0000-4000-8000-000000000004",
-      "task_id": 6,
-      "offline_flag": false,
-      "line_index": 0,
-      "station_index": 0,
-      "workers": [
-        "W-0-0"
-      ],
-      "units": null
+      "units": null,
+      "qty_scope": null
     },
     {
       "source_wi_row_id": "00000000-0000-4000-8000-000000000005",
@@ -69,7 +38,59 @@
       "workers": [
         "W-0-0"
       ],
-      "units": null
+      "units": null,
+      "qty_scope": null
+    },
+    {
+      "source_wi_row_id": "00000000-0000-4000-8000-000000000009",
+      "task_id": 13,
+      "offline_flag": false,
+      "line_index": 0,
+      "station_index": 0,
+      "workers": [
+        "W-0-0"
+      ],
+      "units": [
+        {
+          "worker": "W-0-0",
+          "units": 1
+        }
+      ],
+      "qty_scope": "setup"
+    },
+    {
+      "source_wi_row_id": "00000000-0000-4000-8000-000000000009",
+      "task_id": 14,
+      "offline_flag": false,
+      "line_index": 0,
+      "station_index": 0,
+      "workers": [
+        "W-0-0"
+      ],
+      "units": [
+        {
+          "worker": "W-0-0",
+          "units": 8
+        }
+      ],
+      "qty_scope": "cyclic"
+    },
+    {
+      "source_wi_row_id": "00000000-0000-4000-8000-000000000009",
+      "task_id": 15,
+      "offline_flag": false,
+      "line_index": 0,
+      "station_index": 0,
+      "workers": [
+        "W-0-0"
+      ],
+      "units": [
+        {
+          "worker": "W-0-0",
+          "units": 1
+        }
+      ],
+      "qty_scope": "setup"
     },
     {
       "source_wi_row_id": "00000000-0000-4000-8000-000000000010",
@@ -80,7 +101,8 @@
       "workers": [
         "W-0-0"
       ],
-      "units": null
+      "units": null,
+      "qty_scope": null
     },
     {
       "source_wi_row_id": "00000000-0000-4000-8000-000000000011",
@@ -91,7 +113,8 @@
       "workers": [
         "W-0-0"
       ],
-      "units": null
+      "units": null,
+      "qty_scope": null
     },
     {
       "source_wi_row_id": "00000000-0000-4000-8000-000000000012",
@@ -102,40 +125,8 @@
       "workers": [
         "W-0-0"
       ],
-      "units": null
-    },
-    {
-      "source_wi_row_id": "00000000-0000-4000-8000-000000000013",
-      "task_id": 19,
-      "offline_flag": false,
-      "line_index": 0,
-      "station_index": 0,
-      "workers": [
-        "W-0-0"
-      ],
-      "units": null
-    },
-    {
-      "source_wi_row_id": "00000000-0000-4000-8000-000000000013",
-      "task_id": 20,
-      "offline_flag": false,
-      "line_index": 0,
-      "station_index": 0,
-      "workers": [
-        "W-0-0"
-      ],
-      "units": null
-    },
-    {
-      "source_wi_row_id": "00000000-0000-4000-8000-000000000013",
-      "task_id": 21,
-      "offline_flag": false,
-      "line_index": 0,
-      "station_index": 0,
-      "workers": [
-        "W-0-0"
-      ],
-      "units": null
+      "units": null,
+      "qty_scope": null
     },
     {
       "source_wi_row_id": "00000000-0000-4000-8000-000000000014",
@@ -146,7 +137,8 @@
       "workers": [
         "W-0-0"
       ],
-      "units": null
+      "units": null,
+      "qty_scope": null
     },
     {
       "source_wi_row_id": "00000000-0000-4000-8000-000000000015",
@@ -155,7 +147,8 @@
       "line_index": 0,
       "station_index": 0,
       "workers": [],
-      "units": null
+      "units": null,
+      "qty_scope": null
     },
     {
       "source_wi_row_id": "00000000-0000-4000-8000-000000000016",
@@ -166,7 +159,8 @@
       "workers": [
         "W-0-0"
       ],
-      "units": null
+      "units": null,
+      "qty_scope": null
     },
     {
       "source_wi_row_id": "00000000-0000-4000-8000-000000000017",
@@ -177,7 +171,8 @@
       "workers": [
         "W-0-0"
       ],
-      "units": null
+      "units": null,
+      "qty_scope": null
     },
     {
       "source_wi_row_id": "00000000-0000-4000-8000-000000000017",
@@ -188,7 +183,8 @@
       "workers": [
         "W-0-0"
       ],
-      "units": null
+      "units": null,
+      "qty_scope": null
     },
     {
       "source_wi_row_id": "00000000-0000-4000-8000-000000000017",
@@ -199,7 +195,8 @@
       "workers": [
         "W-0-0"
       ],
-      "units": null
+      "units": null,
+      "qty_scope": null
     },
     {
       "source_wi_row_id": "00000000-0000-4000-8000-000000000018",
@@ -210,7 +207,8 @@
       "workers": [
         "W-0-0"
       ],
-      "units": null
+      "units": null,
+      "qty_scope": null
     },
     {
       "source_wi_row_id": "00000000-0000-4000-8000-000000000019",
@@ -221,7 +219,8 @@
       "workers": [
         "W-0-0"
       ],
-      "units": null
+      "units": null,
+      "qty_scope": null
     },
     {
       "source_wi_row_id": "00000000-0000-4000-8000-000000000020",
@@ -232,7 +231,8 @@
       "workers": [
         "W-0-0"
       ],
-      "units": null
+      "units": null,
+      "qty_scope": null
     },
     {
       "source_wi_row_id": "00000000-0000-4000-8000-000000000001",
@@ -243,88 +243,116 @@
       "workers": [
         "W-0-0"
       ],
-      "units": null
+      "units": null,
+      "qty_scope": null
+    },
+    {
+      "source_wi_row_id": "00000000-0000-4000-8000-000000000004",
+      "task_id": 4,
+      "offline_flag": false,
+      "line_index": 0,
+      "station_index": 1,
+      "workers": [
+        "W-1-0"
+      ],
+      "units": null,
+      "qty_scope": null
+    },
+    {
+      "source_wi_row_id": "00000000-0000-4000-8000-000000000004",
+      "task_id": 5,
+      "offline_flag": false,
+      "line_index": 0,
+      "station_index": 1,
+      "workers": [
+        "W-1-0"
+      ],
+      "units": null,
+      "qty_scope": null
+    },
+    {
+      "source_wi_row_id": "00000000-0000-4000-8000-000000000004",
+      "task_id": 6,
+      "offline_flag": false,
+      "line_index": 0,
+      "station_index": 1,
+      "workers": [
+        "W-1-0"
+      ],
+      "units": null,
+      "qty_scope": null
+    },
+    {
+      "source_wi_row_id": "00000000-0000-4000-8000-000000000013",
+      "task_id": 19,
+      "offline_flag": false,
+      "line_index": 0,
+      "station_index": 1,
+      "workers": [
+        "W-1-0"
+      ],
+      "units": null,
+      "qty_scope": null
+    },
+    {
+      "source_wi_row_id": "00000000-0000-4000-8000-000000000013",
+      "task_id": 20,
+      "offline_flag": false,
+      "line_index": 0,
+      "station_index": 1,
+      "workers": [
+        "W-1-0"
+      ],
+      "units": null,
+      "qty_scope": null
+    },
+    {
+      "source_wi_row_id": "00000000-0000-4000-8000-000000000013",
+      "task_id": 21,
+      "offline_flag": false,
+      "line_index": 0,
+      "station_index": 1,
+      "workers": [
+        "W-1-0"
+      ],
+      "units": null,
+      "qty_scope": null
     },
     {
       "source_wi_row_id": "00000000-0000-4000-8000-000000000006",
       "task_id": 8,
       "offline_flag": false,
       "line_index": 0,
-      "station_index": 1,
+      "station_index": 2,
       "workers": [
-        "W-1-0"
+        "W-2-0"
       ],
-      "units": null
+      "units": null,
+      "qty_scope": null
     },
     {
       "source_wi_row_id": "00000000-0000-4000-8000-000000000006",
       "task_id": 9,
       "offline_flag": false,
       "line_index": 0,
-      "station_index": 1,
+      "station_index": 2,
       "workers": [
-        "W-1-0"
+        "W-2-0"
       ],
-      "units": null
+      "units": null,
+      "qty_scope": null
     },
     {
       "source_wi_row_id": "00000000-0000-4000-8000-000000000006",
       "task_id": 10,
       "offline_flag": false,
       "line_index": 0,
-      "station_index": 1,
-      "workers": [
-        "W-1-0"
-      ],
-      "units": null
-    },
-    {
-      "source_wi_row_id": "00000000-0000-4000-8000-000000000009",
-      "task_id": 13,
-      "offline_flag": false,
-      "line_index": 0,
       "station_index": 2,
       "workers": [
         "W-2-0"
       ],
-      "units": [
-        {
-          "worker": "W-2-0",
-          "units": 1
-        }
-      ]
-    },
-    {
-      "source_wi_row_id": "00000000-0000-4000-8000-000000000009",
-      "task_id": 14,
-      "offline_flag": false,
-      "line_index": 0,
-      "station_index": 2,
-      "workers": [
-        "W-2-0"
-      ],
-      "units": [
-        {
-          "worker": "W-2-0",
-          "units": 8
-        }
-      ]
-    },
-    {
-      "source_wi_row_id": "00000000-0000-4000-8000-000000000009",
-      "task_id": 15,
-      "offline_flag": false,
-      "line_index": 0,
-      "station_index": 2,
-      "workers": [
-        "W-2-0"
-      ],
-      "units": [
-        {
-          "worker": "W-2-0",
-          "units": 1
-        }
-      ]
+      "units": null,
+      "qty_scope": null
     },
     {
       "source_wi_row_id": "00000000-0000-4000-8000-000000000007",
@@ -340,7 +368,8 @@
           "worker": "W-3-0",
           "units": 8
         }
-      ]
+      ],
+      "qty_scope": "cyclic"
     },
     {
       "source_wi_row_id": "00000000-0000-4000-8000-000000000008",
@@ -356,7 +385,8 @@
           "worker": "W-3-0",
           "units": 8
         }
-      ]
+      ],
+      "qty_scope": "cyclic"
     },
     {
       "source_wi_row_id": "00000000-0000-4000-8000-000000000021",
@@ -367,7 +397,8 @@
       "workers": [
         "W-4-0"
       ],
-      "units": null
+      "units": null,
+      "qty_scope": null
     },
     {
       "source_wi_row_id": "00000000-0000-4000-8000-000000000022",
@@ -378,7 +409,8 @@
       "workers": [
         "W-5-0"
       ],
-      "units": null
+      "units": null,
+      "qty_scope": null
     },
     {
       "source_wi_row_id": "00000000-0000-4000-8000-000000000023",
@@ -387,7 +419,8 @@
       "line_index": 0,
       "station_index": 5,
       "workers": [],
-      "units": null
+      "units": null,
+      "qty_scope": null
     },
     {
       "source_wi_row_id": "00000000-0000-4000-8000-000000000024",
@@ -398,7 +431,8 @@
       "workers": [
         "W-5-0"
       ],
-      "units": null
+      "units": null,
+      "qty_scope": null
     }
   ]
 }
