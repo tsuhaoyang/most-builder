@@ -2,7 +2,7 @@
 
 ## 狀態
 
-🟢 **accepted**（2026-09-18，Howard 核可；三項取捨於 2026-09-17 裁決，見 §2 D1／D2／D5）。D6「件數」一條已於 2026-09-21 由整合架構師修訂（見 §2 D6 件數修訂）。實作見 `docs/lb-integration/LB_WRITEBACK_CONSUMPTION_IMPLEMENTATION_SPEC.md`。
+🟢 **accepted**（2026-09-18，Howard 核可；三項取捨於 2026-09-17 裁決，見 §2 D1／D2／D5）。D6「件數」一條已於 2026-09-21 由整合架構師修訂（見 §2 D6 件數修訂）。LB `export_warnings` 的消費規則於 2026-09-22 由 Howard 給定並落地（見 §2 D7 追記（2026-09-22））。實作見 `docs/lb-integration/LB_WRITEBACK_CONSUMPTION_IMPLEMENTATION_SPEC.md`。
 
 - **對應 LB 端**：`lb-most-writeback-v1`，定義於 LB `docs/dev_docs/MOST_INTEGRATION_INPUT_SPEC.md` §8（**該檔是回寫契約的唯一權威**；本 ADR 不重述欄位）、LB ADR-023 D11。LB 落地 commit `adb750b`＋`631e3a5`＋`02dba21`；真機驗證另依賴 LB 兩個修正：`aac992f`（插回的 general 保留 `source_wi_row_id`，回寫不再漏 general）、`c0cb244`（上傳 CSV 標準化保留 MOST 擴充欄，見 §4）（皆在分支 `feature/most-integration-phase2`，未合入 LB master；**LB 後續的回寫工作已移到 `integration/phase2-docs`**——`rows[].qty_scope`、`export_warnings`、fixture 決定性化只在該分支上，見 §4）。
 - **關聯**：[ADR-035](ADR-035-lb-projection-layer-and-motion-decomposition.md)（MOST→LB 投影；本 ADR 是反方向）、`docs/lb-integration/MOST_LB_CONTRACT.md` D13（屬性可雙向、結構單向）、[ADR-011](ADR-011-schema-evolution-and-contract-stability.md)（加法演進）、[ADR-019](ADR-019-worksheet-access-control.md)（端點權限）、[ADR-034](ADR-034-language-aware-error-contract.md)（錯誤信封）。
@@ -77,7 +77,7 @@ D13 同時定下屬性回流規則：可回流的只有 `offline` 這類標籤�
 > 缺陷為 2026-09-18 真機複驗（§4）所暴露；此前未被發現，是因為比對只看 `frequency` 一欄。
 > **跨 repo 未結項（2026-09-21 已結）**：~~LB `MOST_INTEGRATION_INPUT_SPEC.md` §8 尚未定義 `rows[].qty_scope`（LB 端票 B20）。補上前 MOST 顯示的件數一律是 `inferred_max` 推算值。~~ LB §8 **已定義並實際輸出** `rows[].qty_scope`（LB `64e4abd`，該 commit 自述關閉 B20）；值由 LB 依 ADR-008 D3 的 `resolve_qty_scope()` 決議、非 CSV 透傳，故 `auto` 不會上線。**MOST 端不需改程式**——`79d8e4f` 的「C＋退路」本來就同時支援兩條路徑。值域仍釘死為小寫 `setup`／`cyclic`，其他值依 D7 追記（2026-09-18）第 2 點整份 422。
 > **Q=1 的表示法有兩種，都合法**：LB 契約的字面是「不輸出該欄（`null`／缺欄）」，而黃金 fixture（LB `106bf14`）實際是**34 列都有 `qty_scope` 這個 key、Q=1 時值為顯式 `null`**。MOST 的 parser 對「缺欄」與「顯式 `null`」**一視同仁**（都成為 `None`，走推算退路），兩種都有測試覆蓋（`tests/unit/test_lb_writeback_service.py` 的 `test_parse_reads_optional_qty_scope` 與 `test_parse_treats_missing_qty_scope_key_same_as_null`）。~~Q=1 不輸出該欄（null）~~ 這種寫法會讓下一個人把顯式 `null` 讀成契約違反，故改為本條。
-> LB §8 整節**仍在演進**（同日另加頂層 `export_warnings`，見 §4「跨 repo 未結」），**不是定稿**。
+> LB §8 整節**仍在演進**（同日另加頂層 `export_warnings`，~~見 §4「跨 repo 未結」~~ MOST 已於 2026-09-22 消費，見 §2 D7 追記（2026-09-22）），**不是定稿**。
 > 已知限制（UI 覆蓋範圍等）見 [實作書](../lb-integration/LB_WRITEBACK_CONSUMPTION_IMPLEMENTATION_SPEC.md) §7，本 ADR 不重述。
 
 ### D7 驗證與失敗處理
@@ -101,6 +101,17 @@ D13 同時定下屬性回流規則：可回流的只有 `offline` 這類標籤�
 > 4. **降級要留痕**：降級若只活在當下的回應，重整後畫面只剩「已套用」，事後查不到。`applied_rows`（jsonb）是這條路徑唯一的痕跡，故一併記下**套用者**（與快照 `created_by`＝取得者未必是同一人）與報告狀態／E 碼／完整診斷，並由 `latest`／`snapshots` 帶出（欄位見實作書 §2 B6）。
 > 5. **取捨自覺（fail-open）**：實際逃得到這條路的是三類（`QuantityError`／`ToolResolveError`／`TmuDecompositionError`；`PrecedenceError` 在投影層內就被接住轉成收集型 E），而它們本身都攜帶確定的 E 碼，因此「降級 200」等於**閘門跑不起來時放行**。Howard 2026-09-21 裁定本輪維持降級、不重構投影層；收斂根因時要不要翻成 fail-closed（把 E 碼餵進 `proj_errors` → 整批 rollback ＋ 422 `LB_EXPORT_BLOCKED`）是 [BL-ENG-2](../BACKLOG.md) 的待裁項——屬**使用者可見的行為翻轉**，不得當成重構順手做掉。
 
+> **D7 追記（2026-09-22，Howard 指示「消費 LB 的 export_warnings」並給消費規則——照 LB §8 該列實作；`707d0c0`）：LB 自述的降級／丟列要讀，而且要照實講。**
+> 消費規則（欄位、旗標、上限、回應形狀）的單一權威＝實作書 §2 B4-6；本節只記決策與理由。
+> 1. **缺 key ≠ 空**：缺 `export_warnings`＝舊 LB／舊快照＝**不知道**；有 key 就必須三欄齊全，`{}`、缺欄、顯式 `null`、型別錯、負值依本節既有判準整份 422。理由：`{}` 若讀成「三欄皆空」，等於 MOST 替 LB 宣稱沒有降級、沒有丟列。
+> 2. **未知 `reason` 降級為「原因無法辨識」、照常存快照，不 422——與 2026-09-18 追記第 2 點（`qty_scope` 未知值 422）刻意相反。**兩者都是 LB 端封閉的值域，差在未知值的後果：`qty_scope` 決定件數取哪一列，猜錯就顯示錯的件數，寧可擋；`reason` 只是警告的說明，擋下等於 LB 加第三個 reason 就炸掉整次 fetch，使用者連站別、人、offline 差異都看不到。值域封閉是為了擋壞資料，不是為了擋對方演進（LB §8 亦明文要求）。
+> 3. **丟列只加旗標，不改寫 `missing` 的 reason**：丟掉的列對應鍵已壞，對應不回是哪一步（LB 的 `task_id` 不得用來反推，§8），所以只能說「這一步**可能**是其中之一」；原本的歸因（例如 general 的「請重新最佳化／通報」）必須仍看得到。初版改寫 reason 的做法見 §3 被否決。
+> 4. **LB 主動降級與「本來就沒有件數」分開講**：前者是 LB 端的缺陷指示（要通報），後者含 offline lot 等預期狀態；混在一起就是把缺陷講成正常。`setup_not_one` 的降級不影響件數（cyclic 列仍可信），**不得**講成「對件數沒有把握」。
+> 5. **不信任上游的上限**：MOST 自設清單上限並截斷標示（多出來的是警告、不是資料，不值得整份 422）；理由是快照解析出的內容之後每一次 `latest` 都會回吐給每位 viewer。
+> 6. **加法演進**（[ADR-011](ADR-011-schema-evolution-and-contract-stability.md)）：新鍵、新旗標、`units_uncomparable.reason` 新值；`missing[].reason` 值域不變，只讀 reason 的既有消費端行為不變。
+>
+> 仍存在的已知限制（截斷後的降級沒有標記、只丟已對上步驟其中一列時不帶旗標 → [BL-ENG-14](../BACKLOG.md)）見實作書 §7 (h)，本節不重述。
+
 ---
 
 ## 3. 被否決的方案
@@ -111,6 +122,8 @@ D13 同時定下屬性回流規則：可回流的只有 `offline` 這類標籤�
 | 只存最新一份、覆蓋前一份 | 無法回答「IE 當時看到的是哪一次結果」；契約升版後舊資料不可解讀（D4） |
 | 自動套用 LB 的 offline | LB 結果編輯是 what-if；自動覆蓋讓 LB 成為第二權威（D13 禁止） |
 | 把站別／人員寫回 `wi_rows` 當屬性 | 那是求解結果不是工序屬性；寫回會讓下一次匯出把結果當輸入（循環） |
+| LB 丟列時把缺口的 `missing[].reason` 整個改寫成「LB 丟列」（2026-09-22 初版） | 過寬：丟掉的列對應不回是哪一步，丟 1 列就改寫所有缺口，還蓋掉 general 的「請重新最佳化／通報」；改為旗標、reason 不改（§2 D7 追記 2026-09-22 第 3 點） |
+| `export_warnings` 的未知 `reason` 比照 `qty_scope` 整份 422 | 未知 reason 只是警告的說明；擋下會讓 LB 加一個新原因就炸掉整次 fetch，連站別／人／offline 差異都看不到；LB §8 亦明文禁止（§2 D7 追記 2026-09-22 第 2 點） |
 
 ---
 
@@ -134,11 +147,13 @@ D13 同時定下屬性回流規則：可回流的只有 `offline` 這類標籤�
 
 > **追記（2026-09-21，fixture re-vendor `4b89bca`）**：LB 補上 `rows[].qty_scope`（`64e4abd`）並把黃金 fixture 的產生器決定性化（`106bf14`）後，MOST 重新 vendor 了那份 fixture。同一個動作 I 的件數仍是 **8**，但走的是 **cyclic 主路徑**（`units_source="cyclic"`＝確定值），不再是上文那個 `inferred_max` 推算值；UI 也不再掛「推算」tooltip。推算退路只留給 LB 加欄前存下的舊快照（D6 第二條），並以「剝掉 `qty_scope` 的同一份 fixture」維持覆蓋。fixture 的來源 commit／sha256／ortools 版本／產法與 re-vendor 時的處置＝[`fixtures/README.md`](../lb-integration/fixtures/README.md)（唯一權威，本 ADR 不重抄）。
 
+> **第三輪真機驗收（2026-09-22，`export_warnings` 消費後）**：LB HEAD（`integration/phase2-docs`）＋ MOST 工作樹，數字同上段，且動作 I 走 `cyclic`、`export_warnings` 在且三欄為空；**2026-09-18 之後的變更至此才有真機驗證**。細節＝實作書 §4 真機驗證欄（本 ADR 不重抄）。
+
 **待裁決（不阻擋實作）**：是否讓回寫結果影響作業版的「秒數」顯示（目前秒數來自 MOST 投影預覽，非 LB 實際排程）；建議 v1 不混用，兩者分開顯示。
 
 **跨 repo 未結（不阻擋實作）**：D6「件數」已於 2026-09-21 修訂（見 §2 D6 件數修訂）。~~仍待 LB：`MOST_INTEGRATION_INPUT_SPEC.md` §8 定義 `rows[].qty_scope`（LB 票 B20）；補上前，MOST 顯示的件數一律是推算值（`inferred_max`）。~~ **已結**（LB `64e4abd`，2026-09-21；MOST 端無需改程式，見 §2 D6 件數修訂）。
 
-**改由 MOST 端承接的一項**：LB §8 已定義並實作頂層 `export_warnings`（LB `b90c611` 定義、`bb0d340` 實作），**MOST 尚未消費**——Howard 2026-09-21 裁定本輪不做，等 LB §8 定稿後再給消費規則。後果（LB 丟掉／降級的列會被 MOST 講成「沒有結果」「沒給件數」）記在[實作書](../lb-integration/LB_WRITEBACK_CONSUMPTION_IMPLEMENTATION_SPEC.md) §7 (h)，票號 [BL-ENG-10](../BACKLOG.md)；本 ADR 不重述。
+**改由 MOST 端承接的一項**：LB §8 已定義並實作頂層 `export_warnings`（LB `b90c611` 定義、`bb0d340` 實作），~~**MOST 尚未消費**——Howard 2026-09-21 裁定本輪不做，等 LB §8 定稿後再給消費規則。後果（LB 丟掉／降級的列會被 MOST 講成「沒有結果」「沒給件數」）記在[實作書](../lb-integration/LB_WRITEBACK_CONSUMPTION_IMPLEMENTATION_SPEC.md) §7 (h)，票號 [BL-ENG-10](../BACKLOG.md)；本 ADR 不重述。~~ **MOST 已於 2026-09-22 消費**（Howard 給消費規則，`707d0c0`）：決策見 §2 D7 追記（2026-09-22），規則見實作書 §2 B4-6，仍存在的已知限制見實作書 §7 (h)（→ [BL-ENG-14](../BACKLOG.md)）。
 
 ---
 
@@ -175,3 +190,4 @@ D13 同時定下屬性回流規則：可回流的只有 `offline` 這類標籤�
   testid 見實作書 §2 B6／§3 F2）。同一 commit 補齊回寫五支端點的 RBAC 測試（viewer 打寫入端點 → 403；[BL-ENG-4](../BACKLOG.md)
   的主要範圍，權限規則本身不變）。後續 `603b83f` 收掉「留痕本身會 500」的兩條（NaN／inf 的 params、無長度上限的
   `message`）並把絆線測試收緊——**降級路徑的任何一段都不准再丟出無信封 500**，做法見實作書 §2 B6-4。
+- **LB `export_warnings` 消費（2026-09-22，Howard 給消費規則；`707d0c0`）**：見 §2 D7 追記（2026-09-22）。API 加法欄位 `diff.export_warnings`、`diff.motions.<wi_row_id>.units_degraded`、`diff.missing[].lb_dropped_possible`、`units_uncomparable.reason="lb_degraded"`（形狀見實作書 §2 B4-6）；UI 語意見實作書 §3 F2；真機第三輪驗收見實作書 §4；已知限制見實作書 §7 (h)。

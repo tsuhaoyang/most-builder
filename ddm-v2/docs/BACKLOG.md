@@ -175,6 +175,10 @@
   **注意**：ADR-034 §D5 明寫 detail「原封不動」，所以這是**契約變更**，要 ADR 追記，不是順手改。
   另可在部署層（uvicorn／Traefik）加 body 上限，但掛 gateway 前不成立。
 - 對應文件：ADR-034 §D5、ADR-036 §4。
+- **2026-09-22 部分處置與更正**：`707d0c0` 讓 `_parse_int`／`_parse_bool` 的錯誤訊息改為限長（`_brief`），
+  但該 commit 訊息寫「rows[] 共用同一 helper 一併受益」**不完全正確**——doc-sync 實測 `qty_scope`、
+  `units[].units`、`contract_version` 的錯誤訊息仍原樣帶入輸入值（100 KB 輸入 → 約 100 KB 訊息；
+  `contract_version` 的 `got` 還會出現在 detail 裡）。這幾處仍屬本票範圍。
 
 ## BL-ENG-7 — level 範圍展開無上界：11 字元的輸入可讓每次讀取吃掉數十 GB
 - 領域：`most-engine`／`level-system`（`src/ddm_v2/most_engine/level.py`、`src/ddm_v2/schemas/v2/most.py`）
@@ -192,7 +196,13 @@
 - 一併緩解：同一個 pattern 也會擋掉 BL-ENG-5 提到的「400 KB message 進 jsonb 並每次回吐」（該處已先截到 500 字）。
 - 對應文件：`docs/core-logic/`（level 規則）、ADR-036 §4。
 
-## BL-ENG-8 — outbox 整合測試會被共用 dev DB 的既有資料擠掉（已在紅）
+## BL-ENG-8 — outbox 整合測試會被共用 dev DB 的既有資料擠掉（**2026-09-22 已修**）
+- **結案說明**：Howard 2026-09-22 指示本輪修（「根因不是資料太多，是測試依賴全域狀態——和 fixture 佔固定 id
+  是同一個病；不要用清 dev DB 解決」）。做法：測試以自己的 `run_id` 直接找到自己那筆，只把**自己那一列**的
+  `created_at` 調到最前面，`claim_pending(limit=1)` 就確定領到它；發布後再領一次確認不會被領回。
+  不清 DB 即綠（當時 dev DB 有 284 筆 pending），突變兩條皆紅（不調 created_at／`mark_published` 失效）。
+- **留下的缺口（新發現，未處理）**：`tests/integration/test_outbox_api.py` 在 `domain_guard.py map` **零命中**——
+  outbox（ADR-027）沒有登記在任何領域的 paths 裡，改它不會觸發任何 logic reviewer。
 - 領域：`wi-workbench`／測試基礎建設（`tests/integration/test_outbox_api.py`）
 - 現況（2026-09-21 查證）：`test_claim_pending_and_mark_published` 先建一筆事件，再 `claim_pending(db_session, limit=50)`
   然後從結果裡找自己那筆。共用 dev DB 目前有 **272 筆 `published_at IS NULL`** 的 outbox 事件，`limit=50`
@@ -230,7 +240,12 @@
 - 3 併入 BL-ENG-3 一起處理顯示語意。
 - 對應文件：ADR-036 D6、實作書 §2 B4。
 
-## BL-ENG-10 — LB `export_warnings` 尚未消費：MOST 會把「LB 丟掉的列」講成「沒有結果」
+## BL-ENG-10 — LB `export_warnings` 尚未消費：MOST 會把「LB 丟掉的列」講成「沒有結果」（**2026-09-22 已消費**）
+- **結案說明**：Howard 2026-09-22 給出消費規則後實作（ADR-036 D7／實作書 §2 B4）。丟列不再講成「未排入」——
+  缺口保留原本的歸因、加旗標並補一句「也可能是沒送回來的那幾列之一」，頂端講「至多 N 步」；件數被 LB 降級時
+  掛在該步驟上並帶 LB 工作項編號；未知 reason 降級為「原因無法辨識」並照常存快照；真機（LB HEAD）驗過三欄在且為空。
+- **仍然存在的已知限制**（實作書 §7）：(a) 清單被截到上限時，第 50 筆之後被降級的步驟只會講成「LB 沒給件數」；
+  (b) 丟列若只丟掉**已對上**的步驟的其中一列，該步驟會顯示成沒件數或站數偏少，而且不帶旗標（→ BL-ENG-14）。
 - 領域：`lb-projection`（回寫消費）
 - 狀態：**本輪不做**（Howard 2026-09-21：「LB 這輪還在做 export_warnings，這一輪不要動它，等 LB 的 §8
   定稿我再給你消費規則」）。開票只為留下已查證的事實，不要在拿到消費規則前自行實作。
@@ -251,3 +266,38 @@
 - 建議做法：等 LB §8 定稿 → Howard 給消費規則 → 解析並在 UI 分辨「沒有結果」與「被丟掉／被降級」，
   同時在實作書 §7 把這條已知限制撤下。
 - 對應文件：LB `MOST_INTEGRATION_INPUT_SPEC.md` §8、實作書 §7、ADR-036 D6。
+
+## BL-ENG-11 — `latest` 只按 `fetched_at` 排序、沒有 tiebreaker
+- 領域：`lb-projection`（回寫快照）
+- 現況（2026-09-22 寫整合測試時撞到）：`lb_writeback_snapshots.fetched_at` 是 `server_default=now()`——
+  PostgreSQL 的 `now()` 是**交易開始時間**。同一個交易內存兩筆快照，兩者時間戳完全相同，
+  `latest()`、`list_snapshots()`、`_enforce_retention()` 都只按 `fetched_at` 排序，於是「最新」是任意一筆。
+- 影響：正式環境每個 HTTP 請求各自一個交易，**目前不會發生**；但整合測試（conftest 外層交易）會，
+  而保留策略刪錯一筆就是資料遺失。這是潛在缺陷，不是現在的故障。
+- 建議做法：排序加 tiebreaker（例如 `id` 或單調序號），或 `fetched_at` 改由應用端 `clock_timestamp()`／
+  `datetime.now()` 給值。三處排序要一起改。
+- 本輪處置：整合測試改為每個情境各用一份工序表，繞開而不依賴它。
+
+## BL-ENG-12 — 回寫產線視角把「不屬於這份工序表的 LB 列」畫得跟正常列一樣（標籤 `00000000`）
+- 領域：`job-ux`（`WritebackPanel.tsx`）
+- 現況（2026-09-22 job-ux reviewer 從截圖發現，**既有行為**、非本輪造成）：`diff.motions` 含 unmatched 的 motion
+  （LB 有、MOST 沒有），而步驟標籤查不到時以 id 前 8 碼當標籤——合成 id 就是一整排 `00000000`，旁邊照常顯示
+  「排到第 N 站，1 個人做」。不屬於這份工序表的結果看起來跟正常步驟一模一樣。
+- 影響：作業者會以為那是這份工序表的步驟；與 BL-ENG-3 同一類（顯示層沒有分辨資料的語意）。
+- 建議做法：unmatched 另成一區並講明「產線平衡這份結果裡有 N 個步驟不屬於這份工序表」，或預設收合。
+
+## BL-ENG-13 — 領域守衛的 glob 一寬一漏
+- 領域：agent-team（`docs/agent-team/domains.yaml`）
+- 現況（2026-09-22 auth-rbac reviewer）：(a) auth-rbac 的 `src/frontend/src/shared/**` 太寬，i18n 資源檔也算進去——
+  本輪 auth-rbac 的命中是誤命中；(b) 反過來，`tests/integration/test_outbox_api.py` 等 outbox／RBAC 的整合測試
+  **沒有任何 glob 覆蓋**（outbox＝ADR-027 未登記在任何領域），改了它不會觸發任何 logic reviewer。
+- 建議做法：auth-rbac 收窄為 `shared/api/**`、`shared/types/**`、`shared/auth/**`；outbox 登記領域並把對應整合測試納入。
+  動到 agent 設定，要跑 `check_agent_config.py`。
+
+## BL-ENG-14 — 偵測「已對上的步驟被 LB 丟掉其中一列」
+- 領域：`lb-projection`
+- 現況（2026-09-22 lb-projection reviewer 的建議解③，本輪未做）：LB 丟掉的列若屬於一個仍有其他列回來的步驟
+  （例如工具三列只丟了 cyclic 列），該步驟照樣 matched，只是顯示成「LB 沒給件數」或站數偏少，**而且不帶
+  「可能被丟」的旗標**——目前的旗標只加在整步都沒回來的缺口上。
+- 建議做法：用 MOST 自己投影出的每步列數（非 general）比對聚合後的 `task_ids` 數，不必用到 LB 的 id（§8 禁止）。
+  需要投影提供新資料、diff 新增一類，§8 不要求，屬新能力。
