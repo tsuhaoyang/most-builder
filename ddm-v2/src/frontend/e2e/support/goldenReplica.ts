@@ -190,6 +190,8 @@ export async function saveWritebackReplica(
   request: APIRequestContext,
   demoWorksheetId: string,
   vocab: ReplicaVocab,
+  // 各 spec 用各自的標記：兩支 spec 共用同一份會在平行執行時互相覆寫
+  label: string = WRITEBACK_REPLICA_LABEL,
 ): Promise<{ worksheetId: string; rows: GoldenRow[] }> {
   const ver = await request.get(`/api/v2/worksheets/${demoWorksheetId}/versions`, { headers: AUTH })
   if (ver.status() !== 200) throw new Error(`讀 demo worksheet 版本失敗：${ver.status()} ${await ver.text()}`)
@@ -198,10 +200,10 @@ export async function saveWritebackReplica(
   const listed = await request.get(`/api/v2/skus/${skuId}/worksheets`, { headers: AUTH })
   if (listed.status() !== 200) throw new Error(`列 SKU worksheet 失敗：${listed.status()} ${await listed.text()}`)
   let worksheetId = ((await listed.json()) as Array<{ worksheet_id: string; status: string; model_label: string | null }>)
-    .find(w => w.model_label === WRITEBACK_REPLICA_LABEL && w.status === 'draft')?.worksheet_id
+    .find(w => w.model_label === label && w.status === 'draft')?.worksheet_id
   if (!worksheetId) {
     const created = await request.post(`/api/v2/skus/${skuId}/worksheets`, {
-      headers: AUTH, data: { model_label: WRITEBACK_REPLICA_LABEL },
+      headers: AUTH, data: { model_label: label },
     })
     if (created.status() !== 201) throw new Error(`建複本 worksheet 失敗：${created.status()} ${await created.text()}`)
     worksheetId = ((await created.json()) as { worksheet_id: string }).worksheet_id

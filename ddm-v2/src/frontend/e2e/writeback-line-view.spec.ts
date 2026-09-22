@@ -8,7 +8,7 @@ import { test, expect, type APIRequestContext } from '@playwright/test'
 import { readFileSync } from 'node:fs'
 import { fileURLToPath } from 'node:url'
 import path from 'node:path'
-import { ensureReplicaVocab, buildGoldenRows } from './support/goldenReplica'
+import { ensureReplicaVocab, saveWritebackReplica } from './support/goldenReplica'
 
 const AUTH = { 'X-Username': 'IEC141289' }
 const WS = '55555555-5555-5555-5555-555555555555'
@@ -25,11 +25,10 @@ async function seeded(request: APIRequestContext): Promise<boolean> {
 // 每跑一次在共用 dev DB 留下兩份工序表（worksheet 無 DELETE 端點，清不掉）。
 test('line view shows LB actual result + apply offline（件數兩條路徑）', async ({ page, request }) => {
   test.skip(!(await seeded(request)), 'demo worksheet 未種')
-  const vocab = await ensureReplicaVocab(request)
-  const rows = buildGoldenRows(vocab)
-  const wsId = ((await (await request.post(`/api/v2/worksheets/${WS}/clone`, { headers: AUTH })).json()) as { new_worksheet_id: string }).new_worksheet_id
-  const saved = await request.put(`/api/v2/worksheets/${wsId}`, { headers: AUTH, data: { rows } })
-  expect(saved.status(), await saved.text()).toBe(200)
+  // 依 model_label 重用同一份工序表（每次重存列、列 id 隨機），不再每跑一次 clone 一份——worksheet 沒有 DELETE
+  // 端點，clone 出來的會永久留在共用 dev DB（2026-09-22 一天就累積十幾份）。快照受保留策略上限 10 筆。
+  const { worksheetId: wsId, rows } = await saveWritebackReplica(
+    request, WS, await ensureReplicaVocab(request), 'e2e: LB writeback line view')
 
   // 重映 fixture 的 source_wi_row_id：挑一個 offline 列給 replica 某列（造 offline_diff），
   // 其餘映到 replica 前幾列（matched）。
