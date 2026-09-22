@@ -466,8 +466,7 @@ def diff(
                                              "reason": UNCOMPARABLE_LB_DEGRADED})
             elif not any(mp.offline_values):
                 d.units_uncomparable.append({"wi_row_id": wi, "expected_n": m.expected_n, "reason": "no_units"})
-        elif (mp.units_source == UNITS_SOURCE_INFERRED
-              and any(u.reason != "setup_not_one" for u in d.degraded_by_motion.get(wi, []))):
+        elif _inferred_but_degraded(mp, d):
             # 推算退路取「各列最大值」，而 LB 已把件數列降級成 null——剩下的最大值是 setup 列的 used，
             # 不是件數（§8：不得退回跨列加總或取最大值）。講成 LB 降級，不講成「件數不符」。
             d.units_uncomparable.append({"wi_row_id": wi, "expected_n": m.expected_n,
@@ -535,6 +534,12 @@ def summarize(
     }
 
 
+def _inferred_but_degraded(mp: MotionPlacement, d: WritebackDiff) -> bool:
+    """件數走推算退路，但 LB 對這一步有非 setup_not_one 的降級：推算出來的數字不是件數。"""
+    return (mp.units_source == UNITS_SOURCE_INFERRED
+            and any(u.reason != "setup_not_one" for u in d.degraded_by_motion.get(mp.source_wi_row_id, [])))
+
+
 def _degraded_dict(u: UnitsDegraded) -> dict[str, Any]:
     out: dict[str, Any] = {"task_id": u.task_id, "source_wi_row_id": u.source_wi_row_id,
                            "units_sum": u.units_sum, "quantity": u.quantity, "reason": u.reason}
@@ -579,8 +584,10 @@ def diff_to_dict(agg: dict[str, MotionPlacement], d: WritebackDiff) -> dict[str,
                 "task_ids": mp.task_ids,
                 "stations": sorted(mp.stations),
                 "workers": sorted(mp.workers),
-                "units_total": mp.units_total,
-                "units_source": mp.units_source,
+                # 推算退路取「各列最大值」；若 LB 已把件數列降級成 null，剩下的最大值是 setup 列的 used，
+                # 不是件數——不能顯示成「共 1 件（推算）」（只有手工 import 造得出「有警告、沒 qty_scope」）
+                **({"units_total": None, "units_source": None} if _inferred_but_degraded(mp, d) else
+                   {"units_total": mp.units_total, "units_source": mp.units_source}),
                 "offline": any(mp.offline_values) if mp.offline_values else False,
                 "cross_station": mp.cross_station,
                 "offline_conflict": mp.offline_conflict,

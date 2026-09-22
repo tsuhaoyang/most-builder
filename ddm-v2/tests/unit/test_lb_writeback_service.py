@@ -482,6 +482,9 @@ def test_conservation_with_inferred_fallback_is_lb_degraded_not_mismatch():
              agg, p.export_warnings)
     assert d.unit_mismatches == []
     assert d.units_uncomparable == [{"wi_row_id": _GOLD_I, "expected_n": 8, "reason": UNCOMPARABLE_LB_DEGRADED}]
+    # 畫面也不能顯示推算值：剩下的最大值是 setup 列的 used（1），顯示成「共 1 件（推算）」就是錯的件數
+    shown = diff_to_dict(agg, d)["motions"][_GOLD_I]
+    assert (shown["units_total"], shown["units_source"]) == (None, None)
 
 
 def test_dropped_rows_flag_missing_without_replacing_the_reason():
