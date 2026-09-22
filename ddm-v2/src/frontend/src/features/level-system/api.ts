@@ -94,15 +94,39 @@ export interface WbMotion {
   offline: boolean
   cross_station: boolean
   offline_conflict: boolean
+  // LB 對這一步的件數沒有把握、主動降級（LB §8 export_warnings.units_degraded）；沒有就是空清單。
+  // 舊後端回應沒有這個欄 → undefined。
+  units_degraded?: WbUnitsDegraded[]
+}
+// reason：conservation＝cyclic 列 Σunits 對不上數量（兩數可比）；setup_not_one＝取放列的經手人次異常
+// （units_sum 是 Σused，與 quantity 本來就不該相等——**不得**並排成「應為 X、實為 Y」）；unknown＝LB 新加的原因
+export interface WbUnitsDegraded {
+  task_id: number          // LB 端的 id，只供人回 LB 找列
+  units_sum: number | null // 已知 reason 必有；unknown 時可能為 null（LB 新 reason 不一定帶）
+  quantity: number | null
+  reason: 'conservation' | 'setup_not_one' | 'unknown'
+  reason_raw?: string
+}
+// present=false＝payload 沒有這個欄（舊 LB／舊快照＝不知道），三欄為 null；不是「LB 明說沒事」
+export interface WbExportWarnings {
+  present: boolean
+  units_degraded: Array<WbUnitsDegraded & { source_wi_row_id: string }> | null
+  dropped_rows: Array<{ task_id: number; reason: 'source_wi_row_id_not_uuid' | 'unknown'; reason_raw?: string }> | null
+  truncated: boolean | null
+  limit: number                        // 清單上限（MOST 端自己的）；「只列前 N 筆」用這個，不寫死
+  unattached_units_degraded?: number   // 對不上本工序表任何步驟的降級筆數（present 時才有）
 }
 export interface WbDiff {
   matched: string[]
   unmatched: string[]
-  missing: Array<{ wi_row_id: string; reason: string }>
+  // lb_dropped_possible：LB 這次丟了對應鍵損壞的列、對應不回是哪一步，這一步**可能**是其中之一。
+  // reason 不變（原本的歸因與下一步仍然有效），旗標只是補一句
+  missing: Array<{ wi_row_id: string; reason: string; lb_dropped_possible?: boolean }>
   offline_diffs: Array<{ wi_row_id: string; most_offline: boolean; lb_offline: boolean }>
   unit_mismatches: Array<{ wi_row_id: string; expected_n: number; units_total: number; units_source: WbMotion['units_source'] }>
   units_uncomparable: Array<{ wi_row_id: string; expected_n: number; reason: string }>
   motions: Record<string, WbMotion>
+  export_warnings?: WbExportWarnings
 }
 export interface WbLatest {
   snapshot_id: string

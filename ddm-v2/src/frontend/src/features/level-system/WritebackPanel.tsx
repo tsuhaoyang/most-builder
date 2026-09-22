@@ -97,6 +97,11 @@ export function WritebackPanel({ worksheetId, editable }: { worksheetId: string;
   // 非 'ok' 一律當成「那一關沒跑起來」（舊快照無此欄＝undefined，不誤報）
   const applyDegraded = wb.data.applied_report_status != null && wb.data.applied_report_status !== 'ok'
   const busy = summary.unattended_machine_policy === 'busy'
+  const ew = diff.export_warnings
+  const dropped = ew?.dropped_rows ?? []
+  const droppedKnown = dropped.filter(r => r.reason !== 'unknown')
+  const droppedUnknown = dropped.filter(r => r.reason === 'unknown')
+  const taskList = (rs: Array<{ task_id: number }>) => rs.map(r => r.task_id).join(t('levelSystem.listSeparator'))
 
   return (
     <div className="rounded-xl border border-slate-200 bg-white p-2 space-y-2" data-testid="writeback-panel">
@@ -109,6 +114,40 @@ export function WritebackPanel({ worksheetId, editable }: { worksheetId: string;
         {editable && (showForm ? fetchForm
           : <button data-testid="writeback-refetch" className="ml-auto px-2 py-0.5 border rounded" onClick={() => setShowForm(true)}>{t('levelSystem.jobs.writeback.refetch')}</button>)}
       </div>
+
+      {/* LB 自述的丟列（§8 export_warnings）：對應鍵損壞、LB 沒輸出——不是「未排入」 */}
+      {dropped.length > 0 && (
+        // 筆數用**全部**丟列（後端只要有任何丟列就在缺口上加旗標，不分原因）。
+        // 只有丟列清單本身被截到上限時，筆數才只是下限：那時講「至少」、不給「至多 N 步」
+        <div data-testid="writeback-lb-dropped" className="text-[11px] text-amber-800 space-y-0.5">
+          <div>
+            {t(ew?.truncated && dropped.length >= ew.limit
+              ? 'levelSystem.jobs.writeback.lbDroppedAtLeast' : 'levelSystem.jobs.writeback.lbDropped',
+            { count: dropped.length, tasks: taskList(dropped) })}
+          </div>
+          {droppedKnown.length > 0 && (
+            <div data-testid="writeback-lb-dropped-key-damaged">
+              {t('levelSystem.jobs.writeback.lbDroppedKeyDamaged', { count: droppedKnown.length })}
+            </div>
+          )}
+          {droppedUnknown.length > 0 && (
+            // LB 有給原因、只是 MOST 不認得——不能替它編成「對應資料損壞」
+            <div data-testid="writeback-lb-dropped-unknown">
+              {t('levelSystem.jobs.writeback.lbDroppedUnknown', { count: droppedUnknown.length, tasks: taskList(droppedUnknown) })}
+            </div>
+          )}
+        </div>
+      )}
+      {(ew?.unattached_units_degraded ?? 0) > 0 && (
+        <div data-testid="writeback-lb-degraded-unattached" className="text-[11px] text-amber-800">
+          {t('levelSystem.jobs.writeback.lbDegradedUnattached', { count: ew!.unattached_units_degraded })}
+        </div>
+      )}
+      {ew?.truncated && (
+        <div data-testid="writeback-lb-warnings-truncated" className="text-[11px] text-amber-800">
+          {t('levelSystem.jobs.writeback.lbWarningsTruncated', { limit: ew.limit })}
+        </div>
+      )}
 
       {summary.units_baseline?.status === 'unavailable' && (
         <div data-testid="writeback-units-baseline-unavailable" className="text-[11px] text-amber-800">
@@ -133,6 +172,19 @@ export function WritebackPanel({ worksheetId, editable }: { worksheetId: string;
                 {t(mp.units_source === 'cyclic' ? 'levelSystem.jobs.writeback.units' : 'levelSystem.jobs.writeback.unitsInferred', { n: mp.units_total })}
               </span>
             )}
+            {/* LB 對這一步的件數沒有把握（§8 units_degraded）：不沉默、也不假裝正常。
+                setup_not_one 的兩個數字本來就不該相等，不並排成「應為／實為」——只有 conservation 可比 */}
+            {(mp.units_degraded ?? []).map((u, i) => (
+              // 帶 LB 工作項編號：作業者要能回產線平衡找到是哪一列
+              // basis-full：標記很長，擠在同一行會把步驟名稱壓到只剩一個字
+              <span key={i} data-testid={`writeback-units-degraded-${wi}`} className="basis-full px-1 rounded bg-amber-100 text-amber-800">
+                {u.reason === 'conservation'
+                  ? t('levelSystem.jobs.writeback.unitsDegraded.conservation', { sum: u.units_sum, quantity: u.quantity, task: u.task_id })
+                  : u.reason === 'setup_not_one'
+                    ? t('levelSystem.jobs.writeback.unitsDegraded.setup_not_one', { task: u.task_id })
+                    : t('levelSystem.jobs.writeback.unitsDegraded.unknown', { task: u.task_id })}
+              </span>
+            ))}
             {mp.cross_station && <span data-testid="mark-cross" className="px-1 rounded bg-red-100 text-red-800">{t('levelSystem.jobs.writeback.crossStation')}</span>}
             {mp.offline_conflict && <span className="px-1 rounded bg-amber-100 text-amber-800">{t('levelSystem.jobs.writeback.offlineConflict')}</span>}
           </div>
@@ -140,6 +192,11 @@ export function WritebackPanel({ worksheetId, editable }: { worksheetId: string;
         {diff.missing.map(m => (
           <div key={m.wi_row_id} data-testid="writeback-missing" className="text-[11px] text-slate-500 py-0.5">
             {label(m.wi_row_id)} — {t(`levelSystem.jobs.writeback.missing.${m.reason}`, t('levelSystem.jobs.writeback.missing.no_result'))}
+            {m.lb_dropped_possible && (
+              <span data-testid="writeback-missing-dropped-tag" className="ml-1 text-amber-700">
+                {t('levelSystem.jobs.writeback.missingDroppedTag')}
+              </span>
+            )}
           </div>
         ))}
       </div>

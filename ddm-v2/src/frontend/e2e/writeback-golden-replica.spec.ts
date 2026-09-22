@@ -293,8 +293,32 @@ test('黃金複本：真機端到端 MOST 匯出 → LB 上傳求解 → MOST fe
       contract_version: 'lb-most-writeback-v1', project_id: projectId, version_id: 'original', result_id: job.result_id,
     })
     const projectedQ = await projectedQuantities(request, worksheetId)
-    expectGoldenWriteback(out, rows, projectedQ)
-    await expectLatestMatches(request, worksheetId, out, rows, projectedQ)
+    // 驗收報告要實際值，不是「通過」兩個字——附成檔案。放在斷言**之前**：斷言一紅就不會產生，
+    // 而最需要看實際值的正是紅的時候
+    const actionI = rows[GOLDEN_LETTERS.indexOf('I')]
+    const tooled = rows.filter(r => r.tool_vocab_id).map(r => out.diff.motions[r.id])
+    const general = rows.filter(r => r.level.is_general).map(r => out.diff.motions[r.id])
+    const offline = rows.filter(r => r.level.offline).map(r => out.diff.motions[r.id])
+    await test.info().attach('real-machine-acceptance.json', {
+      contentType: 'application/json',
+      body: JSON.stringify({
+        rows_in: out.summary.rows_in, matched: out.summary.matched,
+        missing: out.summary.missing, unmatched: out.summary.unmatched,
+        action_I: { units_total: out.diff.motions[actionI.id].units_total, units_source: out.diff.motions[actionI.id].units_source },
+        units_baseline: out.summary.units_baseline,
+        export_warnings: out.diff.export_warnings,
+        tooled: tooled.map(m => ({ task_ids: m.task_ids, stations: m.stations, cross_station: m.cross_station })),
+        general: general.map(m => ({ task_ids: m.task_ids, stations: m.stations })),
+        offline: offline.map(m => ({ stations: m.stations, workers: m.workers })),
+      }, null, 2),
+    })
+    // 真機是 LB HEAD：已輸出 qty_scope，動作 I 必須走 cyclic 確定值——退回 inferred_max 代表 LB 端退化
+    expectGoldenWriteback(out, rows, projectedQ, 'cyclic')
+    await expectLatestMatches(request, worksheetId, out, rows, projectedQ, 'cyclic')
+    // LB §8 export_warnings：LB HEAD 恆輸出這個欄；正常路徑不該有任何降級或丟列
+    expect(out.diff.export_warnings).toEqual({
+      present: true, units_degraded: [], dropped_rows: [], truncated: false, limit: 50, unattached_units_degraded: 0,
+    })
   } catch (e) {
     bodyError = e
     throw e

@@ -414,3 +414,123 @@ async def test_writeback_reads_allow_viewer(client, suffix):
     ws = str(uuid.uuid4())
     r = await client.get(f"/api/v2/worksheets/{ws}/lb-writeback/{suffix}", headers=_viewer_headers())
     assert r.status_code != 403, f"{suffix}: {r.text}"
+
+
+# ── export_warnings（LB §8；bb0d340 起）：走 import 端點的完整產品路徑 ────────────
+
+def _ew(**kw) -> dict:
+    return {"units_degraded": [], "dropped_rows": [], "truncated": False, **kw}
+
+
+# 每個情境各用一份工序表：同一份內連續 import 兩次時，兩筆快照的 fetched_at 相同（server_default=now()
+# 是交易開始時間，而整合測試跑在同一個外層交易裡），latest 只按 fetched_at 排序、沒有 tiebreaker，
+# 會隨機挑到任一筆（BL-ENG-11）。整合測試的外層交易會 rollback，多建幾份不留殘留。
+async def _import(client, ws: str, fx: dict):
+    r = await client.post(f"/api/v2/worksheets/{ws}/lb-writeback/import", json=fx)
+    latest = await client.get(f"/api/v2/worksheets/{ws}/lb-writeback/latest")
+    return r, latest
+
+
+async def test_export_warnings_normal_empty_and_absent(client):
+    """正常無警告：三個欄都在且為空。舊 LB（fixture 106bf14 不帶此欄）→ present=false，三欄 null（＝不知道）。"""
+    if not await _seeded(client):
+        pytest.skip("demo worksheet 未種")
+    ws, _ids, fx = await _make_worksheet(client)
+    r, latest = await _import(client, ws, fx)
+    assert r.status_code == 200, r.text
+    absent = {"present": False, "units_degraded": None, "dropped_rows": None, "truncated": None, "limit": 50}
+    assert r.json()["diff"]["export_warnings"] == absent
+    assert latest.json()["diff"]["export_warnings"] == absent
+
+    ws, _ids, fx = await _make_worksheet(client)
+    fx["export_warnings"] = _ew()
+    r, latest = await _import(client, ws, fx)
+    assert r.status_code == 200, r.text
+    want = {"present": True, "units_degraded": [], "dropped_rows": [], "truncated": False, "limit": 50,
+            "unattached_units_degraded": 0}
+    assert r.json()["diff"]["export_warnings"] == want
+    assert latest.json()["diff"]["export_warnings"] == want
+
+
+@pytest.mark.parametrize("reason, units_sum", [("conservation", 7), ("setup_not_one", 2)])
+async def test_export_warnings_units_degraded_attaches_to_motion(client, reason, units_sum):
+    """units_degraded 掛到正確的 motion 上——LB 送的是**非正規拼法**（無連字號），MOST 要正規化後才對得上。"""
+    if not await _seeded(client):
+        pytest.skip("demo worksheet 未種")
+    ws, ids, fx = await _make_worksheet(client)
+    fx["export_warnings"] = _ew(units_degraded=[{
+        "task_id": 9001, "source_wi_row_id": ids["cub1"].replace("-", "").upper(),
+        "units_sum": units_sum, "quantity": 8, "reason": reason}])
+    r, latest = await _import(client, ws, fx)
+    assert r.status_code == 200, r.text
+    for body in (r.json(), latest.json()):
+        assert body["diff"]["motions"][ids["cub1"]]["units_degraded"] == [
+            {"task_id": 9001, "units_sum": units_sum, "quantity": 8, "reason": reason}]
+        assert body["diff"]["motions"][ids["cub2"]]["units_degraded"] == []
+        assert body["diff"]["export_warnings"]["units_degraded"][0]["source_wi_row_id"] == ids["cub1"]
+
+
+async def test_export_warnings_dropped_rows_change_missing_attribution(client):
+    """丟列存在時，MOST 缺的那一步加上「可能是 LB 丟掉的」旗標；reason（原本的歸因）不改。"""
+    if not await _seeded(client):
+        pytest.skip("demo worksheet 未種")
+    ws, ids, fx = await _make_worksheet(client)
+    fx["rows"] = [x for x in fx["rows"] if x["source_wi_row_id"] != ids["cub2"]]  # cub2 在 LB 那邊不見了
+    r, _ = await _import(client, ws, fx)
+    assert {"wi_row_id": ids["cub2"], "reason": "no_result"} in r.json()["diff"]["missing"]  # 沒丟列：照舊
+
+    ws, ids, fx = await _make_worksheet(client)
+    fx["rows"] = [x for x in fx["rows"] if x["source_wi_row_id"] != ids["cub2"]]
+    fx["export_warnings"] = _ew(dropped_rows=[{"task_id": 77, "reason": "source_wi_row_id_not_uuid"}])
+    r, latest = await _import(client, ws, fx)
+    assert r.status_code == 200, r.text
+    for body in (r.json(), latest.json()):
+        assert {"wi_row_id": ids["cub2"], "reason": "no_result",
+                "lb_dropped_possible": True} in body["diff"]["missing"]
+        assert body["diff"]["export_warnings"]["dropped_rows"] == [
+            {"task_id": 77, "reason": "source_wi_row_id_not_uuid"}]
+
+
+async def test_export_warnings_truncated_carried_through(client):
+    if not await _seeded(client):
+        pytest.skip("demo worksheet 未種")
+    ws, _ids, fx = await _make_worksheet(client)
+    fx["export_warnings"] = _ew(truncated=True, dropped_rows=[
+        {"task_id": i, "reason": "source_wi_row_id_not_uuid"} for i in range(50)])
+    r, latest = await _import(client, ws, fx)
+    assert r.status_code == 200, r.text
+    assert latest.json()["diff"]["export_warnings"]["truncated"] is True
+    assert len(latest.json()["diff"]["export_warnings"]["dropped_rows"]) == 50
+
+
+async def test_export_warnings_unknown_reason_is_stored_not_422(client):
+    """未知 reason：照常 200、照常存快照（latest 讀得回來），reason 降級為 unknown 並留原值。"""
+    if not await _seeded(client):
+        pytest.skip("demo worksheet 未種")
+    ws, ids, fx = await _make_worksheet(client)
+    fx["export_warnings"] = _ew(
+        units_degraded=[{"task_id": 1, "source_wi_row_id": ids["cub1"], "units_sum": 3, "quantity": 8,
+                         "reason": "lb_future_reason"}],
+        dropped_rows=[{"task_id": 2, "reason": "lb_future_reason"}])
+    r, latest = await _import(client, ws, fx)
+    assert r.status_code == 200, r.text
+    assert latest.status_code == 200
+    ew = latest.json()["diff"]["export_warnings"]
+    assert ew["units_degraded"][0]["reason"] == "unknown"
+    assert ew["units_degraded"][0]["reason_raw"] == "lb_future_reason"
+    assert ew["dropped_rows"] == [{"task_id": 2, "reason": "unknown", "reason_raw": "lb_future_reason"}]
+    snaps = await client.get(f"/api/v2/worksheets/{ws}/lb-writeback/snapshots")
+    assert len(snaps.json()["snapshots"]) == 1
+
+
+async def test_export_warnings_structural_error_is_422(client):
+    """結構錯仍是壞資料 → 422 VALIDATION_ERROR，不存快照。"""
+    if not await _seeded(client):
+        pytest.skip("demo worksheet 未種")
+    ws, _ids, fx = await _make_worksheet(client)
+    fx["export_warnings"] = {"units_degraded": "not-a-list"}
+    r = await client.post(f"/api/v2/worksheets/{ws}/lb-writeback/import", json=fx)
+    assert r.status_code == 422, r.text
+    assert r.json()["error"]["code"] == "VALIDATION_ERROR"
+    snaps = await client.get(f"/api/v2/worksheets/{ws}/lb-writeback/snapshots")
+    assert snaps.json()["snapshots"] == []

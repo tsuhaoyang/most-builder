@@ -100,6 +100,70 @@ test('line view shows LB actual result + apply offline（件數兩條路徑）',
   await openLineView()
   await expect(units).toHaveText('共 8 件（推算）')
   await expect(units).toHaveAttribute('title', /.+/)  // 解釋文案存在（刪掉 i18n key 這裡會紅）
+  // 這份 payload 沒有 export_warnings（舊 LB）：不得出現任何 LB 自述警告
+  await expect(page.getByTestId('writeback-lb-dropped')).toHaveCount(0)
+  await expect(page.getByTestId('writeback-lb-warnings-truncated')).toHaveCount(0)
+
+  // 路徑三（LB §8 export_warnings）：刻意製造降級與丟列，確認 **UI** 真的講出來（不是只有 API 有）。
+  // units_degraded 的 source_wi_row_id 用**非正規拼法**（無連字號、大寫）——MOST 沒正規化就會靜默對不上。
+  const fxWarn = JSON.parse(readFileSync(FIXTURE, 'utf-8'))
+  remap(fxWarn)
+  type WRow = { task_id: number; source_wi_row_id: string; units: unknown }
+  const wrows = fxWarn.rows as WRow[]
+  // 黃金三列（動作 I，electric_driver repeat 8：task 13 setup／14 cyclic／15 setup）映到複本的動作 I
+  const goldI = wrows.find(r => r.task_id === 14)!.source_wi_row_id
+  for (const r of wrows) if (r.source_wi_row_id === goldI) r.source_wi_row_id = replicaIds[8]
+  wrows.find(r => r.task_id === 13)!.units = null           // setup_not_one 的真實情境：降級的是 setup 列
+  wrows.find(r => r.source_wi_row_id === replicaIds[6])!.units = null  // conservation：降級的是件數列
+  const odd = (id: string) => id.replace(/-/g, '').toUpperCase()
+  fxWarn.export_warnings = {
+    units_degraded: [
+      { task_id: 13, source_wi_row_id: odd(replicaIds[8]), units_sum: 2, quantity: 8, reason: 'setup_not_one' },
+      { task_id: 901, source_wi_row_id: odd(replicaIds[6]), units_sum: 7, quantity: 8, reason: 'conservation' },
+      { task_id: 903, source_wi_row_id: odd(replicaIds[1]), reason: 'lb_future_reason' },  // 未知 reason 可不帶數字
+      { task_id: 904, source_wi_row_id: 'b0000000-0000-4000-8000-000000000099', units_sum: 3, quantity: 8,
+        reason: 'conservation' },  // 對不上這份工序表的任何步驟
+    ],
+    dropped_rows: [
+      { task_id: 77, reason: 'source_wi_row_id_not_uuid' },
+      { task_id: 78, reason: 'lb_future_reason' },  // 未知 reason：照常存、照常顯示，不 422，也不替它編原因
+    ],
+    truncated: true,
+  }
+  const imp3 = await request.post(`/api/v2/worksheets/${wsId}/lb-writeback/import`, { headers: AUTH, data: fxWarn })
+  expect(imp3.status(), await imp3.text()).toBe(200)
+  await openLineView()
+  // conservation：件數格消失，換成「沒把握」標記；兩數可比，可以並排
+  await expect(units).toHaveCount(0)
+  await expect(page.getByTestId(`writeback-units-degraded-${replicaIds[6]}`)).toContainText('算出 7 件、數量是 8')
+  // setup_not_one：件數仍確定——「共 8 件」照常顯示，標記講「件數不受影響」，且不並排那兩個數字
+  await expect(page.getByTestId(`writeback-units-${replicaIds[8]}`)).toHaveText('共 8 件')
+  const setupMark = page.getByTestId(`writeback-units-degraded-${replicaIds[8]}`)
+  await expect(setupMark).toContainText('件數不受影響')
+  await expect(setupMark).toContainText('產線平衡工作項 13')  // 作業者要能回產線平衡找到那一列
+  await expect(setupMark).not.toContainText('2')              // Σused 與數量本來就不該相等，不得並排
+
+  await expect(page.getByTestId(`writeback-units-degraded-${replicaIds[1]}`)).toContainText('原因無法辨識')
+  // 丟列：筆數用全部丟列（2）；丟列清單本身沒滿到上限，所以仍給「至多 2 步」（truncated 是另一張清單滿了也會亮）。
+  // 原因分開講：已知的講對應資料損壞並給下一步，未知的講「原因無法辨識」，不替它編原因
+  await expect(page.getByTestId('writeback-lb-dropped')).toContainText('2 列沒送回來')
+  await expect(page.getByTestId('writeback-lb-dropped')).toContainText('至多 2 步')
+  await expect(page.getByTestId('writeback-lb-dropped-key-damaged')).toContainText('其中 1 列是對應資料損壞')
+  await expect(page.getByTestId('writeback-lb-dropped-unknown')).toContainText('其中 1 列的原因無法辨識')
+  await expect(page.getByTestId('writeback-lb-degraded-unattached')).toContainText('1 筆')
+  await expect(page.getByTestId('writeback-lb-warnings-truncated')).toContainText('前 50 筆')
+  // 沒有結果的步驟：原本的說明保留，只補一句「也可能是沒送回來的那幾列之一」
+  const firstMissing = page.getByTestId('writeback-missing').first()
+  await expect(firstMissing).toContainText('產線平衡沒有這一步的結果')
+  await expect(firstMissing.getByTestId('writeback-missing-dropped-tag')).toBeVisible()
+  // 驗收證據：放大視窗再拍，避免被外層捲動框裁掉（上一版只拍到上半段）
+  await page.setViewportSize({ width: 1400, height: 3200 })
+  // 標記再長也不能把步驟名稱擠掉（上一版在這個寬度下，動作 I 那列只剩「第」一個字；較窄時標記會自己換行、
+  // 反而看不出來）。CSS 截斷不會把文字從 DOM 拿掉，所以量實際渲染寬度，而不是比對文字
+  const labelWidth = await page.getByTestId(`writeback-motion-${replicaIds[8]}`).locator('span').first()
+    .evaluate(el => (el as HTMLElement).clientWidth)
+  expect(labelWidth, '步驟名稱被擠掉了').toBeGreaterThan(120)
+  await page.getByTestId('writeback-panel').screenshot({ path: test.info().outputPath('writeback-export-warnings.png') })
 
   // 離線差異：勾選 replica 第3列 → 套用 → 成功訊息
   const off = page.getByTestId('writeback-offline-diffs')

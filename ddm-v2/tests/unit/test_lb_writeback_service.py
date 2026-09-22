@@ -372,3 +372,224 @@ def test_parse_rejects_loose_field_types(patch):
     """不做 int()／bool() 轉型：否則 "false" 會變成 offline=True、2.9 被截成 2，壞值到存檔才 500。"""
     with pytest.raises(LbWritebackMalformed):
         parse(_with_row0(**patch))
+
+
+# ── export_warnings（LB §8；bb0d340 起）────────────────────────────────────────
+# LB 在這次匯出中主動降級或丟掉了什麼。沒有它，MOST 對使用者講的是合理但錯誤的故事：
+# 丟掉的列被講成「未排入」、降級的件數被講成 offline lot。
+
+from ddm_v2.services.v2.lb_writeback_service import (  # noqa: E402
+    MISSING_LB_DROPPED_POSSIBLE,
+    REASON_UNKNOWN,
+    UNCOMPARABLE_LB_DEGRADED,
+    diff_to_dict,
+)
+
+_GOLD_I = "00000000-0000-4000-8000-000000000009"  # 黃金動作 I：task 13/14/15，setup／cyclic／setup，Q=8
+
+
+def _with_warnings(**ew) -> dict:
+    payload = _payload()
+    payload["export_warnings"] = {"units_degraded": [], "dropped_rows": [], "truncated": False, **ew}
+    return payload
+
+
+def _degrade_cyclic_row(payload: dict) -> None:
+    """模擬 LB 出口檢查把動作 I 的 cyclic 列降級：該列 units 變 null（§8：降級列的 units 一律 null）。"""
+    for r in payload["rows"]:
+        if r["task_id"] == 14:
+            r["units"] = None
+
+
+def test_export_warnings_absent_is_not_the_same_as_empty():
+    """舊 LB／舊快照沒有這個欄＝不知道；有、而且三個欄都空＝LB 明說沒事。兩者不可混為一談。"""
+    absent = parse(_payload()).export_warnings
+    assert absent.present is False
+    assert diff_to_dict({}, diff([], {}, absent))["export_warnings"] == {
+        "present": False, "units_degraded": None, "dropped_rows": None, "truncated": None, "limit": 50}
+
+    empty = parse(_with_warnings()).export_warnings
+    assert (empty.present, empty.units_degraded, empty.dropped_rows, empty.truncated) == (True, (), (), False)
+    assert diff_to_dict({}, diff([], {}, empty))["export_warnings"] == {
+        "present": True, "units_degraded": [], "dropped_rows": [], "truncated": False, "limit": 50,
+        "unattached_units_degraded": 0}
+
+
+@pytest.mark.parametrize("spelling", [
+    _GOLD_I.replace("-", ""),        # 無連字號
+    "{" + _GOLD_I + "}",             # 大括號
+    "urn:uuid:" + _GOLD_I,           # urn
+    _GOLD_I.upper(),                 # 大寫
+])
+def test_units_degraded_source_id_is_normalized_before_matching(spelling):
+    """§8：units_degraded 的 source_wi_row_id 與 rows[] 同源同拼法（LB 原樣輸出非正規拼法）。
+    不先 str(UUID(...)) 正規化就直接字串比對，會對不上——而且是**靜默**對不上。"""
+    payload = _with_warnings(units_degraded=[
+        {"task_id": 14, "source_wi_row_id": spelling, "units_sum": 7, "quantity": 8, "reason": "conservation"}])
+    _degrade_cyclic_row(payload)
+    p = parse(payload)
+    agg = aggregate(p.rows, general_ids=set())
+    d = diff([MostRowInfo(_GOLD_I, is_general=False, is_simo_subordinate=False, offline=False, expected_n=8)],
+             agg, p.export_warnings)
+    assert [u.source_wi_row_id for u in d.degraded_by_motion[_GOLD_I]] == [_GOLD_I]
+    assert diff_to_dict(agg, d)["motions"][_GOLD_I]["units_degraded"] == [
+        {"task_id": 14, "units_sum": 7, "quantity": 8, "reason": "conservation"}]
+
+
+def test_conservation_degrade_drops_the_count_and_is_not_blamed_on_offline():
+    """conservation：LB 把 cyclic 列（件數列）降級成 null → 這一步沒有件數，而且要講成「LB 主動降級」，
+    不能與 offline lot 等「本來就沒件數」混在一起（§8 (ii) vs (i)）。"""
+    payload = _with_warnings(units_degraded=[
+        {"task_id": 14, "source_wi_row_id": _GOLD_I, "units_sum": 7, "quantity": 8, "reason": "conservation"}])
+    _degrade_cyclic_row(payload)
+    p = parse(payload)
+    agg = aggregate(p.rows, general_ids=set())
+    assert agg[_GOLD_I].units_total is None  # §8：不得退回跨列加總或取最大值
+    d = diff([MostRowInfo(_GOLD_I, is_general=False, is_simo_subordinate=False, offline=False, expected_n=8)],
+             agg, p.export_warnings)
+    assert d.units_uncomparable == [{"wi_row_id": _GOLD_I, "expected_n": 8, "reason": UNCOMPARABLE_LB_DEGRADED}]
+
+
+def test_setup_not_one_degrade_keeps_the_count_certain():
+    """setup_not_one 的真實情境：LB 降級的是 **setup 列**（task 13，used 異常），cyclic 列照給。
+    件數仍是確定的 8、不列入「沒得比」——只在這一步掛上標記。講成「對件數沒有把握」就是把確定講成不確定。"""
+    payload = _with_warnings(units_degraded=[
+        {"task_id": 13, "source_wi_row_id": _GOLD_I, "units_sum": 2, "quantity": 8, "reason": "setup_not_one"}])
+    for r in payload["rows"]:
+        if r["task_id"] == 13:
+            r["units"] = None
+    p = parse(payload)
+    agg = aggregate(p.rows, general_ids=set())
+    assert (agg[_GOLD_I].units_total, agg[_GOLD_I].units_source) == (8, UNITS_SOURCE_CYCLIC)
+    d = diff([MostRowInfo(_GOLD_I, is_general=False, is_simo_subordinate=False, offline=False, expected_n=8)],
+             agg, p.export_warnings)
+    assert d.units_uncomparable == [] and d.unit_mismatches == []
+    assert [u.reason for u in d.degraded_by_motion[_GOLD_I]] == ["setup_not_one"]
+
+
+def test_conservation_with_inferred_fallback_is_lb_degraded_not_mismatch():
+    """只有手工 import 造得出「有警告、沒 qty_scope」（LB 加 qty_scope 早於加 export_warnings）。
+    這時推算退路會取剩下的 setup 列最大值（1）去比 8，報成「件數不符」——那是錯的故事。"""
+    payload = _with_warnings(units_degraded=[
+        {"task_id": 14, "source_wi_row_id": _GOLD_I, "units_sum": 7, "quantity": 8, "reason": "conservation"}])
+    _degrade_cyclic_row(payload)
+    for r in payload["rows"]:
+        r.pop("qty_scope", None)
+    p = parse(payload)
+    agg = aggregate(p.rows, general_ids=set())
+    assert agg[_GOLD_I].units_source == UNITS_SOURCE_INFERRED
+    d = diff([MostRowInfo(_GOLD_I, is_general=False, is_simo_subordinate=False, offline=False, expected_n=8)],
+             agg, p.export_warnings)
+    assert d.unit_mismatches == []
+    assert d.units_uncomparable == [{"wi_row_id": _GOLD_I, "expected_n": 8, "reason": UNCOMPARABLE_LB_DEGRADED}]
+
+
+def test_dropped_rows_flag_missing_without_replacing_the_reason():
+    """丟掉的列對應不回 MOST（§8 明文不得用 LB task_id 反推），所以只能說「這一步**可能**是被丟的」。
+    reason 不改、另加旗標：丟 1 列不代表所有缺口都是丟列造成，general 的「請重新最佳化／通報」也要保留。
+    simo_subordinate 是 MOST 自己不輸出，確定，不加旗標。"""
+    most = [
+        MostRowInfo("a0000000-0000-4000-8000-000000000001", is_general=False, is_simo_subordinate=False, offline=False),
+        MostRowInfo("a0000000-0000-4000-8000-000000000002", is_general=True, is_simo_subordinate=False, offline=False),
+        MostRowInfo("a0000000-0000-4000-8000-000000000003", is_general=False, is_simo_subordinate=True, offline=False),
+    ]
+    p = parse(_with_warnings(dropped_rows=[{"task_id": 99, "reason": "source_wi_row_id_not_uuid"}]))
+    d = diff(most, aggregate(p.rows, general_ids=set()), p.export_warnings)
+    by = {m["wi_row_id"][-1]: m for m in d.missing}
+    assert by["1"] == {"wi_row_id": most[0].wi_row_id, "reason": "no_result", MISSING_LB_DROPPED_POSSIBLE: True}
+    assert by["2"] == {"wi_row_id": most[1].wi_row_id, "reason": "general_not_written_back",
+                       MISSING_LB_DROPPED_POSSIBLE: True}
+    assert by["3"] == {"wi_row_id": most[2].wi_row_id, "reason": "simo_subordinate"}
+    assert diff_to_dict({}, d)["export_warnings"]["dropped_rows"] == [{"task_id": 99, "reason": "source_wi_row_id_not_uuid"}]
+
+
+def test_no_dropped_rows_keeps_original_missing_attribution():
+    """沒有丟列時歸因與加欄前完全相同——改動只在 LB 明說丟了東西時生效。"""
+    most = [MostRowInfo("a0000000-0000-4000-8000-000000000001", is_general=False, is_simo_subordinate=False, offline=False)]
+    p = parse(_with_warnings())
+    d = diff(most, aggregate(p.rows, general_ids=set()), p.export_warnings)
+    assert d.missing == [{"wi_row_id": most[0].wi_row_id, "reason": "no_result"}]
+
+
+def test_truncated_is_carried_through():
+    p = parse(_with_warnings(truncated=True, dropped_rows=[{"task_id": i, "reason": "source_wi_row_id_not_uuid"}
+                                                            for i in range(50)]))
+    out = diff_to_dict({}, diff([], {}, p.export_warnings))["export_warnings"]
+    assert out["truncated"] is True and len(out["dropped_rows"]) == 50
+
+
+@pytest.mark.parametrize("where", ["units_degraded", "dropped_rows"])
+def test_unknown_reason_degrades_to_unknown_and_does_not_raise(where):
+    """§8：未知 reason 必須降級為「未知原因」並照常存快照，**不得 422**。值域封閉是為了擋壞資料，
+    不是為了在 LB 加第三個 reason 時炸掉整次 fetch——與 qty_scope 的嚴格裁決（未知值 422）刻意相反。"""
+    item = ({"task_id": 14, "source_wi_row_id": _GOLD_I, "units_sum": 7, "quantity": 8, "reason": "lb_new_reason_v2"}
+            if where == "units_degraded" else {"task_id": 99, "reason": "lb_new_reason_v2"})
+    p = parse(_with_warnings(**{where: [item]}))   # 不丟例外
+    got = (p.export_warnings.units_degraded if where == "units_degraded" else p.export_warnings.dropped_rows)[0]
+    assert (got.reason, got.reason_raw) == (REASON_UNKNOWN, "lb_new_reason_v2")
+
+
+def test_unknown_reason_raw_is_length_capped():
+    p = parse(_with_warnings(dropped_rows=[{"task_id": 1, "reason": "x" * 10_000}]))
+    assert len(p.export_warnings.dropped_rows[0].reason_raw) == 64
+
+
+def _ok_ew(**kw) -> dict:
+    return {"units_degraded": [], "dropped_rows": [], "truncated": False, **kw}
+
+
+@pytest.mark.parametrize("bad", [
+    None,                                                     # 顯式 null：有 key 就必須是物件（缺 key 才是舊 LB）
+    {},                                                       # §8：三欄恆存在；缺欄若讀成「沒事」就是替 LB 宣稱
+    {"units_degraded": [], "dropped_rows": []},               # 缺 truncated
+    {"dropped_rows": [], "truncated": False},                 # 缺 units_degraded（單獨缺，才不會被別的缺欄掩蓋）
+    {"units_degraded": [], "truncated": False},               # 缺 dropped_rows
+    "not-an-object",
+    _ok_ew(units_degraded="nope"),
+    _ok_ew(dropped_rows=[{"reason": "source_wi_row_id_not_uuid"}]),                            # 缺 task_id
+    _ok_ew(units_degraded=[{"task_id": 1, "source_wi_row_id": "not-a-uuid",
+                            "units_sum": 1, "quantity": 2, "reason": "conservation"}]),         # 對應鍵壞
+    _ok_ew(dropped_rows=[{"task_id": 1, "reason": 7}]),                                         # reason 不是字串
+    _ok_ew(truncated="yes"),                                                                     # truncated 不是布林
+    _ok_ew(dropped_rows=[{"task_id": -1, "reason": "source_wi_row_id_not_uuid"}]),              # 負值
+    _ok_ew(units_degraded=[{"task_id": 1, "source_wi_row_id": _GOLD_I, "units_sum": -5,
+                            "quantity": 8, "reason": "conservation"}]),                          # 負值
+])
+def test_export_warnings_structural_errors_are_malformed(bad):
+    """結構錯仍是壞資料 → 整份 422（D7）。只有「未知 reason 值」是前向相容、要降級。兩者要分清楚。"""
+    payload = _payload()
+    payload["export_warnings"] = bad
+    with pytest.raises(LbWritebackMalformed):
+        parse(payload)
+
+
+def test_export_warnings_lists_are_capped_by_most_itself():
+    """LB 自稱截斷至 50，但消費端不信任上游：超過就截斷並標 truncated（降級，不 422）。
+    否則一份壞 payload 存進快照後，每位 viewer 讀 latest 都會被回吐一次。"""
+    p = parse(_with_warnings(dropped_rows=[{"task_id": i, "reason": "source_wi_row_id_not_uuid"} for i in range(5000)]))
+    assert len(p.export_warnings.dropped_rows) == 50 and p.export_warnings.truncated is True
+
+
+def test_unknown_reason_allows_missing_counts():
+    """LB 新加的 reason 不一定帶 units_sum／quantity——那時仍不得 422。已知 reason 則照舊必填。"""
+    p = parse(_with_warnings(units_degraded=[{"task_id": 1, "source_wi_row_id": _GOLD_I, "reason": "lb_future"}]))
+    u = p.export_warnings.units_degraded[0]
+    assert (u.reason, u.units_sum, u.quantity) == (REASON_UNKNOWN, None, None)
+    with pytest.raises(LbWritebackMalformed):
+        parse(_with_warnings(units_degraded=[{"task_id": 1, "source_wi_row_id": _GOLD_I, "reason": "conservation"}]))
+
+
+def test_unattached_units_degraded_are_counted_not_silently_dropped():
+    """降級項對不上本工序表任何步驟時掛不到 motion 上——但也不能在畫面上靜默消失。"""
+    stranger = "b0000000-0000-4000-8000-000000000099"
+    p = parse(_with_warnings(units_degraded=[
+        {"task_id": 1, "source_wi_row_id": stranger, "units_sum": 7, "quantity": 8, "reason": "conservation"}]))
+    agg = aggregate(p.rows, general_ids=set())
+    assert diff_to_dict(agg, diff([], agg, p.export_warnings))["export_warnings"]["unattached_units_degraded"] == 1
+
+
+def test_parse_error_message_does_not_echo_huge_input():
+    """422 信封把 message 回給請求方：原樣 repr 一個 1 MB 字串就是 1 MB 回應（rows[] 與 export_warnings 共用）。"""
+    with pytest.raises(LbWritebackMalformed) as ei:
+        parse(_with_warnings(truncated="x" * 1_000_000))
+    assert len(str(ei.value)) < 300
