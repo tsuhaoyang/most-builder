@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import os
 import uuid
+from datetime import datetime, timezone
 
 import pytest
 from sqlalchemy import select
@@ -89,6 +90,14 @@ async def test_save_enqueues_worksheet_saved(client, db_session):
 
 
 async def test_claim_pending_and_mark_published(client, db_session):
+    """claim_pending 領得到 pending、mark_published 之後就不再被領。
+
+    **只依賴本測試自己建立的那一筆**：claim_pending 是全域「最舊優先」，舊寫法 `limit=50` 後再從結果裡找自己，
+    在共用 dev DB 累積了幾百筆沒人發布的事件後（outbox 尚無消費端，只增不減）就永遠撈不到自己那筆——
+    與 fixture 佔固定 id 同一個病：測試依賴全域狀態。現在的做法是只改**自己那一列**的 created_at，
+    讓它確定排在最前面，別人的資料多寡不再影響結果（全部在 conftest 的外層交易內，結束即 rollback）。
+    """
+    from ddm_v2.models.v2 import OutboxEvent
     from ddm_v2.services.v2.outbox_service import (
         EVENT_REVIEW_RECORDED,
         claim_pending,
@@ -102,13 +111,24 @@ async def test_claim_pending_and_mark_published(client, db_session):
     )
     assert r.status_code == 201, r.text
 
-    claimed = await claim_pending(db_session, limit=50)
-    ours = [c for c in claimed if c.event_type == EVENT_REVIEW_RECORDED
-            and (c.payload_json or {}).get("run_id") == run_id]
+    # 用自己的篩選條件（run_id）直接找到自己那筆，而不是從全域領取結果裡碰運氣
+    ours = [e for e in (await db_session.execute(
+        select(OutboxEvent).where(OutboxEvent.event_type == EVENT_REVIEW_RECORDED)
+    )).scalars().all() if (e.payload_json or {}).get("run_id") == run_id]
     assert len(ours) == 1
-    await mark_published(db_session, ours[0].id)
-    await db_session.flush()
+    mine = ours[0]
+    assert mine.status == "pending"
 
-    claimed2 = await claim_pending(db_session, limit=50)
-    again = [c for c in claimed2 if c.id == ours[0].id]
-    assert again == []
+    # 只動自己這一列：排到最前面，claim_pending(limit=1) 就確定領到它
+    mine.created_at = datetime(1970, 1, 1, tzinfo=timezone.utc)
+    await db_session.flush()
+    claimed = await claim_pending(db_session, limit=1)
+    assert [c.id for c in claimed] == [mine.id]
+
+    await mark_published(db_session, mine.id)
+    await db_session.flush()
+    await db_session.refresh(mine)
+    assert mine.status == "published"
+    # 發布後不再被領：它仍是最舊的一筆，若還被當成 pending 就會第一個被領回來
+    claimed2 = await claim_pending(db_session, limit=1)
+    assert mine.id not in [c.id for c in claimed2]
