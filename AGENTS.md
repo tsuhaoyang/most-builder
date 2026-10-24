@@ -58,3 +58,9 @@
 - 本專案與 LB（`/home/howard/workspace/line-balance_stream-weaver_v2`，Stream Weaver）強關聯：
   MOST 匯出 → LB 匯入（MOST 是工時標準來源，LB 是消費方做產線平衡）、auth 整合、部署拓撲。
 - 共享契約以文件為單一來源（`ddm-v2/docs/lb-integration/MOST_LB_DATA_CONTRACT_SPEC.md`）——找不到對應文件時先問，不要兩邊各寫一份。
+
+## 公版 dev-workflow（vendor 複本）
+
+- 規則、角色、模板正本（vendor 的唯讀複本）在 `ddm-v2/docs/agent-team/_lib/`；採用紀錄 `ddm-v2/docs/agent-team/_lib.manifest.yaml`。
+- 公版票形的票放 `ddm-v2/tickets/<ID>/`（目前只有 `BL-ENG-13`），其餘票仍在 `ddm-v2/docs/BACKLOG.md`。
+- 執行器：`python3 -S -B ddm-v2/docs/agent-team/_lib/dw.pyz …`，`check` 的 TARGET 與 `ticket move`／`gen` 的 `--target` 一律 `ddm-v2`。

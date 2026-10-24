@@ -1,0 +1,19 @@
+# 類別: TICKET（交棒檔）
+# 狀態: 見 state 欄位
+# 欄位正本: rules/context-budget.md §2
+
+id: BL-ENG-13
+state: backlog          # control-flow.md §1.1；建票版，尚無轉移條，首次轉移的 from 即此值
+stage: intake           # stage-table.md §1
+depth: L1               # human 2026-10-23 第 2 件：須為 L1、不得是 L0（log 第一條）
+assignee: orchestrator
+
+depends_on: []
+
+read_first:
+  - ticket.md
+
+open_questions: []
+
+log:
+  - "2026-10-24 orchestrator 代建票目錄（建票版，尚無轉移條）；記 human 兩則裁示，字句不加不減。(1) human 2026-10-24 第 2 件（答「按你建議」，核可的六件之一）：「挑 BL-ENG-13，在 MOST 側走 L1。」(2) human 2026-10-23 第 2 件（答「核可」，核可的五件之一）：「MOST 側那張票的深度須為 L1、不得是 L0（ADR-0001 §2.1(b) 解凍事件要「L1 或 L2 票」且 ACC 每條有證據、無豁免）。」"

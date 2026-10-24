@@ -293,6 +293,7 @@
   **沒有任何 glob 覆蓋**（outbox＝ADR-027 未登記在任何領域），改了它不會觸發任何 logic reviewer。
 - 建議做法：auth-rbac 收窄為 `shared/api/**`、`shared/types/**`、`shared/auth/**`；outbox 登記領域並把對應整合測試納入。
   動到 agent 設定，要跑 `check_agent_config.py`。
+- 公版票形（2026-10-24 起）：[tickets/BL-ENG-13/ticket.md](../tickets/BL-ENG-13/ticket.md)；狀態以該票 state.yaml 為準，本條目不同步狀態（過渡形）
 
 ## BL-ENG-14 — 偵測「已對上的步驟被 LB 丟掉其中一列」
 - 領域：`lb-projection`
