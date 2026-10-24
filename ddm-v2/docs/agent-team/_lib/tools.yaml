@@ -1,0 +1,407 @@
+# 類別: L2／L3 工具事實登記表（非 L1 規則本體；不複製 L1 方法論條文，ACC-1-9）
+# 票: DW-9 / TASK-DW9-1 / DESIGN-1
+# 用途: 四工具（claude/cursor/copilot/kiro）各自的能力、格式、路徑慣例、欄位集合等「工具側事實」的唯一來源，
+#       供 dw gen（TASK-2，不在本 task 範圍）機械讀取產出 L3 轉接。本檔只承載事實，不產綁定、不寫 L1 規則。
+#
+# 入庫前置（DESIGN-1、REQ-3/7、ACC-1-22）：每條工具事實以該工具「當前官方文件」查證並附回源出處（URL + 查詢日期）。
+#   查詢日期統一為 2026-10-20（本 task 執行日）。查不到／不確定者一律標 not_verified 並註明原因，
+#   不得照抄 runs/2026-10-05-dw-research/ 的舊結論冒充為當前事實。
+#
+# capabilities 枚舉值（DESIGN-1/4/6/8）：
+#   enforceable      = 該工具可在 agent 定義／宣告式設定層表達此面向
+#   partial          = 可部分表達（例：僅經 hook 間接達成、或僅限某層級／某模式）
+#   not_expressible  = 該工具在 agent 定義層無法表達此面向（記為已知缺口，gen 於輸出檔可見註記）
+#   not_verified     = 當前官方文件未能確認（附原因；非「查過確定做不到」，與 not_expressible 區別）
+#
+# source 子欄：每條事實的回源。url = 官方文件網址；checked = 查詢日期；note = 必要時的查證說明／不確定原因。
+
+claude:
+  display_name: "Claude Code"
+  dirs:
+    project_agents: ".claude/agents/"          # 專案層 subagent 定義
+    user_agents: "~/.claude/agents/"           # 使用者層 subagent 定義（跨專案）
+    plugin_agents: "<plugin>/agents/"          # plugin 內 subagent（scoped 識別：<plugin>:<name>）
+    settings: ".claude/settings.json"          # 權限 permissions.allow/deny、env（含委派深度環境變數經 env 設定）
+    source:
+      url: "https://docs.anthropic.com/en/docs/claude-code/sub-agents"
+      checked: "2026-10-20"
+      note: "『Choose the subagent scope』表列 .claude/agents/（project）、~/.claude/agents/（user）、plugin agents/。"
+  file_conventions:
+    agent_definition: "Markdown + YAML frontmatter（開頭 --- 必須為檔案第一行；body 為 system prompt）"
+    agent_definition_alt: "--agents JSON（session 層，不落檔）"
+    source:
+      url: "https://docs.anthropic.com/en/docs/claude-code/sub-agents"
+      checked: "2026-10-20"
+      note: "『Write subagent files』：YAML frontmatter + Markdown body；--agents 接受 JSON 物件或 JSON 檔路徑。"
+  fields:                                        # agent 定義 frontmatter 支援欄位（供 REQ-4 權限映射、REQ-8 能力缺口判定）
+    list:
+      - name                                     # 必填
+      - description                              # 必填
+      - tools                                    # 允許工具 allowlist（逗號字串或 YAML list）
+      - disallowedTools                          # 工具 denylist（先於 tools 套用）
+      - model
+      - permissionMode                           # default/acceptEdits/auto/dontAsk/bypassPermissions/plan
+      - maxTurns
+      - autoCompactWindow
+      - skills
+      - mcpServers
+      - hooks                                    # 生命週期 hooks（PreToolUse/PostToolUse 等）
+      - memory
+      - background
+      - omitClaudeMd
+      - effort
+      - isolation
+      - color
+      - initialPrompt
+      - experimental
+    source:
+      url: "https://docs.anthropic.com/en/docs/claude-code/sub-agents"
+      checked: "2026-10-20"
+      note: "『Frontmatter reference』表逐欄列出；僅 name/description 必填。plugin subagent 忽略 hooks/mcpServers/permissionMode。"
+  capabilities:
+    delegation:
+      value: enforceable
+      source:
+        url: "https://docs.anthropic.com/en/docs/claude-code/sub-agents"
+        checked: "2026-10-20"
+        note: "可強制『非 orchestrator 不得再委派』：三種手段並存——(1) settings.json env 設 CLAUDE_CODE_MAX_SUBAGENT_SPAWN_DEPTH=1 關閉巢狀（『Set 1 to turn nesting off』）；(2) 從某 subagent 的 tools 省略 Agent、或 disallowedTools: Agent，使其無法 spawn 子 agent；(3) Agent(agent_type) allowlist 僅對 --agent 主執行緒生效、subagent 定義內的型別清單被忽略，故以深度環境變數＋移除 Agent 工具為準。"
+    hook_can_block:
+      value: enforceable
+      source:
+        url: "https://docs.anthropic.com/en/docs/claude-code/sub-agents"
+        checked: "2026-10-20"
+        note: "PreToolUse hook 以 exit code 2 阻擋工具呼叫（『exits with code 2 to block write operations』）。"
+    read_scope:
+      value: partial
+      source:
+        url: "https://docs.anthropic.com/en/docs/claude-code/sub-agents"
+        checked: "2026-10-20"
+        note: "tools/disallowedTools 是『整支工具』粒度（帶 specifier 如 Bash(git push *) 仍移除整支工具）；逐路徑『不該讀』的 deny 非宣告式 frontmatter 欄位，須經 PreToolUse hook 或 settings permissions.deny 達成——故標 partial（非 agent 定義層的宣告式逐路徑讀取 deny）。"
+    cost_cap:
+      value: not_expressible
+      source:
+        url: "https://docs.anthropic.com/en/docs/claude-code/sub-agents"
+        checked: "2026-10-20"
+        note: "agent 定義 frontmatter 無成本（花費）上限欄位；maxTurns（turn 數）、autoCompactWindow（token 壓縮窗）存在但非花費上限。subagent 請求計入與主對話同一 usage limits，花費上限屬 plan/usage 層非 agent 定義——記為已知缺口（DESIGN-8 方向題 a）。"
+  shared_dirs:                                   # 相容共讀的他工具目錄（供 REQ-3 去重，DESIGN-3）
+    agent_definitions: []                        # Claude 自身 agent 定義目錄為 .claude/agents/，不共讀他工具 agent 目錄
+    instruction_files:
+      reads: ["AGENTS.md", "CLAUDE.md"]
+      source:
+        url: "https://docs.anthropic.com/en/docs/claude-code/sub-agents"
+        checked: "2026-10-20"
+        note: "Claude Code 讀 CLAUDE.md 階層，並把 AGENTS.md 作為 project instructions 載入（『any AGENTS.md files loaded as project instructions』）。此為 instructions 層共讀事實，非 agent 定義目錄共讀。"
+  formats:
+    - id: "claude-md-frontmatter"
+      description: "單一當前格式：Markdown + YAML frontmatter；無新舊格式並存需求"
+      source:
+        url: "https://docs.anthropic.com/en/docs/claude-code/sub-agents"
+        checked: "2026-10-20"
+  external_bindings:                             # 預留事實欄位（方向題 c）：只宣告事實、不產綁定；納入主體在 DW-25
+    mcp:
+      supported: true
+      mechanism: "mcpServers frontmatter 欄位（inline 定義或引用已設定 server）"
+      source:
+        url: "https://docs.anthropic.com/en/docs/claude-code/sub-agents"
+        checked: "2026-10-20"
+    skills:
+      supported: true
+      mechanism: "skills frontmatter 欄位（啟動時 preload）＋ Skill 工具"
+      source:
+        url: "https://docs.anthropic.com/en/docs/claude-code/sub-agents"
+        checked: "2026-10-20"
+
+cursor:
+  display_name: "Cursor"
+  dirs:
+    project_agents: ".cursor/agents/"           # subagent 定義（readonly 預設 false）
+    cli_config_global: "~/.cursor/cli-config.json"   # 權限 permissions.allow/deny
+    cli_config_project: "<project>/.cursor/cli.json"
+    source:
+      url: "https://cursor.com/docs/cli/reference/permissions"
+      checked: "2026-10-20"
+      note: "Permissions 設於 ~/.cursor/cli-config.json（global）或 <project>/.cursor/cli.json（project）。.cursor/agents/ 見 /docs/subagents。"
+  file_conventions:
+    agent_definition: "Markdown + YAML frontmatter（name/description/readonly 等）"
+    permission_config: "JSON（permissions 物件含 allow/deny 陣列、權限 token）"
+    source:
+      url: "https://cursor.com/docs/cli/reference/permissions"
+      checked: "2026-10-20"
+      note: "Configuration 節示範 permissions 物件 JSON；subagent 定義為 markdown frontmatter（readonly: true/false）。"
+  fields:                                        # 權限以 token 表達（非逐一 frontmatter 欄位）；agent 定義含 name/description/readonly
+    agent_frontmatter: [name, description, readonly]
+    permission_tokens:
+      - "Shell(commandBase)"                     # 例 Shell(git)、Shell(curl:*)
+      - "Read(pathOrGlob)"                       # 逐路徑/glob 讀取 allow/deny
+      - "Write(pathOrGlob)"                      # 逐路徑/glob 寫入 allow/deny
+      - "WebFetch(domainOrPattern)"
+      - "Mcp(server:tool)"
+    source:
+      url: "https://cursor.com/docs/cli/reference/permissions"
+      checked: "2026-10-20"
+      note: "五種 permission token 格式逐一列於 Permission types；deny 規則優先於 allow。"
+  capabilities:
+    delegation:
+      value: partial
+      source:
+        url: "https://cursor.com/docs/subagents"
+        checked: "2026-10-20"
+        note: "主 agent 與其直屬 subagent 可派、subagent 的 subagent 不能再派（Cursor 2.5 起）——即工具層已限制一層巢狀，但無 agent 定義層『非 orchestrator 角色一律不得委派』的逐角色宣告式欄位，故標 partial（深度一層由工具內建限制，非逐角色可宣告）。note: 官方 subagents 頁為此行為來源；本條在入庫時以 /docs/subagents 當前文件再查證。"
+    hook_can_block:
+      value: enforceable
+      source:
+        url: "https://cursor.com/docs/hooks"
+        checked: "2026-10-20"
+        note: "preToolUse hook 回 {\"permission\":\"deny\"} 或 exit code 2 可在工具執行前阻擋（matcher Write|Delete 等）。注意：官方亦記有 race/timeout 邊界情況可能 fail-open（forum 回報），但宣告層能力為可阻擋。"
+    read_scope:
+      value: enforceable
+      source:
+        url: "https://cursor.com/docs/cli/reference/permissions"
+        checked: "2026-10-20"
+        note: "Read(pathOrGlob) 權限 token 支援逐路徑/glob 的 allow/deny（例 Read(.env*) 於 deny）；deny 優先於 allow——可把 roles/_common.md §3『不該讀』映射為逐路徑讀取 deny。"
+    cost_cap:
+      value: not_expressible
+      source:
+        url: "https://cursor.com/docs/cli/reference/permissions"
+        checked: "2026-10-20"
+        note: "agent 定義／CLI 設定無成本（花費）上限欄位（權限 token 僅 Shell/Read/Write/WebFetch/Mcp）——記為已知缺口（DESIGN-8 方向題 a）。"
+  shared_dirs:
+    agent_definitions:
+      value: not_verified
+      source:
+        url: "https://cursor.com/docs/subagents"
+        checked: "2026-10-20"
+        note: "當前官方文件未確認 Cursor 載入 .claude/agents/ 作為 agent 定義（DESIGN 的『Cursor 相容載入 .claude/agents/』為 2026-10-05 研究之假設、當前未查得官方佐證）——標 not_verified，gen 去重不得據此假設共讀 agent 目錄。"
+    instruction_files:
+      reads: ["AGENTS.md", "CLAUDE.md"]
+      source:
+        url: "https://cursor.com/docs/rules"
+        checked: "2026-10-20"
+        note: "Cursor 當前讀根層 AGENTS.md 與 CLAUDE.md（為 Claude Code 相容）——此為 instructions 層共讀事實，非 agent 定義目錄共讀。instructions 層共讀與 agent 定義去重是兩件事。"
+  formats:
+    - id: "cursor-cli-permissions"
+      description: "權限 token + JSON config（cli-config.json / cli.json）；單一當前格式"
+      source:
+        url: "https://cursor.com/docs/cli/reference/permissions"
+        checked: "2026-10-20"
+  external_bindings:
+    mcp:
+      supported: true
+      mechanism: "Mcp(server:tool) 權限 token（server 來自 mcp.json）"
+      source:
+        url: "https://cursor.com/docs/cli/reference/permissions"
+        checked: "2026-10-20"
+    skills:
+      supported: true
+      mechanism: "/docs/skills（Cursor Skills）"
+      source:
+        url: "https://cursor.com/docs/skills"
+        checked: "2026-10-20"
+        note: "Cursor 文件側欄列有 Skills；細部欄位本 task 未逐一查證（external_bindings 僅宣告支援事實、不產綁定）。"
+
+copilot:
+  display_name: "GitHub Copilot"
+  dirs:
+    repo_agents: ".github/agents/"              # repo 層 custom agent（agent profile）
+    source:
+      url: "https://docs.github.com/en/copilot/reference/custom-agents-configuration"
+      checked: "2026-10-20"
+      note: "Custom agent profiles 為 repo 內 .github/agents/ 的 markdown 檔；依檔名（去 .md/.agent.md）去重、最低層級優先。"
+  file_conventions:
+    agent_definition: "Markdown + YAML frontmatter（檔名 <name>.md 或 <name>.agent.md；body 為 prompt，上限 30000 字元）"
+    source:
+      url: "https://docs.github.com/en/copilot/reference/custom-agents-configuration"
+      checked: "2026-10-20"
+      note: "『The configuration file's name (minus .md or .agent.md) is used for deduplication』；prompt 最多 30000 字元。"
+  fields:
+    list:
+      - name
+      - description                              # 必填
+      - target                                   # vscode / github-copilot
+      - tools                                    # 工具 allowlist（別名 read/edit/search/execute/agent/web/todo；tools:[] 停用全部）
+      - model
+      - disable-model-invocation
+      - user-invocable
+      - mcp-servers                              # 雲端 agent 用（VS Code/IDE 不用）
+      - metadata
+      # 以下在 Copilot cloud agent 被忽略（為相容）：
+      - argument-hint                            # ignored on cloud agent
+      - handoffs                                 # ignored on cloud agent（見 capabilities.delegation）
+    source:
+      url: "https://docs.github.com/en/copilot/reference/custom-agents-configuration"
+      checked: "2026-10-20"
+      note: "『YAML frontmatter properties』表；description 必填。argument-hint/handoffs 在 cloud agent 被忽略以確保相容。infer 已 Retired。"
+  capabilities:
+    delegation:
+      value: partial
+      source:
+        url: "https://docs.github.com/en/copilot/reference/custom-agents-configuration"
+        checked: "2026-10-20"
+        note: "tools 別名 agent（相容別名 custom-agent/Task）= 『Allows a different custom agent to be invoked』；從 tools 省略 agent、或 tools:[] 可移除再委派能力。但 handoffs 屬性在 cloud agent 被忽略、且無『深度 1／非 orchestrator 一律不得委派』的逐角色宣告式強制語意——故標 partial（可移除 agent 工具以不委派，但無深度強制欄位）。"
+    hook_can_block:
+      value: enforceable
+      source:
+        url: "https://docs.github.com/en/copilot/reference/copilot-cli-reference/cli-hooks-reference"
+        checked: "2026-10-20"
+        note: "Copilot CLI hooks 參考含 preToolUse hooks（command 型、可阻擋工具呼叫）；GitHub issue #338457 另記 preToolUse deny hook 的執行順序邊界情況。宣告層能力為可阻擋。note: cloud agent 面向另有差異，本條以 Copilot CLI hooks 參考為回源。"
+    read_scope:
+      value: not_expressible
+      source:
+        url: "https://docs.github.com/en/copilot/reference/custom-agents-configuration"
+        checked: "2026-10-20"
+        note: "tools 僅限『哪些工具可用』（read/edit/search 等別名），無逐路徑讀取 deny 的宣告式欄位——逐路徑『不該讀』在 agent 定義層無法表達，記為已知缺口（DESIGN-8 方向題 b）。"
+    cost_cap:
+      value: not_expressible
+      source:
+        url: "https://docs.github.com/en/copilot/reference/custom-agents-configuration"
+        checked: "2026-10-20"
+        note: "agent profile frontmatter 無成本上限欄位。AI credit limit 屬 Copilot CLI session 層（/docs set-session-limit）、非 agent 定義——記為已知缺口（DESIGN-8 方向題 a）。"
+  shared_dirs:
+    agent_definitions:
+      value: not_verified
+      source:
+        url: "https://docs.github.com/en/copilot/reference/custom-agents-configuration"
+        checked: "2026-10-20"
+        note: "當前官方文件未確認 Copilot 載入 .claude/agents/ 或他工具 agent 目錄作為 custom agent（Copilot custom agent 住 .github/agents/）——DESIGN 的『Copilot 讀 .claude/skills』為 2026-10-05 研究假設、當前未查得官方 agent 目錄共讀佐證，標 not_verified。MCP 設定層有『stdio 型相容映射到 cloud 的 local 型』但屬 MCP 非 agent 目錄共讀。"
+    instruction_files:
+      reads: ["AGENTS.md", ".github/copilot-instructions.md"]
+      source:
+        url: "https://docs.github.com/en/copilot/reference/custom-instructions-support"
+        checked: "2026-10-20"
+        note: "Copilot 讀 AGENTS.md 與 .github/copilot-instructions.md（instructions 層）；此為 instructions 共讀、非 agent 定義目錄共讀。instructions 層的確切支援矩陣本 task 未逐欄查證。"
+  formats:
+    - id: "copilot-agent-profile"
+      description: "Markdown + YAML frontmatter（.md 或 .agent.md）；單一當前格式"
+      source:
+        url: "https://docs.github.com/en/copilot/reference/custom-agents-configuration"
+        checked: "2026-10-20"
+  external_bindings:
+    mcp:
+      supported: true
+      mechanism: "mcp-servers frontmatter 物件（cloud agent；stdio 映射為 local 型）；tools 可引 <server>/<tool>"
+      source:
+        url: "https://docs.github.com/en/copilot/reference/custom-agents-configuration"
+        checked: "2026-10-20"
+    skills:
+      supported: true
+      mechanism: "Agent skills（/docs add-skills）"
+      source:
+        url: "https://docs.github.com/en/copilot/concepts/agents/about-agent-skills"
+        checked: "2026-10-20"
+        note: "Copilot 文件列有 Agent skills；細部欄位本 task 未逐一查證（external_bindings 僅宣告支援事實）。"
+
+kiro:
+  display_name: "Kiro"
+  dirs:
+    workspace_agents: ".kiro/agents/"           # workspace 層 custom agent
+    global_agents: "~/.kiro/agents/"            # global 層 custom agent
+    mcp_config_global: "~/.kiro/settings/mcp.json"
+    mcp_config_workspace: "<cwd>/.kiro/settings/mcp.json"
+    source:
+      url: "https://kiro.dev/docs/custom-agents/configuration-reference/"
+      checked: "2026-10-20"
+      note: "/upgrade-agent 掃 .kiro/agents/（workspace）與 ~/.kiro/agents/（global）；mcp.json 路徑見 includeMcpJson 節。"
+  file_conventions:
+    agent_definition: "JSON 或 Markdown（V3；兩格式欄位相同，Markdown frontmatter 作 config、body 作 system prompt）"
+    source:
+      url: "https://kiro.dev/docs/custom-agents/configuration-reference/"
+      checked: "2026-10-20"
+      note: "『Markdown format (.md): Frontmatter for config, body for system prompt』；JSON 與 Markdown 欄位一致（kiro.dev/docs/cli/v3/agent-config/：『fields are identical across formats』）。"
+  fields:
+    list:
+      - name
+      - description
+      - prompt                                   # inline 或 file:// URI
+      - mcpServers
+      - tools                                    # 標籤 read/write/shell/web/subagent/@builtin/@mcp/* 或直接 tool ID
+      - permissions                              # rules：capability/match/effect(allow/ask/deny)/exclude（V3 宣告式存取控制）
+      - excludedTools
+      - resources                                # file:// / skill:// / knowledgeBase
+      - hooks                                    # 陣列形式，PascalCase trigger（SessionStart/PreToolUse/PostToolUse）
+      - includeMcpJson
+      - includePowers
+      - model
+      - welcomeMessage
+      # CLI 2.x legacy（V3 以 /upgrade-agent 遷移）：
+      - toolsSettings                            # deprecated（shell/fs 規則改用 permissions；subagent.availableAgents/trustedAgents 仍用）
+      - allowedTools                             # CLI 2.x legacy（遷移為 permissions.rules）
+      - toolAliases                              # CLI 2.x legacy（V3 不套用）
+      - keyboardShortcut                         # CLI 2.x legacy（非 V3 schema）
+    source:
+      url: "https://kiro.dev/docs/custom-agents/configuration-reference/"
+      checked: "2026-10-20"
+      note: "『Field reference』逐欄列出；permissions.rules 的 capability 含 fs_read/fs_write/shell/web_fetch/web_search/mcp/subagent/skill/power/context/diagnostics/sandbox_network 與 all/builtin/filesystem meta。"
+  capabilities:
+    delegation:
+      value: enforceable
+      source:
+        url: "https://kiro.dev/docs/custom-agents/configuration-reference/"
+        checked: "2026-10-20"
+        note: "permissions.rules 的 capability: subagent 可用 effect: deny 阻擋派生（deny-overrides：任一 scope 的 deny 勝出）；另 toolsSettings.subagent.availableAgents/trustedAgents 可限定可派對象——可對非 orchestrator 角色 deny subagent capability，強制不得再委派。"
+    hook_can_block:
+      value: enforceable
+      source:
+        url: "https://kiro.dev/docs/custom-agents/configuration-reference/"
+        checked: "2026-10-20"
+        note: "hooks 陣列的 PreToolUse trigger（matcher 針對 tool ID/類別）可於工具使用前執行 command 動作以審核/阻擋（Hook types/actions）。"
+    read_scope:
+      value: enforceable
+      source:
+        url: "https://kiro.dev/docs/custom-agents/configuration-reference/"
+        checked: "2026-10-20"
+        note: "permissions.rules 的 capability: fs_read + match glob + effect: deny（+ exclude）可逐路徑 deny 讀取——可把 roles/_common.md §3『不該讀』映射為宣告式逐路徑讀取 deny。"
+    cost_cap:
+      value: not_expressible
+      source:
+        url: "https://kiro.dev/docs/custom-agents/configuration-reference/"
+        checked: "2026-10-20"
+        note: "agent 配置 Field reference 無成本（花費）上限欄位——記為已知缺口（DESIGN-8 方向題 a）。"
+  shared_dirs:
+    agent_definitions: []                        # Kiro agent 定義住 .kiro/agents/；未查得共讀他工具 agent 目錄
+    instruction_files:
+      reads: ["AGENTS.md"]
+      source:
+        url: "https://kiro.dev/docs/custom-agents/configuration-reference/"
+        checked: "2026-10-20"
+        note: "custom agent 預設繼承 default resources 含 steering、skills 與 AGENTS.md（可以 chat.disableInheritingDefaultResources 關閉）——AGENTS.md 為 instructions 層共讀事實，非他工具 agent 目錄共讀。"
+  formats:                                       # V3 與 V2 並存（REQ-7、DESIGN-7），以當前 Kiro 文件查證
+    versions:
+      - id: "V3"
+        description: "IDE 1.0 / CLI V3：permissions.rules（capability 標籤）、tools 標籤短名（read/write/shell/web/@builtin/*）；JSON 與 Markdown 並行"
+        current: true
+        source:
+          url: "https://kiro.dev/docs/custom-agents/configuration-reference/"
+          checked: "2026-10-20"
+      - id: "V2"
+        description: "CLI 2.x legacy：toolsSettings/allowedTools/toolAliases/keyboardShortcut、舊工具名（fs_read/execute_bash）；/upgrade-agent 就地遷移、備份原檔為 <filename>.json.bak"
+        current: false
+        coexists_with: "V3"
+        source:
+          url: "https://kiro.dev/docs/cli/v3/upgrade-agent/"
+          checked: "2026-10-20"
+          note: "『/upgrade-agent 把舊格式就地轉換、在寫入前備份原檔』；V3 加新 permission 欄位於既有設定旁。legacy CLI 2.x profile 仍可出現在 V3 /agent picker（未含不支援的 trust 欄位者），須 /upgrade-agent 轉換。"
+    universal:
+      value: not_verified
+      source:
+        url: "https://kiro.dev/docs/cli/v3/upgrade-agent/"
+        checked: "2026-10-20"
+        note: "DESIGN-7 提『universal (V2 + V3)』單一設定同含舊工具名與新 capability 標籤。當前 /upgrade-agent 文件描述為『就地轉換、新增 permission 欄位於既有旁、備份原檔』，未逐字確認產出單檔『universal (V2+V3)』的既有命名作法——標 not_verified；gen 對 Kiro 的新舊相容手段（universal 單檔 vs 雙產兩份）由 TASK-2 implement 依入庫時 Kiro 文件再查證定，本 task 僅記 V3/V2 並存為事實、universal 具名作法待查證。"
+  external_bindings:
+    mcp:
+      supported: true
+      mechanism: "mcpServers 欄位（command/url/args/env/oauth 等）＋ includeMcpJson；tools 以 @server 引用"
+      source:
+        url: "https://kiro.dev/docs/custom-agents/configuration-reference/"
+        checked: "2026-10-20"
+    skills:
+      supported: true
+      mechanism: "resources 的 skill:// URI（metadata 啟動載入、全文按需）；tools 標籤 skill"
+      source:
+        url: "https://kiro.dev/docs/custom-agents/configuration-reference/"
+        checked: "2026-10-20"
+    powers:
+      supported: true
+      mechanism: "includePowers（自動納入 IDE 安裝的 powers）"
+      source:
+        url: "https://kiro.dev/docs/custom-agents/configuration-reference/"
+        checked: "2026-10-20"

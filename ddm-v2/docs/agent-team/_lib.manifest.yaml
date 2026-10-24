@@ -1,0 +1,50 @@
+# 消費端採用紀錄（MOST 採用 dev-workflow 公版；W0-C1 vendor）
+
+source: dev-workflow
+version: v0.5.9-120-gea131db   # git describe --tags ea131db5ca（dw.pyz 所建置之公版提交 C）；非 vendor 當下 HEAD
+adopted: 2026-10-24
+
+files:
+  roles/README.md: "sha256:af09033d0949bc424279f2f1acb524cdd0b4bb6cd229a28ce34fa9c3d69eeade"
+  roles/_common.md: "sha256:9f683638ce35a985f3cfc2cf67f2191c6ad1259ee0d659baa7902c0198c020ce"
+  roles/analyst.md: "sha256:55b21f2dc96e3754ca51dc14e89c937ccb4e3f9454191dfb9649f62f104bc8e0"
+  roles/architect.md: "sha256:be44be551f3a1bf87d08a754d0d63b4a3484f74ee9851981e7362cbae4b84a89"
+  roles/doc-sync.md: "sha256:48cd798832c9b014fcebdd9ee8257ce290c9c6093a1d2c924aa7c58a3ea50287"
+  roles/implementer.md: "sha256:c89623f6e46616b2f9770504f64e960ce1ec1350275fd2911314257649119e48"
+  roles/orchestrator.md: "sha256:9174c4508440532366f36e923cc8e3f13df3c33d3965e17c49bd1d4e0a930416"
+  roles/reviewer.md: "sha256:92e955fd6a5ce1459edcbce83dc185452a0a1283853d569639cc88deab19aadd"
+  roles/verifier.md: "sha256:0265094bb1927afffafe22bc0bd24ae727760b2b9a6abfa4c96042ddd899c6fe"
+  rules/context-budget.md: "sha256:a515b11b0f6e51efa87fe4ede59f7b86b7c657c410bbb788658c6e6469a3d5fd"
+  rules/control-flow.md: "sha256:7a7d85cb106aa618fb4785de979069f12b35c6de12f7d92f940d59e8c4954d41"
+  rules/doc-taxonomy.md: "sha256:e42ce9ec756877ec06f48842ac350b767c3e7e98777105cb7bea63f846ddfb3d"
+  rules/stage-table.md: "sha256:81dc22494d335ae745b3acd63193492b3b47072dfe91a7657c126650dc40b834"
+  templates/ACC.md: "sha256:13e7759a6a159168c299581fbed048b11ba0c95b7fa0b0e88a3cf004fd70714a"
+  templates/ADR.md: "sha256:cf042e452f39c71b7f3ae71f268b31c06ca8e37379c59275314739ca46d05129"
+  templates/DESIGN.md: "sha256:ea966451a0d6466dfd9628e4b89b8643efa88617378e16b36726f88d8a45ccd6"
+  templates/REQ.md: "sha256:e812aefdb8ab90c6a73991031e0ff893e2146e85091ab15d7f9a242f0c6bbffc"
+  templates/_lib.manifest.yaml: "sha256:16b87f761ad4f3daf88a02ec2434ee7dd1a48eb982ba41dd856d253c581c04ea"
+  templates/decision.md: "sha256:6b72f176eeddc07fddfef304ba130fac646dc74fded481ef68733fcb5eb91298"
+  templates/l3/README.md: "sha256:963bd1c530322acc2f79a4bb8a232f09f214c8b2b9b14ad9fe409fc9c6668913"
+  templates/l3/agent_definition.md: "sha256:0d65a33ecac76431dbeffbfc629bff5080414ee430177c0ad5c1926414458287"
+  templates/l3/entry.md: "sha256:392a9947a48e4f6fd44241824ba0edd803e30da1ae6c28d84bd15dae8690f872"
+  templates/l3/hook.md: "sha256:28c068a3f1721f2ad6b13bde5645daa486d9ba0f4f8d492eb001b8da7e1d9b74"
+  templates/role.md: "sha256:710f888e8b2a06e67da6e9b265a2a096f7b555073fbf868d4e5e720f1e2d7593"
+
+local_deviations:
+  - file: README.md
+    section: "採用方式 第 1 步（專案已有自己的 agent 正本 → 先走角色歸併）"
+    reason: "human 2026-10-23 第 5 件，角色歸併不做；MOST 有 3 份自家 agent 正本未歸併"
+    action: 留 DW-12 完整版
+    since: 2026-10-24
+  - file: README.md
+    section: "採用方式 第 1 步（三子目錄複製到 _lib/）"
+    reason: "dw 的 ticket move／gen 假設 rules/、roles/、templates/、tools.yaml 在 --target 根（dw/ticket.py 第 25–26 行、dw/gen.py 第 38–40 行）；以 ddm-v2 根 4 個符號連結別名加 _lib/tools.yaml 滿足，_lib/ 內任一公版檔位元組不改"
+    action: 待上推（FB-10）
+    since: 2026-10-24
+
+project_facts:
+  domains: docs/agent-team/domains.yaml
+  commit_convention: docs/agent-team/commit-convention.md
+  verification: docs/agent-team/verification.md
+  decisions_log: docs/agent-team/decisions.log
+  doc_convention: docs/DOC_REGISTRY.md   # MOST 無獨立 DOC_CONVENTION.md，文件規範段在此檔『文件規範』節

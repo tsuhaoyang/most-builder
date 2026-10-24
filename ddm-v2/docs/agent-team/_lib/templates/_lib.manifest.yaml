@@ -1,0 +1,40 @@
+# 消費端採用紀錄
+# 放在專案的 docs/agent-team/_lib.manifest.yaml
+# 用途：記錄這個專案採用了公版的哪一版、哪些檔案、以及本地改了什麼。
+
+source: dev-workflow
+version: vX.Y.Z          # 採用時的公版 tag。用佔位符，模板不再隨版本過期
+adopted: YYYY-MM-DD
+
+# vendor 進來的檔案與其 SHA-256。
+# 用途：升級時 diff 判斷上游動了什麼、本地動了什麼。
+files:
+  rules/stage-table.md: "sha256:"
+  rules/doc-taxonomy.md: "sha256:"
+  rules/control-flow.md: "sha256:"
+  rules/context-budget.md: "sha256:"
+  roles/: "sha256:"       # 7 份角色 + _common.md + README.md，逐檔列
+  templates/: "sha256:"   # ACC.md、role.md、本檔，逐檔列
+
+# 本地偏離清單。
+#
+# 你一定會直接改 _lib/ 的檔案——半夜趕 hotfix，規則擋你，你就改了。
+# 這一段的目的不是防止你改，是讓「改了」變成被記錄的決定，而非無聲漂移。
+#
+# 偏離不是錯誤。但如果同一條偏離在兩個專案都出現，
+# 那代表公版缺一個擴充點，該上推成 L1 的可選項。
+local_deviations: []
+# 範例：
+#   - file: rules/stage-table.md
+#     section: "§1 第 9 列 verify"
+#     reason: "本專案 e2e 需要先 docker restart 才能驗到執行中的服務"
+#     action: 待上推為 L2 擴充點
+#     since: 2026-10-02
+
+# L2 專案事實的位置（公版靠這些路徑找到專案特有的東西）
+project_facts:
+  domains: docs/agent-team/domains.yaml
+  commit_convention: docs/agent-team/commit-convention.md
+  verification: docs/agent-team/verification.md
+  decisions_log: docs/agent-team/decisions.log
+  doc_convention: docs/DOC_CONVENTION.md
