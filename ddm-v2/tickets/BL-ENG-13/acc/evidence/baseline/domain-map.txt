@@ -1,0 +1,22 @@
+src/frontend/src/shared/i18n/resources/en.ts	i18n,auth-rbac
+src/frontend/src/shared/i18n/resources/zh-TW.ts	i18n,auth-rbac
+src/frontend/src/shared/i18n/resources/errors.en.ts	i18n,auth-rbac
+src/frontend/src/shared/i18n/resources/errors.zh-TW.ts	i18n,auth-rbac
+src/frontend/src/shared/i18n/i18n.ts	i18n,auth-rbac
+src/frontend/src/shared/api/client.ts	auth-rbac
+src/frontend/src/shared/api/useActiveRuleSet.ts	auth-rbac
+src/frontend/src/shared/auth/useMe.ts	auth-rbac
+src/frontend/src/shared/types/api.d.ts	auth-rbac
+src/frontend/src/shared/config.ts	auth-rbac
+src/frontend/src/shared/workspace.ts	auth-rbac
+src/frontend/src/shared/ui/ComboBox.tsx	auth-rbac
+src/frontend/src/shared/ui/ErrorBoundary.tsx	auth-rbac
+src/frontend/src/shared/ui/Hint.tsx	auth-rbac
+src/frontend/src/shared/ui/RuleSetUnavailable.tsx	auth-rbac
+src/frontend/src/shared/ui/WorksheetRequiredNotice.tsx	auth-rbac
+src/ddm_v2/services/v2/outbox_service.py	auth-rbac
+src/ddm_v2/models/v2/outbox.py	auth-rbac
+tests/integration/test_outbox_api.py	(0 命中)
+tests/integration/test_lb_writeback_endpoints.py	(0 命中)
+docs/agent-team/domains.yaml	(0 命中)
+docs/domains/auth-rbac.md	(0 命中)

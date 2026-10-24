@@ -1,0 +1,23 @@
+HEAD=dce80fac65480c94b4e93cbcabb488a17caf20ff
+branch=feature/lb-writeback
+# git status --porcelain（取得前）
+?? ddm-v2/ie_v3_sequences.csv
+?? ddm-v2/ie_v3_wi_structure.csv
+?? ddm-v2/ruleset_MINIMOST_FACTORY_V2.csv
+?? ddm-v2/ruleset_MINIMOST_FACTORY_V2.md
+?? ddm-v2/scripts/export_ie_v3_sequences.py
+?? ddm-v2/scripts/export_ie_v3_wi_structure.py
+?? ddm-v2/scripts/export_rule_set.py
+?? ddm-v2/scripts/export_standard_templates.py
+?? 智能解析WI-系統架構圖.md
+# git status --porcelain（取得後）
+?? ddm-v2/ie_v3_sequences.csv
+?? ddm-v2/ie_v3_wi_structure.csv
+?? ddm-v2/ruleset_MINIMOST_FACTORY_V2.csv
+?? ddm-v2/ruleset_MINIMOST_FACTORY_V2.md
+?? ddm-v2/scripts/export_ie_v3_sequences.py
+?? ddm-v2/scripts/export_ie_v3_wi_structure.py
+?? ddm-v2/scripts/export_rule_set.py
+?? ddm-v2/scripts/export_standard_templates.py
+?? 智能解析WI-系統架構圖.md
+STATUS_UNCHANGED=yes

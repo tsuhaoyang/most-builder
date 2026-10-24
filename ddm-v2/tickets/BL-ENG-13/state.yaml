@@ -3,11 +3,12 @@
 # 欄位正本: rules/context-budget.md §2
 
 id: BL-ENG-13
-state: speccing   # control-flow.md §1.1；建票版，尚無轉移條，首次轉移的 from 即此值
-stage: acceptance   # stage-table.md §1；2026-10-24 手改 design → acceptance，原因見最後一條 log
+state: awaiting_human(acceptance)   # control-flow.md §1.1；2026-10-24 由 dw ticket move 實寫 speccing → awaiting_human(acceptance)，human 簽 ACC 後仍在此 state（§1.3 的 → ready 要 task 已切分，task 尚未切，沿 DW-38 先例不提前轉 ready）；轉移條見 log
+stage: planning   # stage-table.md §1 第 6 列；2026-10-24 human 簽 ACC 後手改 acceptance → planning（dw ticket move 無 stage 單獨推進，FB-2 先例），原因見最後一條 log
 depth: L1               # human 2026-10-23 第 2 件：須為 L1、不得是 L0（log 第一條）
-assignee: verifier   # stage-table.md §1 第 5 列 acceptance 的主責角色（verifier + human）
+assignee: orchestrator   # stage-table.md §1 第 6 列 planning 的主責角色（orchestrator）
 design_hash: 792aa34f6057bfcb1301447ad4f56ff6c1636b1420e8866e06ae377114b85c6d   # tickets/BL-ENG-13/design.md 定案後正規化 SHA-256（取法見該檔檔頭 hash取法、§8.2 ++c==2、排除整個 frontmatter；於 ddm-v2/ 根算、兩跑同值可重現）；填完定案紀錄 body 後的定案值，hash 只記本欄、不寫進 design.md
+acc_hash: 792aa34f6057bfcb1301447ad4f56ff6c1636b1420e8866e06ae377114b85c6d   # ACC-1.md §1 綁的 normalized_sha256（= design_hash，ACC 綁 design，§8）；human 2026-10-24 核可 ACC-1 v2 定案（沿 DW-38 先例：值同 design_hash；已以 §8.2 shell 管線 awk 'f; /^---$/ && ++c==2 {f=1}' | tr -d '\r' | sed 's/[[:space:]]*$//' | sha256sum 於 ddm-v2/ 根兩跑重算，與 design_hash 相同）
 
 depends_on: []
 
@@ -16,7 +17,7 @@ read_first:
 
 open_questions:
   - "備案 B（新增 outbox 領域，連帶新增 invariants 與 docs/domains/outbox.md、docs/DOC_REGISTRY.md）與 docs/domains/auth-rbac.md 同步：維持待 human，不在本票預設範圍（design.md 待決 1、DESIGN-8）。"
-  - "白名單新增 7 條（config.ts、workspace.ts、ui/ 5 檔）與 domains.yaml 檔頭 updated 更新：依規則字面不屬邏輯變更，但不在 human 對 H1 答覆的字面內；待 BL-ENG-13 的 ACC 定案時向 human 揭露一行。"
+  - "【已答 2026-10-24：human 選 (a)，見 log 的 ACC-1-16 答覆條】白名單新增 7 條（config.ts、workspace.ts、ui/ 5 檔）與 domains.yaml 檔頭 updated 更新：依規則字面不屬邏輯變更，但不在 human 對 H1 答覆的字面內；待 BL-ENG-13 的 ACC 定案時向 human 揭露一行。"
 
 log:
   - "2026-10-24 orchestrator 代建票目錄（建票版，尚無轉移條）；記 human 兩則裁示，字句不加不減。(1) human 2026-10-24 第 2 件（答「按你建議」，核可的六件之一）：「挑 BL-ENG-13，在 MOST 側走 L1。」(2) human 2026-10-23 第 2 件（答「核可」，核可的五件之一）：「MOST 側那張票的深度須為 L1、不得是 L0（ADR-0001 §2.1(b) 解凍事件要「L1 或 L2 票」且 ACC 每條有證據、無豁免）。」"
@@ -28,3 +29,10 @@ log:
   - "2026-10-24 design 階段審查記錄：producer=architect；reviewer=reviewer(design)；一條一對。role-source=_lib/roles/architect.md（產出 design.md）；role-source=_lib/roles/reviewer.md（審查，報告見 review-design.md）。reviewer(design) 第 1 輪 PASS（阻擋 0，建議 S1 至 S7），architect 已將 S1 至 S7 折入 design.md 第 2 版；L1 的 design 審由 reviewer(design) 把關，免 human 關卡，不跑第 2 輪。"
   - "2026-10-24 design 階段關鍵事項（reviewer(design) 第 1 輪 PASS 的關鍵判斷）：design 的白名單新增 7 條（config.ts、workspace.ts、ui/ 5 檔）與 domains.yaml 檔頭 updated 更新，依規則字面不屬邏輯變更，但不屬 human 對 H1 答覆的字面，須在 BL-ENG-13 的 ACC 定案時向 human 揭露。config.ts 的 TMU_SEC 進白名單後，日後改動不派 logic reviewer；替代方案 (b) 已備（以精確路徑留在 auth-rbac）。備案 B（新增 outbox 領域）與 auth-rbac.md 同步維持待 human，不在本票預設範圍。"
   - "2026-10-24 轉移[speccing/design → speccing/acceptance]：design 階段完成，design.md 狀態由 Draft 改為已定案（定案算法：design.md 檔頭 hash取法，即 §8.2 的 awk 'f; /^---$/ && ++c==2 {f=1}' 取第二個 --- 之後正文、tr -d '\\r'、sed 去行尾空白、sha256sum；定案紀錄 body 在 hash 涵蓋內，故值只記 state.yaml 的 design_hash，不寫進 design.md）。design_hash=792aa34f6057bfcb1301447ad4f56ff6c1636b1420e8866e06ae377114b85c6d。state 仍為 speccing、stage 由 design 手改為 acceptance、assignee 由 architect 改為 verifier（stage-table.md §1 第 5 列）。手改原因：dw ticket move 只推進 state，不能單獨推進同一 state 內的 stage（FB-2 先例，見 DW-38 planning §2.3）；本條為 ACC §4.0.1 第 6 點的帶標記轉移條，執行者 orchestrator，依據 human 2026-10-24 手打「授權G3」。收尾：檔案 mode 維持 0644，yaml 重載確認合法。"
+  - "2026-10-24 speccing → awaiting_human(acceptance)（verifier 觸發；orchestrator 依 orchestrator 指示（human 2026-10-24「授權G4」） 執行）"
+  - "2026-10-24 轉移[speccing/acceptance → awaiting_human(acceptance)/acceptance]：verifier 完成 ACC Draft v2（acc/ACC-1.md，共 16 項：agent 15、human 1，SKIP 全否；經 reviewer 兩輪，第 1 輪 BLOCK、第 2 輪 PASS），交 human 簽核。state 由 dw ticket move 實寫（上一條為 dw 所寫的 speccing → awaiting_human(acceptance)，由 --dry-run 先驗：stage=acceptance、assignee=human，與本條相同），本條為 ACC §4.0.1 第 6 點要求補記的帶標記轉移條；state=awaiting_human(acceptance)、stage=acceptance、assignee=human。觸發者 verifier，執行者 orchestrator，依據 human 2026-10-24 手打原話「授權G4」。收尾：dw 寫入後檔案 mode 變 0600，已還原為 0644；dw 在 log 條之間多寫的空行已移除，檔尾補換行，yaml 保持合法。"
+  - "2026-10-24 基線仍有效（acceptance 階段，ACC §4.0.2 第 1 點、DW-38 ACC-1-21 (e)）：acc/evidence/baseline/ 六檔（domain-map.txt、check-agent-config.txt、docs-check.txt、dw-check-baseline.txt、most-head.txt、sha256-inputs.txt）與公版 DW-38 基線同名檔 cmp 位元組相同（6/6）；sha256-inputs.txt 的 18 個輸入檔 sha256 在目前 HEAD 38b1af44f7e19065c71189f09bdd81c9a1fac334 下與基線記載相同（公版 bl13_checks.py premise：PASS 18/18；c15 的基線 6 檔齊備、6 檔位元組相同、most-head.txt 的 STATUS_UNCHANGED=yes 且 HEAD=BASE dce80fac65、BASE 為 HEAD 祖先、18 行 BASE 全相符且 HEAD 除 domains.yaml 外全相符 皆 PASS）。基線複本沿用 DW-38 於 MOST HEAD dce80fac65480c94b4e93cbcabb488a17caf20ff 取得者，不重取：18 個輸入檔雜湊一致即複本仍有效，兩提交之間 MOST 只增 W0 的 vendor／指路提交與本票 requirement、design 兩階段提交，不含影響領域守衛的輸入（ACC PRE-4）；不等才算基線失效而需停下回報 human，今無此情形。ACC-1.md 的 REGRESSION 項引用 acc/evidence/baseline。"
+  - "2026-10-24 acceptance 階段審查記錄：producer=verifier；reviewer=reviewer；一條一對。role-source=_lib/roles/verifier.md（產出 acc/ACC-1.md）；role-source=_lib/roles/reviewer.md（審查；報告原文存公版 tickets/DW-38/acc/evidence/bl13-acc-draft/review-acc-r1.md 與 review-acc-r2.md）。第 1 輪 BLOCK（阻擋 2：B1、B2；建議 S1 至 S8），verifier 依之修訂為 v2；第 2 輪 PASS（阻擋 0，建議 N1 至 N5，措辭類已折入 v2）。"
+  - "2026-10-24 human 答覆[ACC-1-16]：(a) 簽；選項=a。human（Howard）2026-10-24 手打原話「(a) 簽」，逐字，不含其他文字；回應 orchestrator 提出的簽核清單（ACC-1-16 答 (a)＝核可 design 的兩件事：no_domain_allowlist 新增 7 條與 domains.yaml 檔頭 updated 更新；簽 BL-ENG-13 的 ACC-1，共 16 項、agent 15、human 1、SKIP 全否；知悉 ACC §0 的 A、B、C 三組事項）。"
+  - "2026-10-24 ACC 定案（verifier 落地；書記代記）：acc/ACC-1.md v2 狀態 Draft → 已定案，檔頭核可欄填 human 2026-10-24 並逐字引核可依據「(a) 簽」（註明它回應 orchestrator 簽核清單：ACC-1-16 答 (a)、簽 ACC、知悉 §0 的 A、B、C）、§5 v2 列核可欄同填；只動這些欄位，判準、指令、計數（16 項、agent 15、human 1、SKIP 全否）不動。human 簽核時明確知悉：(1) 基線複本沿用 DW-38 的、不重取；(2) 備案 B（新增 outbox 領域）與 auth-rbac.md 同步『不做、不預設』，維持待 human，不在本票範圍；(3) design 的待決 1 與白名單揭露，主案不依賴。acc_hash 記入本檔 = 792aa34f6057bfcb1301447ad4f56ff6c1636b1420e8866e06ae377114b85c6d（§8.2 取法於 ddm-v2/ 根重算；design_hash 重算仍為同值，design.md 未動，DESIGN 凍結於 ACC 定案）。open_questions：白名單揭露一條標已答（引 ACC-1-16 的答覆條）；備案 B 與 auth-rbac.md 同步一條維持待 human。"
+  - "2026-10-24 轉移[awaiting_human(acceptance)/acceptance → awaiting_human(acceptance)/planning]：human 簽 ACC 後 acceptance 階段完成。state 仍為 awaiting_human(acceptance)（control-flow.md §1.3 的 awaiting_human(acceptance) → ready 要 task 已切分，task 尚未切，沿 DW-38 先例不提前轉 ready，轉 ready 隨 planning 完成）；stage 由 acceptance 手改為 planning，assignee 由 human 改為 orchestrator（stage-table.md §1 第 6 列）。手改原因：dw ticket move 只推進 state，不能單獨推進同一 state 內的 stage（FB-2 先例，見 DW-38 planning §2.3）；本條為 ACC §4.0.1 第 6 點的帶標記轉移條，執行者 orchestrator，依據 human 2026-10-24 手打「授權G4」與簽核「(a) 簽」。收尾：檔案 mode 維持 0644，yaml 重載確認合法。"

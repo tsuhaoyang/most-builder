@@ -1,0 +1,20 @@
+== docs_check ==
+OK   無斷鏈（歷史文件與白名單除外）
+OK   無孤兒文件（皆在 DOC_REGISTRY 某一區、ADR 索引層、或已標歷史）
+OK   領域索引檔名與 domains.yaml 一致（11 個）
+OK   領域索引程式入口與 domains.yaml paths 一致
+OK   graphify 圖為最新（built_at_commit == HEAD dce80fa）
+WARN 缺狀態標頭（## 狀態 / **狀態**）：docs/architecture/domain-evolution-and-ai-readiness-spec.md
+WARN 缺狀態標頭（## 狀態 / **狀態**）：docs/architecture/frontend-data-flow-spec.md
+WARN 缺狀態標頭（## 狀態 / **狀態**）：docs/architecture/frontend-ux-spec.md
+WARN 缺狀態標頭（## 狀態 / **狀態**）：docs/architecture/lb-most-auth.md
+WARN 缺狀態標頭（## 狀態 / **狀態**）：docs/architecture/rbac-spec.md
+WARN 缺狀態標頭（## 狀態 / **狀態**）：docs/architecture/system-architecture-v2-spec.md
+WARN 缺狀態標頭（## 狀態 / **狀態**）：docs/architecture/v2-authoritative-model-guide.md
+WARN 缺狀態標頭（## 狀態 / **狀態**）：docs/architecture/wi-ai-parser-system-spec.md
+WARN 缺狀態標頭（## 狀態 / **狀態**）：docs/core-logic/core-logic-validation-test-catalog.md
+WARN 缺狀態標頭（## 狀態 / **狀態**）：docs/core-logic/level-system-core-logic-spec.md
+WARN 缺狀態標頭（## 狀態 / **狀態**）：docs/core-logic/minimost-sequence-model-core-logic-spec.md
+WARN 缺狀態標頭（## 狀態 / **狀態**）：docs/decisions/ADR-011-schema-evolution-and-contract-stability.md
+-- 5 ok, 12 warn, 0 error --
+exit=0

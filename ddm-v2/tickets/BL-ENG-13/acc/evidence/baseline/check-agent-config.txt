@@ -1,0 +1,19 @@
+== check_agent_config ==
+OK   CLAUDE.md 含 @AGENTS.md
+OK   ddm-v2/.claude/agents/most-code-reviewer.md 的 3 個 docs/agent-team 引用都存在
+OK   ddm-v2/.claude/agents/most-doc-sync.md 的 2 個 docs/agent-team 引用都存在
+OK   ddm-v2/.claude/agents/most-logic-reviewer.md 的 4 個 docs/agent-team 引用都存在
+OK   ddm-v2/.kiro/agents/most-doc-sync.json 的 3 個 docs/agent-team 引用都存在
+OK   ddm-v2/.kiro/agents/most-code-reviewer.json 的 4 個 docs/agent-team 引用都存在
+OK   ddm-v2/.kiro/agents/most-logic-reviewer.json 的 5 個 docs/agent-team 引用都存在
+OK   .claude/agents 名單與正本一致（3 個）
+OK   .kiro/agents 名單與正本一致（3 個）
+OK   AGENTS.md 引用的 8 個路徑都存在
+OK   ddm-v2/docs/agent-team/checkpoint.md 引用的 6 個路徑都存在
+OK   domains.yaml 檢查完成（11 領域）
+OK   無已搬走的舊路徑殘留
+OK   agent 正本與 AGENTS.md 引用的程式/測試路徑都存在
+OK   所有業務檔（264 檔）都命中領域或在白名單
+OK   轉接層薄度檢查完成（.kiro/agents JSON prompt ≤10 行、.claude/agents 正文 ≤10 行、皆指向正本）
+-- 16 ok, 0 warn, 0 error --
+exit=0

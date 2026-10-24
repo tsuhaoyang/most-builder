@@ -1,0 +1,36 @@
+== 形 1（vendor 前；公版 dw.py；TARGET=ddm-v2）
+BLOCK C1 docs/llm/wi-ai-parser-worklog.md:54 link target `b4377189-48be-4e40-9f68-42988e7b3bb4` does not exist
+BLOCK C1 docs/llm/wi-ai-parser-worklog.md:62 link target `38db58c0-df15-4693-8e3d-5105d37d3618` does not exist
+BLOCK C1 docs/llm/wi-ai-parser-worklog.md:71 link target `8b77587a-1da0-46e8-9b51-62c6f70d4ccf` does not exist
+BLOCK C1 docs/llm/wi-ai-parser-worklog.md:91 link target `77df24e2-19a1-47cb-836a-6b1c174d2f79` does not exist
+BLOCK C1 docs/llm/wi-ai-parser-worklog.md:116 link target `ca934a12-62e5-4670-a022-29c7602c86a7` does not exist
+BLOCK C1 docs/llm/wi-ai-parser-worklog.md:124 link target `52d1b490-4ada-41e8-815d-691c7fd124ed` does not exist
+BLOCK C1 docs/llm/wi-ai-parser-worklog.md:133 link target `9b4a4c82-95cd-4bc1-a864-e1f74a03010a` does not exist
+BLOCK C1 docs/llm/wi-ai-parser-worklog.md:141 link target `19d777d6-6a9a-49d5-bfc9-5b19dc078d20` does not exist
+BLOCK C1 docs/llm/wi-ai-parser-worklog.md:150 link target `3325fa79-8b6a-4f87-9e0b-0b7386f6a27c` does not exist
+BLOCK C1 docs/llm/wi-ai-parser-worklog.md:210 link target `77df24e2-19a1-47cb-836a-6b1c174d2f79` does not exist
+BLOCK C1 docs/llm/wi-ai-parser-worklog.md:211 link target `ca934a12-62e5-4670-a022-29c7602c86a7` does not exist
+BLOCK C1 docs/llm/wi-ai-parser-worklog.md:212 link target `52d1b490-4ada-41e8-815d-691c7fd124ed` does not exist
+BLOCK C1 docs/llm/wi-ai-parser-worklog.md:213 link target `9b4a4c82-95cd-4bc1-a864-e1f74a03010a` does not exist
+BLOCK C1 docs/llm/wi-ai-parser-worklog.md:214 link target `19d777d6-6a9a-49d5-bfc9-5b19dc078d20` does not exist
+BLOCK C1 docs/llm/wi-ai-parser-worklog.md:215 link target `3325fa79-8b6a-4f87-9e0b-0b7386f6a27c` does not exist
+summary: block=15 warn=0 checked=8 unimplemented=23 unimplementable=1
+exit=1
+== 形 2（vendor 前；公版 dw.py；TARGET=ddm-v2）
+BLOCK C1 docs/llm/wi-ai-parser-worklog.md:54 link target `b4377189-48be-4e40-9f68-42988e7b3bb4` does not exist
+BLOCK C1 docs/llm/wi-ai-parser-worklog.md:62 link target `38db58c0-df15-4693-8e3d-5105d37d3618` does not exist
+BLOCK C1 docs/llm/wi-ai-parser-worklog.md:71 link target `8b77587a-1da0-46e8-9b51-62c6f70d4ccf` does not exist
+BLOCK C1 docs/llm/wi-ai-parser-worklog.md:91 link target `77df24e2-19a1-47cb-836a-6b1c174d2f79` does not exist
+BLOCK C1 docs/llm/wi-ai-parser-worklog.md:116 link target `ca934a12-62e5-4670-a022-29c7602c86a7` does not exist
+BLOCK C1 docs/llm/wi-ai-parser-worklog.md:124 link target `52d1b490-4ada-41e8-815d-691c7fd124ed` does not exist
+BLOCK C1 docs/llm/wi-ai-parser-worklog.md:133 link target `9b4a4c82-95cd-4bc1-a864-e1f74a03010a` does not exist
+BLOCK C1 docs/llm/wi-ai-parser-worklog.md:141 link target `19d777d6-6a9a-49d5-bfc9-5b19dc078d20` does not exist
+BLOCK C1 docs/llm/wi-ai-parser-worklog.md:150 link target `3325fa79-8b6a-4f87-9e0b-0b7386f6a27c` does not exist
+BLOCK C1 docs/llm/wi-ai-parser-worklog.md:210 link target `77df24e2-19a1-47cb-836a-6b1c174d2f79` does not exist
+BLOCK C1 docs/llm/wi-ai-parser-worklog.md:211 link target `ca934a12-62e5-4670-a022-29c7602c86a7` does not exist
+BLOCK C1 docs/llm/wi-ai-parser-worklog.md:212 link target `52d1b490-4ada-41e8-815d-691c7fd124ed` does not exist
+BLOCK C1 docs/llm/wi-ai-parser-worklog.md:213 link target `9b4a4c82-95cd-4bc1-a864-e1f74a03010a` does not exist
+BLOCK C1 docs/llm/wi-ai-parser-worklog.md:214 link target `19d777d6-6a9a-49d5-bfc9-5b19dc078d20` does not exist
+BLOCK C1 docs/llm/wi-ai-parser-worklog.md:215 link target `3325fa79-8b6a-4f87-9e0b-0b7386f6a27c` does not exist
+summary: block=15 warn=0 checked=8 unimplemented=23 unimplementable=1
+exit=1
