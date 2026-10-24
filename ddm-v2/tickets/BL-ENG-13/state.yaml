@@ -3,10 +3,10 @@
 # 欄位正本: rules/context-budget.md §2
 
 id: BL-ENG-13
-state: backlog          # control-flow.md §1.1；建票版，尚無轉移條，首次轉移的 from 即此值
-stage: intake           # stage-table.md §1
+state: speccing   # control-flow.md §1.1；建票版，尚無轉移條，首次轉移的 from 即此值
+stage: design   # stage-table.md §1；2026-10-24 手改 requirement → design，原因見最後一條 log
 depth: L1               # human 2026-10-23 第 2 件：須為 L1、不得是 L0（log 第一條）
-assignee: orchestrator
+assignee: architect   # stage-table.md §1 第 4 列 design 的主責角色
 
 depends_on: []
 
@@ -17,3 +17,8 @@ open_questions: []
 
 log:
   - "2026-10-24 orchestrator 代建票目錄（建票版，尚無轉移條）；記 human 兩則裁示，字句不加不減。(1) human 2026-10-24 第 2 件（答「按你建議」，核可的六件之一）：「挑 BL-ENG-13，在 MOST 側走 L1。」(2) human 2026-10-23 第 2 件（答「核可」，核可的五件之一）：「MOST 側那張票的深度須為 L1、不得是 L0（ADR-0001 §2.1(b) 解凍事件要「L1 或 L2 票」且 ACC 每條有證據、無豁免）。」"
+  - "2026-10-24 backlog → speccing（human 觸發；orchestrator 依 human 2026-10-24 裁示：挑 BL-ENG-13 走 L1，並引 human 原話「授權G2」（G2 授權包，requirement 階段） 執行）"
+  - "2026-10-24 轉移[backlog/intake → speccing/requirement]：由 dw ticket move 實寫（上一條為 dw 所寫的 backlog → speccing（human 觸發…）），本條為 ACC §4.0.1 第 6 點要求補記的帶標記轉移條；state=speccing、stage=requirement、assignee=analyst。觸發者 human，依其 2026-10-24 裁示（挑 BL-ENG-13 走 L1）與手打原話「授權G2」；執行者 orchestrator。收尾：dw 實寫後檔案 mode 被改為 0600，已還原為 0644；dw 在 log 條之間多寫的空行已移除，檔尾補換行，yaml 保持合法。"
+  - "2026-10-24 human 答覆記錄（requirement 階段）。human 手打原話：『按你建議』，回應 orchestrator 當日對 human 的三題提問與建議，原文如下。(1) Q1：RBAC 的整合測試要不要納入這一票。票面「現況」字面寫「outbox／RBAC 的整合測試沒有任何 glob 覆蓋」，但「要做」只寫了 outbox 的對應測試。實際上整個 domains.yaml 沒有任何 tests/ 路徑，「測試沒有領域」是 MOST 全面的現象，範圍比一張 L1 票大很多。orchestrator 建議：不納入，另開票。這張票只登記 outbox 相關的兩個測試檔。(2) Q2：outbox 的兩支 migration（v2_0032、v2_0033）要不要納入這一票。票面沒提 migration，它們是一次性腳本。orchestrator 建議：不納入。日後要不要讓 check_agent_config 涵蓋 tests 與 migrations，是另一張票。(3) H1：只動 domains.yaml 的 paths 與文件登記，算不算 MOST 規則所說的「邏輯變更」。MOST 的規則定義是「改變 invariants 規則語意」才算邏輯變更。這次兩條 invariants 逐字不變，reviewer 在副本上逐領域逐欄比對確認過。灰色地帶是：把 7 個檔移出 auth-rbac，會改變哪個 reviewer 被觸發。orchestrator 建議：答「不算」。規則的對象是 invariants 的語意，不是 paths 的歸屬。invariants 不變由機械檢查守住，歸屬變動由 reviewer(domain) 審。答「算」的代價是 review 階段要額外多一道 human 邏輯變更裁決。orchestrator 補充：這題的語意是 MOST 自己的規則，human 若傾向保守，答「算」也完全合理。orchestrator 末句：human 回「Q1 不納入、Q2 不納入、H1 不算」就是照建議；任何一題想不同，直接點名那一題。human 的答覆即上述原話『按你建議』，不含其他文字。"
+  - "2026-10-24 requirement 階段審查記錄：producer=analyst；reviewer=reviewer(req)；一條一對。role-source=_lib/roles/analyst.md（產出 requirements.md）；role-source=_lib/roles/reviewer.md（審查，報告見 review-req.md）。reviewer(req) 第 1 輪 PASS（附條件，無阻擋項，建議 S1 至 S6）；analyst 依建議修訂後第 2 輪 PASS（附條件，無阻擋項，建議 R2-S1 至 R2-S5，analyst 已逐項採納於修訂稿二）。L1 的 requirement 審由 reviewer(req) 把關，免 human 關卡；human 已於本階段另答 Q1／Q2／H1（見上一條）。"
+  - "2026-10-24 轉移[speccing/requirement → speccing/design]：requirement 階段完成，requirements.md 狀態由 Draft 改為已定案（REQ 無 hash 欄位；供記錄：requirements.md 正文依 rules/stage-table.md §8.2 正規化後 SHA-256 為 2e1da3a6bfea663482b7454d0d12060749f6afb9bf8248c4d2f13d9a099427aa，檔案整體 SHA-256 為 90e8aff08376036fce1c1c2139a5a302168294555bcac9d53fa2a0bb06846f36）。state 仍為 speccing、stage 由 requirement 手改為 design、assignee 由 analyst 改為 architect（stage-table.md §1 第 4 列）。手改原因：dw ticket move 只推進 state，不能單獨推進同一 state 內的 stage（FB-2 先例，見 DW-38 planning §2.3）；本條為 ACC §4.0.1 第 6 點的帶標記轉移條，執行者 orchestrator，依據 human 2026-10-24 手打「授權G2」。收尾：檔案 mode 維持 0644，yaml 重載確認合法。"
