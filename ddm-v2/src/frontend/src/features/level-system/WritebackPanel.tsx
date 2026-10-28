@@ -8,7 +8,7 @@ import { useQueryClient } from '@tanstack/react-query'
 import { ApiError } from '../../shared/api/client'
 import { useWiStore } from '../wi-workbench/store'
 import { useRowNarr } from '../wi-workbench/useRowNarr'
-import { useLbWriteback, useFetchWriteback, useApplyOffline } from './api'
+import { useLbWriteback, useFetchWriteback, useApplyOffline, type WbMotion } from './api'
 
 export function WritebackPanel({ worksheetId, editable }: { worksheetId: string; editable: boolean }) {
   const { t } = useTranslation()
@@ -103,6 +103,46 @@ export function WritebackPanel({ worksheetId, editable }: { worksheetId: string;
   const droppedUnknown = dropped.filter(r => r.reason === 'unknown')
   const taskList = (rs: Array<{ task_id: number }>) => rs.map(r => r.task_id).join(t('levelSystem.listSeparator'))
 
+  // 依 diff.unmatched 的成員關係分組（不由 id 外觀推斷）：LB 有、這份工序表沒有的結果另成一區
+  const unmatchedSet = new Set(diff.unmatched)
+  const allEntries = Object.entries(diff.motions)
+  const normalEntries = allEntries.filter(([wi]) => !unmatchedSet.has(wi))
+  const externalEntries = allEntries.filter(([wi]) => unmatchedSet.has(wi))
+
+  // 單一 motion 的站別／人／件數／標記；name 由呼叫端決定（正常步驟用步驟標籤，外來結果用中性序號）
+  const renderMotion = (wi: string, mp: WbMotion, name: string, testId: string) => (
+    <div key={wi} data-testid={testId} className="flex flex-wrap items-center gap-2 text-[11px] border-b border-slate-100 py-0.5">
+      <span className="flex-1 min-w-0 truncate">{name}</span>
+      <span className="text-slate-700">
+        {mp.stations.length > 1
+          ? t('levelSystem.jobs.writeback.stationsMulti', { workers: mp.workers.length })
+          : t('levelSystem.jobs.writeback.station', { n: (mp.stations[0] ?? 0) + 1, workers: mp.workers.length })}
+      </span>
+      {mp.units_total != null && (
+        // 只有 LB 標明 cyclic 的才算確定值；其餘（推算、日後新增的來源）一律標推算，出錯時落在保守的一邊
+        <span className="text-slate-500" data-testid={`writeback-units-${wi}`}
+          title={mp.units_source === 'cyclic' ? undefined : t('levelSystem.jobs.writeback.unitsInferredHint')}>
+          {t(mp.units_source === 'cyclic' ? 'levelSystem.jobs.writeback.units' : 'levelSystem.jobs.writeback.unitsInferred', { n: mp.units_total })}
+        </span>
+      )}
+      {/* LB 對這一步的件數沒有把握（§8 units_degraded）：不沉默、也不假裝正常。
+          setup_not_one 的兩個數字本來就不該相等，不並排成「應為／實為」——只有 conservation 可比 */}
+      {(mp.units_degraded ?? []).map((u, i) => (
+        // 帶 LB 工作項編號：作業者要能回產線平衡找到是哪一列
+        // basis-full：標記很長，擠在同一行會把步驟名稱壓到只剩一個字
+        <span key={i} data-testid={`writeback-units-degraded-${wi}`} className="basis-full px-1 rounded bg-amber-100 text-amber-800">
+          {u.reason === 'conservation'
+            ? t('levelSystem.jobs.writeback.unitsDegraded.conservation', { sum: u.units_sum, quantity: u.quantity, task: u.task_id })
+            : u.reason === 'setup_not_one'
+              ? t('levelSystem.jobs.writeback.unitsDegraded.setup_not_one', { task: u.task_id })
+              : t('levelSystem.jobs.writeback.unitsDegraded.unknown', { task: u.task_id })}
+        </span>
+      ))}
+      {mp.cross_station && <span data-testid="mark-cross" className="px-1 rounded bg-red-100 text-red-800">{t('levelSystem.jobs.writeback.crossStation')}</span>}
+      {mp.offline_conflict && <span className="px-1 rounded bg-amber-100 text-amber-800">{t('levelSystem.jobs.writeback.offlineConflict')}</span>}
+    </div>
+  )
+
   return (
     <div className="rounded-xl border border-slate-200 bg-white p-2 space-y-2" data-testid="writeback-panel">
       {/* 來源座標 + 政策 + 重新取得 */}
@@ -157,38 +197,7 @@ export function WritebackPanel({ worksheetId, editable }: { worksheetId: string;
 
       {/* 每個 motion 的實際站別／人／件數（使用者語言）＋差異標記 */}
       <div className="space-y-1" data-testid="writeback-placements">
-        {Object.entries(diff.motions).map(([wi, mp]) => (
-          <div key={wi} data-testid={`writeback-motion-${wi}`} className="flex flex-wrap items-center gap-2 text-[11px] border-b border-slate-100 py-0.5">
-            <span className="flex-1 min-w-0 truncate">{label(wi)}</span>
-            <span className="text-slate-700">
-              {mp.stations.length > 1
-                ? t('levelSystem.jobs.writeback.stationsMulti', { workers: mp.workers.length })
-                : t('levelSystem.jobs.writeback.station', { n: (mp.stations[0] ?? 0) + 1, workers: mp.workers.length })}
-            </span>
-            {mp.units_total != null && (
-              // 只有 LB 標明 cyclic 的才算確定值；其餘（推算、日後新增的來源）一律標推算，出錯時落在保守的一邊
-              <span className="text-slate-500" data-testid={`writeback-units-${wi}`}
-                title={mp.units_source === 'cyclic' ? undefined : t('levelSystem.jobs.writeback.unitsInferredHint')}>
-                {t(mp.units_source === 'cyclic' ? 'levelSystem.jobs.writeback.units' : 'levelSystem.jobs.writeback.unitsInferred', { n: mp.units_total })}
-              </span>
-            )}
-            {/* LB 對這一步的件數沒有把握（§8 units_degraded）：不沉默、也不假裝正常。
-                setup_not_one 的兩個數字本來就不該相等，不並排成「應為／實為」——只有 conservation 可比 */}
-            {(mp.units_degraded ?? []).map((u, i) => (
-              // 帶 LB 工作項編號：作業者要能回產線平衡找到是哪一列
-              // basis-full：標記很長，擠在同一行會把步驟名稱壓到只剩一個字
-              <span key={i} data-testid={`writeback-units-degraded-${wi}`} className="basis-full px-1 rounded bg-amber-100 text-amber-800">
-                {u.reason === 'conservation'
-                  ? t('levelSystem.jobs.writeback.unitsDegraded.conservation', { sum: u.units_sum, quantity: u.quantity, task: u.task_id })
-                  : u.reason === 'setup_not_one'
-                    ? t('levelSystem.jobs.writeback.unitsDegraded.setup_not_one', { task: u.task_id })
-                    : t('levelSystem.jobs.writeback.unitsDegraded.unknown', { task: u.task_id })}
-              </span>
-            ))}
-            {mp.cross_station && <span data-testid="mark-cross" className="px-1 rounded bg-red-100 text-red-800">{t('levelSystem.jobs.writeback.crossStation')}</span>}
-            {mp.offline_conflict && <span className="px-1 rounded bg-amber-100 text-amber-800">{t('levelSystem.jobs.writeback.offlineConflict')}</span>}
-          </div>
-        ))}
+        {normalEntries.map(([wi, mp]) => renderMotion(wi, mp, label(wi), `writeback-motion-${wi}`))}
         {diff.missing.map(m => (
           <div key={m.wi_row_id} data-testid="writeback-missing" className="text-[11px] text-slate-500 py-0.5">
             {label(m.wi_row_id)} — {t(`levelSystem.jobs.writeback.missing.${m.reason}`, t('levelSystem.jobs.writeback.missing.no_result'))}
@@ -200,6 +209,13 @@ export function WritebackPanel({ worksheetId, editable }: { worksheetId: string;
           </div>
         ))}
       </div>
+
+      {externalEntries.length > 0 && (
+        <div data-testid="writeback-external" className="space-y-1 rounded border border-slate-200 bg-slate-50 p-1">
+          <div className="text-[11px] font-semibold text-slate-700">{t('levelSystem.jobs.writeback.externalTitle', { count: externalEntries.length })}</div>
+          {externalEntries.map(([wi, mp], i) => renderMotion(wi, mp, t('levelSystem.jobs.writeback.externalItem', { n: i + 1 }), `writeback-external-motion-${wi}`))}
+        </div>
+      )}
 
       {/* 離線差異套用（走正門） */}
       {editable && diff.offline_diffs.length > 0 && (

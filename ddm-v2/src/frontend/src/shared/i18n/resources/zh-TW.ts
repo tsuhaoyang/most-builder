@@ -1435,6 +1435,8 @@ const zhTW = {
           no_result: '產線平衡沒有這一步的結果',
         },
         missingDroppedTag: '（也可能是產線平衡沒送回來的那幾列之一）',
+        externalTitle: '以下 {{count}} 項來自 LB，不屬於這份工序表',
+        externalItem: 'LB 結果 {{n}}',
         lbDropped: '產線平衡有 {{count}} 列沒送回來（產線平衡工作項編號：{{tasks}}），這些列對不回 MOST 的步驟。下面沒有結果的步驟中，至多 {{count}} 步可能是這個原因，其餘仍照原本的說明',
         lbDroppedAtLeast: '產線平衡至少有 {{count}} 列沒送回來（只列出前幾筆的產線平衡工作項編號：{{tasks}}），這些列對不回 MOST 的步驟，下面沒有結果的步驟都可能是這個原因',
         lbDroppedKeyDamaged: '其中 {{count}} 列是對應資料損壞，請到產線平衡檢查這些列的對應資料',
