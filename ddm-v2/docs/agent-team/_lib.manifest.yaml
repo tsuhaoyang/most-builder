@@ -1,7 +1,7 @@
 # 消費端採用紀錄（MOST 採用 dev-workflow 公版；W0-C1 vendor）
 
 source: dev-workflow
-version: v0.5.9-120-gea131db   # git describe --tags ea131db5ca（dw.pyz 所建置之公版提交 C）；非 vendor 當下 HEAD
+version: v0.5.9-197-ga8e3c28   # git describe --tags a8e3c28（dw.pyz 所建置之公版提交 C；2026-10-28 DW-41 同步 dw.pyz 與 control-flow.md，其餘檔未變）；非 vendor 當下 HEAD
 adopted: 2026-10-24
 
 files:
@@ -15,7 +15,7 @@ files:
   roles/reviewer.md: "sha256:92e955fd6a5ce1459edcbce83dc185452a0a1283853d569639cc88deab19aadd"
   roles/verifier.md: "sha256:0265094bb1927afffafe22bc0bd24ae727760b2b9a6abfa4c96042ddd899c6fe"
   rules/context-budget.md: "sha256:a515b11b0f6e51efa87fe4ede59f7b86b7c657c410bbb788658c6e6469a3d5fd"
-  rules/control-flow.md: "sha256:7a7d85cb106aa618fb4785de979069f12b35c6de12f7d92f940d59e8c4954d41"
+  rules/control-flow.md: "sha256:baea8be03f2148b771d24e0451b7a0dc0843e57632b6310f8a5f9a6911e020f0"
   rules/doc-taxonomy.md: "sha256:e42ce9ec756877ec06f48842ac350b767c3e7e98777105cb7bea63f846ddfb3d"
   rules/stage-table.md: "sha256:81dc22494d335ae745b3acd63193492b3b47072dfe91a7657c126650dc40b834"
   templates/ACC.md: "sha256:13e7759a6a159168c299581fbed048b11ba0c95b7fa0b0e88a3cf004fd70714a"

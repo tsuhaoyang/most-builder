@@ -127,10 +127,19 @@ count(tickets where state == awaiting_human) ≤ 1     ← C24
 | `awaiting_human(acceptance)` | `ready` | ACC 定案 + task 已切分 | **human** 核可後 orchestrator |
 | `ready` | `active` | 開工 | implementer |
 | `active` | `awaiting_human(…)` | 走到關卡 | 該階段主責角色 |
+| `awaiting_human(docsync)` | `active` | human 已具體核可文件同步，記錄核可來源後續作；不是文件同步完成或結案 | orchestrator |
 | `active` | `closed` | 結案條件成立 | orchestrator |
 | `active` | `speccing` | **回頭**：`verify` FAIL 且屬 L-契約 / L-設計 | **human** 裁決後 orchestrator |
 | 任何活躍狀態 | `blocked` | 依賴不可用 | 任何角色 |
 | `blocked` | 原狀態 | 阻擋解除 | 任何角色 |
+
+**`awaiting_human(docsync)` → `active` 只供 docsync 放行**：human 先核可具體路徑／變更提案；
+orchestrator 執行時須記可追溯的原始核可來源（`dw ticket move` 的 `--basis`，必填、單行），不代替 human 決定。
+回 `active` 後 `stage` 為 `docsync`、`assignee` 為 `doc-sync`，仍須完成文件同步與既有結案條件，才由 orchestrator 走 `active` → `closed`。
+不增 `awaiting_human(docsync)` → `closed` 捷徑，也不增 `verify`／`spec_approval` 出口。
+
+**gate 比對**：表中具名來源／目的 gate 必須精確對上；`awaiting_human(…)` 只表示六個既有 gate 的通配，不代表新 gate；
+狀態基本詞相同不得抹去具名 gate 限制。
 
 **L0 票的直通路徑**：`backlog` → `ready`，跳過 `speccing` 與
 `awaiting_human(acceptance)`。依據是 `stage-table.md` §6（L0 走 1→7→8→9）。

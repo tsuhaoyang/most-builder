@@ -1,0 +1,25 @@
+FAIL (24):
+- zh-TW/mixed: external block missing
+- zh-TW/mixed: external block lacks count 2
+- zh-TW/mixed: external rows lack neutral labels
+- zh-TW/mixed: wrong language in external block
+- zh-TW/mixed: external ids still in normal list
+- zh-TW/mixed: normal row count != 1
+- zh-TW/allExternal: external block missing
+- zh-TW/allExternal: external block lacks count 2
+- zh-TW/allExternal: external rows lack neutral labels
+- zh-TW/allExternal: wrong language in external block
+- zh-TW/allExternal: external ids still in normal list
+- zh-TW/allExternal: normal row count != 0
+- zh-TW: single external count
+- en/mixed: external block missing
+- en/mixed: external block lacks count 2
+- en/mixed: external rows lack neutral labels
+- en/mixed: external ids still in normal list
+- en/mixed: normal row count != 1
+- en/allExternal: external block missing
+- en/allExternal: external block lacks count 2
+- en/allExternal: external rows lack neutral labels
+- en/allExternal: external ids still in normal list
+- en/allExternal: normal row count != 0
+- en: single external count
