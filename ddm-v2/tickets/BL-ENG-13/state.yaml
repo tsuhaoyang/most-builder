@@ -3,10 +3,10 @@
 # 欄位正本: rules/context-budget.md §2
 
 id: BL-ENG-13
-state: active   # control-flow.md §1.1；2026-10-28 G6 implement 開工
+state: awaiting_human(verify)   # 2026-10-28 G8 verify 完成，依 DW-38 planning §2.3 等待 verify 關卡處置
 stage: verify   # stage-table.md §1 第 9 列；G7 review 完成後交 verifier
 depth: L1               # human 2026-10-23 第 2 件：須為 L1、不得是 L0（log 第一條）
-assignee: verifier     # stage-table.md §1 第 9 列 verify 的主責角色
+assignee: human        # awaiting_human(verify) 關卡
 design_hash: 792aa34f6057bfcb1301447ad4f56ff6c1636b1420e8866e06ae377114b85c6d   # tickets/BL-ENG-13/design.md 定案後正規化 SHA-256（取法見該檔檔頭 hash取法、§8.2 ++c==2、排除整個 frontmatter；於 ddm-v2/ 根算、兩跑同值可重現）；填完定案紀錄 body 後的定案值，hash 只記本欄、不寫進 design.md
 acc_hash: 792aa34f6057bfcb1301447ad4f56ff6c1636b1420e8866e06ae377114b85c6d   # ACC-1.md §1 綁的 normalized_sha256（= design_hash，ACC 綁 design，§8）；human 2026-10-24 核可 ACC-1 v2 定案（沿 DW-38 先例：值同 design_hash；已以 §8.2 shell 管線 awk 'f; /^---$/ && ++c==2 {f=1}' | tr -d '\r' | sed 's/[[:space:]]*$//' | sha256sum 於 ddm-v2/ 根兩跑重算，與 design_hash 相同）
 
@@ -63,3 +63,6 @@ log:
   - "2026-10-28 review-implement[domain]：producer=implementer；reviewer=most-logic-reviewer；role-source=ddm-v2/docs/agent-team/agents/most-logic-reviewer.md；domain_id=auth-rbac"
   - "2026-10-28 review-implement[security]：producer=implementer；reviewer=copilot-security-reviewer；role-source=ddm-v2/docs/agent-team/_lib/roles/reviewer.md(review_type=security)"
   - "2026-10-28 轉移[active/review → active/verify]：G7 review 完成；mechanical、auth-rbac domain、security 審查均無阻擋級問題。domain reviewer 提出的 auth-rbac.md 文件同步建議先擱置，該檔不在本次授權範圍，需另取 A1；本 commit 不修改它。stage=verify、assignee=verifier。"
+  - "2026-10-28 A1授權[verify]：human 手打原話「授權G8」，回應 orchestrator 提出的 G8 授權包；限一筆 MOST commit，逐檔限 `ddm-v2/tickets/BL-ENG-13/state.yaml`、`ddm-v2/tickets/BL-ENG-13/verify-report.md`、`ddm-v2/tickets/BL-ENG-13/acc/evidence/ACC-1-1-2026-10-28.md`、`ddm-v2/tickets/BL-ENG-13/acc/evidence/ACC-1-2-2026-10-28.md`、`ddm-v2/tickets/BL-ENG-13/acc/evidence/ACC-1-3-2026-10-28.md`、`ddm-v2/tickets/BL-ENG-13/acc/evidence/ACC-1-4-2026-10-28.md`、`ddm-v2/tickets/BL-ENG-13/acc/evidence/ACC-1-5-2026-10-28.md`、`ddm-v2/tickets/BL-ENG-13/acc/evidence/ACC-1-6-2026-10-28.md`、`ddm-v2/tickets/BL-ENG-13/acc/evidence/ACC-1-7-2026-10-28.md`、`ddm-v2/tickets/BL-ENG-13/acc/evidence/ACC-1-8-2026-10-28.md`、`ddm-v2/tickets/BL-ENG-13/acc/evidence/ACC-1-9-2026-10-28.md`、`ddm-v2/tickets/BL-ENG-13/acc/evidence/ACC-1-10-2026-10-28.md`、`ddm-v2/tickets/BL-ENG-13/acc/evidence/ACC-1-11-2026-10-28.md`、`ddm-v2/tickets/BL-ENG-13/acc/evidence/ACC-1-12-2026-10-28.md`、`ddm-v2/tickets/BL-ENG-13/acc/evidence/ACC-1-13-2026-10-28.md`、`ddm-v2/tickets/BL-ENG-13/acc/evidence/ACC-1-14-2026-10-28.md`、`ddm-v2/tickets/BL-ENG-13/acc/evidence/ACC-1-15-2026-10-28.md`、`ddm-v2/tickets/BL-ENG-13/acc/evidence/ACC-1-16-2026-10-28.md`；.git 僅 stage 此清單、write-tree 與 1 筆 commit。未授權任何其他路徑；10 個既有 untracked 檔不動，ACC bounds 既有 FAIL 不豁免。"
+  - "2026-10-28 G8 verify：producer=verifier；role-source=ddm-v2/docs/agent-team/_lib/roles/verifier.md。依 ACC-1-1～1-16 對應 `bl13_checks.py` c1～c16 全部 exit 0，16/16 PASS；PRE-1～PRE-6 全部 PASS；正式逐項輸出見 `verify-report.md` 與 `acc/evidence/ACC-1-<n>-2026-10-28.md`。MOST HEAD 在驗證期間維持 f7e2491e15327db614ac30b36c25e1e3e2a23803；branch feature/lb-writeback；10 個 untracked 全保留；基線 9 檔 hash 相同；無 tracked/staged 殘留或 index mtime 變化。DW-38 ACC bounds 對 status 10 行與基線 9 行的 FAIL 未豁免。"
+  - "2026-10-28 轉移[active/verify → awaiting_human(verify)/verify]：G8 verify 證據完成，依 DW-38 planning §2.3 記錄本階段離場；stage 維持 verify、assignee 改 human。手改原因：control-flow.md §1.3 未列 verify 後轉移，依規劃表明列之路徑執行並交 DW-37 承載。流程觀察：本票 ACC 明定 verify 階段沒有 human 判定項（ACC-1.md §0 C(1)），但 planning 指定 awaiting_human(verify)；此狀態與 control-flow.md §1.2 的 gate 定義適用條件不一致，僅記為待裁決的流程缺口，不視為新增 ACC human 項或已取得後續 docsync 授權。"
