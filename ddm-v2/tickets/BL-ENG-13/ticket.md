@@ -25,3 +25,10 @@
 ## 結果
 
 <!-- 結案時追記。 -->
+
+- 2026-10-28 G9：human 原始「G9核可」，後以 HD-7 原話「按你建議的 並且核可此結案方案」明確核可本票結案方案；交棒與終態以 [state.yaml](state.yaml) 為準，票面原始八欄保留。
+- 已交付：auth-rbac 前端 paths 收窄為 api／types／auth，7 檔進白名單，兩個 outbox 測試與 ADR-027 登記；兩條 invariants、i18n 與其他領域不變。實作 commit：`ec51a1910762579638bf4e1caef704dd9b0e4981`；`TASK-BL-ENG-13-1` 由 `agent_done` 翻 `done`。
+- 驗收證據：[verify-report.md](verify-report.md) 與 [acc/evidence/](acc/evidence/)；G8 的 c1～c16 為 16/16 PASS，PRE-1～PRE-6 全部 PASS，G9 未重跑。
+- 不同步決定：依 [design.md 的 DESIGN-8](design.md#design-8auth-rbacmd-本票不同步記殘留一行對應-req-8) 與 HD-7，本次不改 `docs/domains/auth-rbac.md`，亦不再修改 `docs/agent-team/domains.yaml`。已知索引程式入口仍寫 `shared/**` 且未列 ADR-027，接受為本票殘留；備案 B 與未來索引同步仍須另取 human 授權，`open_questions` 保留，不得清 context。
+- 流程記錄：`awaiting_human(verify)/verify → awaiting_human(docsync)/docsync → closed/docsync` 的連續轉移見 state log；control-flow.md §1.3 缺對應具體列，故手動記錄。FB30 仍為候選流程回饋，不代表規則已改。
+- 結案範圍僅 BL-ENG-13；DW-38 bounds 的 status 10 行對基線 9 行既有 FAIL 不豁免，不宣稱 DW-38 完成。10 個既有 untracked 檔不得動。`decisions.log` 由主 context 追加；本次單筆 MOST 結案 commit 的檢查、審查與提交亦由主 context 完成。

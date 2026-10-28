@@ -3,10 +3,10 @@
 # 欄位正本: rules/context-budget.md §2
 
 id: BL-ENG-13
-state: awaiting_human(verify)   # 2026-10-28 G8 verify 完成，依 DW-38 planning §2.3 等待 verify 關卡處置
-stage: verify   # stage-table.md §1 第 9 列；G7 review 完成後交 verifier
+state: closed   # 2026-10-28 G9：依 human「G9核可」與 HD-7 核可之結案方案
+stage: docsync   # stage-table.md §1 第 10 列；DESIGN-8 不同步決定與結案結果已記錄
 depth: L1               # human 2026-10-23 第 2 件：須為 L1、不得是 L0（log 第一條）
-assignee: human        # awaiting_human(verify) 關卡
+assignee: "—"        # 終態；票面原始八欄保持不變，交棒以本檔為準
 design_hash: 792aa34f6057bfcb1301447ad4f56ff6c1636b1420e8866e06ae377114b85c6d   # tickets/BL-ENG-13/design.md 定案後正規化 SHA-256（取法見該檔檔頭 hash取法、§8.2 ++c==2、排除整個 frontmatter；於 ddm-v2/ 根算、兩跑同值可重現）；填完定案紀錄 body 後的定案值，hash 只記本欄、不寫進 design.md
 acc_hash: 792aa34f6057bfcb1301447ad4f56ff6c1636b1420e8866e06ae377114b85c6d   # ACC-1.md §1 綁的 normalized_sha256（= design_hash，ACC 綁 design，§8）；human 2026-10-24 核可 ACC-1 v2 定案（沿 DW-38 先例：值同 design_hash；已以 §8.2 shell 管線 awk 'f; /^---$/ && ++c==2 {f=1}' | tr -d '\r' | sed 's/[[:space:]]*$//' | sha256sum 於 ddm-v2/ 根兩跑重算，與 design_hash 相同）
 
@@ -20,8 +20,8 @@ tasks:
     summary: "依 design.md「實作內容」更新 docs/agent-team/domains.yaml：檔頭 updated、no_domain_allowlist 新增 7 檔、auth-rbac paths 收窄並登記兩個 outbox 測試與 ADR-027；兩條 invariants、i18n 與其餘領域欄位保持不變。不改 docs/domains/auth-rbac.md、不新增 outbox 領域。orchestrator 的 state.yaml 轉移與 decisions.log 追加須配合本 task 在 G6 同一筆 commit 完成，不得拆成第二筆。完成時依 design 與 checkpoint 執行核對。"
     assignee: implementer
     depends_on: []
-    status: agent_done
-    commit: null
+    status: done
+    commit: ec51a1910762579638bf4e1caef704dd9b0e4981
     covers: [DESIGN-1, DESIGN-2, DESIGN-3, DESIGN-4, DESIGN-5, DESIGN-6, DESIGN-7, DESIGN-8]
     read_first:
       - tickets/BL-ENG-13/design.md
@@ -66,3 +66,11 @@ log:
   - "2026-10-28 A1授權[verify]：human 手打原話「授權G8」，回應 orchestrator 提出的 G8 授權包；限一筆 MOST commit，逐檔限 `ddm-v2/tickets/BL-ENG-13/state.yaml`、`ddm-v2/tickets/BL-ENG-13/verify-report.md`、`ddm-v2/tickets/BL-ENG-13/acc/evidence/ACC-1-1-2026-10-28.md`、`ddm-v2/tickets/BL-ENG-13/acc/evidence/ACC-1-2-2026-10-28.md`、`ddm-v2/tickets/BL-ENG-13/acc/evidence/ACC-1-3-2026-10-28.md`、`ddm-v2/tickets/BL-ENG-13/acc/evidence/ACC-1-4-2026-10-28.md`、`ddm-v2/tickets/BL-ENG-13/acc/evidence/ACC-1-5-2026-10-28.md`、`ddm-v2/tickets/BL-ENG-13/acc/evidence/ACC-1-6-2026-10-28.md`、`ddm-v2/tickets/BL-ENG-13/acc/evidence/ACC-1-7-2026-10-28.md`、`ddm-v2/tickets/BL-ENG-13/acc/evidence/ACC-1-8-2026-10-28.md`、`ddm-v2/tickets/BL-ENG-13/acc/evidence/ACC-1-9-2026-10-28.md`、`ddm-v2/tickets/BL-ENG-13/acc/evidence/ACC-1-10-2026-10-28.md`、`ddm-v2/tickets/BL-ENG-13/acc/evidence/ACC-1-11-2026-10-28.md`、`ddm-v2/tickets/BL-ENG-13/acc/evidence/ACC-1-12-2026-10-28.md`、`ddm-v2/tickets/BL-ENG-13/acc/evidence/ACC-1-13-2026-10-28.md`、`ddm-v2/tickets/BL-ENG-13/acc/evidence/ACC-1-14-2026-10-28.md`、`ddm-v2/tickets/BL-ENG-13/acc/evidence/ACC-1-15-2026-10-28.md`、`ddm-v2/tickets/BL-ENG-13/acc/evidence/ACC-1-16-2026-10-28.md`；.git 僅 stage 此清單、write-tree 與 1 筆 commit。未授權任何其他路徑；10 個既有 untracked 檔不動，ACC bounds 既有 FAIL 不豁免。"
   - "2026-10-28 G8 verify：producer=verifier；role-source=ddm-v2/docs/agent-team/_lib/roles/verifier.md。依 ACC-1-1～1-16 對應 `bl13_checks.py` c1～c16 全部 exit 0，16/16 PASS；PRE-1～PRE-6 全部 PASS；正式逐項輸出見 `verify-report.md` 與 `acc/evidence/ACC-1-<n>-2026-10-28.md`。MOST HEAD 在驗證期間維持 f7e2491e15327db614ac30b36c25e1e3e2a23803；branch feature/lb-writeback；10 個 untracked 全保留；基線 9 檔 hash 相同；無 tracked/staged 殘留或 index mtime 變化。DW-38 ACC bounds 對 status 10 行與基線 9 行的 FAIL 未豁免。"
   - "2026-10-28 轉移[active/verify → awaiting_human(verify)/verify]：G8 verify 證據完成，依 DW-38 planning §2.3 記錄本階段離場；stage 維持 verify、assignee 改 human。手改原因：control-flow.md §1.3 未列 verify 後轉移，依規劃表明列之路徑執行並交 DW-37 承載。流程觀察：本票 ACC 明定 verify 階段沒有 human 判定項（ACC-1.md §0 C(1)），但 planning 指定 awaiting_human(verify)；此狀態與 control-flow.md §1.2 的 gate 定義適用條件不一致，僅記為待裁決的流程缺口，不視為新增 ACC human 項或已取得後續 docsync 授權。"
+  - "2026-10-28 A1授權[docsync]：human 原始手打原話「G9核可」，回應 G9 授權包；本階段依後續 HD-7 明確核可的結案方案執行，限一筆 MOST commit，逐檔限 `ddm-v2/tickets/BL-ENG-13/state.yaml`、`ddm-v2/tickets/BL-ENG-13/ticket.md`、`ddm-v2/docs/agent-team/decisions.log`。不改 `docs/domains/auth-rbac.md`、`docs/agent-team/domains.yaml` 或其他檔案；10 個既有 untracked 檔必須保留不動。DW-38 ACC bounds 對 status 10 行與基線 9 行的既有 FAIL 不豁免，不宣稱 DW-38 完成。doc-sync 僅編輯 state.yaml 與 ticket.md；decisions.log 由主 context 追加，檢查、審查與提交由主 context 執行。"
+  - "2026-10-28 human 答覆[HD-7]：human 手打原話「按你建議的 並且核可此結案方案」，逐字；核可提案為不改 auth-rbac.md／domains.yaml，依 DESIGN-8 記錄不同步決定，更新 state.yaml／ticket.md／decisions.log，回填實作 commit ec51a1910762579638bf4e1caef704dd9b0e4981，於單筆 MOST commit 結案。本答覆獨立於 BL-ENG-13 acceptance 階段的 ACC-1-16 答覆，不新增或取代 ACC human 判定。"
+  - "2026-10-28 轉移[awaiting_human(verify)/verify → awaiting_human(docsync)/docsync]：依 human「G9核可」與 HD-7 核可的結案方案，交 doc-sync 記錄不同步決定與結果；stage=docsync、assignee=doc-sync。手動轉移原因：control-flow.md §1.3 缺 verify 後與 docsync 結案的具體轉移列，依 DW-38 planning §2.3 記錄本次路徑；FB30 仍為候選流程回饋，不是已採納規則，本次不改控制流規則。"
+  - "2026-10-28 G9 docsync：producer=doc-sync；role-source=_lib/roles/doc-sync.md。依 DESIGN-8 與 HD-7，本票不同步 docs/domains/auth-rbac.md，亦不再修改 domains.yaml；接受的殘留為索引程式入口仍寫 shared/**、未列 ADR-027，詳 design.md 的 DESIGN-8／殘留 R1。G8 證據見 verify-report.md 與 acc/evidence/：c1～c16 為 16/16 PASS，PRE-1～PRE-6 全部 PASS；本階段未重跑，不宣稱已同步權威文件。備案 B 與未來索引同步仍屬延後範圍，open_questions 保留，不得清 context。decisions.log 追記交主 context 落檔；機械檢查與語意複核亦交主 context，未在此宣稱通過。"
+  - "2026-10-28 G9 TASK-BL-ENG-13-1：依 human HD-7 核可與 G8 驗證結果，status 由 agent_done 翻 done；commit 由 null 回填既有 MOST 實作 commit ec51a1910762579638bf4e1caef704dd9b0e4981（本地 git commit 識別碼，不是本次結案 commit）。不改 summary、covers、depends_on 或既有 ACC 答覆。"
+  - "2026-10-28 docsync 階段角色配對：producer=doc-sync；reviewer=most-code-reviewer；role-source=_lib/roles/doc-sync.md；role-source=docs/agent-team/agents/most-code-reviewer.md。"
+  - "2026-10-28 docsync 階段角色配對：producer=doc-sync；reviewer=copilot-security-reviewer；role-source=_lib/roles/doc-sync.md；role-source=_lib/roles/reviewer.md（type=security）。"
+  - "2026-10-28 轉移[awaiting_human(docsync)/docsync → closed/docsync]：依 human HD-7 已明確核可的結案方案，DESIGN-8 不同步決定與 ticket.md 結果已記錄，task=done 並回填實作 commit；state=closed、stage=docsync、assignee=—。手動轉移原因同上：control-flow.md §1.3 無對應具體列；FB30 仍為候選，未變更規則。此為 BL-ENG-13 結案記錄，待主 context 同筆追加 decisions.log、完成檢查／審查並提交；DW-38 bounds 既有 FAIL 未豁免，DW-38 不因此完成。open_questions 的延後範圍維持未決，不得清 context。"
