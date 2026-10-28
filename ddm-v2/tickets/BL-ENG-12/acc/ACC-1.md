@@ -1,6 +1,7 @@
 ---
 類別: "ACC"
-狀態: "已定案"
+狀態: "已取代"
+superseded_by: "acc/ACC-1-v2.md"
 版本: "v1"
 票: "BL-ENG-12"
 上游: "REQ-1 至 REQ-4 / DESIGN-1 至 DESIGN-4"

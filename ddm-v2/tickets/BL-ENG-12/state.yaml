@@ -3,16 +3,16 @@
 # 欄位正本: rules/context-budget.md §2
 
 id: BL-ENG-12
-state: speccing
-stage: design
+state: closed
+stage: closed
 depth: L1               # human 2026-10-28 20:54「好 按你建議」：L1 進需求與設計
-assignee: architect
+assignee: verifier
 design_hash: 389b43472a4a670693dfd6c7e8e052aff3349b64ed968495684293514a33e819
 acc_hash: null
 
 depends_on: []
 
-next_action: "design 已定案並寫 design_hash。下一步需 human 核可 ACC 階段包（精確暫存/提交/checkpoint 與 ACC 內容）才可起草 ACC；不切 implement task、不寫 git。"
+next_action: "已結案。無後續；採用驗證的公版面回饋見 dev-workflow tickets/DW-41。"
 
 read_first:
   - ticket.md
@@ -31,3 +31,6 @@ log:
   - "2026-10-28 requirement 階段完成：producer=orchestrator 代 analyst 角色起草（Draft）；reviewer=獨立 context 的 reviewer(req) R1 BLOCK（REQ-2/REQ-4 衝突、REQ-3 含實作結構、來源錨點懸空，三項成立）→ 修正 → R2（另一獨立實例）PASS；原文保留於 review-req.md。requirements.md 狀態改為已定案。stage requirement→design、assignee analyst→architect 為手改（state 仍 speccing，同 BL-ENG-13 先例）。仍未授權 ACC、implement、git 寫入。"
   - "2026-10-28 design 階段：orchestrator 代 architect 起草 design.md（Draft）；獨立 reviewer(design) R1 BLOCK（待決項未定案、舊快照宣稱與程式不符）→ 修訂 → R2（另一獨立實例）PASS；原文保留於 review-design.md。design 尚未定案、未算 design_hash，待 human 核可。依據：human 2026-10-28 22:19「都授權」六檔範圍；無 git 寫入。"
   - "2026-10-28 22:30 human 原話「都核可」核可 design 定案；design.md 狀態改已定案，design_hash 寫入 state.yaml（取法見 design.md 檔頭）。ACC、implement、git 寫入仍未授權。"
+  - "2026-10-28 22:34 human 原話「核可 ACC-1 並照上列四項」：ACC-1 v1 定案寫入 acc/ACC-1.md；取回歸基線（evidence/baseline-2026-10-28.json）與負向對照（未修改元件 --new rc=1、24 項失敗）；git 提交 871e66c（僅 tickets/BL-ENG-12 與三個 vendor 檔）；implement 開工。偏離：speccing→active/implement 為手改，未走 dw 轉移（同 DW-37 先例）；之後 stage→verify 亦手改。"
+  - "2026-10-28 implement 完成（producer=orchestrator；未提交）：WritebackPanel.tsx 依 diff.unmatched 分組並新增 writeback-external 區、zh-TW/en 各兩個 key、isolated-tests/writeback-external.mjs；自檢 --regress/--new PASS、tsc 0。獨立 verifier 報告見 verify-2026-10-28.md：12 格 PASS、ACC-1-7 FAIL（工作樹有使用者既有未追蹤檔），總判定 BLOCK，待 human 裁決；未結案。"
+  - "2026-10-28 22:47 human 原話「核可」：ACC-1 v3（僅更正 ACC-1-7 措辭）。獨立 verifier R2（v2 字面缺陷 BLOCK）→ v3 → R3 PASS；ACC-1 全 7 項 × zh-TW/en PASS。提交 implement 與驗證記錄（兩個 commit）後結案；state 手改為 closed（未走 dw 轉移，同本票其他手改）。"

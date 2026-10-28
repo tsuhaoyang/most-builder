@@ -1,0 +1,12 @@
+# 開票前既有未追蹤檔（使用者原有，非本票所增）
+# 補列：2026-10-28 22:44 orchestrator；依據：本票 implement 前的保護值核對已記錄此批，現以 git status 與 mtime 重列
+2026-10-17 06:56:25.689474715 +0800 ddm-v2/ie_v3_sequences.csv
+2026-10-17 07:00:50.805428482 +0800 ddm-v2/ie_v3_wi_structure.csv
+2026-10-17 07:24:41.265163739 +0800 ddm-v2/ruleset_MINIMOST_FACTORY_V2.csv
+2026-10-17 07:24:41.269163738 +0800 ddm-v2/ruleset_MINIMOST_FACTORY_V2.md
+2026-10-17 06:56:17.181476250 +0800 ddm-v2/scripts/export_ie_v3_sequences.py
+2026-10-17 07:00:46.261429308 +0800 ddm-v2/scripts/export_ie_v3_wi_structure.py
+2026-10-17 07:24:17.257168706 +0800 ddm-v2/scripts/export_rule_set.py
+2026-10-17 06:48:48.289560983 +0800 ddm-v2/scripts/export_standard_templates.py
+2026-10-26 01:02:13.186752438 +0800 ddm-v2/standard_templates.csv
+2026-09-22 21:49:13.647743342 +0800 智能解析WI-系統架構圖.md

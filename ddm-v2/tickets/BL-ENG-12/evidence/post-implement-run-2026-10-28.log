@@ -1,0 +1,2 @@
+PASS --regress: 0 network requests, 0 pageerrors
+PASS --new: 0 network requests, 0 pageerrors
