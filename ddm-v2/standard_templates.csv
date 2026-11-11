@@ -1,0 +1,17 @@
+﻿no,seq_kind,name_zh,name_en,category,keywords,rule_set_code,tech_line,total_tmu,total_seconds,status
+1,CM,功能測試(治具),function test fixture,檢測,function test|fixture|治具|測試,MINIMOST_FACTORY_V2,A10 B0 G6 M6 X55.556 I6 A0,83.556,3.008,standard
+2,CM,按壓/按鈕,press,操作,press|push|button|按|壓,MINIMOST_FACTORY_V2,A6 B0 G3 M6 X0 I0 A0,15.0,0.54,standard
+3,CM,掃描/檢查,scan/check,檢測,scan|check|test|inspect|掃|檢查|測,MINIMOST_FACTORY_V2,A10 B0 G3 M0 X6 I6 A0,25.0,0.9,standard
+4,CM,插接線材,plug cable,組裝,plug|connect|cable|接線|插接,MINIMOST_FACTORY_V2,A6 B0 G6 M6 X0 I10 A0,28.0,1.008,standard
+5,CM,撕開/移除,open/remove,拆解,open|remove|unpack|tear|pulltab|pull tab|撕|拆|移除,MINIMOST_FACTORY_V2,A6 B0 G10 M10 X0 I0 A0,26.0,0.936,standard
+6,CM,鎖附螺絲,screw,鎖附,screw|lock|tighten|fasten|鎖|螺絲,MINIMOST_FACTORY_V2,A6 B0 G6 M3 X0 I6 A0,21.0,0.756,standard
+7,CM,電動鎖附(多顆),power driver screws,鎖附,driver|power screw|電動鎖|多螺絲,MINIMOST_FACTORY_V2,A6 B0 G6 M3 X0 I6 A0,21.0,0.756,standard
+8,GM,壓合卡扣,snap fit,組裝,snap|clip|卡扣|壓合,MINIMOST_FACTORY_V2,A10 B0 G6 A6 B0 P32 A0,54.0,1.944,standard
+9,GM,小範圍拿取(≤50cm),take short reach,取放,take short|近距|小範圍|拿近件,MINIMOST_FACTORY_V2,A10 B0 G6 A10 B0 P16 A0,42.0,1.512,standard
+10,GM,拆箱取件,unpack take out,取放,unpack|take out of box|拆箱|取出,MINIMOST_FACTORY_V2,A10 B0 G6 A10 B0 P3 A0,29.0,1.044,standard
+11,GM,拿取,take,取放,take|grab|get|pick|拿|取,MINIMOST_FACTORY_V2,A6 B0 G6 A6 B0 P3 A0,21.0,0.756,standard
+12,GM,插入/組裝,insert,組裝,insert|assemble|插|組,MINIMOST_FACTORY_V2,A6 B0 G10 A3 B0 P24 A0,43.0,1.548,standard
+13,GM,放置,place,取放,place|put|put on|放|置,MINIMOST_FACTORY_V2,A6 B0 G6 A6 B0 P16 A0,34.0,1.224,standard
+14,GM,移動/走步,move,搬運,move|go|transport|walk|trolley|cart|走|移,MINIMOST_FACTORY_V2,A0 B0 G0 A0 B0 P0 A0,0.0,0.0,standard
+15,GM,精密對準裝配,precision fit,組裝,fit precisely|align fit|精密|對準裝,MINIMOST_FACTORY_V2,A10 B0 G10 A10 B0 P24 A0,54.0,1.944,standard
+16,GM,貼標籤,stick label,貼附,stick|label|sticker|貼|標籤,MINIMOST_FACTORY_V2,A6 B0 G16 A6 B0 P24 A0,52.0,1.872,standard
