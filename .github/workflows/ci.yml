@@ -1,6 +1,6 @@
 name: CI
 
-# 重大驗證測試點通過，CI 才綠（見 ddm-v2/docs/CI_GATES.md）。
+# 重大驗證測試點通過，CI 才綠（見 docs/CI_GATES.md）。
 on:
   push:
     branches: ['**']
@@ -19,9 +19,6 @@ jobs:
   deps:
     name: 依賴（鎖檔同步 + 安全稽核）
     runs-on: ubuntu-latest
-    defaults:
-      run:
-        working-directory: ddm-v2
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
@@ -54,7 +51,7 @@ jobs:
       - name: 安裝 pip-audit（釘版）
         run: pip install pip-audit==2.10.1
 
-      # 阻斷式（非 warn）。理由與豁免政策見 ddm-v2/.pip-audit-ignore 的檔頭
+      # 阻斷式（非 warn）。理由與豁免政策見 .pip-audit-ignore 的檔頭
       # 與 docs/CI_GATES.md「依賴鎖版與安全稽核」一節。
       # requirements.lock（會被部署出去的那一組）**不接受任何豁免**。
       - name: 依賴安全稽核（pip-audit，阻斷式）
@@ -63,9 +60,6 @@ jobs:
   backend:
     name: 後端（unit + integration + 核心邏輯 + 乾淨依賴）
     runs-on: ubuntu-latest
-    defaults:
-      run:
-        working-directory: ddm-v2
     services:
       postgres:
         image: postgres:16-alpine
@@ -152,7 +146,7 @@ jobs:
     runs-on: ubuntu-latest
     defaults:
       run:
-        working-directory: ddm-v2/src/frontend
+        working-directory: src/frontend
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
@@ -199,7 +193,6 @@ jobs:
       # 與 backend job 同樣走鎖檔：e2e 若還用 `-e ".[dev]"`，
       # 漂移只是從 backend 換個地方繼續發生（而且 e2e 打的是 preview server，更難追）。
       - name: 後端依賴（鎖檔 + hash 驗證）+ migrate + seed
-        working-directory: ddm-v2
         run: |
           pip install --require-hashes -r requirements-build.lock
           pip install --require-hashes --no-build-isolation -r requirements-dev.lock
@@ -209,18 +202,17 @@ jobs:
           python scripts/dev_seed_templates.py
           python scripts/dev_seed_30rows.py
       - name: 建置前端
-        working-directory: ddm-v2/src/frontend
+        working-directory: src/frontend
         run: |
           npm ci
           npm run build
           npx playwright install --with-deps chromium
       - name: 起 preview_server（前端+API 同源）
-        working-directory: ddm-v2
         run: |
           nohup python scripts/preview_server.py > /tmp/preview.log 2>&1 &
           for i in $(seq 1 20); do curl -sf http://127.0.0.1:8099/ >/dev/null && break; sleep 1; done
       - name: Playwright smoke
-        working-directory: ddm-v2/src/frontend
+        working-directory: src/frontend
         env:
           E2E_BASE_URL: http://127.0.0.1:8099
         run: npx playwright test --reporter=line

@@ -41,9 +41,6 @@ jobs:
         # 3.12 = 開發機的實際版本（pyproject 宣告 requires-python >= 3.11，兩者都在支援範圍）。
         # 兩條都跑，才對得起「>=3.11」這個宣告——只跑一條就是宣告又一次說謊。
         python-version: ['3.11', '3.12']
-    defaults:
-      run:
-        working-directory: ddm-v2
     services:
       postgres:
         image: postgres:16-alpine
@@ -111,9 +108,6 @@ jobs:
   audit-latest:
     name: 安全稽核（最新版解析，早期預警）
     runs-on: ubuntu-latest
-    defaults:
-      run:
-        working-directory: ddm-v2
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
@@ -130,9 +124,6 @@ jobs:
   docker-image:
     name: 容器映像（build + 起容器 + 端點/黃金值 smoke）
     runs-on: ubuntu-latest
-    defaults:
-      run:
-        working-directory: ddm-v2
     steps:
       - uses: actions/checkout@v4
 
@@ -146,7 +137,7 @@ jobs:
       # ⚠️ 措辭更新（2026-08-15）：這裡原本寫的理由是「**base image（python:3.11-slim、
       # node:20-slim）是會被上游重建的**，那個漂移只有時間觸發得到，正好適合 nightly」。
       # **那句話現在是假的**：兩個 base image 已於 2026-08-15 用 manifest list digest
-      # 釘死（見 ddm-v2/Dockerfile 的 FROM 行與其上方說明），tag 再怎麼被上游重建，
+      # 釘死（見 Dockerfile 的 FROM 行與其上方說明），tag 再怎麼被上游重建，
       # 這裡 build 到的都是同一份位元組。這支 job 不會、也不可能再看到 base image 漂移。
       #
       # 釘死之後這支 job 實際還在抓什麼（價值仍在，只是換了項目）：

@@ -1,26 +1,36 @@
-docker-wheels/
-.env
 .venv/
-venv/
-dev_docs/
-.cursor/
-.claude/
-# 外部 v3 參考/使用者資料（不納版，但含已建 WI/WI 大綱；禁止清理刪除）
-# 保護：ddm-v3/apps/api/minimost.db，由 migrate_v3_user_data.py 唯讀搬遷。
-LB/
-# Python build / runtime artifacts
+.pytest_cache/
 __pycache__/
 *.py[cod]
 *.egg-info/
-ddm-v2/data/
-# 大型參考二進位（不納版）
-ddm-v2/docs/*.pdf
-ddm-v3/
+.env
+frontend/node_modules/
+data/runtime-db.json
+data/runtime-db.json.lock
+data/runtime-db.sqlite3
+data/runtime-db.legacy-json.json
+data/*.corrupt-*.json
+# Claude Code local config (agents, skills, memory — never commit)
+.claude/
+# graphify knowledge graph artifacts (rebuild locally with `graphify update .`)
+# The .kiro/skills/graphify + .kiro/steering/graphify.md ARE committed; only the
+# generated graph output is local (11MB graph.json, machine-path sidecars, cache).
+graphify-out/
 
+# 一次性的外部素材／草稿，不進版控（2026-09-21）
+imx_four_scenarios_cookbook*.csv
+
+# ---- 以下併入自原 monorepo 根 .gitignore（2026-11-11 repo 根改為 ddm-v2）----
+docker-wheels/
+venv/
+dev_docs/
+.cursor/
+/data/
+# 大型參考二進位（不納版）
+docs/*.pdf
 # Playwright MCP artifacts
 .playwright-mcp/
 *.png
-!ddm-v2/docs/**/*.png
-
-# 外部素材（Level System 原始資料夾），不進版控（2026-09-21）
-minimost_level/
+!docs/**/*.png
+.mypy_cache/
+.ruff_cache/
