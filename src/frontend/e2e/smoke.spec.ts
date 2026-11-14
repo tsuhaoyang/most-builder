@@ -374,17 +374,24 @@ test('P1-B 回歸：行內頻率草稿保留（M2）／在途改回值仍送出�
       const body = JSON.parse(route.request().postData() ?? '{}') as { frequency?: number }
       const freq = body.frequency ?? 1
       putFreqs.push(freq)
+      // 422 形狀對齊後端實際信封（ADR-034 §D5/A2、C4 已移除頂層 detail 相容欄位）：
+      // { error: { code, message, detail } }。見 error_handlers.py。
       if (putMode === 'fastapi422') {
-        // FastAPI/Pydantic 驗證錯誤：detail 恆為 array
+        // RequestValidationError：原始 Pydantic 陣列放在 error.detail.errors
         return route.fulfill({
           status: 422, contentType: 'application/json',
-          body: JSON.stringify({ detail: [{ type: 'missing', loc: ['body', 'frequency'], msg: 'Field required' }] }),
+          body: JSON.stringify({ error: {
+            code: 'VALIDATION_ERROR', message: '請求驗證失敗',
+            detail: { errors: [{ type: 'missing', loc: ['body', 'frequency'], msg: 'Field required' }] },
+          } }),
         })
       }
       if (putMode === 'service422') {
         return route.fulfill({
           status: 422, contentType: 'application/json',
-          body: JSON.stringify({ detail: { code: 'SIMO_PAIR_INVALID', message: '主列不得自身宣告配對' } }),
+          body: JSON.stringify({ error: {
+            code: 'SIMO_PAIR_INVALID', message: '主列不得自身宣告配對', detail: { code: 'SIMO_PAIR_INVALID' },
+          } }),
         })
       }
       if (putMode === 'slow') await new Promise(r => setTimeout(r, 1500))   // 在途窗（M3）
@@ -468,17 +475,18 @@ test('P1-B 回歸：行內頻率草稿保留（M2）／在途改回值仍送出�
   expect(putFreqs).toEqual([2, 5, 2])            // 「改回 2」有真的送出（未被 closure 快照吞掉）
   await expect(freq).toHaveValue('2')
 
-  // ── M1a：FastAPI array 型 422 → 顯示人話，不得出現原始 JSON ─────────────────
+  // ── M1a：驗證型 422（VALIDATION_ERROR）→ 依 code 顯示在地化人話，不得出現原始 JSON ──
   putMode = 'fastapi422'
   await freq.fill('7')
-  await expect(page.getByText(/頻率更新失敗/)).toBeVisible()
-  await expect(page.getByText(/frequency: Field required/)).toBeVisible()
+  await expect(page.getByText(/頻率更新失敗：資料驗證失敗/)).toBeVisible()   // errors.VALIDATION_ERROR
   await expect(page.getByText(/\[\{"type"/)).toHaveCount(0)
+  await expect(page.getByText(/Field required/)).toHaveCount(0)
   await expect(freq).toHaveValue('2')            // 失敗 → 回復後端原值
 
-  // ── M1b：服務層 object 型 422 → 取 message ────────────────────────────────
+  // ── M1b：服務層 422 → 依 code 查錯誤目錄（ADR-034 C1），不顯示機器碼 ─────────
   putMode = 'service422'
   await freq.fill('9')
-  await expect(page.getByText(/主列不得自身宣告配對/)).toBeVisible()
+  await expect(page.getByText(/SIMO 同動配對不正確/)).toBeVisible()          // errors.SIMO_PAIR_INVALID
   await expect(page.getByText(/SIMO_PAIR_INVALID/)).toHaveCount(0)
+  await expect(page.getByText(/主列不得自身宣告配對/)).toHaveCount(0)        // 依 code，不依 message
 })

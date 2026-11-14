@@ -12,6 +12,14 @@ import { ensureReplicaVocab, buildGoldenRows, FIXTURES_DIR } from './support/gol
 
 const AUTH = { 'X-Username': 'IEC141289' }
 const WS = '55555555-5555-5555-5555-555555555555'
+
+// 會改共用 e2e 身分 locale 的測試（en 語系案例）若中途 skip／失敗，行內還原不會執行，
+// 後續 spec 全部看到英文介面。改由 afterEach 無條件還原（skip／fail 也會跑）。
+test.afterEach(async ({ request }) => {
+  const res = await request.patch('/api/v2/me/locale', { headers: AUTH, data: { locale: 'zh-TW' } })
+  expect(res.ok(), `locale 還原失敗：${res.status()}`).toBeTruthy()
+})
+
 // 相對 spec 檔解析（FIXTURES_DIR＝<repo>/ddm-v2/docs/lb-integration/fixtures），不隨執行目錄跑掉
 const DOCS_DIR = path.resolve(FIXTURES_DIR, '..', 'screenshots')
 const shot = (name: string): string =>
@@ -66,6 +74,5 @@ test('capture jobs flow (en locale)', async ({ page, request }) => {
   await request.patch('/api/v2/me/locale', { headers: AUTH, data: { locale: 'en' } })
   await loadJobs(page, request)
   await page.screenshot({ path: shot('level-jobs-flow.en.png'), fullPage: true })
-  await request.patch('/api/v2/me/locale', { headers: AUTH, data: { locale: 'zh-TW' } })
   expect(true).toBe(true)
 })
