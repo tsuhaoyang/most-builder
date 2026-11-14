@@ -140,6 +140,10 @@ jobs:
         run: pytest tests/unit -q
       - name: pytest（integration）
         run: pytest tests/integration -q
+      # ADR-037 S2：外部 ai_service 契約測試（對釘住的 openapi 快照與 golden；不連網路）。
+      # 同樣分開跑，理由同上。
+      - name: pytest（contract）
+        run: pytest tests/contract -q
 
   frontend:
     name: 前端（typecheck + build + i18n 守衛）

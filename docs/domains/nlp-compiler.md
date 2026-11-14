@@ -4,7 +4,7 @@
 自然語言 → MOST cycle 的編譯（數量政策對 TMU 中性）＋受限 LLM planner；LLM 不是規則權威。
 
 ## 權威文件
-- [ADR-037](../decisions/ADR-037-ai-service-integration.md)（2026-11-14 accepted：LLM 改接外部 ai_service，修訂 ADR-033 D2。**S1 已完成**：MOST 內的 LLM planner 已移除，nl-draft 一律走 `rule_based`；外部 ai_service 接入（S2 起）**規劃中，尚未實作**）
+- [ADR-037](../decisions/ADR-037-ai-service-integration.md)（2026-11-14 accepted：LLM 改接外部 ai_service，修訂 ADR-033 D2。**S1 已完成**：MOST 內的 LLM planner 已移除，nl-draft 一律走 `rule_based`；S2 已完成 `src/ddm_v2/ai_integration/`（port、client、mapper、fake，**尚無路由使用**）；接上 nl-draft（S3 起）**規劃中**）
 - [ADR-033](../decisions/ADR-033-llm-planner-scope-narrowing.md)（LLM planner 範圍收斂；被 ADR-037 部分修訂）
 - ⚠️ `most_compiler`（policies/compile）有 ADR-033；但 **`nlp/**` 的 lexicon／linking／routing／rule_based 無單一權威規格，現況以程式為準**（見 `docs/BACKLOG.md` **BL-DOC-2**）。
 

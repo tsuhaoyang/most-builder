@@ -1,0 +1,234 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "wi-motion-parse.schema.json",
+  "$comment": "E2E POC 階段一輸出 schema（docs/specs/e2e-wi-motion-poc.md §4.2）。LLM 把一句 WI 分解成 motion-code 結構：固定 7 位置 slot0–slot6，中段 s3/s4/s5 依 seq_kind 二選一（GM=A/B/P｜CM=M/X/I），未選中的那組在 schema 層不得出現（if/then conditional）。嚴格 additionalProperties:false。**禁任何 index/TMU 數值欄位**（ADR-001 D6/D11）：A 位置只給可量測語意 {kind, magnitude_cm|deg}（LLM 從語句推估的語意值，非 index），其餘位置給 ruleset_MINIMOST_FACTORY_V2 的 code enum（§3.2）。數字只在 A 位置的 magnitude_cm/deg（距離/角度語意，階段二才查表轉 index）。",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["motions"],
+  "properties": {
+    "motions": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/motion" }
+    }
+  },
+  "$defs": {
+    "motion": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["hand", "seq_kind", "sub_activity", "object", "slots"],
+      "properties": {
+        "hand": {
+          "type": "string",
+          "enum": ["LH", "RH", "BH"],
+          "description": "執行手（左手/右手/雙手）"
+        },
+        "seq_kind": {
+          "type": "string",
+          "enum": ["GM", "CM"],
+          "description": "動作分類：GM（General Move，骨架 A B G A B P A）｜CM（Controlled Move，骨架 A B G M X I A）"
+        },
+        "sub_activity": {
+          "type": "string",
+          "minLength": 1,
+          "description": "逐手動作的語意描述（語言隨 WI 語句；不含 index/TMU 數值）"
+        },
+        "object": {
+          "type": "string",
+          "description": "動作對象（物件名；語意值，不含 index/TMU）"
+        },
+        "slots": { "$ref": "#/$defs/slots" }
+      },
+      "allOf": [
+        {
+          "$comment": "GM → 中段 s3(A)/s4(B)/s5(P)。s4(B) 可為 null（gold set 示例）；s3(A)/s5(P) 不得為 null。此 conditional 以 seq_kind 區分，確保未選中的那組形狀不被填入。",
+          "if": {
+            "properties": { "seq_kind": { "const": "GM" } },
+            "required": ["seq_kind"]
+          },
+          "then": {
+            "properties": {
+              "slots": {
+                "required": ["s3", "s4", "s5"],
+                "properties": {
+                  "s3": { "$ref": "#/$defs/a_slot" },
+                  "s4": {
+                    "oneOf": [{ "$ref": "#/$defs/b_code" }, { "type": "null" }]
+                  },
+                  "s5": { "$ref": "#/$defs/p_slot" }
+                }
+              }
+            }
+          }
+        },
+        {
+          "$comment": "CM → 中段 s3(M)/s4(X)/s5(I)。各中段可為 null（gold set 示例：施力/機台/對齊未必全有）；不得填 GM 的 A/B/P 形狀。",
+          "if": {
+            "properties": { "seq_kind": { "const": "CM" } },
+            "required": ["seq_kind"]
+          },
+          "then": {
+            "properties": {
+              "slots": {
+                "required": ["s3", "s4", "s5"],
+                "properties": {
+                  "s3": {
+                    "oneOf": [{ "$ref": "#/$defs/m_code" }, { "type": "null" }]
+                  },
+                  "s4": {
+                    "oneOf": [{ "$ref": "#/$defs/x_code" }, { "type": "null" }]
+                  },
+                  "s5": {
+                    "oneOf": [{ "$ref": "#/$defs/i_code" }, { "type": "null" }]
+                  }
+                }
+              }
+            }
+          }
+        }
+      ]
+    },
+    "slots": {
+      "type": "object",
+      "additionalProperties": false,
+      "$comment": "固定 7 位置。s0_A/s1_B/s2_G/s6_A 兩骨架共用。中段 s3/s4/s5 依 seq_kind 二選一填（GM=A/B/P｜CM=M/X/I），由 motion 層的 if/then conditional 強制（JSON Schema additionalProperties 不看 allOf 內的 properties，故 s3/s4/s5 必須在本層宣告過才不被 additionalProperties:false 擋掉；本層只放通的宣告，實際型別由 motion 的 if/then 二選一收緊）。",
+      "required": ["s0_A", "s1_B", "s2_G", "s6_A", "s3", "s4", "s5"],
+      "properties": {
+        "s0_A": { "$ref": "#/$defs/a_slot" },
+        "s1_B": { "oneOf": [ { "$ref": "#/$defs/b_code" }, { "type": "null" } ] },
+        "s2_G": { "oneOf": [ { "$ref": "#/$defs/g_code" }, { "type": "null" } ] },
+        "s3": true,
+        "s4": true,
+        "s5": true,
+        "s6_A": { "$ref": "#/$defs/a_slot" }
+      }
+    },
+    "a_slot": {
+      "$comment": "A 位置：可量測語意，不給 index。kind=reach|foot|twist|return；距離帶 magnitude_cm（reach/foot/return）、角度帶 magnitude_deg（twist）；無法推估距離時該量值可為 null，由階段二套預設或交 IE（§3.2）。",
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["kind"],
+      "properties": {
+        "kind": {
+          "type": "string",
+          "enum": ["reach", "foot", "twist", "return"],
+          "description": "A 動作語意類別（reach 伸手/foot 腳步/twist 身體轉/return 返回）"
+        },
+        "magnitude_cm": {
+          "type": ["number", "null"],
+          "description": "距離語意（cm；reach/foot/return）；LLM 從語句推估，無法推估時 null。非 index。"
+        },
+        "magnitude_deg": {
+          "type": ["number", "null"],
+          "description": "角度語意（deg；twist）；LLM 從語句推估，無法推估時 null。非 index。"
+        }
+      }
+    },
+    "b_code": {
+      "type": "string",
+      "enum": ["b_none", "b_eye", "b_bend", "b_stand"],
+      "description": "B 身體動作 code（ruleset §B）"
+    },
+    "g_code": {
+      "type": "string",
+      "enum": [
+        "g_tap",
+        "g_touch",
+        "g_pat",
+        "g_grasp",
+        "g_grab",
+        "g_regrasp",
+        "g_handchange",
+        "g_pick_sel",
+        "g_pick_small",
+        "g_pullout",
+        "g_pick_collect"
+      ],
+      "description": "G 取得控制 code（ruleset §G）"
+    },
+    "p_slot": {
+      "$comment": "P 放置：base code ＋ addon 清單（max 2，ruleset §P/addon）。",
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["base", "addon"],
+      "properties": {
+        "base": {
+          "type": "string",
+          "enum": [
+            "p_toss",
+            "p_hold",
+            "p_place_none",
+            "p_place_multi",
+            "p_place_single",
+            "p_asm_multi",
+            "p_asm_single"
+          ],
+          "description": "P base code（ruleset §P/base）"
+        },
+        "addon": {
+          "type": "array",
+          "maxItems": 2,
+          "uniqueItems": true,
+          "items": {
+            "type": "string",
+            "enum": ["a_align", "a_insert", "a_hard", "a_snap", "a_press"]
+          },
+          "description": "P addon code 清單（max 2；ruleset §P/addon）"
+        }
+      }
+    },
+    "m_code": {
+      "type": "string",
+      "enum": [
+        "m_btn",
+        "m_screw",
+        "m_li",
+        "m_through",
+        "m_push",
+        "m_pull",
+        "m_attach",
+        "m_remove",
+        "m_teartape",
+        "m_fold",
+        "m_wipe",
+        "m_tearopen",
+        "m_rotate",
+        "m_press",
+        "m_hand",
+        "m_foot"
+      ],
+      "description": "M 施力/旋轉 verb code（ruleset §M/verb）"
+    },
+    "x_code": {
+      "type": "string",
+      "enum": [
+        "x_none",
+        "x_press",
+        "x_snap_press",
+        "x_heat",
+        "x_glue",
+        "x_screw_fix",
+        "x_laser",
+        "x_scan_ppid",
+        "x_scan_wo",
+        "x_scan_bar",
+        "x_blow_clean"
+      ],
+      "description": "X 機台/製程 code（ruleset §X）"
+    },
+    "i_code": {
+      "type": "string",
+      "enum": [
+        "i_none",
+        "i_check",
+        "i_confirm",
+        "i_align1",
+        "i_align2",
+        "i_check_out",
+        "i_confirm_out",
+        "i_align1_out",
+        "i_align2_out"
+      ],
+      "description": "I 眼睛對齊/確認 code（ruleset §I）"
+    }
+  }
+}

@@ -1,0 +1,300 @@
+{
+ "info": {
+  "title": "ai_service",
+  "version": "0.1.0"
+ },
+ "path": {
+  "/v1/llm/structured-completion": {
+   "post": {
+    "description": "執行一次結構化補全（user-principal；ADR-002 D3／D4／D5／D7、ADR-005 D2）。\n\n流程：驗 contract_version → 組 TenantContext → 開 session → 建 provider／use case → 轉呼 →\n組回應。編排鏈（9 步）在 :class:`StructuredCompletionService`。",
+    "operationId": "structured_completion_v1_llm_structured_completion_post",
+    "parameters": [
+     {
+      "in": "header",
+      "name": "X-User-Id",
+      "required": false,
+      "schema": {
+       "anyOf": [
+        {
+         "type": "string"
+        },
+        {
+         "type": "null"
+        }
+       ],
+       "title": "X-User-Id"
+      }
+     },
+     {
+      "in": "header",
+      "name": "X-User-Role",
+      "required": false,
+      "schema": {
+       "anyOf": [
+        {
+         "type": "string"
+        },
+        {
+         "type": "null"
+        }
+       ],
+       "title": "X-User-Role"
+      }
+     },
+     {
+      "in": "header",
+      "name": "X-Plant-Code",
+      "required": false,
+      "schema": {
+       "anyOf": [
+        {
+         "type": "string"
+        },
+        {
+         "type": "null"
+        }
+       ],
+       "title": "X-Plant-Code"
+      }
+     },
+     {
+      "in": "header",
+      "name": "X-Username",
+      "required": false,
+      "schema": {
+       "anyOf": [
+        {
+         "type": "string"
+        },
+        {
+         "type": "null"
+        }
+       ],
+       "title": "X-Username"
+      }
+     },
+     {
+      "in": "header",
+      "name": "X-AI-Service-Key",
+      "required": false,
+      "schema": {
+       "anyOf": [
+        {
+         "type": "string"
+        },
+        {
+         "type": "null"
+        }
+       ],
+       "title": "X-Ai-Service-Key"
+      }
+     }
+    ],
+    "requestBody": {
+     "content": {
+      "application/json": {
+       "schema": {
+        "$ref": "#/components/schemas/StructuredCompletionRequest"
+       }
+      }
+     },
+     "required": true
+    },
+    "responses": {
+     "200": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/StructuredCompletionResponse"
+        }
+       }
+      },
+      "description": "Successful Response"
+     },
+     "422": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HTTPValidationError"
+        }
+       }
+      },
+      "description": "Validation Error"
+     }
+    },
+    "summary": "Structured Completion",
+    "tags": [
+     "llm"
+    ]
+   }
+  }
+ },
+ "schemas": {
+  "ProvenanceSummary": {
+   "additionalProperties": false,
+   "description": "補全回應帶的 provenance 摘要（llm-gateway spec §2.2 回應 provenance）。\n\n去敏（不含 raw_response，§3.2）；只回呼叫端需要分辨本次執行的欄位。",
+   "properties": {
+    "bundle_code": {
+     "description": "執行的 bundle code",
+     "minLength": 1,
+     "title": "Bundle Code",
+     "type": "string"
+    },
+    "bundle_status": {
+     "description": "執行當下的 bundle 狀態（shadow 標記）",
+     "minLength": 1,
+     "title": "Bundle Status",
+     "type": "string"
+    },
+    "model_requested": {
+     "description": "請求的模型名（＝bundle 釘的 model）",
+     "minLength": 1,
+     "title": "Model Requested",
+     "type": "string"
+    },
+    "model_served": {
+     "description": "provider 實際服務的模型名",
+     "minLength": 1,
+     "title": "Model Served",
+     "type": "string"
+    },
+    "prompt_variant": {
+     "anyOf": [
+      {
+       "type": "string"
+      },
+      {
+       "type": "null"
+      }
+     ],
+     "description": "實際使用的 prompt 變體鍵",
+     "title": "Prompt Variant"
+    },
+    "prompt_version": {
+     "anyOf": [
+      {
+       "type": "string"
+      },
+      {
+       "type": "null"
+      }
+     ],
+     "description": "該變體的 prompt_version 標籤",
+     "title": "Prompt Version"
+    },
+    "retry_count": {
+     "description": "重試次數（0＝一次就過）",
+     "minimum": 0.0,
+     "title": "Retry Count",
+     "type": "integer"
+    },
+    "run_id": {
+     "description": "本次補全的 run 識別",
+     "minLength": 1,
+     "title": "Run Id",
+     "type": "string"
+    }
+   },
+   "required": [
+    "run_id",
+    "bundle_code",
+    "bundle_status",
+    "model_requested",
+    "model_served",
+    "retry_count"
+   ],
+   "title": "ProvenanceSummary",
+   "type": "object"
+  },
+  "StructuredCompletionRequest": {
+   "description": "``POST /v1/llm/structured-completion`` 請求（llm-gateway spec §2.2）；unknown 欄位忽略。",
+   "properties": {
+    "bundle_code": {
+     "description": "要執行的 bundle code（須 shadow／active）",
+     "minLength": 1,
+     "title": "Bundle Code",
+     "type": "string"
+    },
+    "contract_version": {
+     "description": "頂層契約版本字串，格式 <contract>-v<major>（api spec §2.3）",
+     "title": "Contract Version",
+     "type": "string"
+    },
+    "deadline_ms": {
+     "description": "呼叫端 deadline（ms；ADR-002 D5 拒絕判斷）",
+     "minimum": 0.0,
+     "title": "Deadline Ms",
+     "type": "integer"
+    },
+    "json_schema": {
+     "additionalProperties": true,
+     "description": "呼叫端 schema；服務端驗證輸出用，不送給模型（ADR-002 D3）",
+     "title": "Json Schema",
+     "type": "object"
+    },
+    "lane": {
+     "default": "interactive",
+     "description": "准入 lane（interactive｜batch，ADR-002 D5）",
+     "title": "Lane",
+     "type": "string"
+    },
+    "prompt_variant": {
+     "anyOf": [
+      {
+       "type": "string"
+      },
+      {
+       "type": "null"
+      }
+     ],
+     "description": "prompt 變體鍵；省略時用 bundle 唯一宣告的變體（ADR-005 D2）",
+     "title": "Prompt Variant"
+    },
+    "variables": {
+     "additionalProperties": true,
+     "description": "交給 pack 渲染函式的輸入（ADR-003 D2）",
+     "title": "Variables",
+     "type": "object"
+    }
+   },
+   "required": [
+    "contract_version",
+    "bundle_code",
+    "variables",
+    "json_schema",
+    "deadline_ms"
+   ],
+   "title": "StructuredCompletionRequest",
+   "type": "object"
+  },
+  "StructuredCompletionResponse": {
+   "additionalProperties": false,
+   "description": "``POST /v1/llm/structured-completion`` 回應（llm-gateway spec §2.2）。",
+   "properties": {
+    "content": {
+     "additionalProperties": true,
+     "description": "已通過驗證的 JSON 輸出（ADR-002 D3）",
+     "title": "Content",
+     "type": "object"
+    },
+    "contract_version": {
+     "description": "頂層契約版本字串，格式 <contract>-v<major>（api spec §2.3）",
+     "title": "Contract Version",
+     "type": "string"
+    },
+    "provenance": {
+     "$ref": "#/components/schemas/ProvenanceSummary",
+     "description": "去敏 provenance 摘要（§2.2）"
+    }
+   },
+   "required": [
+    "contract_version",
+    "content",
+    "provenance"
+   ],
+   "title": "StructuredCompletionResponse",
+   "type": "object"
+  }
+ },
+ "source": "ai_service main 386cbe7 docs/api/openapi.json"
+}
