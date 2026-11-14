@@ -46,7 +46,7 @@ MOST 服務於 `http://<server-ip>:8877/`（前端 + `/api/v2` 同一容器同�
 
 1. 先到 LB 入口 `http://<server-ip>/` 用公司帳號登入（取得 session cookie）。
 2. 開 `http://<server-ip>:8877/` → 直接進 MOST，身分即你的員編。
-3. 角色:第一次進來的人自動建為 **viewer**（唯讀）。由 admin 到「⑦ 使用者」分頁授予 IE/manager/admin。
+3. 角色:第一次進來的人自動建為 **viewer**（唯讀）。由 admin 到「⑦ 使用者」分頁授予 analyst（IE）/approver（manager）/admin。
    - 第一個 admin = `DDM_ADMIN_EMPLOYEE_NO`（開機種入），所以那一定要是真實、會登入的員編。
 4. session 1 小時到期 → 回 LB 重新登入即可。
 
