@@ -1,9 +1,13 @@
-"""**索取** schema：實際餵給模型的 `response_format` / system schema（ADR-033 P2）。
+"""**索取** schema：MOST 向外部 planner 索取的 plan 形狀（ADR-033 P2；ADR-037 起作為對 ai_service 的契約需求）。
+
+> ADR-037（2026-11-14）：MOST 內的 LLM 呼叫（舊的 LLM planner 與 client）已移除，本檔由
+> `nlp/prompts/plan_v2_schema.py` 搬來保留。下文提到的「送給模型」指當時的 in-process 呼叫；
+> 現在它是「MOST 願意索取什麼」的宣告，供 ai_service 契約與評測對照，**不再被任何 HTTP 呼叫送出**。
 
 ## 為什麼要有第二份模型，而不是直接用 `contracts.PlannerOutput`
 
-`llm_planner` 把 `model_json_schema()` 同時送進 `response_format={"type":"json_schema"}`
-與（`json_object`／`none` 模式下）附進 system message（`llm_client.py`）。也就是說
+當時的 `llm_planner`（已移除）把 `model_json_schema()` 同時送進 `response_format={"type":"json_schema"}`
+與（`json_object`／`none` 模式下）附進 system message。也就是說
 **送出去的 schema 就是一份公告**：欄位出現在裡面，等於告訴模型「這裡可以放東西」。
 
 P2 之前送的是 `PlannerOutput.model_json_schema()`，於是：
@@ -119,8 +123,6 @@ def request_json_schema() -> dict:
     """送給模型的 JSON Schema（每次呼叫重新產生一份，不共用可變 dict）。
 
     ⚠️ 本函式的 docstring 不會進 schema（只有**類別** docstring 會），所以這裡可以
-    正常說明。`plan_v1.REQUEST_JSON_SCHEMA` 在 import 時呼叫一次並持有結果；那份是
-    唯讀慣例（與 `SYSTEM_PROMPT`／`FEW_SHOTS` 同級的常數），呼叫端不得就地修改。
-    需要一份可以改的拷貝時，重新呼叫本函式。
+    正常說明。每次呼叫回傳新的 dict，呼叫端可自由修改。
     """
     return PlannerRequest.model_json_schema()

@@ -1,5 +1,9 @@
 # WI AI Parser 實作規格（Implementation Spec）
 
+> ⚠️ **部分被取代（ADR-037，2026-11-14）**：本規格中 MOST 內的 LLM planner（`llm_client`、`llm_planner`、
+> `prompts/*`、`DDM_LLM_*`、`DDM_WI_AI_ENABLED`）已移除，LLM 抽取歸外部 ai_service。涉及這些元件的段落僅供追溯；
+> 現況以 [ADR-037](../decisions/ADR-037-ai-service-integration.md) 與 `docs/domains/nlp-compiler.md` 為準。
+
 **文件類型：** 實作規格（implementation-level；從屬於 architecture spec 與 ADR）
 **版本：** 1.2 — 可派工（修訂紀錄見 §20.5）
 **建立日期：** 2026-08-06
@@ -503,7 +507,7 @@ class LLMClientPort(Protocol):
 >   **縮短**規則 7 的鍵名清單（移除 `hand`／`distance`／`quantity`，新增 `return_to`）；
 > - 規則 1／2／3／5／6／10／11 **不動**——切分慣例（規則 2）是收窄後保留的核心職責。
 > - **四則 few-shot 全部重寫**：現行每一則都示範了 `status`、offset 或數值角色。
->   重寫後必須照舊通過 `tests/unit/test_prompt_few_shots.py`（示範即契約）。
+>   重寫後必須照舊通過 ~~`tests/unit/test_prompt_few_shots.py`~~（示範即契約；已隨 ADR-037 移除）。
 >
 > **P2 不得在 P1 的觀察期之前執行**（U-7 裁決，見 §19 的 ADR-033 分期註）。
 
@@ -647,7 +651,7 @@ few-shot #1 兩處捏造的由來（plan-v1.4，2026-08-23）：#1 原本在 a1 
 
 **示範本身必須合法**：每一則 few-shot 的 assistant JSON 都要能通過
 `contracts.validate_planner_output()` 對它自己的 user message 驗證，且 user 端文字
-必須已是 `normalize()` 的不動點。守衛見 `tests/unit/test_prompt_few_shots.py`——
+必須已是 `normalize()` 的不動點。守衛見 ~~`tests/unit/test_prompt_few_shots.py`~~（已隨 ADR-037 移除）——
 2026-08-22 之前 5 個 evidence span 裡有 3 個 offset 算錯（2 個越界），等於在
 in-context 教模型數錯位置，而沒有任何測試會紅。
 

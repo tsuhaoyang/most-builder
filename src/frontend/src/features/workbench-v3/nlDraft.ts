@@ -36,8 +36,8 @@ export function sourceBadge(source: string): NlBadgeKind {
  * 相容欄位（頂層 slots/suggested_seq）是否與權威草稿一致。
  *
  * 後端契約（wi_ai_service）：相容欄位**永遠來自 rule_based**，而 ai.drafts 在
- * DDM_WI_AI_ENABLED=1 時可能來自 LLM——兩者可分歧（如 LLM 判 CM、rule 猜 GM）。
- * 不一致時自動套用相容欄位＝把編輯器覆蓋成 rule 的猜測、卡片卻顯示 LLM 結果。
+ * 接上外部 AI planner 時可能來自 AI（ADR-037；舊的 MOST 內 LLM 已移除）——兩者可分歧
+ * （如 AI 判 CM、rule 猜 GM）。不一致時自動套用相容欄位＝把編輯器覆蓋成 rule 的猜測、卡片卻顯示 AI 結果。
  * 只比對 nlDraftPatch 實際會套用的鍵（seq/g/b1/b4/p_base）；draft 無 cycle
  * （未完整編譯）視為不一致——沒有權威內容可對照，不得自動套用 rule 猜測。
  */

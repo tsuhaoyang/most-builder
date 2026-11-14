@@ -369,8 +369,8 @@ def _redact_urls(message: str) -> str:
 
 # 被拒回應的長度上限（字元）。gold 尺度的**合法**回應遠低於此：現行 55 案的 gold plan
 # 序列化後最長 830 字元，模型加上縮排與 roles 也在 3000 以內；而回應是**遠端可控**且
-# 長度無界（`llm_client` 只做 `str()`、httpx 未設 response size limit，`max_tokens`
-# 只約束守規矩的伺服器），一個回應就能把 100KB 塞進要入版控的報告。
+# 長度無界（舊的 LLM client 只做 `str()`、httpx 未設 response size limit，`max_tokens`
+# 只約束守規矩的伺服器；外部 ai_service 回應同樣不可信），一個回應就能把 100KB 塞進要入版控的報告。
 PLANNER_RAW_REJECTED_MAX_LEN = 4000
 
 # 短於此的「憑證」不做字面抹除：`""` 會讓 str.replace 在每個字元間插入標記、

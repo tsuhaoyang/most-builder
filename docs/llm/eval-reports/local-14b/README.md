@@ -1,5 +1,7 @@
 # 本機 14B planner 量測報告（非正式）
 
+> ⚠️ **歷史量測**：`--planner llm` 與 MOST 內的 LLM planner 已依 ADR-037（2026-11-14）移除，下方重現指令不再可用。
+
 `scripts/wi_ai_eval.py --planner llm` 的輸出，但**模型不是設定的那一顆**。
 
 ## 為什麼分一個目錄

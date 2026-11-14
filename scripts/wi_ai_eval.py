@@ -16,8 +16,11 @@
 用法（於 repo 根）：
   PYTHONPATH=src python scripts/wi_ai_eval.py
   PYTHONPATH=src python scripts/wi_ai_eval.py --gold-dir tests/gold/wi_plans --out docs/llm/eval-reports
-  # LLM planner 僅限顯式指定（需 LLM_BASE_URL 等設定；CI 與預設絕不打真模型）
-  PYTHONPATH=src python scripts/wi_ai_eval.py --planner llm
+
+ADR-037（2026-11-14）：MOST 內的 LLM planner 已移除，`--planner llm` 隨之刪除；LLM 層評測
+歸 ai_service。本腳本只評 MOST 自有的 rule planner 與 compile 段。下文 v5–v10 的報告欄位
+（`planner_run`、`sanitize_reasons`、`planner_raw_rejected`…）形狀不變（加法演進），
+rule planner 下恆為 null／空；外部 planner 接上後（實作計畫 S2）再由新的 adapter 填值。
 
 退出碼（區分「eval 跑完發現問題」與「gold 輸入根本不可用」）：
   0 ＝ compile 全過、planner 段完整執行（n>0、無 gold 標註缺損）、無載入錯誤；
@@ -160,7 +163,7 @@ STRIPPED_VALUES_NOTE = (
     "`role_key`（evidence 類的剝除為 null）、`text`／`value`／`unit`（被剝掉的內容）。"
     "⚠️ `text` 是**模型可控字串**：寫入前先遮已知憑證與 URL、再截斷至 "
     f"{STRIPPED_VALUE_MAX_LEN} 字元並留痕（`…[truncated from N chars]`，N 為遮蔽後長度）。"
-    "⚠️ 這些值**只存在於本報告**：它們走 `LLMPlannerAdapter(on_sanitize=…)` 的 observer "
+    "⚠️ 這些值**只存在於本報告**：它們走外部 planner adapter 的 sanitize observer "
     "旁通道，**不進** `plan.unresolved`／`routing_reasons`（那條路會落 DB 並回 API）。"
     "⚠️ 但**不要據此以為 `routing_reasons` 是乾淨的**：`PlannerOutput.unresolved` 本身"
     "就是模型可控的 `list[str]`，`sanitize_planner_output` 逐字沿用它——那是既有的 S-5，"
@@ -179,7 +182,7 @@ PLANNER_RAW_REJECTED_NOTE = (
     "**null＝這次失敗沒有回應可留**（timeout、連線失敗、rule planner 的例外、"
     "或 PlannerError 未帶 raw），與「伺服器回了空字串」（記 \"\"）不同；"
     "該案成功時恆為 null（成功的輸出已由指標與 pred_spans 呈現）。"
-    "⚠️ 留的是 **retry 那次**的回應：`LLMPlannerAdapter` 只把最後一次掛上 "
+    "⚠️ 留的是 **retry 那次**的回應：舊 LLM adapter（ADR-037 已移除）只把最後一次掛上 "
     "`PlannerError.raw`，initial 那次的回應現行契約留不下來——"
     "所以「模型第一次吐了什麼」仍不可考（需要動 planner 契約，記為後續票）。"
     "⚠️ 這是**遠端可控字串**且報告要入版控：寫入前先遮 URL（`<redacted-url>`）與"
@@ -208,7 +211,7 @@ def _sanitize_model_name(model: str) -> str:
       （``gpt-4\x1b[2J\x1b]0;pwned\x07``）可以清屏、改視窗標題，並**覆寫先前印出的
       內容——包括這次評測的其他數字**。這是本功能新增的 sink，比 JSON 那邊嚴重。
     - **報告 JSON**：`json.dumps` 會把 ESC 逸出成 `\u001b`（安全），但長度無界
-      （`llm_client` 只做 `str(model)`，httpx 未設 response size limit），一個回應
+      （舊的 LLM client 只做 `str(model)`，httpx 未設 response size limit），一個回應
       就能把 100KB 塞進要入版控的報告。
 
     **不用字元白名單**：合法 tag 本來就含 `:` `/` `.` `-`，未來也可能有非 ASCII；
@@ -226,18 +229,18 @@ def _sanitize_model_name(model: str) -> str:
 
 PLANNER_RUN_NOTE = (
     "本報告的執行來源自述：這趟是哪個 planner、哪顆模型、哪一版 prompt 跑的。"
-    "`model_requested`＝送出去的模型名（settings 的 DDM_LLM_MODEL）；"
+    "`model_requested`＝送出去的模型名（舊 LLM 路徑取自設定；ADR-037 後 rule planner 恆 null）；"
     "`model_served`＝**伺服器回報**的模型名，證據力較強（ollama 的 tag 解析、"
     "伺服器端別名或 endpoint 被指到別顆模型時，兩者會分岔）——同一個問題，"
     "`wi_ai_service` 用的也是伺服器回報值（`llm_raw_response.model`）。"
-    "⚠️ 伺服器若沒回 model 欄，`llm_client` 會退回請求值，此時 served 等於 "
+    "⚠️ 伺服器若沒回 model 欄，舊的 LLM client 會退回請求值，此時 served 等於 "
     "requested 並非真的被證實。`model_served` 僅在**成功呼叫且回報值一致**時為"
     "單一字串；全案失敗（沒有任何成功呼叫）時為 null——此時 requested 仍是有用的"
     "資訊，不會一起消失；回報值分岐時 served 為 null 且 `model_served_variants` "
     "列出全部（不靜默挑一個）。"
     "⚠️ served 是**遠端可控字串**：寫入前已剝除控制字元並截斷至 "
     f"{MODEL_NAME_MAX_LEN} 字元，截過的值帶 `…[truncated from N chars]`。"
-    "以上四欄與 `llm_timeout_s` 僅 --planner llm 有值；rule planner 不碰 LLM，恆為 "
+    "以上四欄與 `llm_timeout_s` 只在外部 planner 下有值（舊 --planner llm 已移除）；rule planner 不碰 LLM，恆為 "
     "null／空。"
     "刻意**不記** llm_base_url 與 llm_api_key——報告要入版控，base_url 有夾帶憑證的"
     "可能；重現指令見 docs/llm/eval-reports/local-14b/README.md。"
@@ -250,7 +253,7 @@ PLANNER_RUN_NOTE = (
 class RunIdentity:
     """報告 `planner_run` 的來源欄；與 `SanitizeLog` 同樣是「跑的過程中收集」的觀測物。
 
-    `model_served` 只有**呼叫成功**才知道（在 `LLMRawResponse.model` 裡），所以不能
+    `model_served` 只有**呼叫成功**才知道（在 `PlannerRawResponse.model` 裡），所以不能
     在建構 planner 時就定案——由 `_plan()` 每案 `observe_served()`，跑完再 `to_dict()`
     快照。全案失敗時 served 為 null 而 requested 仍在（失敗時「送出去的是哪顆」正是
     要查的資訊，不該一起消失）。
@@ -300,7 +303,8 @@ def _repo_relative(path: Path) -> str:
 class SanitizeLog:
     """把 planner 的 sanitize reasons 收成可統計量（逐案 + 全案）。
 
-    reasons 走 `LLMPlannerAdapter(on_sanitize=...)` callback 進來，callback 本身
+    reasons 由外部 planner adapter 的 sanitize callback 送進來（`inbound_guard.SanitizeObserver`
+    的形狀；ADR-037 後目前沒有 adapter 掛它，rule planner 下恆為空），callback 本身
     不知道 case id，所以由 `_plan()` 在呼叫 planner 前 `bind()`——評測迴圈是
     嚴格循序的（`wi_ai_eval` 逐案 await），不會有交錯。
     """
@@ -382,71 +386,6 @@ def _stripped_to_dict(phase: str, detail: StripDetail, secrets: Sequence[str]) -
     }
 
 
-def _build_llm_plan_fn(
-    timeout_s: float, sanitize_log: SanitizeLog
-) -> tuple[PlannerFn, RunIdentity, tuple[str, ...]]:
-    """顯式 --planner llm 才建構；需要已設定的 LLM endpoint。
-
-    第三個回傳值是**本次執行的憑證字面值**（api key），交給 `evaluate_planner_case`
-    在寫報告前抹掉——`planner_raw_rejected` 存的是伺服器回應本文，而伺服器拿得到我們
-    送出的 `Authorization: Bearer <key>`，回聲式的 proxy 會把它抄進回應。刻意**不掛到
-    `RunIdentity`** 上：那個物件會被 `to_dict()` 序列化進報告。
-
-    一併回傳這趟的 `RunIdentity` 給報告的 `planner_run`。`model_requested` 與建構
-    client 用的是**同一次** `get_settings()`——不是因為再讀一次會拿到別的值
-    （`get_settings` 有 lru_cache，同一次執行內必然同一個物件），而是為了讓
-    「報告寫的」與「實際送出去的」在結構上同源：日後若有人把取值改成直接讀 env、
-    或在 `cache_clear()` 之後另建 Settings，兩者才不會各走各的。
-    `model_served`（伺服器回報值）由 `_plan()` 逐案 `observe_served()` 收。
-    """
-    from ddm_v2.nlp.contracts import ParseContext, SourceRef, WorkInstructionPlan
-    from ddm_v2.nlp.llm_client import OpenAICompatClient
-    from ddm_v2.nlp.llm_planner import LLMPlannerAdapter
-    from ddm_v2.nlp.normalization import normalize
-    from ddm_v2.nlp.planner_eval import gold_source_text
-    from ddm_v2.nlp.prompts import plan_v1
-    from ddm_v2.settings import get_settings
-
-    settings = get_settings()
-    if not settings.llm_base_url:
-        raise SystemExit("--planner llm 需要 LLM_BASE_URL 等設定；CI/預設請用 --planner rule")
-    client = OpenAICompatClient(
-        base_url=settings.llm_base_url,
-        model=settings.llm_model,
-        api_key=settings.llm_api_key,
-        response_format_mode="json_object",
-    )
-    adapter = LLMPlannerAdapter(client, timeout_s=timeout_s, on_sanitize=sanitize_log.observe)
-    identity = RunIdentity(
-        "llm",
-        model_requested=settings.llm_model,
-        prompt_version=plan_v1.PROMPT_VERSION,
-        llm_timeout_s=timeout_s,
-    )
-
-    async def _plan(data: dict) -> WorkInstructionPlan:
-        sanitize_log.bind(str(data.get("id") or "unknown"))
-        text = gold_source_text(data)
-        norm = normalize(text)
-        ctx = ParseContext(rule_set_code=str(data.get("rule_set_code") or "MINIMOST_FACTORY_V2"))
-        output, raw = await adapter.plan(norm, ctx)
-        identity.observe_served(raw.model if raw is not None else None)
-        return WorkInstructionPlan(
-            source_text=text,
-            normalized_text=norm,
-            language=output.language,
-            source_ref=SourceRef(kind="interactive"),
-            actions=output.actions,
-            dependencies=output.dependencies,
-            unresolved=list(output.unresolved),
-        )
-
-    # base_url／api_key 不進報告（報告入版控，base_url 有夾帶憑證的可能）；
-    # api_key 只作為「要從報告字串裡抹掉的值」往下傳，不入任何序列化結構
-    secrets = tuple(v for v in (settings.llm_api_key,) if v)
-    return _plan, identity, secrets
-
-
 def _case_is_approved(data: dict) -> bool:
     """核准判定：approved_by 非空 且 review_status ∈ {缺欄(seed 慣例), approved}。
 
@@ -525,15 +464,9 @@ def main() -> int:
     )
     parser.add_argument(
         "--planner",
-        choices=["rule", "llm"],
+        choices=["rule"],
         default="rule",
-        help="planner 段使用的 planner（預設 rule；llm 需顯式指定與 LLM 設定）",
-    )
-    parser.add_argument(
-        "--llm-timeout-s",
-        type=float,
-        default=30.0,
-        help="--planner llm 時的單案 timeout 秒數",
+        help="planner 段使用的 planner（只有 rule；LLM planner 已依 ADR-037 移除）",
     )
     args = parser.parse_args()
 
@@ -547,10 +480,6 @@ def main() -> int:
     run_identity = RunIdentity(RULE_PLANNER_NAME)
     # 寫進報告前要抹掉的憑證字面值；rule 路徑不碰 LLM，恆空
     report_secrets: tuple[str, ...] = ()
-    if args.planner == "llm":
-        plan_fn, run_identity, report_secrets = _build_llm_plan_fn(
-            args.llm_timeout_s, sanitize_log
-        )
     planner_name = run_identity.planner
 
     # 載入層先把「檔案壞掉」轉成具名 gold_case_invalid（點名檔案、進報告、exit 2），

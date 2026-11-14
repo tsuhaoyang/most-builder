@@ -8,7 +8,7 @@
 
 ## 狀態
 
-✅ 已核可、待啟動（ADR-037 於 2026-11-14 核可；S0 文件回寫已完成）。與 ADR-037 衝突時以 ADR-037 為準。
+🔄 執行中（ADR-037 於 2026-11-14 核可）。S0 文件回寫、S1 舊 LLM 路徑移除已完成；S2 起未開始。與 ADR-037 衝突時以 ADR-037 為準。
 
 > 來源：MOST 與 ai_service 兩邊的唯讀盤點、架構規劃，以及兩輪審查（架構、資安、code、nlp-compiler、wi-workbench、excel-import、auth-rbac）。
 > 本文件中「ADR-033 P3」指 ADR-033 遷移路徑的第 3 階段；本計畫自己的階段寫作 S0–S5，避免撞名。
@@ -40,7 +40,7 @@
 | `_parse_sanitize_validate`、`_sequence_orders_contiguous` | `nlp/llm_planner.py` | `nlp/inbound_guard.py` |
 | `PlannerRequest`（索取契約）與其守衛 | `nlp/prompts/plan_v2_schema.py` | `nlp/plan_request.py`（S2 再決定是否移入 `ai_integration/`） |
 | `PlannerError` | `nlp/planner_ports.py` | 原地保留（`planner_eval.py` 引用） |
-| `TestEnglishParsingIntegration`（測 `rule_plan_adapter._detect_language`） | `tests/unit/test_english_parsing.py` | tests/unit 下的新測試檔（例：test_rule_plan_language） |
+| `TestEnglishParsingIntegration`（測 `rule_plan_adapter._detect_language`） | ~~`tests/unit/test_english_parsing.py`~~ | `tests/unit/test_rule_plan_language.py` |
 
 `docs/CI_GATES.md` 的靜態掃描「定義站」放行清單隨新檔名同步。
 
@@ -51,7 +51,7 @@
 - `wi_ai_service.py` 內的舊路徑：`_build_llm_client`、`_try_llm_plan`、`_plan_from_planner_output`、
   `from ddm_v2.nlp.prompts import plan_v1` 與 `plan_v1.PROMPT_VERSION`
 - `settings.py` 的 `llm_*`；`wi_ai_enabled` 刪除（S3 新增 `ai_service_enabled`，env 名 `DDM_AI_SERVICE_ENABLED`）
-- `scripts/test_english_most_parsing.py`；`scripts/wi_ai_eval.py` 的 `--planner llm`、`OpenAICompatClient` 與 `settings.llm_*` 用法（含檔頭說明與 `secrets` tuple）
+- ~~`scripts/test_english_most_parsing.py`~~；`scripts/wi_ai_eval.py` 的 `--planner llm`、`OpenAICompatClient` 與 `settings.llm_*` 用法（含檔頭說明與 `secrets` tuple）
 
 **必須保留的讀取路徑**：`wi_ai_service` 的 provenance 與快取重播中的 `prompt_version`、`llm_raw_response`、`response_format_mode`、`usage`。
 DB 欄位不動；寫入端不再產生 `kind='llm'`，但**舊 `kind='llm'` 列必須仍可讀取與重播**，以 integration 測試釘住。
@@ -64,7 +64,7 @@ DB 欄位不動；寫入端不再產生 `kind='llm'`，但**舊 `kind='llm'` 列
 
 | 處置 | 檔案 |
 |---|---|
-| 刪除 | `tests/unit/test_llm_planner.py`、`test_prompt_few_shots.py`（few-shot 內容先轉成 gold 資產或移交 ai_service；它也是 `docs/CI_GATES.md` 第 188 行附近「對外列舉契約凍結」的守衛之一，刪檔前先確認 `test_contract_enum_freeze.py` 已涵蓋 `FROZEN_DEPENDENCY_TYPE`、`FROZEN_ROLE_KEYS`，未涵蓋就搬過去，並更新 CI_GATES 的檔案欄）、`test_english_parsing.py`（rule_based 部分已搬走） |
+| 刪除 | ~~`tests/unit/test_llm_planner.py`~~、`test_prompt_few_shots.py`（few-shot 內容先轉成 gold 資產或移交 ai_service；它也是 `docs/CI_GATES.md` 第 188 行附近「對外列舉契約凍結」的守衛之一，刪檔前先確認 `test_contract_enum_freeze.py` 已涵蓋 `FROZEN_DEPENDENCY_TYPE`、`FROZEN_ROLE_KEYS`，未涵蓋就搬過去，並更新 CI_GATES 的檔案欄）、`test_english_parsing.py`（rule_based 部分已搬走） |
 | 改寫（不可刪） | `test_planner_request_schema.py`（隨 `PlannerRequest` 搬家）、`test_production_no_sanitize_observer.py`、`test_planner_eval.py`（含第 1473 行附近的 `llm_api_key` 斷言）、`test_gold_draft_isolation.py`、`test_gold_draft_schema.py`、`test_rule_plan_adapter.py`、`tests/integration/test_gold_harvest.py`、`test_wi_ai_fallback.py`（第 164、179 行的 `prompt_version` 斷言；第 188–277 行的兩個重播測試改成直接寫入舊 `kind='llm'` 列，作為「舊列可重播」的釘樁）、`test_wi_ai_l2.py` |
 | 確認仍綠 | `test_gold_promotion.py`、`test_gold_harvest_recompile.py`（依賴 `plan_metrics_n` 釘值）、`test_contract_enum_freeze.py`（凍結列舉在 `tests/unit/_contract_freeze_v1.py`，**不得收窄**）、`test_wi_ai_cpu_guards.py`、`test_route_mounting.py`、`test_dsx_a3_distance_api.py` |
 

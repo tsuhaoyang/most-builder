@@ -230,8 +230,8 @@ domains:
       - 範本實體化（from-module）帶 wi_group=module.name_zh；TMU 由後端算，前端不自算
 
   - id: nlp-compiler
-    title: NL→MOST 編譯器與 LLM planner
-    anchors: [compile, resolve_multiplier, QuantityPolicyV2, llm_planner, rule_based, engine_gate]
+    title: NL→MOST 編譯器與 planner（外部 AI 入站防腐）
+    anchors: [compile, resolve_multiplier, QuantityPolicyV2, inbound_guard, rule_based, engine_gate]
     paths:
       - "src/ddm_v2/most_compiler/**"
       - "src/ddm_v2/nlp/**"
