@@ -1,0 +1,305 @@
+{
+ "_comment": "Golden responses. content 取自 ai_service main packs/most/prompts/wi-motion-parse/{zh,en}/fewshot.jsonl（IE 核凍範例，ai_service commit 386cbe7）；外層信封依 openapi StructuredCompletionResponse 組成。這不是真服務錄製——S3 進入條件的 30 句量測時改以真回應補錄（實作計畫 §4）。",
+ "cases": [
+  {
+   "id": "fewshot-zh-0",
+   "input": {
+    "wi_statement": "從料架上拿取假DIMM，去除其包裝袋",
+    "source_lang": "zh",
+    "context": {}
+   },
+   "response": {
+    "contract_version": "ai-structured-completion-v1",
+    "content": {
+     "motions": [
+      {
+       "hand": "LH",
+       "seq_kind": "GM",
+       "sub_activity": "左手從料架拿取假DIMM保持住至流水線",
+       "object": "假DIMM",
+       "slots": {
+        "s0_A": {
+         "kind": "reach",
+         "magnitude_cm": 35
+        },
+        "s1_B": "b_stand",
+        "s2_G": "g_pick_sel",
+        "s3": {
+         "kind": "reach",
+         "magnitude_cm": 2.5
+        },
+        "s4": "b_eye",
+        "s5": {
+         "base": "p_hold",
+         "addon": []
+        },
+        "s6_A": {
+         "kind": "return",
+         "magnitude_cm": 2.5
+        }
+       }
+      },
+      {
+       "hand": "RH",
+       "seq_kind": "CM",
+       "sub_activity": "右手抓握假DIMM的包裝袋撕除",
+       "object": "包裝袋",
+       "slots": {
+        "s0_A": {
+         "kind": "reach",
+         "magnitude_cm": 35
+        },
+        "s1_B": "b_stand",
+        "s2_G": "g_grasp",
+        "s3": "m_teartape",
+        "s4": null,
+        "s5": null,
+        "s6_A": {
+         "kind": "return",
+         "magnitude_cm": 2.5
+        }
+       }
+      }
+     ]
+    },
+    "provenance": {
+     "run_id": "run-golden-0",
+     "bundle_code": "most-wi-motion-parse-poc003",
+     "bundle_status": "shadow",
+     "model_requested": "qwen2.5:14b",
+     "model_served": "qwen2.5:14b",
+     "prompt_variant": "zh",
+     "prompt_version": "zh",
+     "retry_count": 0
+    }
+   }
+  },
+  {
+   "id": "fewshot-zh-1",
+   "input": {
+    "wi_statement": "拿取假DIMM組於DIMM卡槽 (依據配置要求-16個假DIMM)",
+    "source_lang": "zh",
+    "context": {}
+   },
+   "response": {
+    "contract_version": "ai-structured-completion-v1",
+    "content": {
+     "motions": [
+      {
+       "hand": "RH",
+       "seq_kind": "GM",
+       "sub_activity": "右手拿取假DIMM插入至DIMM卡槽",
+       "object": "假DIMM",
+       "slots": {
+        "s0_A": {
+         "kind": "reach",
+         "magnitude_cm": 35
+        },
+        "s1_B": "b_stand",
+        "s2_G": "g_pick_sel",
+        "s3": {
+         "kind": "reach",
+         "magnitude_cm": 2.5
+        },
+        "s4": "b_eye",
+        "s5": {
+         "base": "p_place_single",
+         "addon": [
+          "a_insert"
+         ]
+        },
+        "s6_A": {
+         "kind": "return",
+         "magnitude_cm": 2.5
+        }
+       }
+      },
+      {
+       "hand": "LH",
+       "seq_kind": "GM",
+       "sub_activity": "左手抓握假DIMM的包裝袋丟至垃圾桶",
+       "object": "包裝袋",
+       "slots": {
+        "s0_A": {
+         "kind": "reach",
+         "magnitude_cm": 20
+        },
+        "s1_B": "b_stand",
+        "s2_G": "g_grasp",
+        "s3": {
+         "kind": "reach",
+         "magnitude_cm": 2.5
+        },
+        "s4": "b_none",
+        "s5": {
+         "base": "p_toss",
+         "addon": []
+        },
+        "s6_A": {
+         "kind": "return",
+         "magnitude_cm": 20
+        }
+       }
+      }
+     ]
+    },
+    "provenance": {
+     "run_id": "run-golden-1",
+     "bundle_code": "most-wi-motion-parse-poc003",
+     "bundle_status": "shadow",
+     "model_requested": "qwen2.5:14b",
+     "model_served": "qwen2.5:14b",
+     "prompt_variant": "zh",
+     "prompt_version": "zh",
+     "retry_count": 0
+    }
+   }
+  },
+  {
+   "id": "fewshot-zh-2",
+   "input": {
+    "wi_statement": "拿取電動起子，依圖示鎖附兩顆螺絲",
+    "source_lang": "zh",
+    "context": {}
+   },
+   "response": {
+    "contract_version": "ai-structured-completion-v1",
+    "content": {
+     "motions": [
+      {
+       "hand": "RH",
+       "seq_kind": "GM",
+       "sub_activity": "右手抓握電動起子保持住至機箱",
+       "object": "電動起子",
+       "slots": {
+        "s0_A": {
+         "kind": "reach",
+         "magnitude_cm": 35
+        },
+        "s1_B": "b_stand",
+        "s2_G": "g_grasp",
+        "s3": {
+         "kind": "reach",
+         "magnitude_cm": 2.5
+        },
+        "s4": "b_eye",
+        "s5": {
+         "base": "p_hold",
+         "addon": []
+        },
+        "s6_A": {
+         "kind": "return",
+         "magnitude_cm": 2.5
+        }
+       }
+      },
+      {
+       "hand": "RH",
+       "seq_kind": "CM",
+       "sub_activity": "右手並鎖附固定並確認螺絲到位",
+       "object": "螺絲",
+       "slots": {
+        "s0_A": {
+         "kind": "reach",
+         "magnitude_cm": 2.5
+        },
+        "s1_B": "b_stand",
+        "s2_G": null,
+        "s3": null,
+        "s4": "x_screw_fix",
+        "s5": "i_confirm",
+        "s6_A": {
+         "kind": "return",
+         "magnitude_cm": 35
+        }
+       }
+      }
+     ]
+    },
+    "provenance": {
+     "run_id": "run-golden-2",
+     "bundle_code": "most-wi-motion-parse-poc003",
+     "bundle_status": "shadow",
+     "model_requested": "qwen2.5:14b",
+     "model_served": "qwen2.5:14b",
+     "prompt_variant": "zh",
+     "prompt_version": "zh",
+     "retry_count": 0
+    }
+   }
+  },
+  {
+   "id": "fewshot-en-3",
+   "input": {
+    "wi_statement": "Pick up the DIMM from the rack and remove its packaging bag",
+    "source_lang": "en",
+    "context": {}
+   },
+   "response": {
+    "contract_version": "ai-structured-completion-v1",
+    "content": {
+     "motions": [
+      {
+       "hand": "LH",
+       "seq_kind": "GM",
+       "sub_activity": "left hand picks up the DIMM from the rack and holds it to the line",
+       "object": "DIMM",
+       "slots": {
+        "s0_A": {
+         "kind": "reach",
+         "magnitude_cm": 35
+        },
+        "s1_B": "b_stand",
+        "s2_G": "g_pick_sel",
+        "s3": {
+         "kind": "reach",
+         "magnitude_cm": 2.5
+        },
+        "s4": "b_eye",
+        "s5": {
+         "base": "p_hold",
+         "addon": []
+        },
+        "s6_A": {
+         "kind": "return",
+         "magnitude_cm": 2.5
+        }
+       }
+      },
+      {
+       "hand": "RH",
+       "seq_kind": "CM",
+       "sub_activity": "right hand grasps and tears off the DIMM packaging bag",
+       "object": "packaging bag",
+       "slots": {
+        "s0_A": {
+         "kind": "reach",
+         "magnitude_cm": 35
+        },
+        "s1_B": "b_stand",
+        "s2_G": "g_grasp",
+        "s3": "m_teartape",
+        "s4": null,
+        "s5": null,
+        "s6_A": {
+         "kind": "return",
+         "magnitude_cm": 2.5
+        }
+       }
+      }
+     ]
+    },
+    "provenance": {
+     "run_id": "run-golden-3",
+     "bundle_code": "most-wi-motion-parse-poc003",
+     "bundle_status": "shadow",
+     "model_requested": "qwen2.5:14b",
+     "model_served": "qwen2.5:14b",
+     "prompt_variant": "en",
+     "prompt_version": "en",
+     "retry_count": 0
+    }
+   }
+  }
+ ]
+}

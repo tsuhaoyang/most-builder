@@ -8,7 +8,7 @@
 
 ## 狀態
 
-🔄 執行中（ADR-037 於 2026-11-14 核可）。S0 文件回寫、S1 舊 LLM 路徑移除已完成；S2 起未開始。與 ADR-037 衝突時以 ADR-037 為準。
+🔄 執行中（ADR-037 於 2026-11-14 核可）。S0 文件回寫、S1 舊 LLM 路徑移除、S2 adapter／fake／契約測試已完成；S3 起未開始。與 ADR-037 衝突時以 ADR-037 為準。
 
 > 來源：MOST 與 ai_service 兩邊的唯讀盤點、架構規劃，以及兩輪審查（架構、資安、code、nlp-compiler、wi-workbench、excel-import、auth-rbac）。
 > 本文件中「ADR-033 P3」指 ADR-033 遷移路徑的第 3 階段；本計畫自己的階段寫作 S0–S5，避免撞名。
@@ -96,6 +96,27 @@ DB 欄位不動；寫入端不再產生 `kind='llm'`，但**舊 `kind='llm'` 列
   - 評估把 `ai_integration/mapper.py` 納入 `test_i18n_en_field_isolation.py` 的 `_en` 欄位守衛範圍。
 - 錯誤碼與 zh-TW／en 訊息；`domains.yaml` nlp-compiler 的 paths 加 `ai_integration/**`、`tests/unit/ai_integration/**`、`tests/contract/ai_service/**`。
 - 完成定義：adapter 對 fake 全綠；沒有任何現有路由改動；CI 綠。
+
+### S2 落地紀錄（2026-11-14）
+
+- 落地檔案：`src/ddm_v2/ai_integration/{config,client,mapper,ports,adapter,fake,schema,errors}.py`、
+  `schemas/wi-motion-parse.schema.json`（ai_service `df399fc` 的複本，sha256 釘在 `schema.py`）；
+  測試 `tests/unit/ai_integration/`、`tests/contract/ai_service/`（新 pytest marker `contract`，CI 另一段執行）、
+  假服務 `tests/fakes/ai_service_app.py`。
+- **與計畫的差異 1（身分 header）**：ai_service 的 `structured-completion` 以 `require_acting_user` 要求四個使用者
+  header，缺任一回 401。依 ADR-037 D7「不送員工編號」，四個 header 一律填**部署設定的固定服務身分**
+  （`DDM_AI_SERVICE_SERVICE_USER`、`DDM_AI_SERVICE_PLANT_CODE`），不取自入站請求。
+- **與計畫的差異 2（錯誤碼）**：S2 沒有路由對外報錯，所以失敗分類先留在 MOST 內部
+  （`ai_integration.errors.AiServiceErrorKind`），**未**登記進 `errors/registry.py`、未加 i18n 訊息；
+  S3 接上 nl-draft 時，降級原因以 routing reason／provenance 呈現，真的需要對外錯誤碼時再登記並補 zh-TW／en。
+- **與計畫的差異 3（mapper 輸出）**：mapper 輸出 MOST 端型別 `MotionSuggestion`（已過 allow-list 與上限檢查），
+  **尚未**轉成 `WorkInstructionPlan`／候選欄位——那需要以加法擴充 `nlp/contracts`，放在 S3 一起做。
+- **golden 不是真服務錄製**：content 取自 ai_service pack 的 IE 核凍 few-shot；S3 進入條件的 30 句量測時補錄真回應。
+- **已知限制**：DNS 重新綁定檢查在每次請求前做，仍有檢查到連線之間的 TOCTOU 空窗（https 憑證驗證可擋大部分；
+  `DDM_AI_SERVICE_ALLOW_PLAINTEXT` 模式沒有這層，上線前要嘛釘 IP、要嘛只允許 loopback）；熔斷為單程序計數。
+- **S3 進入前必須補**（ADR-037 D8，S2 未做）：MOST 端並行上限（interactive 2／batch 1）、每人每分鐘與每日預算、
+  single-flight；`AiServiceWiParser.parse` 目前逐句串行。S3 的 `wi_ai_service` 要在外層把 `ValueError`
+  （context 白名單）與 `RuntimeError`（schema hash 不符）轉成降級並記 ERROR log。
 
 ## 4. S3：ADR-033 P3＋單句路徑（開關後）
 

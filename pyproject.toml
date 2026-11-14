@@ -120,10 +120,15 @@ package-dir = {"" = "src"}
 [tool.setuptools.packages.find]
 where = ["src"]
 
+[tool.setuptools.package-data]
+# ai_service 輸出 schema 的 MOST 端複本（ADR-037 D2；sha256 釘在 ai_integration/schema.py）
+"ddm_v2.ai_integration" = ["schemas/*.json"]
+
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 asyncio_mode = "auto"
 markers = [
     "unit: pure-Python unit tests (no DB)",
-    "integration: API tests against the v2 app (need PostgreSQL via DATABASE_URL)"
+    "integration: API tests against the v2 app (need PostgreSQL via DATABASE_URL)",
+    "contract: external-service contract tests against pinned snapshots (no network; run as tests/contract)"
 ]

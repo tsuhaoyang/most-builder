@@ -243,10 +243,11 @@ domains:
       - "src/ddm_v2/api/routes/v2/parse_jobs.py"
       - "src/ddm_v2/api/routes/v2/ai_review.py"
       - "src/ddm_v2/models/v2/ai_ops.py"
-      # 規劃中（ADR-037，尚未實作）：外部 ai_service 整合
+      # 外部 ai_service 整合（ADR-037）：ai_integration／fakes／contract 為 S2 已落地；wi-ai-review 規劃中
       - "src/ddm_v2/ai_integration/**"
       - "tests/unit/ai_integration/**"
       - "tests/contract/ai_service/**"
+      - "tests/fakes/**"
       - "src/frontend/src/features/wi-ai-review/**"
       # e2e：NL→MOST 草稿的守門與多動作
       - "src/frontend/e2e/workbench-nl-*.spec.ts"
