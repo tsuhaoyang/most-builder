@@ -1,7 +1,7 @@
 """POST /api/v2/dsx/a3-distance——DSX 整合 API 契約 v2 §3.1／§6。
 
-DSX 本身不上線（mock 邊界在 dsx_client 層，比照 test_wi_ai_l2.py 的
-`monkeypatch.setattr(wi_ai_service, "_try_llm_plan", ...)` 慣例）；DB 走真的 migration
+DSX 本身不上線（mock 邊界在 dsx_client 層，以 `monkeypatch.setattr` 換掉
+`dsx_client.query_distance`）；DB 走真的 migration
 （wi_row_dsx_suggestions 的 upsert 語意需要真的表存在）。
 """
 from __future__ import annotations

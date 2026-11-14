@@ -110,12 +110,7 @@ class Settings:
     cors_allow_headers: list[str]
     database_url: str
     database_echo: bool
-    wi_ai_enabled: bool
     wi_ai_auto_enabled: bool
-    llm_base_url: str
-    llm_api_key: str | None
-    llm_model: str
-    llm_timeout_s: float
     wi_ai_bundle_code: str
     parse_worker_enabled: bool
     parse_worker_interval_s: float
@@ -148,12 +143,9 @@ def get_settings() -> Settings:
         cors_allow_headers=_parse_csv(os.getenv("DDM_CORS_ALLOW_HEADERS"), list(DEFAULT_CORS_HEADERS)),
         database_url=os.getenv("DATABASE_URL", "postgresql+asyncpg://ddm_user:ddm_pass@localhost:5432/ddm_v2"),
         database_echo=_parse_bool(os.getenv("DATABASE_ECHO"), False),
-        wi_ai_enabled=_parse_bool(os.getenv("DDM_WI_AI_ENABLED"), False),
+        # ADR-037：DDM_WI_AI_ENABLED 與舊 LLM 連線設定已移除（MOST 內不再呼叫 LLM），設了也不生效。
+        # 外部 ai_service 的開關另名 DDM_AI_SERVICE_ENABLED（實作計畫 S2／S3），刻意不沿用舊名。
         wi_ai_auto_enabled=_parse_bool(os.getenv("DDM_WI_AI_AUTO_ENABLED"), False),
-        llm_base_url=os.getenv("DDM_LLM_BASE_URL", "http://127.0.0.1:11434"),
-        llm_api_key=os.getenv("DDM_LLM_API_KEY") or None,
-        llm_model=os.getenv("DDM_LLM_MODEL", "qwen2.5:32b-instruct"),
-        llm_timeout_s=float(os.getenv("DDM_LLM_TIMEOUT_S", "8.0")),
         wi_ai_bundle_code=os.getenv("DDM_WI_AI_BUNDLE_CODE", "wi-ai-dev-000"),
         # ai_parse_jobs 背景 worker（services/v2/parse_job_worker.py）。
         # 預設**開啟**：compose 部署不另設環境變數，預設關閉的 worker 等於沒做

@@ -34,7 +34,7 @@ RUNNABLE_JOB_STATUSES = ("queued", "running")
 TERMINAL_JOB_STATUSES = ("completed", "partial", "failed", "cancelled")
 
 # 單次 tick 的 item 上限。不是任意數字：LEASE_SECONDS=60 而每個 item 的 LLM
-# 呼叫上限 llm_timeout_s（預設 8s），4 × 8s = 32s < 60s——批次再大，lease 就可能
+# 呼叫上限（舊 LLM 路徑的 llm_timeout_s，預設 8s；ADR-037 已移除，外部 ai_service 的逾時於 S5 重定），4 × 8s = 32s < 60s——批次再大，lease 就可能
 # 在批次跑完前過期而被其他實例 reclaim（重複處理）。要調大必須同時重估 lease。
 MAX_TICK_LIMIT = 4
 

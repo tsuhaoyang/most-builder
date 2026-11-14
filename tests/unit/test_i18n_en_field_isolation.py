@@ -55,7 +55,7 @@ pytestmark = pytest.mark.unit
 
 _REPO = pathlib.Path(__file__).resolve().parents[2]
 
-# I3 明文點名的三個守衛對象：nlp/ 整個目錄（含子目錄 prompts/）、
+# I3 明文點名的三個守衛對象：nlp/ 整個目錄（`prompts/` 子目錄已隨 ADR-037 移除）、
 # template_matching.py（範本關鍵字比對，決定套用哪個範本 → 決定 TMU）、
 # synonym_service.py（同義詞登記，決定 parser 選哪個 option code → 決定 TMU）。
 _NLP_DIR = _REPO / "src" / "ddm_v2" / "nlp"

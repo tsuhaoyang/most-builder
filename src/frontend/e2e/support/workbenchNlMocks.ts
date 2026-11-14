@@ -1,6 +1,6 @@
 // 共用 mock：MOST 工作台（workbench-v3）× NL 草稿 e2e（multiaction / guards 兩 spec 共用）。
 // 後端契約（wi_ai_service）：頂層 slots/suggested_seq **永遠來自 rule_based** 的壓平相容
-// 欄位；ai.drafts 是權威草稿（DDM_WI_AI_ENABLED=1 時可能來自 LLM，兩者可分歧）。
+// 欄位；ai.drafts 是權威草稿（接上外部 AI planner 時可能來自 AI，兩者可分歧；ADR-037）。
 // 全部 API 以 page.route mock（測試資料自建，不依賴環境既存資料；CI_GATES 硬性規則 7）。
 import type { Page, Route } from '@playwright/test'
 

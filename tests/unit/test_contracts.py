@@ -318,7 +318,7 @@ def test_assignment_follows_sequence_order_not_list_order():
 
     刻意把 `sequence_order=2` 的 action 排在 list 前面：位置若是照 list 順序發，
     前面那個會拿到左邊的 (0,2)。實際上 `sequence_order=1` 的那個才拿 (0,2)。
-    （這種輸入走不到正式管線——`_parse_sanitize_validate` 會先以
+    （這種輸入走不到正式管線——`inbound_guard.parse_sanitize_validate` 會先以
     `sequence_order_not_contiguous` 整筆退回；這裡直接驗定位函式的規則。）
     """
     from ddm_v2.nlp.contracts import locate_evidence_spans

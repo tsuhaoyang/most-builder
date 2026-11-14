@@ -11,7 +11,7 @@ ADR-033（accepted 2026-08-23）P1 收窄後的責任分層（spec §5.2、§7.5
   dependency 端點存在、role key 在封閉集合內。
 - **adapter 邊界**（`prepare_planner_payload` ＋ `sanitize_planner_output`）**寬容**：
   剝未知鍵、剝數值、丟壞 dependency、推導 evidence offset——逐項記名，**不 raise**。
-- 整筆失敗只剩三種（判在 `llm_planner`）：JSON 解析失敗、`actions` 全空、
+- 整筆失敗只剩三種（判在 `inbound_guard.parse_sanitize_validate`）：JSON 解析失敗、`actions` 全空、
   `sequence_order` 不連續。
 """
 from __future__ import annotations
@@ -229,7 +229,7 @@ def validate_planner_output(
 
     ⚠️ 本函式**不決定**誰要整筆失敗：adapter 邊界（`sanitize_planner_output`）
     會先把可剝的都剝掉，剩下的錯誤才代表輸出真的壞了。整筆失敗的三種情形判在
-    `llm_planner._parse_sanitize_validate`。
+    `inbound_guard.parse_sanitize_validate`。
     """
     errors: list[str] = []
     ids = [a.action_id for a in output.actions]

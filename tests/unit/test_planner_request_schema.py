@@ -2,7 +2,7 @@
 
 ## 這支測試存在的理由
 
-`llm_planner` 把 `model_json_schema()` 同時送進 `response_format={"type":"json_schema"}`
+（ADR-037 前）`llm_planner` 把 `model_json_schema()` 同時送進 `response_format={"type":"json_schema"}`
 與（`json_object`／`none` 模式下）附進 system message。**送出去的 schema 就是一份公告**。
 
 P2 之前送的是 `contracts.PlannerOutput.model_json_schema()`，於是 prompt 一邊用規則說
@@ -16,13 +16,16 @@ P2 之前送的是 `contracts.PlannerOutput.model_json_schema()`，於是 prompt
 | **不索取** | 請求 schema 不得公告 `value`／`unit`／`status`／`start`／`end` | 收窄沒有真的發生，prompt 說了不算 |
 | **仍接受** | `PlannerOutput.model_validate` 照樣收得下那些欄位 | 變成 ADR-011 禁止的破壞性收窄：既有 `ai_parse_runs.plan`／gold 讀不回來 |
 
+ADR-037（2026-11-14）後 MOST 內不再呼叫 LLM，「送出去的是哪份 schema」那兩條測試隨
+`llm_planner` 一併移除；索取 schema 本身（`nlp/plan_request.py`）保留為對外部 planner 的契約需求，
+兩個方向的斷言照舊有效。
+
 第二個方向不是多餘的保險——**它是 D6「逐項降級」的前提**。模型仍會偶爾吐數值，
 adapter 邊界要能收下來才剝得掉並記名（`role_numeric_stripped`）；解析端一起收窄的話，
 那些輸出會在 pydantic 就整筆炸掉，回到 P1 之前「語意正確的切分被整份丟掉」的病。
 """
 from __future__ import annotations
 
-import json
 import re
 from typing import Any, get_args
 
@@ -35,8 +38,7 @@ from ddm_v2.nlp.contracts import (
     PlannerOutput,
     RoleValue,
 )
-from ddm_v2.nlp.prompts import plan_v1
-from ddm_v2.nlp.prompts.plan_v2_schema import (
+from ddm_v2.nlp.plan_request import (
     PlannerRequest,
     RequestedDependencyType,
     request_json_schema,
@@ -259,70 +261,3 @@ def test_request_schema_field_names_are_a_subset_of_contract_field_names():
     )
     extra = sorted(_property_names(request_json_schema()) - contract_fields)
     assert extra == [], f"索取 schema 有契約沒有的欄位名：{extra}"
-
-
-# ── 這份 schema 真的是送出去的那一份嗎 ──────────────────────────────────
-
-
-class _FakeLLMClient:
-    def __init__(self, payload: str) -> None:
-        self._payload = payload
-        self.calls: list[dict] = []
-
-    async def structured_completion(self, **kwargs):  # type: ignore[no-untyped-def]
-        self.calls.append(kwargs)
-        from ddm_v2.nlp.planner_ports import LLMRawResponse
-
-        return LLMRawResponse(content=self._payload, model="fake-model", latency_ms=1.0)
-
-
-@pytest.mark.asyncio
-async def test_llm_planner_sends_the_request_schema_not_the_contract_schema():
-    """把「公告面已經換掉」釘在**實際送出的參數**上，而不是常數的相等比較。
-
-    只斷言 `plan_v1.REQUEST_JSON_SCHEMA == request_json_schema()` 是不夠的——
-    `llm_planner` 完全可以繼續送 `PlannerOutput.model_json_schema()`，那條斷言照樣綠。
-    這裡攔的是 client 真正收到的 `json_schema`。
-    """
-    from ddm_v2.nlp.contracts import ParseContext
-    from ddm_v2.nlp.llm_planner import LLMPlannerAdapter
-
-    norm = "拿起dimm"
-    payload = json.dumps(
-        {
-            "language": "zh",
-            "actions": [
-                {
-                    "action_id": "a1",
-                    "action_type": "acquire",
-                    "sequence_order": 1,
-                    "roles": {"object": {"text": "dimm"}},
-                    "evidence": [{"text": norm}],
-                }
-            ],
-            "dependencies": [],
-            "unresolved": [],
-        },
-        ensure_ascii=False,
-    )
-    client = _FakeLLMClient(payload)
-    await LLMPlannerAdapter(client).plan(norm, ParseContext(rule_set_code="X"))
-
-    sent = client.calls[0]["json_schema"]
-    assert sent == request_json_schema(), "送出去的不是索取 schema"
-    announced = _property_names(sent)
-    leaked = sorted(_MUST_NOT_BE_ANNOUNCED & announced)
-    assert leaked == [], (
-        f"實際送給模型的 schema 仍公告了收窄掉的欄位：{leaked}"
-        "——常數換了但呼叫端沒換，是最容易漏的一步"
-    )
-    # 負向對照：契約 schema 確實還帶著那些欄位，所以上面那條不是恆真。
-    assert _MUST_NOT_BE_ANNOUNCED <= _property_names(PlannerOutput.model_json_schema()), (
-        "`PlannerOutput` 的 schema 已經不公告那些欄位了——那本測試的對照組不成立，"
-        "請確認契約沒有被一起收窄（ADR-011）"
-    )
-
-
-def test_prompt_module_exposes_the_same_request_schema():
-    """`plan_v1.REQUEST_JSON_SCHEMA` 是 import 時算的常數，必須與函式產出的一致。"""
-    assert plan_v1.REQUEST_JSON_SCHEMA == request_json_schema()

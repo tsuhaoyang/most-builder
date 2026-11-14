@@ -22,8 +22,8 @@
 只涵蓋 **wi-plan-v1**（`nlp/contracts.py` ＋ `nlp/routing.py`）與 **i18n／vocab／wi_context
 三支 schema**。其餘對外列舉**尚未凍結**（票 G-3，待裁決）：
 
-- 模組級別名：`locale.Locale`、`llm_client.ResponseFormatMode`、
-  `level_validation_service.Trigger`、`parse_job_service.OutcomeBucket`（全樹 15 個，本表 11 個）。
+- 模組級別名：`locale.Locale`、`level_validation_service.Trigger`、
+  `parse_job_service.OutcomeBucket`（`llm_client.ResponseFormatMode` 已隨 ADR-037 移除；計數待 G-3 重點）。
 - 欄位層 inline Literal：`schemas/v2` 底下另有 13 欄零守衛，含 `most.py::CycleIn.seq`、
   `motion_module.py::*.{category,scope}`、`rule_set_options.py` 五欄。
 

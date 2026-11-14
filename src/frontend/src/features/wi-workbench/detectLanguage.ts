@@ -1,6 +1,8 @@
 /**
- * Client-side language detection — a faithful mirror of the backend
- * `detect_language` in `src/ddm_v2/nlp/prompts/language_aware.py`.
+ * Client-side language detection. It was a mirror of the backend `detect_language`
+ * in the former `nlp/prompts/language_aware.py`, removed with the in-process LLM
+ * planner (ADR-037). It is now a standalone heuristic; the backend no longer has a
+ * matching function, so there is no parity to maintain.
  *
  * This is a **preview only** (shows the user what language the parser will likely
  * treat the input as). The authoritative language is whatever the backend returns

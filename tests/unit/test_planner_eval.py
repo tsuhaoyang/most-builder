@@ -10,14 +10,14 @@ seed gold 基線釘值、CLI 報告兩段皆在（防 planner 段被靜默跳過
 證據：把 `wi_ai_eval.py` 的 `all(r.ok)` 或 `failed == 0` 拆掉必轉紅）、
 未核准案例混入 gold_dir 時報告降級 wi-draft-*（拆掉 prefix 判斷必轉紅）、
 **報告的執行來源自述**（v7 `planner_run`：rule 路徑 model/prompt_version 恆 null
-且不需要 LLM 設定；llm 路徑記實際模型與 `plan_v1.PROMPT_VERSION`）、
+且不需要 LLM 設定；ADR-037 後 llm 路徑已移除）、
 **例外訊息的 URL 遮蔽**（`planner_error` 會把 httpx 訊息裡的 endpoint 連同
 userinfo 寫進要入版控的報告——遮蔽後憑證不得出現，但 Pydantic 的診斷細節必須留著）、
-**`model_served` 是遠端可控字串**（分岐時不得靜默挑一個；控制字元與超長值不得
-進報告或終端機，但合法 tag 不得被誤殺）、
+**`model_served` 是遠端可控字串**（控制字元與超長值不得進報告或終端機，但合法 tag
+不得被誤殺；分岐與截斷的端到端測試隨 LLM 路徑移除，單元層仍在）、
 **被拒回應留存**（v8 `planner_raw_rejected`：失敗且帶得出回應才有值、沒有回應時為
-null 且與「回了空字串」分得開；遮 URL 與已知憑證、超長截斷留痕；憑證 sentinel 走
-**真的 HTTP 呼叫**——回聲式伺服器把我們送出的 `Authorization` 抄進回應本文）
+null 且與「回了空字串」分得開；遮 URL 與已知憑證、超長截斷留痕；ADR-037 前另有走真的 HTTP 呼叫的
+憑證 sentinel 探針，隨 LLM 路徑移除）
 ＋ `gold_dir` 為 repo 相對路徑（不得夾帶本機絕對路徑）。
 """
 from __future__ import annotations
@@ -738,77 +738,6 @@ async def test_planner_error_keeps_schema_diagnostics_while_redacting():
     assert result.planner_error_codes == ["json_or_schema"]
 
 
-def test_report_never_contains_endpoint_credentials_on_http_failure(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-):
-    """報告層的整份掃描：LLM 回非 2xx 時，**報告任何角落**都不得出現 endpoint 或其帳密。
-
-    比 `planner_run` 那條更強——`planner_run` 本來就不記 base_url，真正的漏口是
-    `planner_eval.cases[*].planner_error`／`errors`（例外訊息原文）。stub 直接拋
-    httpx 的 401，不打真模型。全案失敗＝管道壞掉 → exit 1（既有契約）。
-    """
-    from ddm_v2.nlp.llm_planner import LLMPlannerAdapter
-    from ddm_v2.settings import get_settings
-
-    gold = tmp_path / "gold"
-    _write_gold(gold, "g01.json", _load_g01())
-    out = tmp_path / "out"
-
-    async def _stub_plan(self, normalized_text: str, context):  # noqa: ANN001
-        raise _http_status_error()
-
-    monkeypatch.setattr(LLMPlannerAdapter, "plan", _stub_plan)
-    monkeypatch.setenv("DDM_LLM_BASE_URL", "http://svc-account:hunter2-SECRET@llm-endpoint.invalid:11434")
-    monkeypatch.setenv("DDM_LLM_API_KEY", "sk-must-not-appear-in-report")
-    monkeypatch.setenv("DDM_LLM_MODEL", "eval-selftest-model:0b")
-    monkeypatch.setattr(
-        sys,
-        "argv",
-        [
-            "wi_ai_eval.py",
-            "--gold-dir",
-            str(gold),
-            "--out",
-            str(out),
-            "--planner",
-            "llm",
-            "--llm-timeout-s",
-            "1",
-        ],
-    )
-
-    get_settings.cache_clear()
-    try:
-        assert wi_ai_eval.main() == 1  # 全案失敗＝管道壞掉
-    finally:
-        get_settings.cache_clear()
-
-    text = (out / "wi-gold-latest.json").read_text(encoding="utf-8")
-    for secret in ("hunter2-SECRET", "svc-account", "llm-endpoint.invalid", "sk-must-not-appear-in-report"):
-        assert secret not in text, f"報告洩漏 {secret}"
-
-    report = json.loads(text)
-    # 全案失敗＝沒有任何成功呼叫：served 誠實為 null，但 requested 不得跟著消失
-    # （失敗時「送出去的是哪顆模型」正是要查的資訊）
-    run = report["planner_run"]
-    assert run["model_requested"] == "eval-selftest-model:0b"
-    assert run["model_served"] is None
-    assert run["model_served_variants"] == []
-    from ddm_v2.nlp.prompts import plan_v1
-
-    assert run["prompt_version"] == plan_v1.PROMPT_VERSION
-
-    case = report["planner_eval"]["cases"][0]
-    assert case["planner_failed"] is True
-    # 失敗形態仍可診斷（遮蔽不得把報告變成看不出發生什麼事）
-    assert "<redacted-url>" in case["planner_error"]
-    assert "401 Unauthorized" in case["planner_error"]
-    # 非 2xx 在 `resp.raise_for_status()` 就炸了，沒有 completion 可留——
-    # 欄位誠實為 null（不得拿例外訊息充當「原始回應」）
-    assert case["planner_raw_rejected"] is None
-    assert report["planner_eval"]["summary"]["planner_failures"]["error_codes"] == {
-        "HTTPStatusError": 1
-    }
 
 
 
@@ -828,12 +757,12 @@ _REJECTED_TWO_ACTION_JSON = (
 
 
 def _planner_error_with_raw(content: str) -> PlannerError:
-    """帶 `raw` 的 PlannerError＝schema retry 用盡的真實形狀（`llm_planner` 掛 raw2）。"""
-    from ddm_v2.nlp.planner_ports import LLMRawResponse
+    """帶 `raw` 的 PlannerError＝schema retry 用盡的真實形狀（舊 LLM adapter 掛 raw2）。"""
+    from ddm_v2.nlp.planner_ports import PlannerRawResponse
 
     return PlannerError(
         "planner_schema_invalid:['json_or_schema:Expecting value']",
-        raw=LLMRawResponse(content=content, model="eval-selftest-model:0b"),
+        raw=PlannerRawResponse(content=content, model="eval-selftest-model:0b"),
         errors=["json_or_schema:Expecting value"],
     )
 
@@ -917,7 +846,7 @@ async def test_rejected_raw_redacts_urls_and_known_secrets():
 
 
 async def test_rejected_raw_is_truncated_with_a_visible_trace():
-    """回應長度無界（`llm_client` 未設 response size limit）——截斷且**留痕**。
+    """回應長度無界（外部 planner 回應不可信，未設 response size limit）——截斷且**留痕**。
 
     留痕是重點：一份被截斷卻裝成完整的「原始回應」，會讓事後判讀切分時得出錯的結論。
 
@@ -981,247 +910,18 @@ async def test_degenerate_secrets_do_not_carpet_the_text():
     assert result.planner_raw_rejected == _REJECTED_TWO_ACTION_JSON
 
 
-def _start_echoing_llm_server(hostile_json: str):
-    """起一個把**收到的請求資訊抄進回應本文**的 OpenAI-compat 伺服器。
-
-    為什麼要真的起伺服器（而不是 stub 掉 `LLMPlannerAdapter.plan`）：stub 掉整個
-    `plan` 就**不會發生 HTTP 呼叫**，api key 根本沒離開過行程——那種 sentinel 釘住的
-    只是欄位邊界，不是洩漏路徑。這裡讓 `OpenAICompatClient` 真的送出請求，伺服器把
-    **它實際收到的 `Authorization` header 與請求 URL** 抄進 completion 本文，於是
-    「遠端可控字串把我們的憑證帶回報告」這條路徑是真的走了一遍。
-
-    回聲式 proxy／debug endpoint 就是這個形狀（把收到的 header 原樣寫進錯誤或回應）。
-    """
-    import threading
-    from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
-
-    class _Handler(BaseHTTPRequestHandler):
-        def do_POST(self) -> None:  # noqa: N802 — BaseHTTPRequestHandler 的介面
-            self.rfile.read(int(self.headers.get("Content-Length") or 0))
-            upstream = f"http://{self.headers.get('Host')}{self.path}"
-            content = (
-                # 散文前綴 → JSON 解析失敗 → retry → PlannerError（帶 raw2）
-                f"好的，這是解析結果\x1b[2J\x1b]0;pwned\x07"
-                f"（upstream={upstream}, auth={self.headers.get('Authorization')}）：\n"
-                + hostile_json
-            )
-            body = json.dumps(
-                {
-                    "model": "hostile-echo:0b",
-                    "choices": [{"message": {"content": content}}],
-                },
-                ensure_ascii=False,
-            ).encode("utf-8")
-            self.send_response(200)
-            self.send_header("Content-Type", "application/json")
-            self.send_header("Content-Length", str(len(body)))
-            self.end_headers()
-            self.wfile.write(body)
-
-        def log_message(self, *args) -> None:  # 別把測試輸出灌滿 access log
-            pass
-
-    server = ThreadingHTTPServer(("127.0.0.1", 0), _Handler)
-    threading.Thread(target=server.serve_forever, daemon=True).start()
-    return server
 
 
-def test_rejected_raw_never_carries_credentials_over_a_real_http_call(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture
-):
-    """T-12 的端到端：**真的發出 HTTP 呼叫**，憑證真的上線，報告任何角落都不得有它。
-
-    走完整條路徑（`OpenAICompatClient` → 真 socket → `LLMPlannerAdapter` 的
-    initial+retry → `PlannerError(raw=…)` → `planner_eval` → 報告 JSON），
-    伺服器把收到的 `Authorization` 與請求 URL 抄回 completion 本文。
-
-    mutation 證據：拿掉 `_redact_urls` → `127.0.0.1:<port>` 出現在報告；拿掉
-    `_redact_secrets` → api key 出現在報告；拿掉 `planner_raw_rejected` 欄位 →
-    KeyError；把內容印到 stdout → ESC 斷言轉紅。
-    """
-    from ddm_v2.settings import get_settings
-
-    api_key = "sk-t12-e2e-sentinel-MUST-NOT-APPEAR"
-    server = _start_echoing_llm_server(_REJECTED_TWO_ACTION_JSON)
-    port = server.server_address[1]
-
-    gold = tmp_path / "gold"
-    _write_gold(gold, "g01.json", _load_g01())
-    out = tmp_path / "out"
-
-    monkeypatch.setenv("DDM_LLM_BASE_URL", f"http://127.0.0.1:{port}")
-    monkeypatch.setenv("DDM_LLM_API_KEY", api_key)
-    monkeypatch.setenv("DDM_LLM_MODEL", "eval-selftest-model:0b")
-    monkeypatch.setattr(sys, "argv", _llm_argv(gold, out, timeout="10"))
-
-    get_settings.cache_clear()
-    try:
-        # 唯一的案例失敗＝全案失敗＝管道壞掉（既有契約）
-        assert wi_ai_eval.main() == 1
-    finally:
-        get_settings.cache_clear()
-        server.shutdown()
-        server.server_close()
-    stdout = capsys.readouterr().out
-
-    text = (out / "wi-gold-latest.json").read_text(encoding="utf-8")
-    for secret in (api_key, f"127.0.0.1:{port}"):
-        assert secret not in text, f"報告洩漏 {secret}"
-
-    case = json.loads(text)["planner_eval"]["cases"][0]
-    raw = case["planner_raw_rejected"]
-    assert case["planner_failed"] is True
-    assert raw is not None, "帶得出回應的失敗必須留存原始回應"
-    assert "<redacted-url>" in raw and "<redacted-secret>" in raw
-    # 留存的目的：看得出模型把單一 action 的原文切成了 a1+a2
-    assert '"a2"' in raw and case["gold_action_count"] == 1
-    assert "[truncated from" not in raw  # 正常長度的回應不得被動到
-
-    # 終端機是另一個 sink，而本欄位**不剝控制字元**（換行是回應的合法內容）——
-    # 所以它不得未經逸出被印出去。報告 JSON 那邊靠 `json.dumps` 逸出：
-    # 原始 ESC 位元組不在檔案裡，逸出形式在。逸出若哪天消失，這兩條會轉紅。
-    assert "\x1b" not in stdout
-    assert "\x1b" not in text
-    assert "\\u001b" in text
-    assert "raw_rejected 留存 1/1 筆" in stdout
 
 
-def _llm_argv(gold: Path, out: Path, *, timeout: str = "1") -> list[str]:
-    return [
-        "wi_ai_eval.py",
-        "--gold-dir",
-        str(gold),
-        "--out",
-        str(out),
-        "--planner",
-        "llm",
-        "--llm-timeout-s",
-        timeout,
-    ]
 
 
-def _llm_env(monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setenv("DDM_LLM_BASE_URL", "http://llm-endpoint.invalid:11434")
-    monkeypatch.setenv("DDM_LLM_MODEL", "eval-selftest-model:0b")
 
 
-def _plan_ok(gold_data: dict, model: str):
-    """回一份合法 plan、並讓伺服器回報 `model` 的 stub（不打真模型）。"""
-    from ddm_v2.nlp.contracts import PlannerOutput
-    from ddm_v2.nlp.planner_ports import LLMRawResponse
-
-    gold_plan = gold_data["plan"]
-    return (
-        PlannerOutput(
-            language=gold_plan["language"],
-            actions=gold_plan["actions"],
-            dependencies=[],
-            unresolved=[],
-        ),
-        LLMRawResponse(content="{}", model=model),
-    )
 
 
-def test_divergent_served_models_are_all_listed_and_none_is_picked(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-):
-    """伺服器對不同案例回報不同 model → `model_served` 為 null、variants 列出全部。
-
-    分岐是真實情形（endpoint 中途被指到別顆、負載平衡到不同 tag）。靜默挑第一個
-    會讓分岐消失於無形，而報告的用途正是佐證「這份數字是哪顆模型跑的」。
-
-    mutation 證據：把 `RunIdentity.to_dict()` 的
-    `variants[0] if len(variants) == 1 else None` 改成 `variants[0] if variants else None`
-    （＝分岐時挑第一個），本測試必轉紅。在此之前 `[]`（全案失敗）與 `>1`（分岐）
-    共用同一支 `else None`，只測前者會給後者假的覆蓋感。
-    """
-    from ddm_v2.nlp.llm_planner import LLMPlannerAdapter
-    from ddm_v2.settings import get_settings
-
-    gold_data = _load_g01()
-    gold = tmp_path / "gold"
-    _write_gold(gold, "g01.json", gold_data)
-    second = _load_g01()
-    second["id"] = "g01b_second_case"
-    # 白名單外的 id 不能沿用 approved_by=seed（R6：那會被判未核准 → 報告降級
-    # wi-draft-*，本測試就讀不到官方報告了）
-    second["approved_by"] = "IEC141289"
-    second["review_status"] = "approved"
-    _write_gold(gold, "g01b.json", second)
-    out = tmp_path / "out"
-
-    calls = {"n": 0}
-
-    async def _stub_plan(self, normalized_text: str, context):  # noqa: ANN001
-        calls["n"] += 1
-        return _plan_ok(gold_data, "model-A" if calls["n"] == 1 else "model-B")
-
-    monkeypatch.setattr(LLMPlannerAdapter, "plan", _stub_plan)
-    _llm_env(monkeypatch)
-    monkeypatch.setattr(sys, "argv", _llm_argv(gold, out))
-
-    get_settings.cache_clear()
-    try:
-        assert wi_ai_eval.main() == 0
-    finally:
-        get_settings.cache_clear()
-
-    run = json.loads((out / "wi-gold-latest.json").read_text(encoding="utf-8"))["planner_run"]
-    assert calls["n"] == 2
-    assert run["model_served"] is None, "分岐時不得挑一個代表"
-    assert run["model_served_variants"] == ["model-A", "model-B"]
-    # requested 不受影響（分岐的是伺服器端，不是我們送出去的）
-    assert run["model_requested"] == "eval-selftest-model:0b"
 
 
-def test_served_model_name_is_stripped_and_truncated(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture
-):
-    """`model_served` 來自 LLM 伺服器回應＝遠端可控字串，兩個 sink 都要乾淨。
-
-    - **終端機**：本檔的 `print` 未經逸出，ESC 序列可清屏／改視窗標題／**覆寫先前
-      印出的其他評測數字**（這是本功能新增的 sink）；
-    - **報告 JSON**：`json.dumps` 會逸出 ESC，但長度無界（`llm_client` 只 `str()`），
-      一個回應就能塞 100KB 進要入版控的報告。
-
-    mutation 證據：把 `observe_served` 的 `_sanitize_model_name()` 拿掉必轉紅。
-    """
-    from ddm_v2.nlp.llm_planner import LLMPlannerAdapter
-    from ddm_v2.settings import get_settings
-
-    hostile = "gpt-4\x1b[2J\x1b]0;pwned\x07" + "A" * 500
-    gold_data = _load_g01()
-    gold = tmp_path / "gold"
-    _write_gold(gold, "g01.json", gold_data)
-    out = tmp_path / "out"
-
-    async def _stub_plan(self, normalized_text: str, context):  # noqa: ANN001
-        return _plan_ok(gold_data, hostile)
-
-    monkeypatch.setattr(LLMPlannerAdapter, "plan", _stub_plan)
-    _llm_env(monkeypatch)
-    monkeypatch.setattr(sys, "argv", _llm_argv(gold, out))
-
-    get_settings.cache_clear()
-    try:
-        assert wi_ai_eval.main() == 0
-    finally:
-        get_settings.cache_clear()
-    stdout = capsys.readouterr().out
-
-    text = (out / "wi-gold-latest.json").read_text(encoding="utf-8")
-    served = json.loads(text)["planner_run"]["model_served"]
-
-    # 終端機：原始 ESC 位元組不得出現（json.dumps 幫不到 print）
-    assert "\x1b" not in stdout
-    # 報告：連逸出形式都不該有（代表控制字元在寫入前就被剝掉）
-    assert "\x1b" not in text
-    assert "\\u001b" not in text
-    # 長度有界，且截斷**留痕**（不得看起來像完整值）
-    assert len(served) < len(hostile)
-    assert "[truncated from" in served
-    # 可見內容仍保留，仍看得出跑的是什麼（不是白名單式誤殺）
-    assert served.startswith("gpt-4")
 
 
 def test_legit_model_tags_survive_sanitizing():
@@ -1336,14 +1036,14 @@ def test_cli_report_self_attests_rule_planner_run(tmp_path: Path):
     在 v7 之前，報告不記 model 也不記 prompt 版本，版本歸屬只能靠人工命名的
     檔名；`gold_dir` 則是含 OS 使用者名的本機絕對路徑。這裡同時釘住：
     ⑴ rule planner 的來源欄恆 null（它不碰 LLM）；⑵ **rule 路徑不因為要填這些
-    欄位而變成需要 LLM 設定**——故意把 `DDM_LLM_BASE_URL` 清空跑（llm 分支在
-    這個環境下會 SystemExit），仍必須 exit 0；⑶ gold_dir 是 repo 相對路徑。
+    欄位而變成需要任何外部設定**（ADR-037 前以清空 LLM 設定跑來證明；該設定已移除），
+    必須 exit 0；⑶ gold_dir 是 repo 相對路徑。
 
     mutation 證據：把 `planner_run` 拿掉、或把 `_repo_relative()` 換回
     `str(args.gold_dir)`，本測試必轉紅。
     """
     out = tmp_path / "out"
-    proc = _run_cli(out_dir=out, env_extra={"DDM_LLM_BASE_URL": ""})
+    proc = _run_cli(out_dir=out)
     assert proc.returncode == 0, proc.stdout + proc.stderr
 
     text = (out / "wi-gold-latest.json").read_text(encoding="utf-8")
@@ -1371,110 +1071,6 @@ def test_cli_report_self_attests_rule_planner_run(tmp_path: Path):
     assert "gold_dir=tests/gold/wi_plans" in proc.stdout
 
 
-def test_report_self_attests_llm_model_and_prompt_version(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-):
-    """T-1（llm 路徑）：報告必須記下**這趟用的模型**與 `plan_v1.PROMPT_VERSION`。
-
-    不打真模型：client 建構本身無 I/O，只把 `LLMPlannerAdapter.plan` 換成 stub。
-    量的是「執行來源有沒有被寫進報告」，不是模型表現。
-
-    另外釘住兩件事：`model_requested`（送出去的）與 `model_served`（伺服器回報的）
-    分開記且不互相覆蓋；報告自述的 `llm_timeout_s` **真的被套用**到 adapter 上
-    （只驗欄位值等於自己寫的常數，等於什麼都沒驗）。
-
-    同時守住反向要求：**base_url 與 api_key 不得出現在報告任何角落**——這些報告
-    要入版控，base_url 有夾帶憑證的可能（重現方式寫在 README 的指令裡，不靠報告
-    帶 endpoint）。mutation 證據：把 identity 改成從別處讀死值、或把 base_url／
-    api_key 加進 `planner_run`，本測試必轉紅。
-    """
-    from ddm_v2.nlp.contracts import PlannerOutput
-    from ddm_v2.nlp.llm_planner import LLMPlannerAdapter
-    from ddm_v2.nlp.planner_ports import LLMRawResponse
-    from ddm_v2.nlp.prompts import plan_v1
-    from ddm_v2.settings import get_settings
-
-    gold_data = _load_g01()
-    gold = tmp_path / "gold"
-    _write_gold(gold, "g01.json", gold_data)
-    out = tmp_path / "out"
-
-    seen: dict[str, float] = {}
-
-    async def _stub_plan(self, normalized_text: str, context):  # noqa: ANN001
-        # adapter 實際收到的 timeout——報告自述的 llm_timeout_s 必須是這個值，
-        # 否則就是「自述說謊」（本欄位存在的目的正是防這件事）
-        seen["timeout_s"] = self._timeout_s
-        gold_plan = gold_data["plan"]
-        return (
-            PlannerOutput(
-                language=gold_plan["language"],
-                actions=gold_plan["actions"],
-                dependencies=[],
-                unresolved=[],
-            ),
-            # 伺服器回報的 model 刻意**不等於**請求值（ollama 的 tag 解析、
-            # 伺服器端別名都會這樣）——報告必須兩個都記得下來
-            LLMRawResponse(content="{}", model="eval-selftest-model:0b-q4_K_M-SERVED"),
-        )
-
-    monkeypatch.setattr(LLMPlannerAdapter, "plan", _stub_plan)
-    monkeypatch.setenv("DDM_LLM_BASE_URL", "http://llm-endpoint.invalid:11434")
-    monkeypatch.setenv("DDM_LLM_API_KEY", "sk-must-not-appear-in-report")
-    monkeypatch.setenv("DDM_LLM_MODEL", "eval-selftest-model:0b")
-    monkeypatch.setattr(
-        sys,
-        "argv",
-        [
-            "wi_ai_eval.py",
-            "--gold-dir",
-            str(gold),
-            "--out",
-            str(out),
-            "--planner",
-            "llm",
-            "--llm-timeout-s",
-            "7.5",
-        ],
-    )
-
-    get_settings.cache_clear()  # 讓上面的 env 生效
-    try:
-        assert wi_ai_eval.main() == 0
-    finally:
-        get_settings.cache_clear()  # 別把測試用模型名快取漏給其他測試
-
-    text = (out / "wi-gold-latest.json").read_text(encoding="utf-8")
-    report = json.loads(text)
-
-    run = report["planner_run"]
-    assert run["planner"] == "llm"
-    # requested 取自 settings（不是寫死字串——寫死的話換模型就會謊報）
-    assert run["model_requested"] == "eval-selftest-model:0b"
-    # served 取自伺服器回報值（`LLMRawResponse.model`，與 wi_ai_service 同源）；
-    # 與 requested 不同時**兩個都要在**，不得被 requested 蓋掉
-    assert run["model_served"] == "eval-selftest-model:0b-q4_K_M-SERVED"
-    assert run["model_served_variants"] == ["eval-selftest-model:0b-q4_K_M-SERVED"]
-    assert run["model_served"] != run["model_requested"]
-    # 取自常數（不是報告自己寫死一個版本號——常數升版時這裡必須跟著動）
-    assert run["prompt_version"] == plan_v1.PROMPT_VERSION
-    assert run["prompt_version"].startswith("plan-v")
-    # 量測條件：timeout 過短會整批 ReadTimeout（曾讓一份報告作廢），要記在報告裡
-    assert run["llm_timeout_s"] == 7.5
-    # ⚠️ 光是「報告寫 7.5」不夠——要證明這個值**真的被套用**到 adapter 上。
-    # mutation 證據：把 `LLMPlannerAdapter(client, timeout_s=timeout_s)` 改成
-    # 寫死 999.0，本斷言必轉紅（在此之前報告會自述 7.5 而實跑 999）。
-    assert seen["timeout_s"] == run["llm_timeout_s"] == 7.5
-
-    # 憑證與 endpoint 一律不得入報告
-    assert "sk-must-not-appear-in-report" not in text
-    assert "llm-endpoint.invalid" not in text
-    assert "llm_base_url" not in run
-    assert "llm_api_key" not in run
-
-    # gold_dir 在 repo 外（tmp）時同樣不得寫成本機絕對路徑
-    assert not Path(report["gold_dir"]).is_absolute()
-    assert "/home/" not in text
 
 
 def test_cli_fails_on_empty_gold_dir(tmp_path: Path):
@@ -1486,31 +1082,29 @@ def test_cli_fails_on_empty_gold_dir(tmp_path: Path):
     assert "n=0" in proc.stdout
 
 
-def test_cli_all_planner_cases_failed_exits_1(tmp_path: Path):
+def test_cli_all_planner_cases_failed_exits_1(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture
+):
     """全案 planner 失敗＝管道壞掉（非量測結果）→ exit 1，且**不得 traceback**。
 
-    以連不上的 LLM endpoint（127.0.0.1:1）製造全滅。mutation 證據：拆掉
-    `planner_pipeline_broken` 判定會轉紅——那等於讓「endpoint 全程連不上」
-    也回報 exit 0。同時證明逐案隔離生效（有報告、有逐案錯誤碼可看）。
+    ADR-037 移除 `--planner llm` 之前，這條以連不上的 LLM endpoint 製造全滅；現在改為
+    in-process 把 rule planner 換成必拋例外的版本。mutation 證據：拆掉
+    `planner_pipeline_broken` 判定會轉紅——那等於讓「planner 全程失敗」也回報 exit 0。
+    同時證明逐案隔離生效（有報告、有逐案錯誤碼可看）。
     """
     gold = tmp_path / "gold"
     _write_gold(gold, "g01.json", _load_g01())
     out = tmp_path / "out"
 
-    proc = _run_cli(
-        "--gold-dir",
-        str(gold),
-        "--planner",
-        "llm",
-        "--llm-timeout-s",
-        "2",
-        out_dir=out,
-        env_extra={"DDM_LLM_BASE_URL": "http://127.0.0.1:1"},
-    )
-    assert proc.returncode == 1, proc.stdout + proc.stderr
-    assert "Traceback" not in proc.stderr, proc.stderr
-    assert "管道壞掉" in proc.stdout
-    assert "[PLANNER-FAIL]" in proc.stdout
+    async def _always_fails(data: dict):  # noqa: ARG001
+        raise ConnectionError("planner endpoint unreachable (selftest)")
+
+    monkeypatch.setattr(wi_ai_eval, "rule_based_plan", _always_fails)
+    monkeypatch.setattr(sys, "argv", ["wi_ai_eval.py", "--gold-dir", str(gold), "--out", str(out)])
+    assert wi_ai_eval.main() == 1
+    stdout = capsys.readouterr().out
+    assert "管道壞掉" in stdout
+    assert "[PLANNER-FAIL]" in stdout
 
     report = json.loads((out / "wi-gold-latest.json").read_text(encoding="utf-8"))
     failures = report["planner_eval"]["summary"]["planner_failures"]
@@ -1673,154 +1267,14 @@ def test_cli_unapproved_cases_demote_report_to_draft(tmp_path: Path):
 
 # ── v10：被剝除的值進報告（ADR-033 P1 觀察期補測）────────────────────────
 #
-# ⚠️ **這一段必須是探針，不能靠預設評測**：預設 `--planner rule` 完全不經
-# `sanitize_planner_output`，`stripped_values` 恆為空 dict——拿「compile 55/55 全綠」
-# 當這條路徑的證據等於空跑（worklog §9 T-8 記著這個陷阱）。所以這裡起一個真的
-# HTTP 伺服器、讓 `LLMPlannerAdapter` 真的跑完 sanitize，逼這條路徑執行。
+# ⚠️ ADR-037 後沒有任何 planner 會產生 `stripped_values`（rule planner 不經 sanitize，
+# 舊 LLM adapter 已移除），原本起 HTTP 伺服器逼這條路徑執行的端到端探針隨之移除。
+# 下面保留的是 `sanitize_stripped_value`／`SanitizeLog` 的單元測試；外部 planner adapter
+# 接上（實作計畫 S2）時，要補回一條「真的經 sanitize 再進報告」的端到端探針。
 
 
-def _start_degrading_llm_server():
-    """起一個回**合法但會被逐項剝除**的 plan 的 OpenAI-compat 伺服器。
-
-    與 `_start_echoing_llm_server` 的差別：那支故意加散文前綴讓 JSON 解析失敗
-    （測硬失敗路徑），這支回**解得開**的 JSON——P1 之後這才是常態，也正是
-    `planner_raw_rejected` 留不下東西的那條路。伺服器同樣把收到的
-    `Authorization` 與請求 URL 抄進**角色片語**裡，於是「模型可控字串挾帶憑證
-    進報告」這條路徑是真的走了一遍。
-    """
-    import threading
-    from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
-
-    class _Handler(BaseHTTPRequestHandler):
-        def do_POST(self) -> None:  # noqa: N802 — BaseHTTPRequestHandler 的介面
-            self.rfile.read(int(self.headers.get("Content-Length") or 0))
-            upstream = f"http://{self.headers.get('Host')}{self.path}"
-            plan = {
-                "language": "zh",
-                "actions": [
-                    {
-                        "action_id": "a1",
-                        "action_type": "acquire",
-                        "sequence_order": 1,
-                        "roles": {
-                            # 原文沒有的片語 → role_text_not_in_source
-                            "object": {"text": "記憶體模組"},
-                            # 挾帶憑證與 URL，且夾一個 ESC（終端機是另一個 sink）
-                            "destination": {
-                                "text": f"\x1b[2Jupstream={upstream} "
-                                f"auth={self.headers.get('Authorization')}"
-                            },
-                            # 數值 → role_numeric_stripped
-                            "distance": {"value": 450, "unit": "cm"},
-                            # 自創鍵 → role_key_dropped
-                            "object_ref": {"text": "治具", "action_ref": "a1"},
-                        },
-                        "evidence": [{"text": "拿起dimm"}],
-                    }
-                ],
-                "dependencies": [],
-                "unresolved": [],
-            }
-            body = json.dumps(
-                {
-                    "model": "degrading-echo:0b",
-                    "choices": [
-                        {"message": {"content": json.dumps(plan, ensure_ascii=False)}}
-                    ],
-                },
-                ensure_ascii=False,
-            ).encode("utf-8")
-            self.send_response(200)
-            self.send_header("Content-Type", "application/json")
-            self.send_header("Content-Length", str(len(body)))
-            self.end_headers()
-            self.wfile.write(body)
-
-        def log_message(self, *args) -> None:
-            pass
-
-    server = ThreadingHTTPServer(("127.0.0.1", 0), _Handler)
-    threading.Thread(target=server.serve_forever, daemon=True).start()
-    return server
 
 
-def test_stripped_values_are_preserved_and_redacted_in_the_report(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture
-):
-    """降級（**不是**硬失敗）的案例要留下被剝掉的值，且憑證／URL 不得隨之入版控。
-
-    這條同時釘住四件事：
-    1. `stripped_values` 真的被寫進報告（非空跑——`by_code` 也必須同步計數）；
-    2. 內容答得出「模型寫的是什麼」（`記憶體模組`＝幻覺，可與「不變式過嚴」區分）；
-    3. 遮蔽照走（`<redacted-url>`／`<redacted-secret>`）——它是模型可控字串；
-    4. **終端機只印筆數不印內容**（本欄位不剝控制字元，未逸出印出去是另一個 sink）。
-
-    mutation 證據：拿掉 `sanitize_stripped_value` 的 `_redact_secrets` → api key
-    出現在報告；把 `stripped_values` 從 `SanitizeLog.to_dict` 拿掉 → KeyError；
-    把內容印進 stdout → ESC 斷言轉紅。
-    """
-    from ddm_v2.settings import get_settings
-
-    api_key = "sk-v10-stripped-sentinel-MUST-NOT-APPEAR"
-    server = _start_degrading_llm_server()
-    port = server.server_address[1]
-
-    gold = tmp_path / "gold"
-    _write_gold(gold, "g01.json", _load_g01())
-    out = tmp_path / "out"
-
-    monkeypatch.setenv("DDM_LLM_BASE_URL", f"http://127.0.0.1:{port}")
-    monkeypatch.setenv("DDM_LLM_API_KEY", api_key)
-    monkeypatch.setenv("DDM_LLM_MODEL", "eval-selftest-model:0b")
-    monkeypatch.setattr(sys, "argv", _llm_argv(gold, out, timeout="10"))
-
-    get_settings.cache_clear()
-    try:
-        assert wi_ai_eval.main() == 0
-    finally:
-        get_settings.cache_clear()
-        server.shutdown()
-        server.server_close()
-    stdout = capsys.readouterr().out
-
-    text = (out / "wi-gold-latest.json").read_text(encoding="utf-8")
-    for secret in (api_key, f"127.0.0.1:{port}"):
-        assert secret not in text, f"報告洩漏 {secret}"
-
-    sr = json.loads(text)["planner_eval"]["sanitize_reasons"]
-    entries = sr["stripped_values"]["g01_acquire_dimm"]
-    # 以 (reason, role_key) 為鍵：同一個 reason 可能命中多個角色（此例
-    # `role_text_not_in_source` 同時打到 object 與 destination），只用 reason 當鍵
-    # 會讓後者蓋掉前者、把「兩筆」看成「一筆」。
-    by_slot = {(e["reason"], e["role_key"]): e for e in entries}
-
-    # (1) 非空跑：四筆剝除都到齊，且與 by_code 的計數一致
-    assert set(by_slot) == {
-        ("role_text_not_in_source", "object"),
-        ("role_text_not_in_source", "destination"),
-        ("role_numeric_stripped", "distance"),
-        ("role_key_dropped", "object_ref"),
-    }, by_slot
-    assert sr["by_code"]["role_text_not_in_source"] == 2
-
-    # (2) 答得出「模型寫的是什麼」
-    assert by_slot[("role_text_not_in_source", "object")]["text"] == "記憶體模組"
-    assert by_slot[("role_numeric_stripped", "distance")]["value"] == 450
-    assert by_slot[("role_numeric_stripped", "distance")]["unit"] == "cm"
-    assert by_slot[("role_key_dropped", "object_ref")]["text"] == "治具"
-    assert all(e["phase"] == "initial" for e in entries), "可降級的問題不該觸發 retry"
-
-    # (3) 遮蔽照走——`destination` 那筆挾帶了憑證與 upstream URL
-    tainted = by_slot[("role_text_not_in_source", "destination")]
-    assert "<redacted-url>" in tainted["text"]
-    assert "<redacted-secret>" in tainted["text"]
-
-    # (4) 終端機只印筆數；控制字元不得未經逸出印出去（報告 JSON 由 json.dumps 逸出）
-    assert "stripped_values 留存" in stdout
-    assert "記憶體模組" not in stdout
-    assert "\x1b" not in stdout
-    assert "\x1b" not in text
-    assert "\\u001b" in text
 
 
 def test_stripped_value_over_the_cap_is_truncated_with_a_trace():

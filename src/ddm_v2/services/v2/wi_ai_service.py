@@ -2,16 +2,14 @@
 
 Spec §10；drafts 由 most_compiler + engine 產生，禁止在本層算 TMU。
 
-⚠️ **本檔不得訂閱 planner 的 sanitize observer**——`LLMPlannerAdapter` 的那個建構子
-參數（名稱＝`on_` ＋ `sanitize`，**本檔刻意拆成兩段寫**，理由見下）。它的第三個
-callback 參數帶 `contracts.StripDetail`＝**被剝除的原文值**（模型可控字串：role 的
-text/value/unit、定位不到的 evidence 片語），只給評測腳本 `scripts/wi_ai_eval.py`；
-生產路徑掛上去等於把那些值送進非預期路徑。
+ADR-037（2026-11-14）：MOST 內的 LLM planner 已移除，plan 一律來自 rule_based；
+外部 ai_service 的接入在實作計畫 S3（`WiParserPort`）。既有 `ai_parse_runs` 中
+planner＝llm 的舊列仍由 `_result_from_run` 照原樣讀取與重播。
 
-守衛 `tests/unit/test_production_no_sanitize_observer.py` 是**零容忍的字面子字串比對**
-——**連註解與 docstring 也算命中**（同下方 `_option_labels` 對 `FORBIDDEN_EN_CARRIERS`
-的先例）。所以要在本檔提到那個參數名，一律拆開寫，否則「寫一句『這裡刻意不掛它』」
-本身就會讓守衛紅，而且訊息會指控本檔訂閱了它。
+⚠️ 本檔不得訂閱入站防腐層的 sanitize observer（`nlp/inbound_guard` 的 Sanitize ＋ Observer 型別）：
+它帶的是被剝除的外部原文值，只給評測腳本。守衛：
+`tests/unit/test_production_no_sanitize_observer.py`（零容忍字面掃描，註解也算命中，
+所以本檔不寫出那個參數名）。
 """
 from __future__ import annotations
 
@@ -25,7 +23,6 @@ import uuid
 from typing import Any
 from uuid import UUID
 
-import httpx
 from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -41,17 +38,12 @@ from ddm_v2.nlp.contracts import (
     CycleDraft,
     ParseContext,
     ParseRunResult,
-    PlannerOutput,
     SlotCandidateSet,
     SourceRef,
     WorkInstructionPlan,
 )
 from ddm_v2.nlp.linking import SlotLinker
-from ddm_v2.nlp.llm_client import OpenAICompatClient
-from ddm_v2.nlp.llm_planner import LLMPlannerAdapter
 from ddm_v2.nlp.normalization import MAX_PARSE_TEXT_CHARS, normalize_with_map
-from ddm_v2.nlp.planner_ports import LLMRawResponse, PlannerError
-from ddm_v2.nlp.prompts import plan_v1
 from ddm_v2.nlp.routing import compute_routing
 from ddm_v2.nlp.rule_based import RuleBasedParser
 from ddm_v2.nlp.rule_plan_adapter import (
@@ -153,44 +145,6 @@ def _result_from_run(run: AiParseRun, *, cached: bool, bundle_code: str) -> Pars
         provenance=provenance,
         source_revision=int(run.source_revision) if run.source_revision is not None else None,
     )
-
-
-def _plan_from_planner_output(
-    *,
-    raw_text: str,
-    normalized_text: str,
-    source_ref: SourceRef,
-    output: PlannerOutput,
-) -> WorkInstructionPlan:
-    return WorkInstructionPlan(
-        source_text=raw_text,
-        normalized_text=normalized_text,
-        language=output.language,
-        source_ref=source_ref,
-        actions=output.actions,
-        dependencies=output.dependencies,
-        unresolved=list(output.unresolved),
-    )
-
-
-def _build_llm_client() -> OpenAICompatClient:
-    s = get_settings()
-    return OpenAICompatClient(
-        base_url=s.llm_base_url,
-        model=s.llm_model,
-        api_key=s.llm_api_key,
-        response_format_mode="json_object",
-    )
-
-
-async def _try_llm_plan(
-    *,
-    normalized_text: str,
-    context: ParseContext,
-    timeout_s: float,
-) -> tuple[PlannerOutput, LLMRawResponse]:
-    planner = LLMPlannerAdapter(_build_llm_client(), timeout_s=timeout_s)
-    return await planner.plan(normalized_text, context)
 
 
 def _option_labels(opts: dict[str, Any]) -> dict[str, dict[str, Any]]:
@@ -334,69 +288,21 @@ async def parse_interactive(
     rule_plan, rule_candidates = plan_from_rule_result(rule_result, source_ref=source_ref)
 
     settings = get_settings()
-    llm_raw: LLMRawResponse | None = None
+    # ADR-037：MOST 內不再呼叫 LLM。plan 一律是 rule plan；`fallback=True` 與
+    # `fallback_rule_based` 維持既有語意（＝沒有 AI planner 參與），前端與 routing 不變。
     used_fallback = True
     planner_name = "rule_based_v1"
     prompt_version: str | None = None
     model_name: str | None = None
     plan = rule_plan
-    routing_extra: list[str] = []
-
-    if settings.wi_ai_enabled:
-        try:
-            planner_out, llm_raw = await _try_llm_plan(
-                normalized_text=norm,
-                context=ctx,
-                timeout_s=settings.llm_timeout_s,
-            )
-            plan = _plan_from_planner_output(
-                raw_text=text,
-                normalized_text=norm,
-                source_ref=source_ref,
-                output=planner_out,
-            )
-            used_fallback = False
-            planner_name = "llm"
-            prompt_version = plan_v1.PROMPT_VERSION
-            model_name = llm_raw.model
-            if len(plan.actions) != len(rule_plan.actions) or (
-                plan.actions
-                and rule_plan.actions
-                and plan.actions[0].action_type != rule_plan.actions[0].action_type
-            ):
-                routing_extra.append("baseline_disagreement")
-        except (
-            PlannerError,
-            httpx.HTTPError,
-            httpx.TimeoutException,
-            OSError,
-            ValueError,
-            KeyError,
-            IndexError,
-            TypeError,
-        ) as exc:
-            logger.warning("LLM planner failed; falling back to rule_based: %s", exc)
-            used_fallback = True
-            routing_extra.append("fallback_rule_based")
-            plan = rule_plan
-            if isinstance(exc, PlannerError) and exc.raw is not None:
-                llm_raw = exc.raw
-    else:
-        routing_extra.append("fallback_rule_based")
+    routing_extra: list[str] = ["fallback_rule_based"]
 
     t_plan = time.perf_counter()
 
-    # L2：linking（rule fallback 可沿用 rule_candidates；LLM plan 一律重 link）
+    # L2：linking（rule plan 無 roles：仍跑 linker 補齊；linker 無結果時沿用 rule_candidates）
     linker = SlotLinker(synonyms)
-    if used_fallback and rule_candidates:
-        # rule plan 無 roles：仍跑 linker 補齊；與 rule slots merge（linker 優先）
-        linked = await linker.link(plan, session=session, rule_set_id=rs.id)
-        if linked:
-            candidates = linked
-        else:
-            candidates = rule_candidates
-    else:
-        candidates = await linker.link(plan, session=session, rule_set_id=rs.id)
+    linked = await linker.link(plan, session=session, rule_set_id=rs.id)
+    candidates = linked if linked else rule_candidates
 
     t_link = time.perf_counter()
 
@@ -431,8 +337,6 @@ async def parse_interactive(
         "compile": round((t_compile - t_link) * 1000, 2),
         "engine": round((t_engine - t_compile) * 1000, 2),
     }
-    if llm_raw is not None:
-        latency["llm"] = llm_raw.latency_ms
 
     run_id = uuid.uuid4()
     run = AiParseRun(
@@ -451,20 +355,9 @@ async def parse_interactive(
         plan=plan.model_dump(),
         slot_candidates=[c.model_dump() for c in candidates],
         drafts=[d.model_dump() for d in drafts],
-        llm_raw_response=(
-            {
-                "content": llm_raw.content,
-                "model": llm_raw.model,
-                "usage": llm_raw.usage,
-                "response_format_mode": llm_raw.response_format_mode,
-                # 快取重播唯一的版本來源（`_result_from_run`）：run 表沒有這一欄，
-                # 不存這裡就只剩「當下的模組常數」可讀，等於升版後全體既有 run 謊報。
-                # fallback 時 prompt_version 是 None（那趟沒有成功的 LLM plan）。
-                "prompt_version": prompt_version,
-            }
-            if llm_raw is not None
-            else None
-        ),
+        # 欄位保留給既有資料列（舊 LLM run 的 content／model／usage／prompt_version）；
+        # 新寫入一律為 None。外部 ai_service 的回應落點在實作計畫 S3 定案。
+        llm_raw_response=None,
         routing_status=routing_status,
         routing_reasons=routing_reasons,
         fallback=used_fallback,
@@ -505,9 +398,7 @@ async def parse_interactive(
             "fallback": used_fallback,
             "cached": False,
             "latency_ms": latency,
-            "response_format_mode": (
-                llm_raw.response_format_mode if llm_raw is not None else None
-            ),
+            "response_format_mode": None,
         },
     )
     # 相容：仍回 rule_based 的 GM-shaped slots（舊前端）；ai.drafts 是權威草稿。

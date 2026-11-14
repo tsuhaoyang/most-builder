@@ -589,6 +589,10 @@ ADR-025 前，不得移除或偷偷改變既有 submit 語義。P5 實作時應�
 
 ### 11.2 DDM 對 AI 內部 API
 
+> ⚠️ **本節的 `wi-ai-v1` 契約草案已被 [ADR-037](../decisions/ADR-037-ai-service-integration.md) 取代**（2026-11-14）：
+> 外部 AI 服務改為 `~/workspace/ai_service`，接口以其 `docs/api/openapi.json` 為權威，MOST 端經 `WiParserPort`
+> （ADR-037 D2）隔離。下列草案保留作歷史參考，不作實作依據。
+
 #### ParseRequest
 
 ```json

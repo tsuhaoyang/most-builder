@@ -1,5 +1,7 @@
 # WI AI Eval Reports
 
+> ADR-037（2026-11-14）：`--planner llm` 已移除，本目錄既有的 LLM 報告是歷史量測，無法以現行腳本重現；LLM 層評測歸 ai_service。
+
 `scripts/wi_ai_eval.py` 輸出目錄。
 
 規格出處一律寫**全檔名**（兩份 spec 的 §14.4/§19 是不同章節，簡寫會指錯）：

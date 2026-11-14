@@ -83,7 +83,7 @@ def test_job_status_constants_are_single_source():
     assert runnable == {"queued", "running"}
     assert terminal == {"completed", "partial", "failed", "cancelled"}
     assert not (runnable & terminal)
-    assert svc.MAX_TICK_LIMIT == 4  # LEASE_SECONDS=60 vs 4×llm_timeout 的推導值
+    assert svc.MAX_TICK_LIMIT == 4  # LEASE_SECONDS=60 vs 4×單筆逾時（舊 llm_timeout_s 8s）的推導值；S5 重定
 
 
 def test_inflight_quota_default_is_pinned():

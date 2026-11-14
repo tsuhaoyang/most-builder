@@ -23,7 +23,7 @@
   ——tick 交易內對 ai_parse_jobs 的任何 UPDATE（queued→running、計數遞增）都握
   該列 row lock 直到 commit，期間另一實例的計數 UPDATE 與使用者的 Cancel 都會
   被擋。緩解：計數已改為交易尾端一次性遞增（鎖窗縮到 LLM 呼叫之後）；殘餘窗
-  ＝首次 tick 的 queued→running 旗標，上限 ≈ batch×llm_timeout_s（4×8s=32s，
+  ＝首次 tick 的 queued→running 旗標，上限 ≈ batch×單筆逾時（舊 llm_timeout_s；ADR-037 後於 S5 重定）（4×8s=32s，
   預設 LLM 關閉時為毫秒級）。徹底解法（job 挑選 SKIP LOCKED／LLM 移出交易）
   留給 dedicated worker 抽離（ADR-030 觸發條件）。
 - **開關/間隔**：settings（DDM_PARSE_WORKER_ENABLED / _INTERVAL_S / _BATCH）。
