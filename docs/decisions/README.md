@@ -38,6 +38,7 @@
 | [ADR-034-language-aware-error-contract.md](ADR-034-language-aware-error-contract.md) | 語言感知錯誤契約：RFC 9457 對齊、穩定 code＋結構化 detail、前端 catalog 組句 | 🟢 accepted |
 | [ADR-035-lb-projection-layer-and-motion-decomposition.md](ADR-035-lb-projection-layer-and-motion-decomposition.md) | **LB 投影層**：持工具 motion 確定性拆 acquire/use/release、`repeat_count` 為 cyclic 乘數、compiler `resolve_multiplier`、分層 DAG 傳遞縮減、`level_entries` 六個 LB 標記欄、匯出前 E/W 碼；最高原則＝`lb-integration/MOST_LB_DATA_CONTRACT_SPEC.md` | 🟢 accepted（2026-09-12，Howard 核可） |
 | [ADR-036-lb-writeback-consumption.md](ADR-036-lb-writeback-consumption.md) | **LB 回寫消費**（反方向）：唯讀快照＋逐列放置、屬性回流只有 `offline` 且走 MOST 正門（組內傳染＋R1–R9）、結構欄不回流、一 motion 對多 task 的聚合、驗證與失敗處理；契約欄位權威在 LB `MOST_INTEGRATION_INPUT_SPEC.md` §8 | 🟢 accepted（2026-09-18，Howard 核可；D6「件數」一條待整合架構師修訂） |
+| [ADR-037-ai-service-integration.md](ADR-037-ai-service-integration.md) | **WI AI Parser 改接外部 ai_service**：宣告 ADR-027 §7 拆分成立；LLM 歸 ai_service，MOST 保留確定性管線、審核與落盤；slot code 只當候選（修訂 ADR-033 D2）；逐項採用、首輪只落盤到 worksheet（既有儲存路徑＋revision CAS）；Excel 數量歸屬規則；RBAC、服務間認證與外送 | 🟡 proposed（2026-11-14 起草；取捨已裁決，待全文核可） |
 
 ## 狀態說明
 
