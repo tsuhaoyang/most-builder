@@ -5,6 +5,7 @@ import pytest
 
 from ddm_v2.nlp.contracts import (
     EvidenceSpan,
+    Measurement,
     OptionCandidate,
     PlannedAction,
     RoleValue,
@@ -14,7 +15,9 @@ from ddm_v2.nlp.contracts import (
 from ddm_v2.nlp.linking import SlotLinker, _merge_l1_l2
 
 
-def _plan(action_type: str, text: str, roles: dict | None = None) -> WorkInstructionPlan:
+def _plan(
+    action_type: str, text: str, roles: dict | None = None, measurements: dict | None = None
+) -> WorkInstructionPlan:
     return WorkInstructionPlan(
         source_text=text,
         normalized_text=text,
@@ -26,6 +29,7 @@ def _plan(action_type: str, text: str, roles: dict | None = None) -> WorkInstruc
                 sequence_order=1,
                 roles=roles or {},
                 evidence=[EvidenceSpan(start=0, end=len(text), text=text)],
+                measurements=measurements or {},
             )
         ],
     )
@@ -273,8 +277,10 @@ async def test_inspect_with_inspect_kind_role_no_flag():
 # （帶秒數來源時才輪得到它）。
 
 _X_SECONDS_ROLE = {
-    "process_kind": RoleValue(text="清潔", value=6, unit="秒", status="explicit")
+    "process_kind": RoleValue(text="清潔", status="explicit")
 }
+# ADR-033 P3：秒數來源是帶出處的量測值（compile 讀 x_seconds 的同一個來源）
+_X_SECONDS = {"process_seconds": Measurement(value=6, unit="s", source="human")}
 
 
 @pytest.mark.asyncio
@@ -295,14 +301,26 @@ async def test_x_seconds_mode_without_source_not_mounted():
 
 @pytest.mark.asyncio
 async def test_x_seconds_mode_with_source_mounts():
-    """seconds 模式**帶秒數來源**（process_kind role 帶秒值＝compile 讀
-    x_seconds 的同一形狀）→ 照掛；吹風脈絡下不帶旗。"""
+    """seconds 模式**帶秒數來源**（`measurements["process_seconds"]`＝compile 讀
+    x_seconds 的同一來源）→ 照掛；吹風脈絡下不帶旗。"""
     linker = SlotLinker(_XI_SYNONYMS)
-    plan = _plan("controlled_move", "拿取風槍清潔DIMM卡槽", dict(_X_SECONDS_ROLE))
+    plan = _plan("controlled_move", "拿取風槍清潔DIMM卡槽", dict(_X_SECONDS_ROLE), dict(_X_SECONDS))
     sets = await linker.link(plan)
     x = _sets_of(sets, "X")
     assert x and x[0].chosen and x[0].chosen.option_code == "x_blow_clean"
     assert x[0].needs_review is False and x[0].review_reason is None
+
+
+@pytest.mark.asyncio
+async def test_x_seconds_role_value_is_not_a_source_after_p3():
+    """ADR-033 P3：`process_kind.value` 不是秒數來源——linker 與 compile 必須一致，
+    否則會掛上 compile 以 0 秒計的 X（無旗標）。"""
+    linker = SlotLinker(_XI_SYNONYMS)
+    role = {"process_kind": RoleValue(text="清潔", value=6, unit="秒", status="explicit")}
+    sets = await linker.link(_plan("controlled_move", "拿取風槍清潔DIMM卡槽", role))
+    x = _sets_of(sets, "X")
+    assert x and x[0].chosen is None
+    assert x[0].review_reason == "x_seconds_required"
 
 
 @pytest.mark.asyncio
@@ -311,7 +329,7 @@ async def test_x_clean_without_context_mounts_value_but_needs_review():
     （不越權丟候選）但 needs_review＋x_clean_context_unverified（IE 只裁了
     吹風情境，D3-021）。mutation：守門拆掉（無條件套用）→ 本測紅。"""
     linker = SlotLinker(_XI_SYNONYMS)
-    plan = _plan("controlled_move", "清潔外殼", dict(_X_SECONDS_ROLE))
+    plan = _plan("controlled_move", "清潔外殼", dict(_X_SECONDS_ROLE), dict(_X_SECONDS))
     sets = await linker.link(plan)
     x = _sets_of(sets, "X")
     assert x and x[0].chosen and x[0].chosen.option_code == "x_blow_clean"
@@ -323,7 +341,7 @@ async def test_x_clean_without_context_mounts_value_but_needs_review():
 async def test_x_clean_guard_applies_to_process_core_cell():
     """守門對 process 的 core X 格同樣作用（判定單一出處，不分掛格路徑）。"""
     linker = SlotLinker(_XI_SYNONYMS)
-    plan = _plan("process", "清潔外殼", dict(_X_SECONDS_ROLE))
+    plan = _plan("process", "清潔外殼", dict(_X_SECONDS_ROLE), dict(_X_SECONDS))
     sets = await linker.link(plan)
     x = _sets_of(sets, "X")
     assert x and x[0].chosen and x[0].chosen.option_code == "x_blow_clean"

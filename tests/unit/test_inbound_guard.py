@@ -247,3 +247,46 @@ def test_sequence_orders_contiguous(orders: list[int], expected: bool):
         }
     )
     assert sequence_orders_contiguous(out) is expected
+
+
+# ── ADR-033 P3：外部 planner 不得提供帶出處的量測值 ─────────────────────
+
+
+@pytest.mark.parametrize(
+    "measurements",
+    [
+        {"distance": {"value": 30, "unit": "cm", "source": "human"}},
+        # 單位與鍵不符：不剝的話會在 pydantic 整筆炸掉，連同切分一起丟
+        {"distance": {"value": 30, "unit": "s", "source": "human"}},
+        {"made_up_key": 1},
+    ],
+)
+def test_external_measurements_are_stripped_and_named(measurements: dict):
+    payload = _payload([_action_json(measurements=measurements)])
+    out, errors, reasons, _details = parse_sanitize_validate(payload, _NORM)
+    assert errors == [], errors
+    assert out is not None and out.actions[0].measurements == {}
+    assert any(r.startswith("role_numeric_stripped:0:measurements") for r in reasons), reasons
+    assert "role_numeric_stripped" in out.unresolved, "剝除要經 unresolved 擋 auto"
+
+
+def test_sanitize_strips_measurements_even_without_prepare():
+    """縱深防禦：繞過 prepare 直接呼叫 sanitize，量測值一樣被剝並記名。"""
+    from ddm_v2.nlp.contracts import Measurement, PlannedAction, sanitize_planner_output
+
+    out = PlannerOutput(
+        language="zh",
+        actions=[
+            PlannedAction(
+                action_id="a1",
+                action_type="acquire",
+                sequence_order=1,
+                evidence=[{"text": _NORM}],
+                measurements={"distance": Measurement(value=30, unit="cm", source="human")},
+            )
+        ],
+    )
+    sanitized, reasons = sanitize_planner_output(out, normalized_text=_NORM)
+    assert sanitized.actions[0].measurements == {}
+    assert "role_numeric_stripped:a1:measurements.distance" in reasons
+    assert "role_numeric_stripped" in sanitized.unresolved

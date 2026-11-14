@@ -122,7 +122,8 @@ DB 欄位不動；寫入端不再產生 `kind='llm'`，但**舊 `kind='llm'` 列
 
 **進入條件**：ADR-037 accepted；已對真 ai_service 量測 30 句延遲分布（poc003 須已轉 shadow），並據此定逾時與並行參數；`most` 金鑰最小權限已確認。
 
-1. **ADR-033 P3 前兩項**（獨立 PR 先行）：刪 `compile.py` 的 `_role_distance_cm` 與 `x_seconds` 讀值；在 `nlp/contracts` 以加法新增帶出處的距離／數量欄位與 compile 的讀取（`a6`／CM `a0` 不在本階段，`return` 一律審核）；
+1. ✅ **ADR-033 P3 前兩項**（2026-11-14 完成）（獨立 PR 先行）：刪 `compile.py` 的 `_role_distance_cm` 與 `x_seconds` 讀值；在 `nlp/contracts` 以加法新增帶出處的距離／秒數欄位與 compile 的讀取（`a6`／CM `a0` 不在本階段，`return` 一律審核）；
+   落地：`nlp/contracts.Measurement`（鍵 `from_location`／`distance`／`process_seconds`，來源 `human`／`dsx`／`excel`／`ai_estimate_confirmed`，有限且有上限）；空的時候不序列化，既有 plan JSON 逐位元不變；`wi_ai_eval` 報告與 P3 前相同（compile 55/55）。linker 的 X 秒數來源判斷同步改讀 measurements。`ai_estimate_confirmed` 來源必須帶確認者與時間。**數量仍讀 `quantity` 角色的 `role.value`**，出處欄位（`quantity_source=excel`）留到 S5。
    帶出處的人工數值不觸發 `*_unevidenced_review`。必過 `run_all.py`（GM=28／CM=29）與 compiler 單元測試。
 2. **單句路徑**：
    - `wi_ai_service` 改用 `WiParserPort`；呼叫期間不占 DB session；single-flight（key 含 bundle 與 site）。
