@@ -1,6 +1,6 @@
 # ADR-033: WI AI Parser 的 LLM 職責收窄——只做語意分段與角色片語，不產任何數值
 
-**狀態：** **accepted**（User 2026-08-23 核可）
+**狀態：** **accepted**（User 2026-08-23 核可）；**Amends by [ADR-037](ADR-037-ai-service-integration.md)**（2026-11-14，部分修訂，非 Superseded；範圍見下方〈ADR-037 修訂註記〉）
 **核可範圍：** D1–D7 全部；§7 的七個未決問題**全數裁決完畢**（U-1 走 IE 親筆／U-2·U-3 現階段
 不做延後另案／U-4 左至右指派可採用／U-5 返回起點／U-6 證據已入版控 `3d01f61`／U-7 設觀察期）。
 ⚠️ **核可不等於已實作**——遷移路徑 §5 的 P0–P5 逐階段推進、**不得跳階**；P3 動 TMU 路徑，
@@ -22,6 +22,16 @@
 `docs/llm/wi-ai-parser-implementation-spec.md` §5／§5.1／§7.5／§19、
 `docs/llm/wi-ai-parser-worklog.md` §8（量測紀錄）／§9（S-2、S-8、T-3、T-8）／§10（Q-1、Q-2）、
 `docs/core-logic/minimost-sequence-model-core-logic-spec.md` §2（七格模型）
+
+> ### ADR-037 修訂註記（2026-11-14；權威在 [ADR-037](ADR-037-ai-service-integration.md)，此處只標範圍）
+>
+> LLM 改由外部 ai_service 提供（ADR-037 D1）。被修訂段落在原處加註、原文保留：
+> - **D2**「slot 由 `SlotLinker` 對映」→ 改為 ADR-037 D3：ai_service 的 slot code 只作候選，與 linker 分歧即標審核；`hand`／`seq_kind` 不採信。
+> - **prompt 與 `llm_planner` 呼叫 LLM 的部分作廢**（P2 的 `plan-v2.0` prompt 與 few-shot 不再於 MOST 內推進）；入站驗證函式改作防腐層（ADR-037 D1）。
+> - **D1、D6、D7 保留**，改為對 ai_service 回應的**入站不變量**。
+> - **D3–D5** 向模型索取的內容，改為對 ai_service 的契約需求（ADR-037 D3；實作計畫 §7）。
+> - **P3**：前兩項（刪 `_role_distance_cm`、關 `x_seconds` 入口）是 ADR-037 單句階段的**硬前置**；
+>   第三項（補 `a6`／CM `a0`）**不在前置內**（首輪 `return` 型 A 位置一律標審核）。P3 目前**尚未實作**（規劃中），不得宣稱 P3 已全部完成。
 
 ---
 
@@ -186,6 +196,8 @@ dependency type 白名單），失敗形態換了幾種但總數不降（7↔8�
 
 ### D2 role key 依 User 的四段重述；**補上「返回」**；`hand` 移出 LLM
 
+> **ADR-037 修訂（D3）**：「slot 由 `SlotLinker` 對映」一點改為——ai_service 的 slot code 作候選，MOST linker 仍獨立產生候選，分歧標審核、不自動採用；`hand`／`seq_kind` 不採信。「LLM 不吐 MOST 字母」的原則改為對 ai_service 回應的入站檢查（code 只作候選、須經 MOST 驗證）。
+
 收窄後**要求**模型產出的鍵（其餘一律不要求）：
 
 | User 的講法 | role key | 下游用途 |
@@ -208,6 +220,8 @@ dependency type 白名單），失敗形態換了幾種但總數不降（7↔8�
 
 ### D3 「這個詞有沒有出處」改用**可機械驗證的事實**，取代模型的自我宣告
 
+> **ADR-037 修訂**：ai_service 回應不含 evidence span，字面子字串不變式在該路徑不適用，該路徑的 motion 一律經人工採用（ADR-037 D3／D4）。對 ai_service 的索取內容改列為契約需求（實作計畫 §7）。
+
 - **廢止**：`status`（explicit／inferred／…）作為向模型索取的欄位；連帶廢止
   `explicit_without_value`／`explicit_without_evidence`／`inferred_without_ref`／`action_ref_unknown`
   四條驗證規則。
@@ -220,6 +234,8 @@ dependency type 白名單），失敗形態換了幾種但總數不降（7↔8�
   既有 gold／既有 `ai_parse_runs` 資料照常解析。
 
 ### D4 evidence 保留，但 **offset 由我們算，不由模型報**
+
+> **ADR-037 修訂**：對 ai_service 的索取內容改為契約需求（實作計畫 §7 第 4 點：evidence span 為待提需求）；MOST 不再自行向 LLM 索取。
 
 - `boundary_span_f1` 是**唯一**量得到「切在哪裡」的指標，而 User 的裁決保留了分段職責，所以 **span 必須留**。
 - 但**模型只給 `text`，不給 `start`／`end`**：worklog §8 量到 `evidence_offset_repaired`
@@ -234,6 +250,8 @@ dependency type 白名單），失敗形態換了幾種但總數不降（7↔8�
 - 規則 2 的正確性沒有語料背書（gold 全是整句單 span），**列為未決 U-4**。
 
 ### D5 `dependencies` 降為**選用且非致命**；`precedes` 不再索取
+
+> **ADR-037 修訂**：同 D4，索取內容改為對 ai_service 的契約需求。
 
 - 保留 `tool_held_for`／`same_object`／`uses_tool`——它們透過 `is_tool_held` 讓 G 歸零，是**真實的 TMU 效果**。
 - `precedes` 零消費者，prompt 不再要求（型別保留，ADR-011）。
@@ -396,8 +414,8 @@ unresolved[]
 |---|---|---|
 | **P0** | 本 ADR 核可；spec §5／§5.1／§7.2／§7.5／§19 同步改寫 | User 核可，狀態轉 accepted |
 | **P1** | 契約與 adapter 放寬（D3／D4／D5／D6），**prompt 先不動**、**compiler 先不動** | 以 **plan-v1.4 原 prompt** 重跑 55 案：硬失敗數應顯著下降。**這是唯一能把「契約放寬」與「prompt 改寫」兩個變因分開量的機會，不要合併** |
-| **P2** | prompt 改寫為 `plan-v2.0`（D1／D2 的索取範圍），few-shot 全部重寫並過 `test_prompt_few_shots.py` 守衛 | 兩輪評測（單輪落在 ±2 案變異帶內不足以下結論，worklog §8 已立此規矩） |
-| **P3** | compiler 側：刪 `_role_distance_cm`、關 `x_seconds` 入口、**補 `a6`／CM `a0`** | **黃金值關卡**（`scripts/core_logic/run_all.py`，GM=28／CM=29）＋ `ddm-validator` 派工＋compile 段 55/55 不退 |
+| **P2**（~~MOST 內改寫 prompt~~ ADR-037 作廢：prompt 歸 ai_service） | prompt 改寫為 `plan-v2.0`（D1／D2 的索取範圍），few-shot 全部重寫並過 `test_prompt_few_shots.py` 守衛 | 兩輪評測（單輪落在 ±2 案變異帶內不足以下結論，worklog §8 已立此規矩） |
+| **P3**（ADR-037：前兩項為單句階段硬前置，第三項不在前置內；**規劃中，尚未實作**） | compiler 側：刪 `_role_distance_cm`、關 `x_seconds` 入口、**補 `a6`／CM `a0`** | **黃金值關卡**（`scripts/core_logic/run_all.py`，GM=28／CM=29）＋ `ddm-validator` 派工＋compile 段 55/55 不退 |
 | **P4** | gold roles 標註（U-1 裁決後）＋ role slot accuracy 指標上線 | 指標有分母；`dependency_f1` 正式標記為不適用 |
 | **P5** | 前端顯示 roles（覆核者看得到角色判斷）＋ 新旗標的中文文案（併 S-10） | Playwright 截圖對照 v3 母版 |
 

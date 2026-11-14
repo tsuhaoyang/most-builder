@@ -175,7 +175,7 @@ erDiagram
 | `tool_vocab_id` | UUID FK→work_vocab_items | 器具/治具（選填） |
 | `frequency` | numeric | 次數（≥1，允許分數） |
 | `simo_group_id` | text | 同組＝雙手同時（SIMO；指派 UX 待 C5） |
-| `provenance` | text | `manual` / `bom_draft`（Q3：BOM 產生的草稿標記） |
+| `provenance` | text | `manual` / `bom_draft`（Q3：BOM 產生的草稿標記）；**規劃中（尚未實作）**：加 `ai_external`（外部 ai_service 建議經人工採用的列），由伺服器依 `review_item_id` 設定、前端不得傳值；採用路徑見 [ADR-037](../decisions/ADR-037-ai-service-integration.md) D5 |
 | `created_at`/`updated_at` | timestamptz | |
 
 ### 2.7 `most_cycles`（GM/CM 七格填值）— **快照 + 可回放**

@@ -12,7 +12,7 @@
 - **Rule-set 管理**：TMU 計算規則為版本化資料，單一引擎讀取（clone→改→發布）。
 - **SOP 版本**：draft/published 凍結、另存新檔。
 - **匯出**：工序單 Excel（含 Level 關係欄）／LB CSV／LB API 接口。
-- **RBAC**：聯邦認證（Traefik ForwardAuth）＋本地角色 viewer < IE < manager < admin。
+- **RBAC**：聯邦認證（Traefik ForwardAuth）＋本地角色 viewer < analyst < approver < admin（口語 IE＝analyst、manager＝approver）。
 
 ## 技術棧
 

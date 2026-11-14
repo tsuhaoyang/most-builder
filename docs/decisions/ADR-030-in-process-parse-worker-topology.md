@@ -1,6 +1,7 @@
 # ADR-030: ai_parse_jobs 背景 worker 的部署拓撲——in-process、預設開啟（過渡）
 
 **狀態：** proposed（待 User 核可；核可前本文件只描述現況與條件，不追認為終局架構）
+**狀態補註（2026-11-14）：** 批量階段將另開 ADR 核可或取代本 ADR（見 [ADR-037](ADR-037-ai-service-integration.md) §5）；本 ADR 狀態維持 proposed。
 **日期：** 2026-08-15
 **關聯：** [ADR-027](ADR-027-domain-evolution-versioning-and-ai-readiness.md) §6（「Dedicated worker 承載
 durable work」——本 ADR 記錄的正是對 §6 的**暫時偏離**）、§7（達條件再物理拆分的同一原則）、

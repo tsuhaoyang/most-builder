@@ -15,7 +15,7 @@
 #   - 來源範本：line-balance_stream-weaver_v2/docs/agent-team/domains.yaml（commit 2b59ddc）。
 
 version: 1
-updated: 2026-10-28
+updated: 2026-11-14
 
 # 不歸任何領域的業務檔白名單（check_agent_config.py check_8 消費）。
 # 判準：純結構／框架接線／設定／通用基底，無業務邏輯，改它不需要領域守衛。每條附理由。
@@ -184,11 +184,14 @@ domains:
     docs:
       - docs/architecture/data-model-and-storage-spec.md
       - docs/decisions/ADR-020-simo-contribution-semantics.md
+      - docs/decisions/ADR-037-ai-service-integration.md
     keywords: [worksheet, 工時表, wi_row, most_cycle, simo, clone, 另存, revision, 版本衝突, cycle]
     invariants:
       - SIMO 標記列（simo_group_id 非空）貢獻 0，時間由未標記主列吸收；不取 group max（ADR-020，對齊 v3 認證版）
       - most_cycle.wi_row_id 為 1:1（worksheet 情境）；clone 必須保留全部 LB tag 欄與 wi_group
       - 前端不算 TMU；儲存 body 由 buildSaveBody 產出，derive() 的 null（非鏈首層級）須忠實保留
+      - 【規劃中，ADR-037 實作後生效】AI 來源列的 provenance 由伺服器依 review_item_id 設定，前端不得傳值；mapper 一律輸出 simo_group_id／simo_with_row_id 為 null（ADR-037 D3、ADR-020）
+      - 【規劃中，ADR-037 實作後生效】AI 採用落盤只走既有 save_worksheet，帶 base_revision，不得另開寫 wi_rows／most_cycles 的路徑（ADR-037 D5）
 
   - id: motion-module
     title: 動作範本庫與 WI 大綱（motion_module／template matching）
@@ -240,15 +243,32 @@ domains:
       - "src/ddm_v2/api/routes/v2/parse_jobs.py"
       - "src/ddm_v2/api/routes/v2/ai_review.py"
       - "src/ddm_v2/models/v2/ai_ops.py"
+      # 規劃中（ADR-037，尚未實作）：外部 ai_service 整合
+      - "src/ddm_v2/ai_integration/**"
+      - "tests/unit/ai_integration/**"
+      - "tests/contract/ai_service/**"
+      - "src/frontend/src/features/wi-ai-review/**"
       # e2e：NL→MOST 草稿的守門與多動作
       - "src/frontend/e2e/workbench-nl-*.spec.ts"
       - "src/frontend/e2e/support/workbenchNlMocks.ts"
     docs:
       - docs/decisions/ADR-033-llm-planner-scope-narrowing.md
+      - docs/decisions/ADR-037-ai-service-integration.md
+      - docs/decisions/ADR-026-wi-ai-parser-pipeline-boundary.md
+      - docs/decisions/ADR-015-nl-parsing-in-scope.md
+      - docs/decisions/ADR-035-lb-projection-layer-and-motion-decomposition.md
+      - docs/decisions/ADR-031-spatial-layout-and-distance-acquisition.md
+      - docs/decisions/ADR-025-import-template-matching-p2.md
     keywords: [compiler, 編譯, nl, 自然語言, llm, planner, 草稿, draft, quantity policy, rule_based, lexicon]
     invariants:
       - NL 數量／頻率經 QuantityPolicyV2（resolve_multiplier）解析，對 TMU 中性（ADR-033）
-      - LLM 只做受限 planner，不得成為 TMU／規則的權威來源；引擎閘門（engine_gate）擋不合法序列
+      - 【規劃中，ADR-037 實作後生效】外部 AI 服務（ai_service）只提供建議；入站經 mapper allow-list、sanitize、validate；slot code 只是候選，須過目標 rule-set、compile、engine_gate；hand／seq_kind 不採信；TMU 只來自引擎（ADR-037 D3，修訂 ADR-033 D2）
+      - 【規劃中，前置＝ADR-033 P3 前兩項；現況 compile.py 仍讀 role.value】外部或人工數值不得寫入 role.value，須走帶出處的獨立欄位（ADR-037 D3、ADR-031 D4）
+      - ADR-033 D1（LLM 不產數值）、D6（逐項降級）、D7（距離單一來源）對外部 AI 回應維持為入站不變量（ADR-037 D3）
+      - AI 建議一律逐項人工採用，不設批次或自動接受（ADR-037 D4、ADR-026 §3）；wi_ai_auto_enabled 現況為預設關、可由 env 開啟，ADR-037 落地時須改為不可開
+      - 【規劃中，ADR-037 實作後生效】只有 complete=True、compute_cycle 通過、engine_gate 無 high 的 motion 可接受（ADR-037 D3）
+      - 凍結列舉不得收窄，舊 ai_parse_runs 列須讀得回（ADR-037 D1）
+      - 【規劃中，ADR-037 實作後生效】外送只含 WI 語句與白名單 context（ADR-037 D6／D7）
 
   - id: lb-projection
     title: LB 投影層（motion→task、工具生命週期、匯出契約）
@@ -355,10 +375,13 @@ domains:
       - "src/frontend/e2e/d10-*.spec.ts"
     docs:
       - docs/decisions/ADR-013-excel-import-architecture.md
+      - docs/decisions/ADR-037-ai-service-integration.md
     keywords: [import, 匯入, excel, csv, target_fields, column map, 欄位對應, staging, dsx, wi_group]
     invariants:
       - 匯入為兩階段（staging→submit）；column_map 缺 description 擋提交（ADR-013）
       - 匯入建列填 wi_group（TARGET_FIELDS 含 wi_group）
+      - 超過 MAX_PARSE_TEXT_CHARS 的列不外送（現況已生效：import_service 標 review、parse_job 跳過）
+      - 【規劃中，ADR-037 實作後生效】批量 AI 只送 description；Excel 數量為權威，歸屬依 ADR-037 D6 四條規則預填且逐項審核
 
   - id: auth-rbac
     title: 認證與 RBAC（角色階層、稽核、搜尋）
@@ -392,7 +415,8 @@ domains:
       - docs/decisions/ADR-019-worksheet-access-control.md
       - docs/architecture/rbac-spec.md
       - docs/decisions/ADR-027-domain-evolution-versioning-and-ai-readiness.md
-    keywords: [auth, rbac, 權限, role, viewer, ie, manager, admin, x-username, forwardauth, audit, 稽核, outbox]
+      - docs/decisions/ADR-037-ai-service-integration.md
+    keywords: [auth, rbac, 權限, role, viewer, analyst, approver, ie, manager, admin, x-username, forwardauth, audit, 稽核, outbox]
     invariants:
-      - 角色階層 viewer < IE < manager < admin；gateway 模式信任入站 X-Username，只綁 loopback（ADR-019、ADR-023 D7b）
+      - 角色階層 viewer < analyst < approver < admin（程式 auth/deps.py ROLE_ORDER；口語 IE＝analyst、manager＝approver）；gateway 模式信任入站 X-Username，只綁 loopback（ADR-019、ADR-023 D7b）
       - shared/api/client.ts 是唯一 API 入口；shared/types/api.d.ts 由 OpenAPI 產生、不可手改
