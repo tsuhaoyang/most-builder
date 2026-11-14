@@ -1707,6 +1707,19 @@ test.describe('§G-03 案件編輯情境頁 (ADR-021 Phase 3)', () => {
           }],
         }) })
       }
+      // ADR-035 D10：Level System 預設作業版會打 LB 投影預覽與回寫快照；
+      // 不攔的話會落到下面的 worksheet 物件，缺 warnings/rows/hints 陣列 → 頁面當掉。
+      if (path.endsWith('/export/lb-report') || path.endsWith('/export/lb-report/preview')) {
+        return route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({
+          contract_version: 'most-lb-csv-v1.1', tasks_out: 0, groups: {}, atomic_groups: {},
+          errors: [], warnings: [], rows: [], hints: [],
+        }) })
+      }
+      if (path.endsWith('/lb-writeback/latest')) {
+        return route.fulfill({ status: 404, contentType: 'application/json', body: JSON.stringify({
+          error: { code: 'NOT_FOUND', message: 'no snapshot', detail: { code: 'NOT_FOUND', resource: 'lb_writeback_snapshot' } },
+        }) })
+      }
       return route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({
         worksheet_id: 'ws-project-001',
         status: 'draft',
@@ -1764,7 +1777,12 @@ test.describe('§G-03 案件編輯情境頁 (ADR-021 Phase 3)', () => {
     await expect(previewRows.getByText('右手抓取主板並放置')).toBeVisible()
 
     await clickNavAndWait(page, /Level System/)
-    await expect(page.getByText('裝配主板')).toBeVisible()
+    // 預設作業版（ADR-035 D10）：同一匯入列可見、無錯誤
+    await expect(page.getByText('裝配主板').first()).toBeVisible()
+    await expect(page.getByTestId('pill-ok')).toBeVisible()
+    // 進階檢視（IE）：R1–R9 驗證結果
+    await page.getByRole('button', { name: '進階檢視（IE）' }).click()
+    await expect(page.getByText('裝配主板').first()).toBeVisible()
     await expect(page.getByText('✓ 群組設定正確')).toBeVisible()
   })
 

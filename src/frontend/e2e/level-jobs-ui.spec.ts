@@ -9,6 +9,13 @@ import { ensureReplicaVocab, buildGoldenRows } from './support/goldenReplica'
 const AUTH = { 'X-Username': 'IEC141289' }
 const WS = '55555555-5555-5555-5555-555555555555'
 
+// 會改共用 e2e 身分 locale 的測試（en 語系案例）若中途 skip／失敗，行內還原不會執行，
+// 後續 spec 全部看到英文介面。改由 afterEach 無條件還原（skip／fail 也會跑）。
+test.afterEach(async ({ request }) => {
+  const res = await request.patch('/api/v2/me/locale', { headers: AUTH, data: { locale: 'zh-TW' } })
+  expect(res.ok(), `locale 還原失敗：${res.status()}`).toBeTruthy()
+})
+
 async function seeded(request: APIRequestContext): Promise<boolean> {
   return (await request.get(`/api/v2/worksheets/${WS}`, { headers: AUTH })).status() === 200
 }
@@ -101,6 +108,4 @@ test('en locale renders English job-UX strings', async ({ page, request }) => {
   // §6.1 en：view.line / save-export 英文字串
   await expect(page.getByTestId('subview-line')).toHaveText(/line|Line/)
   await expect(page.getByTestId('jobs-save-export')).toContainText(/balanc/i)
-  // 還原 zh-TW（不污染其他測試）
-  await request.patch('/api/v2/me/locale', { headers: AUTH, data: { locale: 'zh-TW' } })
 })
