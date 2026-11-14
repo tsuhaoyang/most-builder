@@ -61,6 +61,17 @@ MOST：① 讀 header 取身分(員工編號)  ② 查本地 app_users 取 MOST 
 | 使用者角色管理（授予/停用） | **admin** |
 | Rule-set 建立草稿(clone) | analyst+（可調） |
 
+**`/api/v2/wi-ai/*`（外部 ai_service 整合；規劃中，尚未實作）**——權威在 [ADR-037](../decisions/ADR-037-ai-service-integration.md) D7，下表只列最低角色，不重抄規則；與 D7 不一致時以 D7 為準：
+
+| 動作 | 最低角色 |
+|------|----------|
+| 觸發 AI 解析（單句、批量） | analyst（viewer 只走 `rule_based`，不外送） |
+| 看審核佇列與項目（含原文） | analyst（viewer 只看彙總計數；依 `site_ids` 與 owner 過濾） |
+| 逐項接受、人工修改 | analyst（落盤另受既有 service 的守衛） |
+| 重設他人已決項目 | approver（須填理由） |
+| 啟用／停用整合 | admin |
+| `GET /wi-ai/status` | viewer（只回啟用與可用狀態） |
+
 JIT：第一次出現的員工編號 → 自動建一筆 **viewer**（無 MOST 角色），由 admin 授予。
 
 > ⚠️ **worksheet 讀取為刻意全開設計**：UUID 非機密，可經 `GET /skus/{id}/worksheets` 列舉。

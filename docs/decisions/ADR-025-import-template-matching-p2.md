@@ -64,6 +64,14 @@ IE 不一定會回頭發現。
 `match_templates` 已限 `is_active AND status='standard'`——草稿範本不參與匯入建議。
 維持。
 
+### D11 AI 建議的逐項採用：單句不經 submit；批量在 submit 內由後端重算（ADR-037；**規劃中，尚未實作**）
+
+> 本 ADR 既有決策以「### 1–4」編號，此處以 D11 對齊 ADR-037 §6 的指定名稱（與 ai_service ADR-001 的 D11 無關）。權威決策在 [ADR-037](ADR-037-ai-service-integration.md)，此處只記與本 ADR 契約的接點。
+
+- AI 建議的逐項採用發生在 `submit` 之外，經 ADR-037 D5 的既有儲存路徑（`save_worksheet`＋`base_revision`）；不另開寫入路徑。
+- 批量階段，`SubmitIn` 以加法新增 `ai_adoptions[{row_index, review_item_id}]`；後端在 submit 內**重新** link／compile／engine_gate 並重算 TMU，不信任前端傳值（與 `row_adoptions` 同原則）。細節見[實作計畫](../roadmap/ai-service-integration-plan.md) §6。
+- 本條不改 §2 的信任邊界：逐列人工採用、不設批次接受。
+
 ## 契約（給實作定死，兩端據此並行）
 
 **預覽回應**：`apply_mapping`／`GET /{import_id}` 的每一暫存列，新增：

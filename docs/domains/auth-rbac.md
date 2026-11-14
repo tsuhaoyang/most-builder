@@ -1,7 +1,7 @@
 # 領域索引：auth-rbac — 認證與 RBAC（角色階層、稽核、事件、搜尋）
 
 ## 一句話
-聯邦認證（Traefik ForwardAuth 注入 `X-Username`）＋本地角色授權 viewer<IE<manager<admin；含稽核、outbox 事件、向量搜尋。
+聯邦認證（Traefik ForwardAuth 注入 `X-Username`）＋本地角色授權 viewer<analyst<approver<admin（口語 IE＝analyst、manager＝approver）；含稽核、outbox 事件、向量搜尋。
 
 ## 權威文件
 - [`rbac-spec.md`](../architecture/rbac-spec.md)
@@ -17,7 +17,7 @@
 - `graphify explain "<anchor>"` 展開。
 
 ## 吃哪些欄位／狀態
-- 角色階層 viewer<IE<manager<admin；`X-Username`（員工號）；dev＝`AUTH_DEV_USER=IEC141289`；`DDM_AUTH_MODE`＝gateway／verify。
+- 角色階層 viewer<analyst<approver<admin（程式 `auth/deps.py` ROLE_ORDER；口語 IE＝analyst、manager＝approver）；`X-Username`（員工號）；dev＝`AUTH_DEV_USER=IEC141289`；`DDM_AUTH_MODE`＝gateway／verify。
 - gateway 模式無條件信任入站 `X-Username` → 只綁 loopback（ADR-023 D7b）。
 - outbox：`OutboxEvent`（`EVENT_REVIEW_RECORDED`／`EVENT_WORKSHEET_SAVED`）、`payload_schema_version`、claim/publish（**無 spec，以程式為準**）。
 - search：port/adapter（bge-m3 http / null provider）、normalization（**無 spec**）。

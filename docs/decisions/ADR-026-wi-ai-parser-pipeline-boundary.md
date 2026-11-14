@@ -35,6 +35,7 @@ ddm-v2 已有 rule-based `DraftParserPort`、`/worksheets/nl-draft`、DB synonym
 - 從第一版起使用版本化 request/response contract，不依賴 DDM ORM。
 - 模型依賴、推論、檢索、信心、評測與 feedback dataset 歸 AI bounded context。
 - 當 LLM/GPU 或批次需求成熟後，可抽成 `wi-ai-api` 與 `wi-ai-worker` 容器，不改 DDM domain contract。
+- **ADR-037 補註（2026-11-14）**：此處的 `wi-ai-api` 即外部 `ai_service`（[ADR-037](ADR-037-ai-service-integration.md) D1）；LLM 的 prompt、provider、model、bundle 治理歸 ai_service。
 
 ### 2. DDM 保留 deterministic compiler 與最終權威
 
@@ -56,6 +57,7 @@ ddm-v2 已有 rule-based `DraftParserPort`、`/worksheets/nl-draft`、DB synonym
   逐列核對/採用**；L0 表示候選完整度，不表示可跳過人工信任閘門或自動落地。
 - Template/AI 輸出始終只是 candidate；任何 batching、confidence threshold 或 deployment bundle
   都無權繞過 ADR-025 的逐列人工採用 gate。
+- **ADR-037 補註**：本節維持；ADR-037 D4 遵守——AI 建議一律逐項人工採用，不設批次接受，`wi_ai_auto_enabled` 維持硬關。
 - 新 parse job 先以加法 enrich 接入；任何要取消未採用列 stub 或改變既有 `/submit` 語義的
   變更，必須另經 accepted 決策，不由本 proposed ADR 靜默取代 ADR-025。
 
@@ -108,7 +110,7 @@ queue 與觀測成本。否決作為第一步。
 
 本 ADR 核可的是 bounded context、權威與資料流方向。下列選型在對應 Phase 前另行定案：
 
-1. 雲端或地端 LLM、資料落地與 retention。
+1. 雲端或地端 LLM、資料落地與 retention。（ADR-037 補註：LLM 由 ai_service 負責，MOST 外送範圍見 ADR-037 D7；ai_service 端 provider 是否出內網、是否保存請求內容須由 ai_service 說明，尚未結案。）
 2. Queue/worker 技術與 GPU 排程。
 3. Review/inference storage 的實體位置與跨 site 隔離。
 4. 初始 auto-accept precision/coverage 工作點。

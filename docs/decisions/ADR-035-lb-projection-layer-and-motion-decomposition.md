@@ -56,6 +56,7 @@
 - `resolve_frequency` 演進為 `resolve_multiplier(action, plan) -> (frequency, repeat_count, reasons)`：`is_tool_held(action, plan)` 為真且數量為整數 → `repeat_count=N` 掛在該 action 的 X／M／I（有值的格），`frequency=1`；非持工具維持 V1（`frequency=N`）。
 - **TMU 中性**（現況）：持工具 action 的 G 已留空（已持有）、A0／A6 目前不編（impl-spec §9.2 註 3），故 `frequency=N` 與 `repeat=N` 在現行編譯路徑算出的 TMU 相同——本決策是為 **LB 投影形狀**，不是改工時值。P3 補上 `A6` 後兩者才會分歧，那正是本決策要提前釘住的原因。
 - 供給端仍受 ADR-033 D1 管制（`quantity` 暫由 IE 手填／`quantity_policy_review`）；本 ADR **不改**供給時程，只改目的地。既有 gold `expected_cycles` 的 TMU 不變；`cycle["frequency"]` 斷言處需同步（見實作書 WP9）。
+- **ADR-037 補註（2026-11-14；規劃中，尚未實作）**：Excel 數量欄以 `quantity_source=excel` 的出處進入 `QuantityPolicyV2`（[ADR-037](ADR-037-ai-service-integration.md) D6），歸屬規則見該 ADR，此處不重述。
 
 ### D5 ToolLifecycleResolver：chain 內確定性配對，支援 Pattern A／B
 - 事件表與 held 狀態機見 Spec §4.1；Pattern B 的 release 落點以**同 chain 向後看**決定 3 列或 2 列（§4.3）。

@@ -77,6 +77,7 @@ stale result。若等待所有業務邏輯永遠固定才開始，又會錯過�
 
 ### 7. AI 先邏輯隔離，達條件再物理拆分
 
+- **ADR-037 補註（2026-11-14）**：本節的物理拆分條件（GPU／大型依賴、release cadence 不同）已由 [ADR-037](ADR-037-ai-service-integration.md) D1 宣告成立，LLM 歸外部 ai_service。
 - 初期同 monorepo/in-process adapter，contract 與 ownership 先固定。
 - GPU/大型依賴、SLO、release cadence、scaling 或資料落地需要時，再抽 `wi-ai-api/worker`。
 - 初期共用 PostgreSQL cluster 但以 schema/role 邏輯隔離；獨立 database 是後續部署決策。

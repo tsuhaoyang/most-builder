@@ -3,12 +3,12 @@
 **文件類型：** Roadmap / 執行分期（非核心規則權威）
 **版本：** 0.2 — 計畫草案（納入 2026-11-14 第二輪審查與裁決）
 **建立日期：** 2026-11-14
-**決策邊界：** [ADR-037](../decisions/ADR-037-ai-service-integration.md)（proposed）
+**決策邊界：** [ADR-037](../decisions/ADR-037-ai-service-integration.md)（accepted 2026-11-14）
 **既有行為：** [ADR-025](../decisions/ADR-025-import-template-matching-p2.md)、[ADR-026](../decisions/ADR-026-wi-ai-parser-pipeline-boundary.md)、[ADR-033](../decisions/ADR-033-llm-planner-scope-narrowing.md)
 
 ## 狀態
 
-⏳ 前瞻計畫（未排程）。ADR-037 核可前只作規劃，不得作為實作依據。與 ADR-037 衝突時以 ADR-037 為準。
+✅ 已核可、待啟動（ADR-037 於 2026-11-14 核可；S0 文件回寫已完成）。與 ADR-037 衝突時以 ADR-037 為準。
 
 > 來源：MOST 與 ai_service 兩邊的唯讀盤點、架構規劃，以及兩輪審查（架構、資安、code、nlp-compiler、wi-workbench、excel-import、auth-rbac）。
 > 本文件中「ADR-033 P3」指 ADR-033 遷移路徑的第 3 階段；本計畫自己的階段寫作 S0–S5，避免撞名。

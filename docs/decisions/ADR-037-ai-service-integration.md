@@ -2,8 +2,8 @@
 
 ## 狀態
 
-🟡 **proposed**（2026-11-14 起草）。本 ADR 的取捨已於 2026-11-14 由 Howard 在對話中逐項裁決（見 §7），
-全文仍待 Howard 核可後改為 accepted。核可前不得依本 ADR 改程式，也不得回寫其他權威文件（影響清單見 §6）。
+🟢 **accepted**（2026-11-14，Howard 核可：merge PR #4 後指示繼續）。取捨由 Howard 於 2026-11-14 逐項裁決（見 §7）。
+§6 的既有文件回寫隨本次核可一併進行。實作依 [實作計畫](../roadmap/ai-service-integration-plan.md) 分階段推進。
 
 - **關聯**：[ADR-015](ADR-015-nl-parsing-in-scope.md)（NL 解析在範圍內）、
   [ADR-020](ADR-020-simo-contribution-semantics.md)（SIMO 貢獻語意）、
@@ -269,7 +269,7 @@ Suggest(ai_service) → Map(mapper) → Validate(link/compile/engine_gate/routin
 | ADR-025 | 補 D11：AI 建議的逐項採用發生在 submit 之外，經 D5 的既有儲存路徑；批量 submit 的 `ai_adoptions` |
 | ADR-035 D4 | 補註：Excel 數量以 `quantity_source=excel` 出處進入 QuantityPolicyV2 |
 | ADR-030 | 批量階段的新 ADR 核可或取代 |
-| `docs/agent-team/domains.yaml` | nlp-compiler 的 docs、paths、invariants；wi-workbench 的 provenance invariant；auth-rbac 的角色名改為程式現況 |
+| `docs/agent-team/domains.yaml` | nlp-compiler 的 docs、paths、invariants；wi-workbench 的 provenance 與落盤 invariant；excel-import 的批量 AI invariant；auth-rbac 的角色名改為程式現況 |
 | `docs/architecture/rbac-spec.md`、`data-model-and-storage-spec.md` | 權限矩陣加 `/wi-ai/*`；`wi_rows.provenance` 值域與 AI 採用路徑 |
 
 ## 7. 裁決紀錄（Howard，2026-11-14）
