@@ -43,7 +43,7 @@ class AiDeploymentBundle(Base):
 
     __table_args__ = (
         UniqueConstraint("code", name="uq_ai_deployment_bundles_code"),
-        CheckConstraint("kind IN ('rule_based', 'llm')", name="kind"),
+        CheckConstraint("kind IN ('rule_based', 'llm', 'external')", name="kind"),
         CheckConstraint(
             "status IN ('draft', 'shadow', 'active', 'retired')",
             name="status",
@@ -96,6 +96,9 @@ class AiParseRun(Base):
     )
     # R1：綁 worksheet 時的來源 revision（未綁則 NULL）；與 migration BigInteger 對齊
     source_revision: Mapped[int | None] = mapped_column(BigInteger)
+    # ADR-037 S3（v2_0050）：外部 ai_service 的去敏出處與對帳用 run_id；舊列與 rule_based／llm 列為 NULL
+    provenance: Mapped[dict | None] = mapped_column(JSONB)
+    upstream_run_id: Mapped[str | None] = mapped_column(Text)
 
     __table_args__ = (
         CheckConstraint(
@@ -109,6 +112,7 @@ class AiParseRun(Base):
         sa.Index("ix_ai_parse_runs_input_hash", "input_hash"),
         sa.Index("ix_ai_parse_runs_created_at", "created_at"),
         sa.Index("ix_ai_parse_runs_bundle_id", "bundle_id"),
+        sa.Index("ix_ai_parse_runs_upstream_run_id", "upstream_run_id"),
         UniqueConstraint(
             "input_hash",
             "bundle_id",

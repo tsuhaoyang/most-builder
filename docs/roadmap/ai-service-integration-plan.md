@@ -132,7 +132,16 @@ DB 欄位不動；寫入端不再產生 `kind='llm'`，但**舊 `kind='llm'` 列
    - `wi_ai_service` 改用 `WiParserPort`；呼叫期間不占 DB session；single-flight（key 含 bundle 與 site）。
    - 入口在工時表編輯情境（`nl-draft` 帶 worksheet），不含 MOST 工作台（motion_module，延後）。
    - `nl-draft` 維持同步 200；AI 路徑要求 analyst，viewer 只走 `rule_based`；`ai` 區塊以加法新增 `status`、`provenance`。
-   - migration（加法）：`ai_parse_runs.kind` 的 CHECK 加 `external`、新欄、`external-ai-service` 佔位 bundle（`bundle_id` NOT NULL）。downgrade 處理已存在的新值列。
+   - ✅ migration（加法；v2_0050，2026-11-20 已落地）：
+     - `ai_deployment_bundles.kind` 的 CHECK 加 `'external'`。（原寫「`ai_parse_runs.kind`」有誤：`ai_parse_runs` 沒有 kind 欄，一筆 run 的種類由 `bundle_id`（NOT NULL）指向的 bundle 決定。）
+     - `ai_parse_runs` 新增 `provenance JSONB NULL`（ai_service 去敏出處）與 `upstream_run_id TEXT NULL`（加索引，供 ADR-037 D7 對帳；合併的等待者沒有自己的外送，此欄為 NULL，`shared_run_id` 只在 provenance）。
+     - 佔位 bundle `external-ai-service`：kind=external、status=active、config={}。所有外部 run 都指向它。
+     - downgrade：有 `ai_parse_runs` 或 `ai_parse_jobs` 指向 external bundle，或存在佔位以外的 external bundle，就 `RuntimeError` 拒絕、不刪資料（`ai_review_events` 會跟 run CASCADE，直接刪等於悄悄清掉稽核資料）。
+   - ✅ 已落地的保護：`wi_ai_service._get_active_bundle` 與 `parse_job_service.create_parse_job` 查 active bundle 時加了 `kind != 'external'`，佔位 bundle 不會被 analyst 的 `bundle_code` 或環境設定選為 rule_based／llm 路徑的 bundle（有測試）。
+   - **後續 `wi_ai_service` PR 必須處理**（已決定留給後續 PR，目前只記錄）：
+     - 快取鍵：外部 run 全部指向同一個佔位 bundle，現有 `UNIQUE(input_hash, bundle_id)` 對外部 run 實際上只剩 `input_hash`。落盤前必須把 `provenance.bundle_code`（實際 ai_service bundle 代碼）納入 `input_hash`，並決定唯一約束衝突時的行為（重播或覆蓋）；否則 ai_service 換 bundle 或 prompt 後會命中舊結果。
+     - 讀取路徑：`wi_ai_service._result_from_run` 以 `run.fallback` 與 `llm_raw_response` 判定 planner 與 model；外部 run 沒有 `llm_raw_response`，重播會被誤標為 rule_based。需改讀 provenance（`model_served`、`prompt_version`、`bundle_code`）。
+     - 寫入端對 provenance 做鍵 allow-list（只允許 adapter／guard 實際輸出的鍵），並以測試斷言不含金鑰、員工編號、原文（ADR-037 D7）；DB 欄位本身無 schema 約束。
    - 新 routing reason 名稱定案（AI 來源無 evidence、code 與 linker 分歧、hand 分歧、未知 code、`return` 型 A 位置、AI 已展開成 N 個 motion、數量待指定），全部列入 `routing._eligible_auto` 的 blocked，並同步 `test_contract_enum_freeze`。
    - `GET /api/v2/wi-ai/status`（不含金鑰與內部 URL）；前端顯示 AI 狀態與降級訊息。
    - 稽核：外送事件（不記原文）。
