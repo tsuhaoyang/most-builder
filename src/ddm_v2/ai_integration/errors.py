@@ -30,6 +30,8 @@ class AiServiceErrorKind(str, Enum):
     REQUEST_REJECTED = "request_rejected"  # 其他 4xx（請求不合 ai_service 契約——MOST 端的 bug）
     CONTRACT_MISMATCH = "contract_mismatch"  # 回應形狀或 contract_version 不符 MOST 預期
     RESPONSE_TOO_LARGE = "response_too_large"
+    # MOST 端配額（ADR-037 D8）：每人每分鐘、每日預算、本機並行上限。不重試、不計熔斷
+    QUOTA_EXCEEDED = "quota_exceeded"
 
 
 # 值得在同一次請求內重試的分類（其他分類重試也不會變好，或會放大成本）

@@ -31,7 +31,7 @@
 > - **D1、D6、D7 保留**，改為對 ai_service 回應的**入站不變量**。
 > - **D3–D5** 向模型索取的內容，改為對 ai_service 的契約需求（ADR-037 D3；實作計畫 §7）。
 > - **P3**：前兩項（刪 `_role_distance_cm`、關 `x_seconds` 入口）是 ADR-037 單句階段的**硬前置**；
->   第三項（補 `a6`／CM `a0`）**不在前置內**（首輪 `return` 型 A 位置一律標審核）。P3 目前**尚未實作**（規劃中），不得宣稱 P3 已全部完成。
+>   第三項（補 `a6`／CM `a0`）**不在前置內**（首輪 `return` 型 A 位置一律標審核）。**前兩項已於 2026-11-14 落地**：compile 不再讀 `role.value` 作距離或秒數，帶出處的數值改走 `PlannedAction.measurements`（`nlp/contracts.Measurement`；外部 planner 提供的一律剝除）。帶出處的量測值即憑據，不掛 `distance_unevidenced_review`；`ai_estimate_confirmed` 必須帶確認者與時間。數量不在 P3 範圍內，仍讀 `quantity` 角色的 `role.value`（出處欄位留到 ADR-037 實作計畫 S5）。第三項未做，不得宣稱 P3 已全部完成。
 
 ---
 
@@ -415,7 +415,7 @@ unresolved[]
 | **P0** | 本 ADR 核可；spec §5／§5.1／§7.2／§7.5／§19 同步改寫 | User 核可，狀態轉 accepted |
 | **P1** | 契約與 adapter 放寬（D3／D4／D5／D6），**prompt 先不動**、**compiler 先不動** | 以 **plan-v1.4 原 prompt** 重跑 55 案：硬失敗數應顯著下降。**這是唯一能把「契約放寬」與「prompt 改寫」兩個變因分開量的機會，不要合併** |
 | **P2**（~~MOST 內改寫 prompt~~ ADR-037 作廢：prompt 歸 ai_service） | prompt 改寫為 `plan-v2.0`（D1／D2 的索取範圍），few-shot 全部重寫並過 `test_prompt_few_shots.py` 守衛 | 兩輪評測（單輪落在 ±2 案變異帶內不足以下結論，worklog §8 已立此規矩） |
-| **P3**（ADR-037：前兩項為單句階段硬前置，第三項不在前置內；**規劃中，尚未實作**） | compiler 側：刪 `_role_distance_cm`、關 `x_seconds` 入口、**補 `a6`／CM `a0`** | **黃金值關卡**（`scripts/core_logic/run_all.py`，GM=28／CM=29）＋ `ddm-validator` 派工＋compile 段 55/55 不退 |
+| **P3**（ADR-037：前兩項為單句階段硬前置，第三項不在前置內；**前兩項已落地 2026-11-14，第三項未做**） | compiler 側：刪 `_role_distance_cm`、關 `x_seconds` 入口、**補 `a6`／CM `a0`** | **黃金值關卡**（`scripts/core_logic/run_all.py`，GM=28／CM=29）＋ `ddm-validator` 派工＋compile 段 55/55 不退 |
 | **P4** | gold roles 標註（U-1 裁決後）＋ role slot accuracy 指標上線 | 指標有分母；`dependency_f1` 正式標記為不適用 |
 | **P5** | 前端顯示 roles（覆核者看得到角色判斷）＋ 新旗標的中文文案（併 S-10） | Playwright 截圖對照 v3 母版 |
 

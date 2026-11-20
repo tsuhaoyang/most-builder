@@ -38,6 +38,10 @@ class WiParseRequest(BaseModel):
     wi_statement: str = Field(min_length=1)
     source_lang: SourceLang
     context: dict[str, str] = Field(default_factory=dict)
+    # 以下兩欄只給 MOST 端的配額與合併使用，**絕不外送**（ADR-037 D7：不送員工編號）：
+    # actor＝觸發者（CurrentUser 的員工編號）；scope＝single-flight 的隔離範圍（例：site id）
+    actor: str = Field(default="", max_length=64)
+    scope: str = Field(default="", max_length=64)
 
 
 class ASlotSuggestion(BaseModel):

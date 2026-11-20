@@ -1,7 +1,7 @@
 """compile_plan：WorkInstructionPlan + candidates → CycleDraft（無 TMU）。"""
 from __future__ import annotations
 
-from typing import Any, Iterable, Mapping
+from typing import Any, Iterable, Literal, Mapping
 
 from ddm_v2.most_compiler.intermediate import (
     StrictASlot,
@@ -25,13 +25,20 @@ from ddm_v2.most_compiler.policies import (
     numeric_claim_is_evidenced,
     resolve_multiplier,
 )
-from ddm_v2.nlp.contracts import CycleDraft, PlannedAction, SlotCandidateSet, WorkInstructionPlan
+from ddm_v2.nlp.contracts import (
+    MEASUREMENT_UNIT_BY_KEY,
+    CycleDraft,
+    Measurement,
+    PlannedAction,
+    SlotCandidateSet,
+    WorkInstructionPlan,
+)
 from ddm_v2.nlp.quantities import extract_distances
 from ddm_v2.schemas.v2.most import CycleIn
 
 
 class CompileError(ValueError):
-    """Bug 級：linking 回了不在 allow-list 的 option code（I3）。"""
+    """Bug 級：linking 回了不在 allow-list 的 option code（I3），或量測值單位與鍵不符（ADR-033 P3）。"""
 
     def __init__(self, code: str, message: str) -> None:
         self.code = code
@@ -72,22 +79,26 @@ def _assert_allowed(parameter: str, code: str | None, allow: dict[str, set[str]]
         )
 
 
-def _role_distance_cm(action: PlannedAction, role_key: str) -> float | None:
+def _check_measurement_unit(key: str, m: Measurement) -> None:
+    expected = MEASUREMENT_UNIT_BY_KEY[key]
+    if m.unit != expected:
+        raise CompileError("MEASUREMENT_UNIT_MISMATCH", f"measurement {key} must be in {expected}, got {m.unit}")
+
+
+def _role_text_distance_cm(action: PlannedAction, role_key: str) -> float | None:
+    """角色片語文字裡寫出來的距離（例 `distance.text="30cm"`）。
+
+    ADR-033 P3（2026-11-14）：**不再讀 `role.value`／`role.unit`**。那兩欄是外部（模型）主張的數值，
+    入站時已剝除（D1）；非 LLM 來源的數值改走帶出處的 `PlannedAction.measurements`。
+    片語文字是原文的字面子字串（sanitize 保證），從它抽距離仍是一個要驗證的主張，
+    所以呼叫端照舊用 `numeric_claim_is_evidenced` 檢查。
+    """
     role = action.roles.get(role_key)
-    if role is None:
+    if role is None or not role.text:
         return None
-    if role.unit and role.value is not None:
-        # already preferably cm
-        if role.unit in {"cm", "公分"}:
-            return float(role.value)
-        if role.unit in {"mm", "毫米"}:
-            return float(role.value) * 0.1
-    if role.value is not None and (role.unit is None or role.unit in {"cm", "公分"}):
-        return float(role.value)
-    if role.text:
-        dists = extract_distances(role.text)
-        if dists and dists[0].normalized_cm is not None:
-            return float(dists[0].normalized_cm)
+    dists = extract_distances(role.text)
+    if dists and dists[0].normalized_cm is not None:
+        return float(dists[0].normalized_cm)
     return None
 
 
@@ -112,17 +123,19 @@ def _resolve_distance_cm(
     action: PlannedAction,
     plan: WorkInstructionPlan,
     *,
-    role_key: str,
+    role_key: Literal["from_location", "distance"],
     text_fallback: bool,
 ) -> tuple[float, list[str]]:
     """回傳 (cm, issues)——距離進 TMU 檔位的**唯一**入口（S-2）。
 
     A 參數（`StrictASlot.reach_cm`）與 M 分量（`StrictMComponent.distance_cm`）
-    就是 TMU 檔位，所以「這個 cm 從哪來」必須是可回答的問題：
+    就是 TMU 檔位，所以「這個 cm 從哪來」必須是可回答的問題。來源依序：
 
-    - role 帶值（`_role_distance_cm`）→ 那是**模型的主張**，須能定位到本 action
+    - **帶出處的量測值**（`action.measurements[role_key]`；ADR-033 P3）→ 人工、DSX、匯入欄，
+      或經人確認的 AI 估計。出處本身就是憑據，不掛 `distance_unevidenced_review`。
+    - 角色片語文字裡的距離（`_role_text_distance_cm`）→ 須能定位到本 action
       的文字證據（`numeric_claim_is_evidenced`），否則掛
-      `distance_unevidenced_review`。
+      `distance_unevidenced_review`。`role.value` **不讀**（ADR-033 P3）。
     - role 無值 → 退回句面抽取（`_evidence_distance_cm`）。它的 fallback 分支會
       在**沒有任何 evidence 重疊**時回「全句第一個距離」——那是把別的 action 的
       距離掛到這個 action 上（多 action 計畫實測可重現），同樣要掛旗標。
@@ -133,12 +146,17 @@ def _resolve_distance_cm(
 
     **例外是非有限值**（`NaN`／`±Inf`）：那不是「沒出處的量」而是「不是量」，
     在這裡就拒收（`finite_or_reject`），改走句面抽取／0——放行的話 `band_index`
-    的每個 `<=` 比較都是 False，直接落到溢位帶＝**最大** A 檔位。攔在這裡而不是
-    `_role_distance_cm`：那支只回「多少 cm」，回不了「有個值被丟掉了」，而拒收
-    必須留痕。
+    的每個 `<=` 比較都是 False，直接落到溢位帶＝**最大** A 檔位。
     """
     issues: list[str] = []
-    role_cm = finite_or_reject(_role_distance_cm(action, role_key), issues)
+    measured = action.measurements.get(role_key)
+    if measured is not None:
+        # Measurement 的 validator 保證有限且在範圍內。單位與鍵的一致性只在 PlannedAction
+        # 建構時驗過——之後直接改 dict 會繞過，所以在進 TMU 檔位前再驗一次（Fail-Fast）。
+        _check_measurement_unit(role_key, measured)
+        return float(measured.value), issues
+    # 片語文字抽取來自 regex，恆為有限；保留 finite_or_reject 當縱深防禦（不倚賴那個性質）
+    role_cm = finite_or_reject(_role_text_distance_cm(action, role_key), issues)
     # 沿用既有語意：role 值為 0／None 都往句面抽取那條路走
     cm = role_cm if role_cm else (_evidence_distance_cm(action, plan) if text_fallback else None)
     # 句面抽取來自 regex，恆為有限；這道是 fail-closed，不倚賴那個性質
@@ -278,15 +296,14 @@ def compile_plan(
                         distance_cm=float(dist or 0),
                     )
                 )
-            x_seconds = 0.0
-            pk = action.roles.get("process_kind")
-            if pk and pk.unit in {"s", "sec", "秒"} and pk.value is not None:
-                # 同一道有限值關卡（S-2 複審）：nan 秒數會讓引擎算出 nan 的
-                # TMU 總計（非合規 JSON、零旗標），inf 讓 `Decimal` 丟
-                # `InvalidOperation`——而 engine_gate 只接 `SequenceError`，
-                # 那個例外會一路衝出去變 500
-                secs = finite_or_reject(float(pk.value), issues)
-                x_seconds = float(secs) if secs is not None else 0.0
+            # X 機台秒數只來自帶出處的量測值（ADR-033 P3：`process_kind.value` 不再是入口）。
+            # Measurement 的 validator 已保證有限且在 [0, 86400] 秒；nan／inf 在建立時就拒收
+            # （先前的 finite_or_reject 關卡因此移到契約層，理由不變：nan 會算出 nan TMU，
+            # inf 讓 Decimal 丟 InvalidOperation 衝成 500）。
+            measured_secs = action.measurements.get("process_seconds")
+            if measured_secs is not None:
+                _check_measurement_unit("process_seconds", measured_secs)
+            x_seconds = float(measured_secs.value) if measured_secs is not None else 0.0
             # ── E 型完整性窄豁免（D3-026；IE 裁決 2026-08-17/18，見 worklog）──
             # 純 I 句：該 action 的面命中集合**恰為 {I}**（無 X、無 M、無 G、
             # 無任何其他 slot 面）、I 已掛值、且無任何 M 分量（句面也無距離）

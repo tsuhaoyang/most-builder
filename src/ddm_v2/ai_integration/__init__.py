@@ -10,7 +10,8 @@
 - `mapper`  ：ai_service 回應 → `MotionSuggestion`（allow-list、上限、不採信欄位降為提示）。
 - `schema`  ：ai_service 輸出 schema 的 MOST 端複本（sha256 釘值）。
 - `ports`   ：`WiParserPort` 與輸入輸出型別（S3 起由 `wi_ai_service` 依賴這一層）。
-- `adapter` ：`AiServiceWiParser`＝`WiParserPort` 的第一個實作（逐句呼叫）。
+- `adapter` ：`AiServiceWiParser`＝`WiParserPort` 的第一個實作（逐句呼叫）；`build_wi_parser` 組出整條鏈。
+- `guard`   ：`GuardedWiParser`，MOST 端並行上限、每人每分鐘、每日預算、相同請求合併（ADR-037 D8）。
 - `fake`    ：`FakeWiParser`，供下游單元測試使用，不走 HTTP。
 
 S2 完成時沒有任何現有路由依賴本套件；開關 `DDM_AI_SERVICE_ENABLED` 預設關閉。

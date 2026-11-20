@@ -134,8 +134,22 @@ async def test_malformed_motion_values_degrade_the_item_not_the_batch():
     assert b.status == "ok"
 
 
-async def test_valid_config_builds_the_http_parser():
-    assert isinstance(build_wi_parser(load_config(ENV), resolver=_private), AiServiceWiParser)
+async def test_valid_config_builds_the_guarded_http_parser():
+    from ddm_v2.ai_integration.guard import GuardedWiParser
+
+    parser = build_wi_parser(load_config(ENV), resolver=_private)
+    assert isinstance(parser, GuardedWiParser), "外送一律經 MOST 端配額與並行守門（ADR-037 D8）"
+    assert isinstance(parser._inner, AiServiceWiParser)
+
+
+async def test_actor_and_scope_are_never_sent():
+    """ADR-037 D7：員工編號只給 MOST 端配額用，不得出現在送出的 body 或 header。"""
+    fake = FakeAiService(script=["ok:fewshot-zh-0"])
+    req = WiParseRequest(item_id="r1", wi_statement="拿起DIMM", source_lang="zh", actor="IEC141289", scope="site-7")
+    await _parser(fake).parse([req], allow_lists=ALLOW, lane="interactive")
+    sent = fake.received[0]
+    assert "IEC141289" not in str(sent["body"]) and "IEC141289" not in str(sent["headers"])
+    assert "site-7" not in str(sent["body"]) and "site-7" not in str(sent["headers"])
 
 
 async def test_fake_parser_runs_the_real_mapper():
@@ -152,3 +166,23 @@ async def test_fake_parser_runs_the_real_mapper():
     assert ok.status == "ok" and ok.motions[0].g2 is None and "unknown_code:s2_G" in ok.motions[0].issues
     assert down.status == "failed" and down.error_kind is AiServiceErrorKind.UNREACHABLE
     assert fake.calls == [("ok", "interactive"), ("down", "interactive")]
+
+
+async def test_unexpected_mapper_exception_degrades_to_contract_mismatch(
+    monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture
+):
+    """mapper 對不預期的形狀拋任何例外，都要變成該筆 failed，不能穿出 port（ADR-037 D2）。"""
+    import ddm_v2.ai_integration.adapter as adapter_mod
+
+    def boom(_content, _allow):
+        raise KeyError("SECRET-RESPONSE-VALUE")
+
+    monkeypatch.setattr(adapter_mod, "map_content", boom)
+    fake = FakeAiService(script=["ok:fewshot-zh-0"])
+    (res,) = await _parser(fake).parse([_req()], allow_lists=ALLOW, lane="interactive")
+    assert res.status == "failed" and res.error_kind is AiServiceErrorKind.CONTRACT_MISMATCH
+    assert res.provenance is not None and res.provenance["upstream_code"] == "MAPPER_REJECTED"
+    warned = [r for r in caplog.records if "mapper rejected" in r.getMessage()]
+    assert warned, "降級要留 WARNING，讓維運看得到 mapper bug"
+    assert warned[0].exc_info is None and "SECRET-RESPONSE-VALUE" not in caplog.text, "log 只記例外類別，不含例外訊息、語句或回應內容"
+    assert "KeyError" in warned[0].getMessage()

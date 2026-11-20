@@ -370,16 +370,18 @@ def _m_dist(draft) -> float | None:
     return comps[0]["distance_cm"] if comps else None
 
 
-def test_bypass_a_value_only_explicit_distance_is_flagged():
-    """繞過 A：`status="explicit"` 但只有 value 沒有 text → contracts 的證據綁定
-    整段跳過（`elif role.text is not None`）。300cm 是模型自帶的數字，原文
-    「推動治具」一個數字都沒有 → 掛旗標。**只擋非 explicit 是不夠的**。"""
+def test_bypass_a_role_value_is_no_longer_a_distance_source():
+    """繞過 A（ADR-033 P3 後）：`role.value` **不再被讀**——模型自帶的 300cm 進不了 M 分量。
+
+    P3 之前這條斷言「照用＋掛旗標」；P3 關掉入口後，值本身就不存在於 compile 的輸入裡。
+    原文「推動治具」沒有距離 → M 分量距離 0，也沒有可掛旗標的主張。
+    """
     draft = _compile_one(
         _dist_plan("推動治具", (0, 2, "推動"), {"distance": {"value": 300, "unit": "cm", "status": "explicit"}}),
         [_cand("a1", "M", "m3.verb_code", "m_push")],
     )
-    assert "distance_unevidenced_review" in draft.issues
-    assert _m_dist(draft) == 300.0, "值不被靜默改寫——本修法治的是靜默，不是數字"
+    assert _m_dist(draft) == 0.0, "role.value 不得再進 TMU 檔位（ADR-033 P3）"
+    assert "distance_unevidenced_review" not in draft.issues
 
 
 def test_bypass_b_role_text_superset_of_evidence_is_flagged():
@@ -398,9 +400,8 @@ def test_bypass_b_role_text_superset_of_evidence_is_flagged():
     assert _m_dist(draft) == 30.0
 
 
-def test_bypass_c_inferred_distance_with_action_ref_is_flagged():
-    """繞過 C：`inferred` ＋合法 `action_ref` → validate 對 inferred 角色**完全不驗
-    證據**（few-shot #2 正教了這個形狀）。400cm 直達 M 分量 → 掛旗標。"""
+def test_bypass_c_inferred_role_value_is_ignored():
+    """繞過 C（ADR-033 P3 後）：`inferred` ＋ `action_ref` 帶的 400cm 同樣不再被讀。"""
     draft = _compile_one(
         _dist_plan(
             "推動治具",
@@ -409,8 +410,7 @@ def test_bypass_c_inferred_distance_with_action_ref_is_flagged():
         ),
         [_cand("a1", "M", "m3.verb_code", "m_push")],
     )
-    assert "distance_unevidenced_review" in draft.issues
-    assert _m_dist(draft) == 400.0
+    assert _m_dist(draft) == 0.0
 
 
 def test_where_each_bypass_is_intercepted_after_adr033_p1():
@@ -603,13 +603,13 @@ def test_tool_held_quantity_goes_to_repeat_count():
 def test_unevidenced_distance_blocks_auto_end_to_end(norm: str, span_end: int, expect_status: str):
     """compile → engine_gate → routing 全程：同一份計畫，距離有憑據時可 auto、
     無憑據時只能 review。成對斷言＝旗標從 draft.issues 一路活到 routing 的
-    blocked 集（engine_gate 不得把它濾掉、`_eligible_auto` 不得漏掉它）。"""
+    blocked 集（engine_gate 不得把它濾掉、`_eligible_auto` 不得漏掉它）。
+
+    ADR-033 P3 後主張改由角色片語文字帶（`role.value` 不再讀）。"""
     from ddm_v2.most_compiler.engine_gate import apply_engine_gate
     from ddm_v2.nlp.routing import compute_routing
 
-    plan = _dist_plan(
-        norm, (0, span_end, norm), {"distance": {"value": 30, "unit": "cm", "status": "explicit"}}
-    )
+    plan = _dist_plan(norm, (0, span_end, norm), {"distance": {"text": "30cm", "status": "explicit"}})
     cands = [_cand("a1", "M", "m3.verb_code", "m_push")]
     rs = build_from_seed_v2()
     drafts = compile_plan(
@@ -656,10 +656,18 @@ def _engine(draft):
 
 @pytest.mark.parametrize("bad", [NAN, INF, -INF])
 def test_non_finite_distance_never_reaches_the_engine(bad: float):
-    """GM 路徑：非有限的 from_location **不得**進 `reach_cm`。原文有「30cm」，
-    拒收後走句面抽取（有憑據）→ A10；放行的話 NaN／+Inf 會落到 **A24**（溢位帶）。
-    mutation：拿掉 `finite_or_reject` → `A24` 斷言紅。"""
+    """GM 路徑：非有限值進不了 `reach_cm`。
+
+    ADR-033 P3 後有兩道：`role.value` 根本不讀（原文「30cm」照句面抽取 → A10）；
+    帶出處的 `Measurement` 在建立時就拒收非有限值。放行的話 NaN／+Inf 會落到 **A24**（溢位帶）。"""
     import math
+
+    from pydantic import ValidationError
+
+    from ddm_v2.nlp.contracts import Measurement
+
+    with pytest.raises(ValidationError):
+        Measurement(value=bad, unit="cm", source="human")
 
     plan = _dist_plan(
         "拿起板子30cm", (0, 10, "拿起板子30cm"),
@@ -667,7 +675,6 @@ def test_non_finite_distance_never_reaches_the_engine(bad: float):
         action_type="acquire",
     )
     draft = _compile_one(plan, [_cand("a1", "G", "g2.g_code", "g_grasp")])
-    assert "non_finite_value_rejected" in draft.issues, "拒收要留痕，不得靜默丟棄"
     reach = draft.cycle["a0"]["reach_cm"]
     assert math.isfinite(reach) and reach == 30.0
     gated = _engine(draft)
@@ -708,10 +715,17 @@ def test_non_finite_quantity_does_not_raise(bad: float):
 
 @pytest.mark.parametrize("bad", [NAN, INF, -INF])
 def test_non_finite_process_seconds_does_not_produce_nan_tmu(bad: float):
-    """process_kind 秒數：`x_seconds=nan` 舊行為算出 `total_tmu: nan`（零旗標，
-    且 `NaN` 不是合規 JSON——前端會拿到裸 `NaN`）；`inf` 讓 `Decimal` 丟
-    `InvalidOperation`，`engine_gate` 只接 `SequenceError` → 一路衝出去。"""
+    """X 秒數：`x_seconds=nan` 舊行為算出 `total_tmu: nan`；`inf` 讓 `Decimal` 丟
+    `InvalidOperation`。ADR-033 P3 後 `process_kind.value` 不再讀，秒數只來自
+    `Measurement`，而它在建立時就拒收非有限值。"""
     import json
+
+    from pydantic import ValidationError
+
+    from ddm_v2.nlp.contracts import Measurement
+
+    with pytest.raises(ValidationError):
+        Measurement(value=bad, unit="s", source="human")
 
     draft = _compile_one(
         _dist_plan(
@@ -721,7 +735,6 @@ def test_non_finite_process_seconds_does_not_produce_nan_tmu(bad: float):
         ),
         [_cand("a1", "X", "x4.x_code", "x_press")],
     )
-    assert "non_finite_value_rejected" in draft.issues
     assert draft.cycle["x4"]["x_seconds"] == 0.0
     gated = _engine(draft)  # 不得拋 InvalidOperation
     if gated.engine_result is not None:
@@ -729,18 +742,17 @@ def test_non_finite_process_seconds_does_not_produce_nan_tmu(bad: float):
 
 
 def test_finite_values_are_untouched_by_the_non_finite_gate():
-    """正向對照：有限值行為完全不變、不掛 `non_finite_value_rejected`。"""
+    """正向對照：有限值行為不變、不掛 `non_finite_value_rejected`。秒數改由 `Measurement` 帶（P3）。"""
+    from ddm_v2.nlp.contracts import Measurement
+
     dist = _compile_one(
         _dist_plan("推治具30cm", (0, 7, "推治具30cm"),
                    {"distance": {"value": 30, "unit": "cm", "status": "explicit"}}),
         [_cand("a1", "M", "m3.verb_code", "m_push")],
     )
-    secs = _compile_one(
-        _dist_plan("按壓5秒", (0, 4, "按壓5秒"),
-                   {"process_kind": {"value": 5, "unit": "秒", "status": "explicit"}},
-                   action_type="process"),
-        [_cand("a1", "X", "x4.x_code", "x_press")],
-    )
+    sec_plan = _dist_plan("按壓5秒", (0, 4, "按壓5秒"), {}, action_type="process")
+    sec_plan.actions[0].measurements["process_seconds"] = Measurement(value=5, unit="s", source="human")
+    secs = _compile_one(sec_plan, [_cand("a1", "X", "x4.x_code", "x_press")])
     qty = _compile_one(
         _dist_plan("鎖附兩顆螺絲", (0, 6, "鎖附兩顆螺絲"),
                    {"quantity": {"text": "兩顆", "value": 2, "unit": "顆", "status": "explicit"}},
@@ -823,28 +835,19 @@ def test_path2_backs_units_outside_the_extraction_lexicon(norm: str, value: floa
     assert _evidenced(norm, value, kind) is True
 
 
-def test_unit_confusion_contradicting_the_text_is_flagged():
-    """F3（validator）：原文「450mm」＋模型 `value=450 unit="cm"` ＝真值 45cm 的
-    **10 倍**（跨好幾個 A 檔位）。路徑 (1) 其實已在同窗抽到 45.0，先前是裸數字
-    退路（「450」字面出現）把它救回去。單位正規化是 LLM 最常見的數值錯誤形態。
+def test_unit_confusion_can_no_longer_reach_the_engine():
+    """F3（validator）：原文「450mm」＋模型 `value=450 unit="cm"` ＝真值 45cm 的 **10 倍**。
 
-    值照舊不改寫（450 仍進 cycle）——旗標讓覆核者看得到它與原文矛盾。"""
+    P3 之前這條斷言「照用 450＋掛旗標」。P3 關掉 `role.value` 入口後，模型的單位錯誤
+    進不了 compile：距離改由句面抽取（450mm → 45cm），有憑據、不掛旗標。"""
     norm = "推動治具450mm至定位"
     draft = _compile_one(
         _dist_plan(norm, (0, len(norm), norm),
                    {"distance": {"value": 450, "unit": "cm", "status": "explicit"}}),
         [_cand("a1", "M", "m3.verb_code", "m_push")],
     )
-    assert "distance_unevidenced_review" in draft.issues
-    assert _m_dist(draft) == 450.0
-    # 對照組：同一句、模型正確換算成 45cm → 走路徑 (1)、不掛旗標
-    ok = _compile_one(
-        _dist_plan(norm, (0, len(norm), norm),
-                   {"distance": {"value": 45, "unit": "cm", "status": "explicit"}}),
-        [_cand("a1", "M", "m3.verb_code", "m_push")],
-    )
-    assert ok.issues == []
-    assert _m_dist(ok) == 45.0
+    assert _m_dist(draft) == 45.0
+    assert draft.issues == []
 
 
 @pytest.mark.parametrize(
@@ -925,3 +928,169 @@ def test_out_of_range_evidence_span_is_an_empty_window_not_an_exception():
         numeric_claim_is_evidenced(plan.actions[0], plan, value=45.0, kind="distance")
         is False
     )
+
+
+# ── ADR-033 P3：帶出處的量測值（`PlannedAction.measurements`）──────────────
+
+
+def _with_measurement(plan: WorkInstructionPlan, key: str, value: float, unit: str, source: str = "human"):
+    from ddm_v2.nlp.contracts import Measurement
+
+    plan.actions[0].measurements[key] = Measurement(value=value, unit=unit, source=source)  # type: ignore[index,arg-type]
+    return plan
+
+
+def test_measured_distance_is_used_without_an_unevidenced_flag():
+    """出處本身就是憑據：原文沒有距離，人工填的 25cm 照用、不掛 `distance_unevidenced_review`。"""
+    plan = _with_measurement(_dist_plan("推動治具", (0, 2, "推動"), {}), "distance", 25, "cm")
+    draft = _compile_one(plan, [_cand("a1", "M", "m3.verb_code", "m_push")])
+    assert _m_dist(draft) == 25.0
+    assert "distance_unevidenced_review" not in draft.issues
+
+
+def test_measurement_takes_precedence_over_text_and_role_value():
+    plan = _dist_plan(
+        "推治具30cm", (0, 7, "推治具30cm"), {"distance": {"text": "30cm", "value": 99, "unit": "cm"}}
+    )
+    _with_measurement(plan, "distance", 12, "cm", source="dsx")
+    draft = _compile_one(plan, [_cand("a1", "M", "m3.verb_code", "m_push")])
+    assert _m_dist(draft) == 12.0
+
+
+def test_measured_from_location_feeds_a0():
+    plan = _with_measurement(
+        _dist_plan("拿起板子", (0, 4, "拿起板子"), {}, action_type="acquire"), "from_location", 40, "cm"
+    )
+    draft = _compile_one(plan, [_cand("a1", "G", "g2.g_code", "g_grasp")])
+    assert draft.cycle["a0"]["reach_cm"] == 40.0
+
+
+def test_process_seconds_only_come_from_measurements():
+    """`process_kind.value` 不再是入口：沒有量測值 → 0；有量測值 → 照用。"""
+    without = _compile_one(
+        _dist_plan("按壓5秒", (0, 4, "按壓5秒"), {"process_kind": {"value": 5, "unit": "秒"}}, action_type="process"),
+        [_cand("a1", "X", "x4.x_code", "x_press")],
+    )
+    assert without.cycle["x4"]["x_seconds"] == 0.0
+    with_m = _with_measurement(
+        _dist_plan("按壓", (0, 2, "按壓"), {}, action_type="process"), "process_seconds", 5, "s", source="excel"
+    )
+    drafted = _compile_one(with_m, [_cand("a1", "X", "x4.x_code", "x_press")])
+    assert drafted.cycle["x4"]["x_seconds"] == 5.0
+
+
+@pytest.mark.parametrize(
+    "key,unit",
+    [("distance", "s"), ("process_seconds", "cm"), ("from_location", "s")],
+)
+def test_measurement_unit_must_match_its_key(key: str, unit: str):
+    from pydantic import ValidationError
+
+    from ddm_v2.nlp.contracts import Measurement
+
+    with pytest.raises(ValidationError):
+        PlannedAction(
+            action_id="a1",
+            action_type="process",
+            sequence_order=1,
+            measurements={key: Measurement(value=1, unit=unit, source="human")},  # type: ignore[arg-type,dict-item]
+        )
+
+
+@pytest.mark.parametrize("value", [-1, 10_001])
+def test_measurement_range_is_bounded(value: float):
+    from pydantic import ValidationError
+
+    from ddm_v2.nlp.contracts import Measurement
+
+    with pytest.raises(ValidationError):
+        Measurement(value=value, unit="cm", source="human")
+
+
+def test_empty_measurements_do_not_change_serialized_plans():
+    """ADR-011：沒有量測值時序列化結果與 P3 之前逐位元相同（ai_parse_runs.plan、gold 讀寫不漂移）。"""
+    import json
+
+    legacy = {
+        "action_id": "a1",
+        "action_type": "acquire",
+        "sequence_order": 1,
+        "roles": {},
+        "evidence": [],
+        "notes": None,
+    }
+    action = PlannedAction.model_validate(legacy)
+    assert action.model_dump() == legacy
+    assert json.loads(action.model_dump_json()) == legacy
+    with_m = _with_measurement(_dist_plan("推動", (0, 2, "推動"), {}), "distance", 5, "cm")
+    dumped = with_m.actions[0].model_dump()
+    assert dumped["measurements"]["distance"]["source"] == "human"
+    assert PlannedAction.model_validate(dumped).measurements["distance"].value == 5.0
+
+
+
+def test_unit_mismatch_injected_after_construction_fails_fast():
+    """鍵與單位的一致性在 PlannedAction 建構時驗；之後直接改 dict 會繞過，compile 必須再擋。"""
+    from ddm_v2.most_compiler.compile import CompileError
+    from ddm_v2.nlp.contracts import Measurement
+
+    plan = _dist_plan("推動治具", (0, 2, "推動"), {})
+    plan.actions[0].measurements["distance"] = Measurement(value=5000, unit="s", source="human")
+    with pytest.raises(CompileError) as exc:
+        _compile_one(plan, [_cand("a1", "M", "m3.verb_code", "m_push")])
+    assert exc.value.code == "MEASUREMENT_UNIT_MISMATCH"
+
+
+def test_ai_estimate_requires_a_confirmation_record():
+    """ADR-037 D3：AI 估計值未經人確認前不得進引擎——沒有確認者與時間就建不出來。"""
+    from datetime import datetime, timezone
+
+    from pydantic import ValidationError
+
+    from ddm_v2.nlp.contracts import Measurement
+
+    with pytest.raises(ValidationError):
+        Measurement(value=30, unit="cm", source="ai_estimate_confirmed")
+    with pytest.raises(ValidationError):
+        Measurement(value=30, unit="cm", source="ai_estimate_confirmed", confirmed_by="IEC1")
+    ok = Measurement(
+        value=30, unit="cm", source="ai_estimate_confirmed", confirmed_by="IEC1", confirmed_at=datetime.now(timezone.utc)
+    )
+    assert ok.value == 30.0
+
+
+def test_unit_confusion_from_an_external_planner_is_stripped_and_not_compiled():
+    """端到端：外部 planner 對原文「450mm」主張 `value=450 unit=cm` → 入站剝除並記
+    `role_numeric_stripped`（擋 auto），compile 從句面得 45cm。"""
+    import json
+
+    from ddm_v2.nlp.inbound_guard import parse_sanitize_validate
+
+    norm = "推動治具450mm至定位"
+    payload = json.dumps(
+        {
+            "language": "zh",
+            "actions": [
+                {
+                    "action_id": "a1",
+                    "action_type": "controlled_move",
+                    "sequence_order": 1,
+                    "roles": {"distance": {"value": 450, "unit": "cm"}},
+                    "evidence": [{"text": norm}],
+                }
+            ],
+        },
+        ensure_ascii=False,
+    )
+    out, errors, reasons, _ = parse_sanitize_validate(payload, norm)
+    assert errors == [] and out is not None
+    assert "role_numeric_stripped" in out.unresolved
+    plan = WorkInstructionPlan(
+        source_text=norm,
+        normalized_text=norm,
+        source_ref=SourceRef(kind="interactive"),
+        actions=out.actions,
+        unresolved=list(out.unresolved),
+    )
+    draft = _compile_one(plan, [_cand("a1", "M", "m3.verb_code", "m_push")])
+    assert _m_dist(draft) == 45.0

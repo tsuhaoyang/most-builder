@@ -264,7 +264,7 @@ domains:
     invariants:
       - NL 數量／頻率經 QuantityPolicyV2（resolve_multiplier）解析，對 TMU 中性（ADR-033）
       - 【規劃中，ADR-037 實作後生效】外部 AI 服務（ai_service）只提供建議；入站經 mapper allow-list、sanitize、validate；slot code 只是候選，須過目標 rule-set、compile、engine_gate；hand／seq_kind 不採信；TMU 只來自引擎（ADR-037 D3，修訂 ADR-033 D2）
-      - 【規劃中，前置＝ADR-033 P3 前兩項；現況 compile.py 仍讀 role.value】外部或人工數值不得寫入 role.value，須走帶出處的獨立欄位（ADR-037 D3、ADR-031 D4）
+      - compile 不讀 role.value 作距離或秒數；外部或人工數值不得寫入 role.value，須走帶出處的 PlannedAction.measurements，且外部 planner 提供的一律剝除（ADR-033 P3 前兩項，2026-11-14 落地；ADR-037 D3、ADR-031 D4）。例外：數量仍讀 quantity 角色的 role.value，出處欄位留到 ADR-037 S5；Measurement 是出處即憑據，不掛 distance_unevidenced_review
       - ADR-033 D1（LLM 不產數值）、D6（逐項降級）、D7（距離單一來源）對外部 AI 回應維持為入站不變量（ADR-037 D3）
       - AI 建議一律逐項人工採用，不設批次或自動接受（ADR-037 D4、ADR-026 §3）；wi_ai_auto_enabled 現況為預設關、可由 env 開啟，ADR-037 落地時須改為不可開
       - 【規劃中，ADR-037 實作後生效】只有 complete=True、compute_cycle 通過、engine_gate 無 high 的 motion 可接受（ADR-037 D3）

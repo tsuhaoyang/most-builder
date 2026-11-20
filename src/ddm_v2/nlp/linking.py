@@ -146,7 +146,6 @@ def _apply_x_clean_context_rule(
 X_SECONDS_REVIEW_REASON = "x_seconds_required"
 # 秒數來源判準＝compile 讀 x_seconds 的同一形狀（most_compiler/compile.py：
 # process_kind role 帶秒值）——linker 不另創秒數語意（compile 端是唯一消費者）
-_X_SECONDS_UNITS = frozenset({"s", "sec", "秒"})
 _SEED_X_INPUT_MODES: dict[str, str] | None = None
 
 
@@ -181,8 +180,10 @@ async def _load_x_input_modes(
 
 
 def _x_seconds_source_present(action: PlannedAction) -> bool:
-    pk = action.roles.get("process_kind")
-    return bool(pk is not None and pk.unit in _X_SECONDS_UNITS and pk.value is not None)
+    """與 compile 讀 `x_seconds` 的來源同一個：帶出處的 `measurements["process_seconds"]`
+    （ADR-033 P3：`process_kind.value` 不再是秒數入口——兩邊不一致的話，linker 會掛上
+    compile 填 0 秒的 X，或否決合法的帶出處秒數）。"""
+    return "process_seconds" in action.measurements
 
 
 def _apply_x_input_mode_rule(

@@ -16,10 +16,12 @@ ADR-033（accepted 2026-08-23）P1 收窄後的責任分層（spec §5.2、§7.5
 """
 from __future__ import annotations
 
+import math
 from dataclasses import dataclass
+from datetime import datetime
 from typing import Any, Literal, get_args
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, model_validator
 
 SCHEMA_VERSION = "wi-plan-v1"
 CONTRACT_VERSION = "wi-ai-v1"
@@ -81,7 +83,9 @@ class RoleValue(BaseModel):
     """角色片語。
 
     ADR-033 D1：`value`／`unit` 不再向模型索取，adapter 邊界剝除並記
-    `role_numeric_stripped`（欄位保留給非 LLM 來源：CSV／匯入欄／IE 手填）。
+    `role_numeric_stripped`。ADR-033 P3 起 compile **不讀** `value` 作距離或秒數（那些改走
+    `PlannedAction.measurements`）；目前只剩 `quantity` 角色仍讀 `value`（數量的出處欄位留到
+    ADR-037 實作計畫 S5）。
     ADR-033 D3：`status` 不再索取，改為選填；「這個詞有沒有出處」改由
     「`text` 是 `normalized_text` 的字面子字串」這個**可機械驗證的事實**回答。
     """
@@ -93,6 +97,42 @@ class RoleValue(BaseModel):
     action_ref: str | None = None
 
 
+# ADR-033 P3／ADR-037 D3：進 TMU 的數值只能經這裡，且一定帶出處。
+# `role.value` 不再是距離或秒數的來源（compile 不讀它）。
+MeasurementKey = Literal["from_location", "distance", "process_seconds"]
+MeasurementUnit = Literal["cm", "s"]
+# human＝IE 手填；dsx＝空間佈局服務（ADR-031）；excel＝匯入欄；
+# ai_estimate_confirmed＝AI 估計值經人確認後才寫入（ADR-037 D3：未確認前不得進引擎）
+MeasurementSource = Literal["human", "dsx", "excel", "ai_estimate_confirmed"]
+MEASUREMENT_UNIT_BY_KEY: dict[str, str] = {"from_location": "cm", "distance": "cm", "process_seconds": "s"}
+MAX_MEASUREMENT_CM = 10_000.0
+MAX_MEASUREMENT_S = 86_400.0
+
+
+class Measurement(BaseModel):
+    """帶出處的量測值（ADR-033 P3；ADR-037 D3）。
+
+    外部 planner 不得提供：入站的 `sanitize_planner_output` 一律剝除並記
+    `role_numeric_stripped`。只有 MOST 自己的寫入路徑（審核畫面的人工確認、DSX、匯入欄）會建立它。
+    """
+
+    value: float
+    unit: MeasurementUnit
+    source: MeasurementSource
+    confirmed_by: str | None = None
+    confirmed_at: datetime | None = None
+
+    @model_validator(mode="after")
+    def _finite_and_bounded(self) -> Measurement:
+        upper = MAX_MEASUREMENT_CM if self.unit == "cm" else MAX_MEASUREMENT_S
+        if not math.isfinite(self.value) or not 0 <= self.value <= upper:
+            raise ValueError(f"measurement value out of range: {self.value}")
+        if self.source == "ai_estimate_confirmed" and (not self.confirmed_by or self.confirmed_at is None):
+            # ADR-037 D3：AI 估計值未經人確認前不得進引擎——「已確認」必須有人有時間
+            raise ValueError("ai_estimate_confirmed requires confirmed_by and confirmed_at")
+        return self
+
+
 class PlannedAction(BaseModel):
     action_id: str
     action_type: ActionType
@@ -100,6 +140,18 @@ class PlannedAction(BaseModel):
     roles: dict[str, RoleValue] = Field(default_factory=dict)
     evidence: list[EvidenceSpan] = Field(default_factory=list)
     notes: str | None = None
+    # ADR-011 加法（ADR-033 P3）：舊資料列沒有這個鍵 → 空 dict。空的時候不序列化，
+    # 讓既有 plan JSON（ai_parse_runs.plan、gold、API 回應）逐位元不變。
+    measurements: dict[MeasurementKey, Measurement] = Field(
+        default_factory=dict, exclude_if=lambda v: not v
+    )
+
+    @model_validator(mode="after")
+    def _measurement_units_match_keys(self) -> PlannedAction:
+        for key, m in self.measurements.items():
+            if m.unit != MEASUREMENT_UNIT_BY_KEY[key]:
+                raise ValueError(f"measurement {key} must be in {MEASUREMENT_UNIT_BY_KEY[key]}, got {m.unit}")
+        return self
 
 
 class ActionDependency(BaseModel):
@@ -375,7 +427,8 @@ def locate_evidence_spans(
 def prepare_planner_payload(data: Any) -> tuple[Any, list[str]]:
     """`PlannerOutput.model_validate` **之前**的寬容前處理（ADR-033 D5）。
 
-    只做一件事：丟掉**型別不合法**的 dependency 並記 `dependency_dropped`。
+    做兩件事：剝掉外部提供的 `measurements`（記 `role_numeric_stripped`，ADR-033 P3）；
+    丟掉**型別不合法**的 dependency 並記 `dependency_dropped`。
 
     為什麼一定要在 model_validate 之前：`ActionDependency.type` 是 Literal，
     模型自創一個 type（實測 `same_hand`）會讓整份 JSON 在 pydantic 就炸掉，
@@ -386,13 +439,43 @@ def prepare_planner_payload(data: Any) -> tuple[Any, list[str]]:
     pydantic 拒絕＝整筆失敗。這裡不做泛用型別修補——那會變成靜默改寫模型輸出，
     而且無從記名。
     """
+    data, measurement_reasons = _strip_external_measurements(data)
     if not isinstance(data, dict) or "dependencies" not in data:
+        return data, measurement_reasons
+    deps, reasons_from_deps = _filter_dependencies(data.get("dependencies"))
+    if deps is _UNCHANGED:
+        return data, measurement_reasons
+    return {**data, "dependencies": deps}, measurement_reasons + reasons_from_deps
+
+
+_UNCHANGED = object()
+
+
+def _strip_external_measurements(data: Any) -> tuple[Any, list[str]]:
+    """外部 planner 不得提供帶出處的量測值（ADR-033 P3／ADR-037 D3）。
+
+    在 `model_validate` 之前剝：`measurements` 的單位與鍵不符會讓整份 JSON 在 pydantic 炸掉，
+    連同語意正確的切分一起丟（同 dependency 的理由）。
+    """
+    if not isinstance(data, dict) or not isinstance(data.get("actions"), list):
         return data, []
-    deps = data.get("dependencies")
+    reasons: list[str] = []
+    actions: list[Any] = []
+    for i, action in enumerate(data["actions"]):
+        if isinstance(action, dict) and "measurements" in action:
+            reasons.append(f"role_numeric_stripped:{i}:measurements")
+            action = {k: v for k, v in action.items() if k != "measurements"}
+        actions.append(action)
+    if not reasons:
+        return data, []
+    return {**data, "actions": actions}, reasons
+
+
+def _filter_dependencies(deps: Any) -> tuple[Any, list[str]]:
     if deps is None:
-        return data, []
+        return _UNCHANGED, []
     if not isinstance(deps, list):
-        return {**data, "dependencies": []}, [f"dependency_dropped:not_a_list:{type(deps).__name__}"]
+        return [], [f"dependency_dropped:not_a_list:{type(deps).__name__}"]
     kept: list[Any] = []
     reasons: list[str] = []
     for i, dep in enumerate(deps):
@@ -410,8 +493,8 @@ def prepare_planner_payload(data: Any) -> tuple[Any, list[str]]:
             continue
         kept.append(dep)
     if not reasons:
-        return data, []
-    return {**data, "dependencies": kept}, reasons
+        return _UNCHANGED, []
+    return kept, reasons
 
 
 @dataclass(frozen=True)
@@ -588,7 +671,13 @@ def sanitize_planner_output(
             if not ok:
                 reasons.append(f"tool_state_violation:{action.action_id}")
                 roles["tool_ref"] = RoleValue(status="missing")
-        kept.append(action.model_copy(update={"roles": roles, "evidence": evidence}))
+        if action.measurements:
+            # 外部 planner 不得提供帶出處的量測值（ADR-033 P3／ADR-037 D3）
+            # 正常管線走不到（prepare_planner_payload 已先剝）；這道是縱深防禦。reason 第二段
+            # 是 action_id，與 prepare 的陣列索引不同——routing 只取冒號前綴，兩者等價。
+            for key in action.measurements:
+                reasons.append(f"role_numeric_stripped:{action.action_id}:measurements.{key}")
+        kept.append(action.model_copy(update={"roles": roles, "evidence": evidence, "measurements": {}}))
 
     # 定位診斷只留下 offset 推導那類；`evidence_text_not_found` 已經以
     # `planner_invented_action:<id>:evidence_text_not_found` 記過，重複列會讓

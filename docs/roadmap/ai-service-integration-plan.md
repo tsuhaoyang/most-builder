@@ -114,15 +114,19 @@ DB 欄位不動；寫入端不再產生 `kind='llm'`，但**舊 `kind='llm'` 列
 - **golden 不是真服務錄製**：content 取自 ai_service pack 的 IE 核凍 few-shot；S3 進入條件的 30 句量測時補錄真回應。
 - **已知限制**：DNS 重新綁定檢查在每次請求前做，仍有檢查到連線之間的 TOCTOU 空窗（https 憑證驗證可擋大部分；
   `DDM_AI_SERVICE_ALLOW_PLAINTEXT` 模式沒有這層，上線前要嘛釘 IP、要嘛只允許 loopback）；熔斷為單程序計數。
-- **S3 進入前必須補**（ADR-037 D8，S2 未做）：MOST 端並行上限（interactive 2／batch 1）、每人每分鐘與每日預算、
-  single-flight；`AiServiceWiParser.parse` 目前逐句串行。S3 的 `wi_ai_service` 要在外層把 `ValueError`
-  （context 白名單）與 `RuntimeError`（schema hash 不符）轉成降級並記 ERROR log。
+- ✅ **MOST 端守門已落地**（2026-11-20，`ai_integration/guard.py`；規則本體見 ADR-037 D8，本處不重述）：
+  並行上限、每人每分鐘與每日預算、single-flight。`AiServiceWiParser.parse` 本身仍逐句串行，守門由 `GuardedWiParser` 包住。
+- **S3 進入前必須補**：S3 的 `wi_ai_service` 要在外層接住 `ValueError` 與 `RuntimeError`，轉成降級並記 ERROR log。
+  `ValueError` 包含 `context` 白名單違規，以及 `actor`／`scope` 缺漏（ADR-037 D2、D8）；`RuntimeError` 是 schema hash 不符。
+  另外，`QUOTA_EXCEEDED` 接到路由而需要對外報錯時，必須登記 ADR-034 信封碼並補 zh-TW／en 對稱文案（ADR-032），目前前端還沒有。
+  S3 落盤 `ai_parse_runs` 要能處理「無 `run_id`、有 `shared_run_id`」（ADR-037 D7）。
 
 ## 4. S3：ADR-033 P3＋單句路徑（開關後）
 
 **進入條件**：ADR-037 accepted；已對真 ai_service 量測 30 句延遲分布（poc003 須已轉 shadow），並據此定逾時與並行參數；`most` 金鑰最小權限已確認。
 
-1. **ADR-033 P3 前兩項**（獨立 PR 先行）：刪 `compile.py` 的 `_role_distance_cm` 與 `x_seconds` 讀值；在 `nlp/contracts` 以加法新增帶出處的距離／數量欄位與 compile 的讀取（`a6`／CM `a0` 不在本階段，`return` 一律審核）；
+1. ✅ **ADR-033 P3 前兩項**（2026-11-14 完成）（獨立 PR 先行）：刪 `compile.py` 的 `_role_distance_cm` 與 `x_seconds` 讀值；在 `nlp/contracts` 以加法新增帶出處的距離／秒數欄位與 compile 的讀取（`a6`／CM `a0` 不在本階段，`return` 一律審核）；
+   落地：`nlp/contracts.Measurement`（鍵 `from_location`／`distance`／`process_seconds`，來源 `human`／`dsx`／`excel`／`ai_estimate_confirmed`，有限且有上限）；空的時候不序列化，既有 plan JSON 逐位元不變；`wi_ai_eval` 報告與 P3 前相同（compile 55/55）。linker 的 X 秒數來源判斷同步改讀 measurements。`ai_estimate_confirmed` 來源必須帶確認者與時間。**數量仍讀 `quantity` 角色的 `role.value`**，出處欄位（`quantity_source=excel`）留到 S5。
    帶出處的人工數值不觸發 `*_unevidenced_review`。必過 `run_all.py`（GM=28／CM=29）與 compiler 單元測試。
 2. **單句路徑**：
    - `wi_ai_service` 改用 `WiParserPort`；呼叫期間不占 DB session；single-flight（key 含 bundle 與 site）。

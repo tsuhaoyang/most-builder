@@ -94,12 +94,20 @@ FROZEN_I18N_REVIEW_SOURCE = frozenset({"machine", "human", "legacy_seed", "untra
 # key = "<module>.<name>"；`test_contract_enum_freeze` 會 AST 掃描這些模組，
 # 掃到卻不在表裡的別名一律紅——新別名不得靜默逃過凍結。
 
+# ADR-033 P3（2026-11-14 加法）：帶出處的量測值。只准長不准縮。
+FROZEN_MEASUREMENT_KEY = frozenset({"from_location", "distance", "process_seconds"})
+FROZEN_MEASUREMENT_UNIT = frozenset({"cm", "s"})
+FROZEN_MEASUREMENT_SOURCE = frozenset({"human", "dsx", "excel", "ai_estimate_confirmed"})
+
 FROZEN_ALIAS_MEMBERS: dict[str, frozenset[str]] = {
     "ddm_v2.nlp.contracts.ActionType": FROZEN_ACTION_TYPE,
     "ddm_v2.nlp.contracts.RoleStatus": FROZEN_ROLE_STATUS,
     "ddm_v2.nlp.contracts.DependencyType": FROZEN_DEPENDENCY_TYPE,
     "ddm_v2.nlp.contracts.CandidateSource": FROZEN_CANDIDATE_SOURCE,
     "ddm_v2.nlp.contracts.RoutingStatus": FROZEN_ROUTING_STATUS,
+    "ddm_v2.nlp.contracts.MeasurementKey": FROZEN_MEASUREMENT_KEY,
+    "ddm_v2.nlp.contracts.MeasurementUnit": FROZEN_MEASUREMENT_UNIT,
+    "ddm_v2.nlp.contracts.MeasurementSource": FROZEN_MEASUREMENT_SOURCE,
     "ddm_v2.schemas.v2.wi_context.SourceLiteral": FROZEN_WI_CONTEXT_SOURCE,
     "ddm_v2.schemas.v2.vocab.VocabKind": FROZEN_VOCAB_KIND,
     "ddm_v2.schemas.v2.i18n.EntityType": FROZEN_I18N_ENTITY_TYPE,
@@ -131,6 +139,8 @@ FROZEN_FIELD_MEMBERS: dict[str, frozenset[str]] = {
     "OptionCandidate.source": FROZEN_CANDIDATE_SOURCE,
     "ParseRunResult.routing_status": FROZEN_ROUTING_STATUS,
     "PlannerOutput.language": FROZEN_LANGUAGE,
+    "Measurement.unit": FROZEN_MEASUREMENT_UNIT,
+    "Measurement.source": FROZEN_MEASUREMENT_SOURCE,
 }
 
 # ── 非 Literal，但同屬「對外列舉」的封閉集合 ─────────────────────────
@@ -203,10 +213,10 @@ FROZEN_ROUTING_REASONS = frozenset({
 # ⚠️ 有兩個 frozenset 被**共用**，加一個成員會**同時**打破兩個數字：
 #   `FROZEN_ROLE_STATUS` → 別名表 ＋ 欄位表（`RoleValue.status`）
 #   `FROZEN_LANGUAGE`   → `WorkInstructionPlan.language` ＋ `PlannerOutput.language`
-EXPECTED_FROZEN_ALIASES = 11
-EXPECTED_FROZEN_ALIAS_MEMBERS = 50
-EXPECTED_FROZEN_FIELDS = 8
-EXPECTED_FROZEN_FIELD_MEMBERS = 35
+EXPECTED_FROZEN_ALIASES = 14
+EXPECTED_FROZEN_ALIAS_MEMBERS = 59
+EXPECTED_FROZEN_FIELDS = 10
+EXPECTED_FROZEN_FIELD_MEMBERS = 41
 EXPECTED_FROZEN_ROLE_KEYS = 11
 EXPECTED_FROZEN_ROUTING_REASONS = 18
 # `FROZEN_ALIAS_SCAN_MODULES` 是**唯一一張被 parametrize 直接消費、卻曾經沒有下界**
