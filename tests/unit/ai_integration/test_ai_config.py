@@ -76,6 +76,13 @@ def test_valid_config_passes():
     validate_config(load_config(_env()), resolver=_private)
 
 
+def test_d8_defaults():
+    """ADR-037 D8 的保守預設值（暫定，量測後調整）。"""
+    cfg = load_config(_env())
+    assert (cfg.concurrency_interactive, cfg.concurrency_batch) == (2, 1)
+    assert (cfg.per_user_per_minute, cfg.daily_budget) == (30, 2000)
+
+
 @pytest.mark.parametrize(
     "over,code",
     [
@@ -170,6 +177,13 @@ def test_unreadable_config_is_misconfigured_not_a_crash(env_over: dict[str, str]
         ({"DDM_AI_SERVICE_BASE_URL": f"https://{HOST}/a b"}, "unparsable_url"),
         ({"DDM_AI_SERVICE_KEY": "金鑰" * MIN_KEY_LENGTH}, "key_not_printable_ascii"),
         ({"DDM_AI_SERVICE_SERVICE_USER": "svc\nX-Injected: 1"}, "identity_or_bundle_invalid"),
+        ({"DDM_AI_SERVICE_CONCURRENCY_INTERACTIVE": "0"}, "bad_limits"),
+        ({"DDM_AI_SERVICE_CONCURRENCY_BATCH": "99"}, "bad_limits"),
+        ({"DDM_AI_SERVICE_CONCURRENCY_INTERACTIVE": "17"}, "bad_limits"),
+        ({"DDM_AI_SERVICE_PER_USER_PER_MINUTE": "601"}, "bad_limits"),
+        ({"DDM_AI_SERVICE_DAILY_BUDGET": "1000001"}, "bad_limits"),
+        ({"DDM_AI_SERVICE_PER_USER_PER_MINUTE": "0"}, "bad_limits"),
+        ({"DDM_AI_SERVICE_DAILY_BUDGET": "0"}, "bad_limits"),
     ],
 )
 def test_edge_values_are_misconfigured_not_crashes(over: dict[str, str], code: str):

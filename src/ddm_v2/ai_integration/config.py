@@ -19,7 +19,11 @@
 | `DDM_AI_SERVICE_SERVICE_USER` | `most-service` | 服務身分（ADR-037 D7：不送員工編號） |
 | `DDM_AI_SERVICE_PLANT_CODE` | `MOST` | 服務身分所屬廠 |
 | `DDM_AI_SERVICE_TIMEOUT_S` | 15 | 單次請求總時限（含重試前的單次呼叫） |
-| `DDM_AI_SERVICE_MAX_RETRIES` | 2 | 可重試錯誤（429／5xx／逾時）的最多重試次數 |
+| `DDM_AI_SERVICE_MAX_RETRIES` | 2 | 可重試錯誤（429／5xx）的最多重試次數 |
+| `DDM_AI_SERVICE_CONCURRENCY_INTERACTIVE` | 2 | MOST 端同時送出的互動請求上限（ADR-037 D8） |
+| `DDM_AI_SERVICE_CONCURRENCY_BATCH` | 1 | MOST 端同時送出的批量請求上限 |
+| `DDM_AI_SERVICE_PER_USER_PER_MINUTE` | 30 | 每位觸發者每分鐘外送上限 |
+| `DDM_AI_SERVICE_DAILY_BUDGET` | 2000 | 每日（UTC）外送上限；超過即停並降級 |
 
 ## 服務身分（ADR-037 D7）
 
@@ -57,6 +61,14 @@ _HEADER_SAFE = re.compile(r"^[\x21-\x7e]+$")
 # ADR-037 D8 的保守預設（暫定，量測後調整）
 DEFAULT_TIMEOUT_S = 15.0
 DEFAULT_MAX_RETRIES = 2
+# MOST 端守門（ADR-037 D8）：預設值與實作護欄上限（上限不是 ADR 數字，只防設定打錯）
+DEFAULT_CONCURRENCY_INTERACTIVE = 2
+DEFAULT_CONCURRENCY_BATCH = 1
+DEFAULT_PER_USER_PER_MINUTE = 30
+DEFAULT_DAILY_BUDGET = 2000
+CONCURRENCY_CAP = 16
+PER_USER_PER_MINUTE_CAP = 600
+DAILY_BUDGET_CAP = 1_000_000
 MAX_RESPONSE_BYTES = 256 * 1024
 
 Resolver = Callable[[str, int], Iterable[str]]
@@ -97,6 +109,10 @@ class AiServiceConfig:
     plant_code: str
     timeout_s: float
     max_retries: int
+    concurrency_interactive: int = DEFAULT_CONCURRENCY_INTERACTIVE
+    concurrency_batch: int = DEFAULT_CONCURRENCY_BATCH
+    per_user_per_minute: int = DEFAULT_PER_USER_PER_MINUTE
+    daily_budget: int = DEFAULT_DAILY_BUDGET
 
     def identity_headers(self) -> dict[str, str]:
         """固定的服務身分 header（不含金鑰）。"""
@@ -147,6 +163,10 @@ def _load_config(env: dict[str, str] | None) -> AiServiceConfig:
         plant_code=(e.get("DDM_AI_SERVICE_PLANT_CODE") or DEFAULT_PLANT_CODE).strip(),
         timeout_s=float(e.get("DDM_AI_SERVICE_TIMEOUT_S") or DEFAULT_TIMEOUT_S),
         max_retries=int(e.get("DDM_AI_SERVICE_MAX_RETRIES") or DEFAULT_MAX_RETRIES),
+        concurrency_interactive=int(e.get("DDM_AI_SERVICE_CONCURRENCY_INTERACTIVE") or DEFAULT_CONCURRENCY_INTERACTIVE),
+        concurrency_batch=int(e.get("DDM_AI_SERVICE_CONCURRENCY_BATCH") or DEFAULT_CONCURRENCY_BATCH),
+        per_user_per_minute=int(e.get("DDM_AI_SERVICE_PER_USER_PER_MINUTE") or DEFAULT_PER_USER_PER_MINUTE),
+        daily_budget=int(e.get("DDM_AI_SERVICE_DAILY_BUDGET") or DEFAULT_DAILY_BUDGET),
     )
 
 
@@ -251,6 +271,14 @@ def validate_config(config: AiServiceConfig, *, resolver: Resolver = default_res
         raise AiServiceError(AiServiceErrorKind.MISCONFIGURED, upstream_code="bad_limits")
     if not 0 <= config.max_retries <= MAX_RETRIES_CAP:
         raise AiServiceError(AiServiceErrorKind.MISCONFIGURED, upstream_code="bad_limits")
+    for limit, cap in (
+        (config.concurrency_interactive, CONCURRENCY_CAP),
+        (config.concurrency_batch, CONCURRENCY_CAP),
+        (config.per_user_per_minute, PER_USER_PER_MINUTE_CAP),
+        (config.daily_budget, DAILY_BUDGET_CAP),
+    ):
+        if not 1 <= limit <= cap:
+            raise AiServiceError(AiServiceErrorKind.MISCONFIGURED, upstream_code="bad_limits")
     validate_target(
         config.base_url, config.allowed_hosts, allow_plaintext=config.allow_plaintext, resolver=resolver
     )

@@ -72,7 +72,14 @@ class AiServiceWiParser:
                 lane=lane,
                 request_id=request_id,
             )
-            motions, issues = map_content(completion.content, allow_lists)
+            try:
+                motions, issues = map_content(completion.content, allow_lists)
+            except AiServiceError:
+                raise
+            except Exception as exc:  # noqa: BLE001  mapper 對不預期的形狀拋什麼都轉成降級，不讓例外穿出 port（D2）
+                # 對使用者降級，對維運大聲：mapper bug 不能無聲（不記語句與回應內容）
+                logger.warning("ai_service mapper rejected an unexpected response shape (%s)", type(exc).__name__)
+                raise AiServiceError(AiServiceErrorKind.CONTRACT_MISMATCH, upstream_code="MAPPER_REJECTED") from exc
         except AiServiceError as err:
             return WiParseResult(
                 item_id=req.item_id,
@@ -132,4 +139,12 @@ def build_wi_parser(config=None, *, resolver=None, transport=None):
         if err.kind is not AiServiceErrorKind.DISABLED:
             logger.warning("ai_service integration disabled: %s", err)
         return DisabledWiParser(err.kind)
-    return AiServiceWiParser(AiServiceClient(cfg, resolver=res, transport=transport))
+    from ddm_v2.ai_integration.guard import GuardedWiParser
+
+    return GuardedWiParser(
+        AiServiceWiParser(AiServiceClient(cfg, resolver=res, transport=transport)),
+        bundle_code=cfg.bundle_code,
+        concurrency={"interactive": cfg.concurrency_interactive, "batch": cfg.concurrency_batch},
+        per_user_per_minute=cfg.per_user_per_minute,
+        daily_budget=cfg.daily_budget,
+    )
