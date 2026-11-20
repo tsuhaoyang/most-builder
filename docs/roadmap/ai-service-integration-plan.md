@@ -114,9 +114,12 @@ DB 欄位不動；寫入端不再產生 `kind='llm'`，但**舊 `kind='llm'` 列
 - **golden 不是真服務錄製**：content 取自 ai_service pack 的 IE 核凍 few-shot；S3 進入條件的 30 句量測時補錄真回應。
 - **已知限制**：DNS 重新綁定檢查在每次請求前做，仍有檢查到連線之間的 TOCTOU 空窗（https 憑證驗證可擋大部分；
   `DDM_AI_SERVICE_ALLOW_PLAINTEXT` 模式沒有這層，上線前要嘛釘 IP、要嘛只允許 loopback）；熔斷為單程序計數。
-- **S3 進入前必須補**（ADR-037 D8，S2 未做）：MOST 端並行上限（interactive 2／batch 1）、每人每分鐘與每日預算、
-  single-flight；`AiServiceWiParser.parse` 目前逐句串行。S3 的 `wi_ai_service` 要在外層把 `ValueError`
-  （context 白名單）與 `RuntimeError`（schema hash 不符）轉成降級並記 ERROR log。
+- ✅ **MOST 端守門已落地**（2026-11-20，`ai_integration/guard.py`；規則本體見 ADR-037 D8，本處不重述）：
+  並行上限、每人每分鐘與每日預算、single-flight。`AiServiceWiParser.parse` 本身仍逐句串行，守門由 `GuardedWiParser` 包住。
+- **S3 進入前必須補**：S3 的 `wi_ai_service` 要在外層接住 `ValueError` 與 `RuntimeError`，轉成降級並記 ERROR log。
+  `ValueError` 包含 `context` 白名單違規，以及 `actor`／`scope` 缺漏（ADR-037 D2、D8）；`RuntimeError` 是 schema hash 不符。
+  另外，`QUOTA_EXCEEDED` 接到路由而需要對外報錯時，必須登記 ADR-034 信封碼並補 zh-TW／en 對稱文案（ADR-032），目前前端還沒有。
+  S3 落盤 `ai_parse_runs` 要能處理「無 `run_id`、有 `shared_run_id`」（ADR-037 D7）。
 
 ## 4. S3：ADR-033 P3＋單句路徑（開關後）
 

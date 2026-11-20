@@ -69,6 +69,12 @@ MOST 內的 LLM 專屬程式移除：`llm_client`、`prompts/*`、`LLMClientPort
   人工建表完全不受影響。`nl-draft` 維持同步，不改成 202。降級訊息不帶內部 URL 與錯誤細節。
 - ai_service 的錯誤依 `error.code` 映射到 MOST 錯誤碼，走 ADR-034 信封，zh-TW／en 訊息對稱（ADR-032）。
 - 新開關命名為 `DDM_AI_SERVICE_ENABLED`，不沿用 `DDM_WI_AI_ENABLED`，避免舊環境的 `true` 在新路徑完成前意外啟用。
+- **D8 守門新增的 port 欄位與錯誤分類（2026-11-20 追記，Howard 核可；加法）**：
+  - `WiParseRequest` 新增 `actor`（觸發者）與 `scope`（single-flight 隔離範圍，例：site id）兩欄，只給 MOST 端的配額與合併使用，**絕不外送**（有測試鎖定外送 body 的 keys；與 D7「不送員工編號」一致）。
+  - 內部錯誤分類新增 `QUOTA_EXCEEDED`（並行等不到許可、每人每分鐘、每日預算）。不列入可重試，也不計入熔斷失敗次數。
+  - `actor`／`scope` 缺漏、`context` 含白名單外的鍵，是呼叫端 bug，守門層拋 `ValueError`（不能讓「沒有身分」變成「不受配額限制」）。
+  - mapper 對不預期的回應形狀拋任何例外（`AiServiceError` 以外），adapter 轉成該筆 `failed`，`error_kind=CONTRACT_MISMATCH`、`upstream_code=MAPPER_REJECTED`，不讓例外穿出 port；同時記一筆 WARNING log，讓 mapper bug 對維運可見。log 訊息只帶例外類別名稱，不寫入語句與回應內容。
+  - `QUOTA_EXCEEDED` 目前只是 MOST 內部分類。S3 接到路由而需要對外報錯時，必須登記 ADR-034 信封碼並補 zh-TW／en 對稱文案（ADR-032）；目前前端沒有這組文案。
 
 ### D3 ai_service 選的 slot code 只當候選（修訂 ADR-033 D2）
 
@@ -204,6 +210,7 @@ Suggest(ai_service) → Map(mapper) → Validate(link/compile/engine_gate/routin
 - 每次外送由 MOST 產生 request id 並隨請求送出，與 ai_service 回傳的 `run_id` 一併記錄，供兩邊對帳。
 - 稽核事件 append-only（無刪改 API，資料庫角色不授予 UPDATE／DELETE），actor 一律取自 `CurrentUser`：外送（誰、何時、bundle、筆數、request id、`run_id`，不記原文）、
   accept、commit、重設、整合啟用／停用、金鑰輪替。
+- **同句合併（D8 single-flight）的稽核（2026-11-20 追記，Howard 核可）**：合併的等待者沒有自己的外送，其 provenance 不帶 `run_id`、`request_id`，改記 `shared_run_id`（指向領頭者那次外送的 `run_id`）。稽核「外送」事件的筆數只計真的外送的請求，等待者不算一次外送。S3 落盤 `ai_parse_runs` 時，必須能處理「無 `run_id`、有 `shared_run_id`」的結果。
 
 **輸出安全**
 - 前端以純文字渲染 AI 文字欄位。匯出 Excel／CSV 時，以 `=`、`+`、`-`、`@`、Tab、CR 開頭的字串加以轉義，Excel 儲存格設為文字型別，防 formula injection。
@@ -213,7 +220,22 @@ Suggest(ai_service) → Map(mapper) → Validate(link/compile/engine_gate/routin
 
 - 單句用 ai_service 的 `lane=interactive`，批量用 `lane=batch`，兩者各有並行上限，批量不得卡住單句。
 - 呼叫 ai_service 期間不占用 DB session／連線。
-- 同一 `input_hash` 的併發請求合併為一次（single-flight），key 含 bundle 與 site 範圍。
+- 相同請求的併發合併為一次（single-flight）。語意（2026-11-20 追記，Howard 核可；實作 `ai_integration/guard.py`）：
+  - key＝(bundle、scope、語言、lane、sha256(allow-list、context、語句))。這**不是** `ai_parse_runs.input_hash`；持久快取仍歸 S3 的 `ai_parse_runs`。
+  - 只合併在途請求，完成後不快取。
+  - 領頭者自己的處境不共用：並行等不到許可、配額被拒、被取消、內層例外。等待者自己重來，可能成為新領頭者並實際外送，屆時扣自己的配額。
+  - 領頭者真的外送後的上游失敗（含逾時、5xx）仍共用給等待者，避免對壞掉的上游放大請求。
+  - 並行等待上限 `acquire_timeout_s`（預設 10 秒）只約束「等並行許可」的時間：從請求進來起算，等待者重來時用剩餘時間；等不到即 `QUOTA_EXCEEDED`。同一個 key 的重試鏈不會把等許可的時間疊加。
+  - 等待者等的是領頭者實際外送的時間，不受 `acquire_timeout_s` 約束。這段時間以領頭者的等許可上限（`acquire_timeout_s`）加 client 總時限為界，所以不會無限等待。
+  - 合併的等待者不扣自己 actor 的每人／每日配額，因為沒有新的外送。已超過每分鐘上限的使用者，若語句與同 scope 內在途請求完全相同，仍可拿到結果。結果只含同 scope、同語句、同 allow-list 與 context 的內容（都在 key 內），沒有跨使用者的資料洩漏。
+  - 超長語句（> `MAX_PARSE_TEXT_CHARS`）不會外送（D6）：由 MOST 端守門自己回 `failed`（`text_too_long_not_sent`），不佔並行許可、不扣配額，也不依賴內層 parser 自己擋。
+  - 等待者的 provenance 與稽核處理見 D7。
+- **計數口徑與範圍（2026-11-20 追記，Howard 核可）**：
+  - 預算與每人配額以「MOST 送進內層 parser 的請求數」計，不含 client 對 429／5xx 的重試，因此對 ai_service 的實際 HTTP 次數最多約 3 倍（1 次加最多 2 次重試）。合併的等待者不計。
+  - v1 的「每日」＝UTC 日；日界線只往後重置，牆上時鐘被往回撥不會重置當日預算。每人每分鐘視窗用單調時鐘，不受校時影響。actor 以 `strip` 加 `casefold` 正規化後計，大小寫或前後空白不同不會各拿一份額度。所有計數在 MOST 單程序記憶體內，重啟歸零。多 worker 時預算會乘上 worker 數，共用計數留 S5。
+  - 並行 16、每人每分鐘 600、每日 1,000,000 是設定的實作護欄上限（只防設定打錯），不是本 ADR 的決定數字；超出即視為設定不合法。
+  - **待辦（尚未決定）**：日界線改按廠區時區（有國外工廠，不能只用 UTC+8 或 UTC）；預算是否也按廠區分開，一併決定。見 [BL-ENG-15](../BACKLOG.md)。
+  - **待辦（尚未決定）**：每日預算是全域一份，每人只有每分鐘上限，單一已認證使用者持續送出即可用光全站當日額度。見 [BL-ENG-16](../BACKLOG.md)。
 - 保守預設值先行（暫定，量測後調整）：
 
   | 項目 | 預設 |
@@ -225,7 +247,7 @@ Suggest(ai_service) → Map(mapper) → Validate(link/compile/engine_gate/routin
   | 每句 motion 數 | 20 |
   | 自由文字欄位長度 | 200 字 |
   | 回應大小 | 256 KB |
-  | 重試 | 最多 2 次，指數退避加抖動；熔斷開啟時不重試 |
+  | 重試 | 最多 2 次，指數退避加抖動；只重試 429／5xx；逾時不重試（ai_service 端已有重試，避免重複計費）；熔斷開啟時不重試 |
 
 ### D9 啟用順序與前置條件
 
