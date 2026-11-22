@@ -42,6 +42,38 @@ docker compose up -d --build                    # 起 db + ddm-v2（前端已 bu
 
 MOST 服務於 `http://<server-ip>:8877/`（前端 + `/api/v2` 同一容器同源）。
 
+## 上線前檢查清單
+
+- [ ] `ENV=production`：`AUTH_DEV_USER` 會被忽略；`DDM_SECRET_KEY` 不得是預設值且至少 32 字，否則啟動報錯。
+- [ ] 移除 `AUTH_DEV_USER`。
+- [ ] `DDM_AUTH_MODE=verify`，並設 `DDM_LB_VERIFY_URL`。
+- [ ] `DDM_SESSION_COOKIE_NAME` 與 LB 一致。
+- [ ] `DDM_ADMIN_EMPLOYEE_NO` 設為真實員編。
+- [ ] `DDM_SECRET_KEY` 設為隨機字串。
+- [ ] `DDM_CORS_ALLOW_ORIGINS` 設為對外網址。
+- [ ] port 綁定：`docker-compose.yml` 預設 `127.0.0.1:${DDM_PORT}:8000`。**只有 verify 模式下才可以改成對外**；gateway 模式下改了，等於任何人不帶憑證就是 admin。
+- [ ] AI 設定：預設關。開啟前提見實作計畫的「12 月開 AI 前的清單」（[ai-service-integration-plan](../roadmap/ai-service-integration-plan.md)）。金鑰用 docker secrets 檔案（`DDM_AI_SERVICE_KEY_FILE`），檔案權限 0400；`secrets/` 已在 `.gitignore`。
+
+verify 模式的成本：每個請求都多打一次 LB `/auth/verify`（最多等 5 秒）；LB 連不到時 fail-closed，請求被視為未認證。
+
+## 上線 .env 範本
+
+`<…>` 由部署者填；正式環境的 LB 主機位址由 Howard 提供。
+
+```bash
+ENV=production
+# AUTH_DEV_USER 不要設
+DDM_AUTH_MODE=verify
+DDM_LB_VERIFY_URL=http://<LB 主機位址>/auth/verify
+DDM_SESSION_COOKIE_NAME=<與 LB 的 SESSION_COOKIE_NAME 相同>
+DDM_ADMIN_EMPLOYEE_NO=<真實員編>
+DDM_SECRET_KEY=<32 字以上的隨機字串>
+DDM_CORS_ALLOW_ORIGINS=<MOST 對外網址，例 http://<LB 主機位址>:8877>
+DDM_PORT=8877
+# AI：預設關，條件滿足前不要開
+DDM_AI_SERVICE_ENABLED=false
+```
+
 ## 使用流程（給使用者）
 
 1. 先到 LB 入口 `http://<server-ip>/` 用公司帳號登入（取得 session cookie）。
@@ -61,5 +93,12 @@ MOST 服務於 `http://<server-ip>:8877/`（前端 + `/api/v2` 同一容器同�
 ## 之後拿到網域 → 切到最終型態
 
 把 MOST 併進 LB 的 Traefik（同一 gateway + `auth-verify@file`），`DDM_AUTH_MODE=gateway`，
-不再需要 `DDM_LB_VERIFY_URL`。屆時建議用子網域（`most.corp`）取得 origin 隔離;
+不再需要 `DDM_LB_VERIFY_URL`。
+
+已知兩個衝突（依據：LB repo 的 `docker-compose.yml` 與 `traefik/dynamic.yaml`；這是改 LB repo 的事，需 LB 團隊同意）：
+
+- LB 的 `PathPrefix(/api)` 路由（`algo-api-docs`，priority 50）會搶走 MOST 的 `/api/v2`。
+- LB 的 `/` 是登入頁（`auth-root`）。
+
+所以 MOST 需要獨立網域，或 Traefik 的專用 port。屆時建議用子網域（`most.corp`）取得 origin 隔離;
 cookie 設 `Domain=.corp` 即跨子網域共用、仍是 cookie 不發 token。認證那套不用重做。

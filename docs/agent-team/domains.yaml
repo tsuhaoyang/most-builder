@@ -267,9 +267,9 @@ domains:
       - compile 不讀 role.value 作距離或秒數；外部或人工數值不得寫入 role.value，須走帶出處的 PlannedAction.measurements，且外部 planner 提供的一律剝除（ADR-033 P3 前兩項，2026-11-14 落地；ADR-037 D3、ADR-031 D4）。例外：數量仍讀 quantity 角色的 role.value，出處欄位留到 ADR-037 S5；Measurement 是出處即憑據，不掛 distance_unevidenced_review
       - ADR-033 D1（LLM 不產數值）、D6（逐項降級）、D7（距離單一來源）對外部 AI 回應維持為入站不變量（ADR-037 D3）
       - AI 建議一律逐項人工採用，不設批次或自動接受（ADR-037 D4、ADR-026 §3）；wi_ai_auto_enabled 現況為預設關、可由 env 開啟，ADR-037 落地時須改為不可開
-      - 外部 AI 路徑（`parse_interactive(external=...)`）一律 `compute_routing(auto_enabled=False)`，不受 `wi_ai_auto_enabled` 影響（ADR-037 D4；2026-11-22 PR-B 落地）。上一條「須改為不可開」仍未完成：rule 路徑仍讀該旗標
-      - 【規劃中，ADR-037 實作後生效】只有 complete=True、compute_cycle 通過、engine_gate 無 high 的 motion 可接受（ADR-037 D3）
-      - ai_service 候選的預覽 draft（`chosen` 恆為 None，`preview_drafts`）其 complete／引擎結果不得作為「可接受 motion」的依據；人工採用須由人寫入 `chosen`，再重跑 compile 與引擎（含 engine_gate），不得沿用預覽（ADR-037 D3 澄清，2026-11-22）
+      - 外部 AI 路徑（`parse_interactive(external=...)`）一律 `compute_routing(auto_enabled=False)`，不受 `wi_ai_auto_enabled` 影響（ADR-037 D4；2026-11-22 PR-B 落地）。上一條「須改為不可開」仍未完成：rule 路徑仍讀該旗標。路由已接線（2026-11-22，`nl_draft` 在 analyst 以上且整合可用時傳 `external`；預設關）
+      - 【規劃中，ADR-037 實作後生效】只有 complete=True、compute_cycle 通過、engine_gate 無 high 的 motion 可接受（ADR-037 D3）。前端採用端尚未實作（2026-11-22）：`DDM_AI_SERVICE_ENABLED` 開啟時會違反本條
+      - ai_service 候選的預覽 draft（`chosen` 恆為 None，`preview_drafts`）其 complete／引擎結果不得作為「可接受 motion」的依據；人工採用須由人寫入 `chosen`，再重跑 compile 與引擎（含 engine_gate），不得沿用預覽（ADR-037 D3 澄清，2026-11-22）。前端採用端尚未實作（現行 adopt 只檢查 `draft.cycle`）：`DDM_AI_SERVICE_ENABLED` 開啟時會違反本條
       - 凍結列舉不得收窄，舊 ai_parse_runs 列須讀得回（ADR-037 D1）
       - 【規劃中，ADR-037 實作後生效】外送只含 WI 語句與白名單 context（ADR-037 D6／D7）
 
@@ -388,7 +388,7 @@ domains:
 
   - id: auth-rbac
     title: 認證與 RBAC（角色階層、稽核、搜尋）
-    anchors: [require_role, identity, audit_service, outbox_service, search_service]
+    anchors: [require_role, CurrentUser.has, identity, audit_service, outbox_service, search_service, wi_ai_status]
     paths:
       - "src/ddm_v2/auth/**"
       - "src/ddm_v2/services/v2/audit_service.py"
@@ -414,6 +414,8 @@ domains:
       # tests：outbox 的整合與單元測試（其餘 auth-rbac 測試不在此列）
       - "tests/integration/test_outbox_api.py"
       - "tests/unit/test_outbox.py"
+      # tests：nl-draft 依角色分流（viewer 200＋rule_based）與 GET /wi-ai/status 的角色斷言
+      - "tests/integration/test_nl_draft_ai_route.py"
     docs:
       - docs/decisions/ADR-019-worksheet-access-control.md
       - docs/architecture/rbac-spec.md
@@ -423,3 +425,4 @@ domains:
     invariants:
       - 角色階層 viewer < analyst < approver < admin（程式 auth/deps.py ROLE_ORDER；口語 IE＝analyst、manager＝approver）；gateway 模式信任入站 X-Username，只綁 loopback（ADR-019、ADR-023 D7b）
       - shared/api/client.ts 是唯一 API 入口；shared/types/api.d.ts 由 OpenAPI 產生、不可手改
+      - 角色判斷只用 `CurrentUser.has` 或 `require_role`，不得另立角色表或比對角色字串；依角色分流（而非拒絕）的端點須在 rbac-spec 註明（例：`POST /worksheets/nl-draft`，viewer 得 200＋rule_based）
