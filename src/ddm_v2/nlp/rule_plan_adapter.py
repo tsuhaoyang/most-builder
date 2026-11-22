@@ -23,6 +23,11 @@ _SOURCE_MAP = {
 }
 
 
+def detect_language(text: str) -> str:
+    """公開入口：`zh`／`en`／`mixed`。外部 ai_service 路徑要用同一套偵測，不另寫一份。"""
+    return _detect_language(text)
+
+
 def _action_type_for_seq(seq: str | None) -> str:
     if seq == "GM":
         return "move_place"

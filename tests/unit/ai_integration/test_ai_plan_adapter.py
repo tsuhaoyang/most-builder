@@ -126,6 +126,7 @@ def test_plan_shape_order_and_planner_tag():
 def test_labels_carry_display_text_only():
     b = _build([_m(sub_activity="右手拿起", object_text="假DIMM", g2="g_pick_sel")])
     assert b.labels["a1"].sub_activity == "右手拿起" and b.labels["a1"].object_text == "假DIMM"
+    assert b.labels["a1"].hand_hint == "RH", "手別提示只留給審核端顯示，不採信"
     assert "假DIMM" not in b.plan.model_dump_json(), "ai_service 的文字不進 plan（沒有 evidence，不捏造 role 文字）"
 
 

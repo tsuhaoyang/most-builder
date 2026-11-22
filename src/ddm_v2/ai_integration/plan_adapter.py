@@ -70,6 +70,8 @@ class MotionLabel:
 
     sub_activity: str
     object_text: str
+    # ai_service 的手別提示（不採信）。沒有手別來源可比對時不標 reason，留給審核（S4）採用時人工指定
+    hand_hint: str | None = None
 
 
 @dataclass(frozen=True)
@@ -216,7 +218,7 @@ def build_plan_from_motions(
                 notes=AI_PLANNER_NOTE,
             )
         )
-        labels[action_id] = MotionLabel(sub_activity=m.sub_activity, object_text=m.object_text)
+        labels[action_id] = MotionLabel(sub_activity=m.sub_activity, object_text=m.object_text, hand_hint=m.hand_hint)
         for parameter, codes in _slot_codes(m):
             if allow_lists is not None:
                 allowed = [c for c in codes if c in allow_lists.get(parameter, ())]
