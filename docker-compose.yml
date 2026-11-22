@@ -78,6 +78,39 @@ services:
       DDM_DSX_API_BASE_URL: ${DDM_DSX_API_BASE_URL:-}
       DDM_DSX_UI_URL: ${DDM_DSX_UI_URL:-}
       DDM_DSX_TIMEOUT_S: ${DDM_DSX_TIMEOUT_S:-5.0}
+      # 外部 ai_service（ADR-037；語意與預設見 .env.example 與 src/ddm_v2/ai_integration/config.py）。
+      # 預設關閉。理由同上方 parse worker：compose 只傳**列在這裡**的變數，少列一個，.env 設了也沒用。
+      #
+      # 金鑰：**正式環境請用 DDM_AI_SERVICE_KEY_FILE**，DDM_AI_SERVICE_KEY 留空。
+      #   用環境變數放金鑰，`docker inspect`、`docker compose config` 與容器的 /proc/<pid>/environ 都看得到，
+      #   有 docker 權限的人就能讀到。程式本身不會把金鑰寫進 log、DB 或錯誤訊息，風險在部署層。
+      #   檔案版做法（兩者都設時檔案優先）：
+      #     1. 主機上建檔：install -m 0400 /dev/null ./secrets/ai_service_key，再把金鑰寫進去（不要進版控）
+      #     2. 解開本服務底下的 `secrets:` 與檔尾頂層 `secrets:` 兩段註解
+      #     3. .env 設 DDM_AI_SERVICE_KEY_FILE=/run/secrets/ai_service_key
+      DDM_AI_SERVICE_ENABLED: ${DDM_AI_SERVICE_ENABLED:-false}
+      DDM_AI_SERVICE_BASE_URL: ${DDM_AI_SERVICE_BASE_URL:-}
+      DDM_AI_SERVICE_ALLOWED_HOSTS: ${DDM_AI_SERVICE_ALLOWED_HOSTS:-}
+      DDM_AI_SERVICE_ALLOW_PLAINTEXT: ${DDM_AI_SERVICE_ALLOW_PLAINTEXT:-false}
+      DDM_AI_SERVICE_KEY: ${DDM_AI_SERVICE_KEY:-}
+      DDM_AI_SERVICE_KEY_FILE: ${DDM_AI_SERVICE_KEY_FILE:-}
+      DDM_AI_SERVICE_BUNDLE_CODE: ${DDM_AI_SERVICE_BUNDLE_CODE:-}
+      DDM_AI_SERVICE_SERVICE_USER: ${DDM_AI_SERVICE_SERVICE_USER:-}
+      DDM_AI_SERVICE_PLANT_CODE: ${DDM_AI_SERVICE_PLANT_CODE:-}
+      DDM_AI_SERVICE_TIMEOUT_S: ${DDM_AI_SERVICE_TIMEOUT_S:-}
+      DDM_AI_SERVICE_MAX_RETRIES: ${DDM_AI_SERVICE_MAX_RETRIES:-}
+      DDM_AI_SERVICE_CONCURRENCY_INTERACTIVE: ${DDM_AI_SERVICE_CONCURRENCY_INTERACTIVE:-}
+      DDM_AI_SERVICE_CONCURRENCY_BATCH: ${DDM_AI_SERVICE_CONCURRENCY_BATCH:-}
+      DDM_AI_SERVICE_PER_USER_PER_MINUTE: ${DDM_AI_SERVICE_PER_USER_PER_MINUTE:-}
+      DDM_AI_SERVICE_DAILY_BUDGET: ${DDM_AI_SERVICE_DAILY_BUDGET:-}
+    # 外部 ai_service 金鑰檔（見上方說明）。要用時解開這兩行，以及檔尾的頂層 `secrets:`。
+    # secrets:
+    #   - ai_service_key
 
 volumes:
   ddm-v2-pgdata:
+
+# 外部 ai_service 金鑰檔（見 ddm-v2 服務的 DDM_AI_SERVICE_* 說明）。要用時連同服務底下的 `secrets:` 一起解開。
+# secrets:
+#   ai_service_key:
+#     file: ./secrets/ai_service_key
