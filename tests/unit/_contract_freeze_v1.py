@@ -70,6 +70,7 @@ FROZEN_CANDIDATE_SOURCE = frozenset({
     "embedding",
     "llm_rerank",
     "default",
+    "ai_service",             # ADR-037 D3（2026-11-22 加法）：外部 ai_service 的 slot code 候選
 })
 
 FROZEN_ROUTING_STATUS = frozenset({"auto", "review", "abstain", "invalid"})
@@ -193,6 +194,13 @@ FROZEN_ROUTING_REASONS = frozenset({
     "next_operation",
     "i_range_assumed",
     "m_zero_pure_inspection_assumed",
+    # ADR-037 D3（2026-11-22 加法）：外部 ai_service 路徑，一律人工採用、顯式擋 auto
+    "ai_source_no_evidence",
+    "ai_unknown_code",
+    "ai_return_a_position",
+    "ai_hand_hint_mismatch",
+    "ai_addon_truncated",
+    "ai_candidate_preview",
 })
 
 # ── 這份表自己的規模（防「把表掏空 → 守衛恆綠」）──────────────────
@@ -214,11 +222,11 @@ FROZEN_ROUTING_REASONS = frozenset({
 #   `FROZEN_ROLE_STATUS` → 別名表 ＋ 欄位表（`RoleValue.status`）
 #   `FROZEN_LANGUAGE`   → `WorkInstructionPlan.language` ＋ `PlannerOutput.language`
 EXPECTED_FROZEN_ALIASES = 14
-EXPECTED_FROZEN_ALIAS_MEMBERS = 59
+EXPECTED_FROZEN_ALIAS_MEMBERS = 60
 EXPECTED_FROZEN_FIELDS = 10
-EXPECTED_FROZEN_FIELD_MEMBERS = 41
+EXPECTED_FROZEN_FIELD_MEMBERS = 42
 EXPECTED_FROZEN_ROLE_KEYS = 11
-EXPECTED_FROZEN_ROUTING_REASONS = 18
+EXPECTED_FROZEN_ROUTING_REASONS = 24
 # `FROZEN_ALIAS_SCAN_MODULES` 是**唯一一張被 parametrize 直接消費、卻曾經沒有下界**
 # 的清單：清空它，那 4 個模組的涵蓋率檢查（含它 body 裡的 `stale` 反向檢查）會一起
 # 變成 skipped 而不是 failed，而且沒有別的斷言蓋得住它。

@@ -30,6 +30,11 @@ from ddm_v2.ai_integration.ports import (
     PSlotSuggestion,
 )
 
+# `MotionSuggestion.issues` 的前綴：`plan_adapter` 依這兩個判斷要標哪個 routing reason，
+# 所以由這裡匯出常數，不在兩邊各寫一份字串。
+ISSUE_UNKNOWN_CODE = "unknown_code"
+ISSUE_A_RETURN_NEEDS_REVIEW = "a_return_needs_review"
+
 MAX_MOTIONS = 20
 MAX_TEXT_LEN = 200
 MAX_ADDON = 2
@@ -101,7 +106,7 @@ def _a_slot(value: Any, issues: list[str], where: str) -> ASlotSuggestion | None
         issues.append(f"magnitude_estimate_unconfirmed:{where}")
     if kind == "return":
         # compile 尚無 return 型 A 位置的分支（ADR-037 D3；ADR-033 P3 第三項不在前置內）
-        issues.append(f"a_return_needs_review:{where}")
+        issues.append(f"{ISSUE_A_RETURN_NEEDS_REVIEW}:{where}")
     return ASlotSuggestion(kind=kind, magnitude_cm_hint=cm, magnitude_deg_hint=deg)
 
 
@@ -109,7 +114,7 @@ def _code(value: Any, allowed: frozenset[str] | set[str], issues: list[str], whe
     if value is None:
         return None
     if not isinstance(value, str) or value not in allowed:
-        issues.append(f"unknown_code:{where}")
+        issues.append(f"{ISSUE_UNKNOWN_CODE}:{where}")
         return None
     return value
 

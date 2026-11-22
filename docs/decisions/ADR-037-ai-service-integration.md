@@ -85,6 +85,8 @@ MOST 內的 LLM 專屬程式移除：`llm_client`、`prompts/*`、`LLMClientPort
 - slot code 進 plan 時放在**新增的候選欄位**（帶來源＝`ai_service`），不直接填 `SlotCandidateSet.chosen`，不繞過 linker。
 - MOST 仍以確定性 linker 對該句產生自己的候選。兩者一致 → 採用；不一致或 linker 無結果 → 以 ai_service 的 code 為候選，
   新增 routing reason 標審核，**不得自動採用**。未知 code（不在目標 rule-set）一律拒收並標審核。
+  - **linker 比對第一版延後到 S4**（2026-11-22，Howard 核可）：ai_service 的 motion 切法不一定對得上 MOST 的 action 切法，
+    第一版不比對，所有 AI motion 一律標 `ai_source_no_evidence`，一律人工審核（reason 名稱見 D4）。
 - ai_service 的回應沒有 evidence span，ADR-033 D3 的字面子字串不變式在此路徑不適用；因此此路徑的 motion 一律經人工採用（D4），
   不存在自動落盤。
 - `return` 型 A 位置在 compile 尚無對應分支：mapper 保留語意並標審核，不臆測格位。
@@ -92,6 +94,8 @@ MOST 內的 LLM 專屬程式移除：`llm_client`、`prompts/*`、`LLMClientPort
 **驗證**
 - 候選 code 必須通過：存在於**目標 worksheet 的 rule-set**（`default_rule_set_id`，不是「當前 active」）→ compile → engine_gate。
 - **可接受的 motion**：plan 完整（`complete=True`）、`compute_cycle` 通過、engine_gate 無 high 級問題。其餘只能人工補齊並重驗後才可接受。
+  - **預覽不是依據**（2026-11-22 澄清，不修訂本條）：S3 的預覽 draft 是用 ai_service 候選的複本算的（`chosen` 恆為 None，`preview_drafts`），
+    其 `complete` 與引擎結果**不得**作為「可接受的 motion」的依據。人工採用（實作計畫 S4）必須由人寫入 `chosen`，再重跑 compile 與引擎（含 engine_gate），不得沿用預覽。
 
 **不採信的欄位**
 - `hand`、`seq_kind` 不採信。手別來源依序為 Excel 欄、使用者輸入、MOST 確定性解析；ai_service 的值只作提示，不一致時標審核。
@@ -120,8 +124,14 @@ Suggest(ai_service) → Map(mapper) → Validate(link/compile/engine_gate/routin
 - 採用一律**逐項**（ADR-025、ADR-026 §3）。不提供「批次接受」（Howard 2026-11-14 裁決移除）；`wi_ai_auto_enabled` 維持硬關。
   審核畫面可一次顯示多項，但每項各自決定。審核畫面顯示原文，並標示「AI 建議，語意未經驗證」。
 - 風險判斷沿用既有 `ROUTING_REASONS` 與 `confidence_band`；新增 reason（AI 來源無 evidence、code 與 linker 分歧、hand 分歧、未知 code、
-  `return` 型 A 位置、AI 已展開成 N 個 motion、數量待指定；名稱於單句階段定案）
+  `return` 型 A 位置、AI 已展開成 N 個 motion、數量待指定）
   須同步 `test_contract_enum_freeze` 與 `routing._eligible_auto` 的 blocked 清單。`risk_level` 只作衍生顯示。
+  - **已定案的六個 reason 名稱**（2026-11-22，S3 PR-A；皆在 `routing.ROUTING_REASONS` 與 `_eligible_auto` blocked）：
+    `ai_source_no_evidence`（AI 來源無 evidence）、`ai_unknown_code`（未知 code）、`ai_return_a_position`（`return` 型 A 位置）、
+    `ai_hand_hint_mismatch`（hand 分歧）、`ai_addon_truncated`（compile 一次只能掛一個 P addon，預覽只用第一個）、
+    `ai_candidate_preview`（該 draft 是用候選算的預覽，`chosen` 仍空；經 draft.issues 進 routing reasons）。
+  - **延後到 S4**：「code 與 linker 分歧」「AI 已展開成 N 個 motion」「數量待指定」三個 reason，與 D3 的 linker 比對同時做，第一版不新增。
+  - **`ai_candidate_preview` 保留為 routing reason**（Howard 2026-11-22 裁決）：`CycleDraft` 沒有可放旗標的欄位，另加欄位會改到既有 rule 路徑的輸出，所以用 reason 表達「這份是預覽、不是決定」。
 - 人工修改在 plan 層操作，改完由 MOST 重跑 link → compile → engine_gate，**不重新呼叫 ai_service**。
   首輪只做最小編輯：`set_slot`、`set_distance`、`set_quantity`（後兩者寫 D3 的出處欄位）。
   `set_slot` 的值不合 rule-set 或引擎範圍時，該項不可接受。拆分、合併等其他編輯延後。

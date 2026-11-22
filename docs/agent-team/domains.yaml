@@ -15,7 +15,7 @@
 #   - 來源範本：line-balance_stream-weaver_v2/docs/agent-team/domains.yaml（commit 2b59ddc）。
 
 version: 1
-updated: 2026-11-14
+updated: 2026-11-22
 
 # 不歸任何領域的業務檔白名單（check_agent_config.py check_8 消費）。
 # 判準：純結構／框架接線／設定／通用基底，無業務邏輯，改它不需要領域守衛。每條附理由。
@@ -268,6 +268,7 @@ domains:
       - ADR-033 D1（LLM 不產數值）、D6（逐項降級）、D7（距離單一來源）對外部 AI 回應維持為入站不變量（ADR-037 D3）
       - AI 建議一律逐項人工採用，不設批次或自動接受（ADR-037 D4、ADR-026 §3）；wi_ai_auto_enabled 現況為預設關、可由 env 開啟，ADR-037 落地時須改為不可開
       - 【規劃中，ADR-037 實作後生效】只有 complete=True、compute_cycle 通過、engine_gate 無 high 的 motion 可接受（ADR-037 D3）
+      - ai_service 候選的預覽 draft（`chosen` 恆為 None，`preview_drafts`）其 complete／引擎結果不得作為「可接受 motion」的依據；人工採用須由人寫入 `chosen`，再重跑 compile 與引擎（含 engine_gate），不得沿用預覽（ADR-037 D3 澄清，2026-11-22）
       - 凍結列舉不得收窄，舊 ai_parse_runs 列須讀得回（ADR-037 D1）
       - 【規劃中，ADR-037 實作後生效】外送只含 WI 語句與白名單 context（ADR-037 D6／D7）
 
