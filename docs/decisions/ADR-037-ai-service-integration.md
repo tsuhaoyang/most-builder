@@ -68,6 +68,7 @@ MOST 內的 LLM 專屬程式移除：`llm_client`、`prompts/*`、`LLMClientPort
 - ai_service 不可用（逾時、5xx、429、契約不符、bundle 不可跑、熔斷開啟）時，`nl-draft` 照舊回 200 並走 `rule_based`，
   人工建表完全不受影響。`nl-draft` 維持同步，不改成 202。降級訊息不帶內部 URL 與錯誤細節。
 - ai_service 的錯誤依 `error.code` 映射到 MOST 錯誤碼，走 ADR-034 信封，zh-TW／en 訊息對稱（ADR-032）。
+- 外部失敗降級時（2026-11-22 追記，Howard 核可），回應的 `ai_error` 是粗粒度版：維運類分類（`misconfigured`、`auth`、`deployment`、`request_rejected`、`contract_mismatch`、`internal_error`、`bundle_not_runnable`）不帶 `upstream_code`；完整版只在 `ai_parse_runs.error` 與 log。
 - 新開關命名為 `DDM_AI_SERVICE_ENABLED`，不沿用 `DDM_WI_AI_ENABLED`，避免舊環境的 `true` 在新路徑完成前意外啟用。
 - **D8 守門新增的 port 欄位與錯誤分類（2026-11-20 追記，Howard 核可；加法）**：
   - `WiParseRequest` 新增 `actor`（觸發者）與 `scope`（single-flight 隔離範圍，例：site id）兩欄，只給 MOST 端的配額與合併使用，**絕不外送**（有測試鎖定外送 body 的 keys；與 D7「不送員工編號」一致）。
@@ -221,6 +222,7 @@ Suggest(ai_service) → Map(mapper) → Validate(link/compile/engine_gate/routin
 - 稽核事件 append-only（無刪改 API，資料庫角色不授予 UPDATE／DELETE），actor 一律取自 `CurrentUser`：外送（誰、何時、bundle、筆數、request id、`run_id`，不記原文）、
   accept、commit、重設、整合啟用／停用、金鑰輪替。
 - **同句合併（D8 single-flight）的稽核（2026-11-20 追記，Howard 核可）**：合併的等待者沒有自己的外送，其 provenance 不帶 `run_id`、`request_id`，改記 `shared_run_id`（指向領頭者那次外送的 `run_id`）。稽核「外送」事件的筆數只計真的外送的請求，等待者不算一次外送。S3 落盤 `ai_parse_runs` 時，必須能處理「無 `run_id`、有 `shared_run_id`」的結果。
+- **provenance 鍵 allow-list（2026-11-22 追記，Howard 核可）**：`ai_parse_runs.provenance` 與回應的 `provenance` 只允許 `ai_integration/provenance.py` 列的鍵（ai_service 出處的 13 個鍵，加 MOST 自己的 `motion_labels`、`dropped`）。每次寫入前都驗證，驗證失敗屬降級（走 rule_based），不寫入。
 
 **輸出安全**
 - 前端以純文字渲染 AI 文字欄位。匯出 Excel／CSV 時，以 `=`、`+`、`-`、`@`、Tab、CR 開頭的字串加以轉義，Excel 儲存格設為文字型別，防 formula injection。
@@ -229,7 +231,8 @@ Suggest(ai_service) → Map(mapper) → Validate(link/compile/engine_gate/routin
 ### D8 並行、逾時、背壓與成本
 
 - 單句用 ai_service 的 `lane=interactive`，批量用 `lane=batch`，兩者各有並行上限，批量不得卡住單句。
-- 呼叫 ai_service 期間不占用 DB session／連線。
+- 呼叫 ai_service 期間不占用 DB session／連線。外部路徑（2026-11-22 追記，Howard 核可）在呼叫前 `session.commit()` 以釋放連線；呼叫端須無未提交寫入（起始時檢查，有就 `RuntimeError`）。已 flush 但未提交的寫入無法偵測，靠呼叫端遵守。
+- **持久快取鍵（2026-11-22 追記，Howard 核可）**：外部路徑的 `ai_parse_runs` 快取鍵由佔位 bundle、設定的 ai_service bundle code、`known_hand`、worksheet revision、正規化語句、context、rule-set 組成。命中時不呼叫 ai_service、不扣額度。呼叫後回應的 `bundle_code` 須與設定一致，不一致即降級。下方 single-flight 的在途請求合併語意不變。
 - 相同請求的併發合併為一次（single-flight）。語意（2026-11-20 追記，Howard 核可；實作 `ai_integration/guard.py`）：
   - key＝(bundle、scope、語言、lane、sha256(allow-list、context、語句))。這**不是** `ai_parse_runs.input_hash`；持久快取仍歸 S3 的 `ai_parse_runs`。
   - 只合併在途請求，完成後不快取。

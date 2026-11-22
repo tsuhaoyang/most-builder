@@ -8,7 +8,7 @@
 
 ## 狀態
 
-🔄 執行中（ADR-037 於 2026-11-14 核可）。S0 文件回寫、S1 舊 LLM 路徑移除、S2 adapter／fake／契約測試已完成；S3 起未開始。與 ADR-037 衝突時以 ADR-037 為準。
+🔄 執行中（ADR-037 於 2026-11-14 核可）。S0 文件回寫、S1 舊 LLM 路徑移除、S2 adapter／fake／契約測試已完成；S3 進行中：PR #8（guard）、#9（migration v2_0050）、#10（plan adapter）已合併，PR-B（`wi_ai_service` 接線）在分支 `feat/s3-wi-ai-service-external` 實作。與 ADR-037 衝突時以 ADR-037 為準。
 
 > 來源：MOST 與 ai_service 兩邊的唯讀盤點、架構規劃，以及兩輪審查（架構、資安、code、nlp-compiler、wi-workbench、excel-import、auth-rbac）。
 > 本文件中「ADR-033 P3」指 ADR-033 遷移路徑的第 3 階段；本計畫自己的階段寫作 S0–S5，避免撞名。
@@ -125,11 +125,28 @@ DB 欄位不動；寫入端不再產生 `kind='llm'`，但**舊 `kind='llm'` 列
 
 **拆分（2026-11-22）**：S3 分兩個 PR。
 - **PR-A（已落地）**：純函式與契約加法。`ai_integration/plan_adapter.py`（`MotionSuggestion` → `WorkInstructionPlan`＋候選；`chosen` 恆為 None，`preview_drafts` 用候選複本算預覽）、`CandidateSource` 加 `ai_service`、六個 routing reason、契約凍結表（`test_contract_enum_freeze`）。
-- **PR-B（未做）**：`wi_ai_service` 接線，內容即下列第 2 項「單句路徑」與「後續 `wi_ai_service` PR 必須處理」：呼叫 `WiParserPort`、快取鍵納入 `provenance.bundle_code`、重播讀 provenance、provenance 鍵 allow-list、外層接住 `ValueError`／`RuntimeError`。
-  PR-B 還要決定：
-  - `known_hand` 是整句一個值，還是每個 motion 一個。
-  - MOST 沒有任何手別來源、但 AI 給了 `hand_hint` 時，要不要標。
-  - `plan_adapter` 的 `dropped`（ai_service 給了、但 compile 放不下的內容，例如 b4、foot／twist、magnitude 估計）要不要存進 provenance 供審核畫面顯示。
+- **PR-B（已落地於本分支，2026-11-22；Howard 核可設計 Q1–Q6「照建議」）**：`wi_ai_service` 接線。實際行為：
+  - `parse_interactive` 新增可選參數 `external`（`ExternalAi`：`port`、`service_bundle_code`（部署設定的 ai_service bundle）、`actor`、`scope`、`known_hand`）。`None` 時行為與先前完全相同（rule_based）。只支援單句 interactive，批量維持 rule_based（S5）。
+  - 順序：讀完要讀的 → `session.commit()`（釋放連線，ADR-037 D8）→ 呼叫 port → 算完 → 最後才寫 run（run 是最後一個副作用）。
+  - 快取鍵含佔位 bundle、設定的 service bundle code、`known_hand`、worksheet revision（另含正規化語句、context、rule-set）。命中時不呼叫 ai_service、不扣額度。呼叫後比對回應的 `bundle_code` 與設定是否一致，不一致即降級。
+  - 一律 `compute_routing(auto_enabled=False)`，不受 `wi_ai_auto_enabled` 影響。
+  - 降級：port 回 failed、guard 的 `ValueError`／`RuntimeError`、任何例外、空結果、佔位 bundle 缺、bundle 不符、plan 建不起來、provenance 不合 allow-list，一律降級為 rule_based，不拋給呼叫端。完整原因寫進該 rule run 的 `error`（`{"ai_service": {error_kind, upstream_code}}`）；回應的 `provenance.ai_error` 是粗粒度版：維運類分類（`misconfigured`、`auth`、`deployment`、`request_rejected`、`contract_mismatch`、`internal_error`、`bundle_not_runnable`）不帶 `upstream_code`。降級的 run 不當 external run 快取，下一次請求會再試 AI。
+  - legacy GM 形狀 slots 仍由 MOST 的 rule parser 產生（出處 `rule_based_v1`）；重播時從存檔候選還原（`slots_parser=ai_candidates`、`chosen` 空）。
+  - provenance 鍵 allow-list 在 `ai_integration/provenance.py`：ai_service 的 13 個鍵，加 MOST 自己的 `motion_labels`、`dropped`。值只收識別字元、限長、有限數值；寫入前 `validate_provenance` 再驗一次。
+  - **仍未做**：稽核「外送」事件、`nl-draft` 路由接線與角色檢查、前端。目前沒有呼叫端傳 `external`，外部路徑尚不可達。
+  - 開放路由前必須先滿足下方「路由開放前置條件」。
+
+### 路由開放前置條件
+
+S3 的路由 PR 必須先滿足下列各項。這些是 PR-B 審查發現的；因為目前沒有呼叫端傳 `external`，現在不可達。
+
+- **前端不得直接採用預覽 draft**：`AiDraftPanel.tsx`、`ActionModuleWorkspace.tsx` 的 adopt 只檢查 `draft.cycle` 是否存在，會把帶 `ai_candidate_preview` 的 cycle 載入編輯器（`source='ai'`）。需停用，或導向 S4 審核流程（ADR-037 D3 澄清）。
+- **稽核（D7）**：失敗的外送目前沒留下 ai_service 回的 `request_id`（`_Degraded` 只留 `error_kind`／`upstream_code`），逾時或 5xx 時無法對帳。「外送意圖」事件要在 `parse_interactive` 的 commit 之前寫。角色檢查（analyst 以上才可外送）service 層沒有，責任在路由，需有測試鎖定。
+- **`worksheet_id` 存取權驗證**：`nl_draft` 目前沒驗。重播會回 `cached`／`cached_run_id`，可探測別人是否用過某句語句。
+- **`known_hand`／`scope` 的來源**：由路由 PR 決定。`known_hand` 是整句一個值，逐 motion 比對會對左右手不同的句子誤報（保守方向）。無手別來源時不標，手別提示存在 `motion_labels`。
+- **`ai_error` 文案與信封碼**：補 zh-TW／en 對稱文案與 ADR-034 信封碼，與 `QUOTA_EXCEEDED` 一併登記。
+- **legacy slots 在 fresh 與重播不一致**：fresh 是 rule parser 的建議值，重播是空的 `chosen`，前端相容欄位的顯示前後不同。路由開放前須決定：(i) 重播也用 rule parser 重算（會隨當下 synonym 漂移），或 (ii) fresh 也輸出空的 `chosen`（AI 路徑不預填；審查者傾向此案）。
+- **快取 TTL（待 Howard 決定）**：ai_service 在同一 bundle code 底下更新 model 或 prompt 時，快取不會 miss（`prompt_version`、`model_served` 要呼叫後才知道）。ADR-037 D8 沒有明文處理這個缺口。是否加 TTL，或把 `prompt_version` 變動視為 miss，尚未決定。
 
 **進入條件**：ADR-037 accepted；已對真 ai_service 量測 30 句延遲分布（poc003 須已轉 shadow），並據此定逾時與並行參數；`most` 金鑰最小權限已確認。
 
@@ -171,6 +188,7 @@ DB 欄位不動；寫入端不再產生 `kind='llm'`，但**舊 `kind='llm'` 列
   `WiRowSaveIn` 加可選 `review_item_id`，伺服器驗證後設 `provenance='ai_external'`，並在同一交易內把審核項設為 accepted、寫入 `committed_wi_row_ids` 與列雜湊。
   409 時重跑 stale 條件：成立轉 `stale`；不成立則重新載入並重送，審核項維持 pending。之後的存檔依列雜湊維持 `ai_external`。
 - 可接受條件：plan 完整、`compute_cycle` 通過、engine_gate 無 high 級問題。預覽與落盤都用 `compute_rows_for_save` 與目標 worksheet 的 rule-set。
+- 設計約束（2026-11-22）：「採用」端點不得以 `run_id`／`created_by` 作授權依據。重播會讓多位使用者共用同一個 `run_id`，而 `ai_review.py` 目前只驗 run 存在、不驗擁有者。授權要以呼叫者對該 worksheet 的權限判斷。
 - 採用前重驗（ADR-037 D3 澄清，2026-11-22）：S3 的預覽 draft 不是依據。採用時由人寫入 `chosen`，再重跑 compile 與引擎（含 engine_gate）。
 - 與 S3 延後項合併：linker 比對，以及「code 與 linker 分歧」「AI 已展開成 N 個 motion」「數量待指定」三個 reason（ADR-037 D3、D4）。
 - 前端：新 feature module `features/wi-ai-review/`，經 `shared/api/client.ts`；並排顯示原文、AI 建議（標「語意未經驗證」）、引擎結果、差異與套用依據；AI 文字以純文字渲染。
