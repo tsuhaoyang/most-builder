@@ -43,6 +43,13 @@ async def lifespan(app: FastAPI):
     engine = get_engine()
     app.state.engine = engine
 
+    # 外部 ai_service 整合的單例預熱（ADR-037 S3）：建立要做 DNS 檢查與讀金鑰檔，放到執行緒裡，
+    # 不擋啟動、不擋 event loop。沒開開關時只是讀環境變數，沒有 I/O。失敗不影響啟動（整合只是不可用）。
+    from ddm_v2.ai_integration import runtime as ai_runtime
+
+    ai_warmup = asyncio.create_task(asyncio.to_thread(ai_runtime.warm_up), name="ddm-ai-runtime-warmup")
+    app.state.ai_runtime_warmup = ai_warmup
+
     # ai_parse_jobs 背景 worker（預設開啟；DDM_PARSE_WORKER_ENABLED=0 可關）。
     # 經 module attribute 呼叫（不 from-import 函式）讓測試可 monkeypatch。
     worker_task: asyncio.Task | None = None
@@ -66,6 +73,10 @@ async def lifespan(app: FastAPI):
     try:
         yield
     finally:
+        if not ai_warmup.done():
+            ai_warmup.cancel()  # 執行緒本身會跑完；這裡只是不讓 shutdown 等 DNS
+        elif not ai_warmup.cancelled() and ai_warmup.exception() is not None:
+            logger.warning("ai_service runtime warm-up failed: %s", type(ai_warmup.exception()).__name__)
         if worker_task is not None:
             worker_task.cancel()
             try:

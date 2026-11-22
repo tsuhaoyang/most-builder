@@ -511,6 +511,7 @@ async def _find_cached_run(
 # ═════════════════════════════════════════════════════════════════════
 
 _UPSTREAM_CODE_RE = re.compile(r"^[A-Z][A-Z0-9_]{0,63}$")
+_REQUEST_ID_RE = re.compile(r"^[A-Za-z0-9._:/@+\-]{1,128}$")
 
 # 這些分類是維運資訊（設定、金鑰、部署、MOST 自己的 bug）：完整代碼只留在 `run.error` 與 log，
 # 回給前端的 `ai_error` 不帶 `upstream_code`（例：`host_not_allowed`、`key_too_short` 會洩漏內部設定規則）
@@ -526,15 +527,24 @@ class _Degraded:
     error_kind: str
     upstream_code: str | None = None
     norm: str | None = None  # 已算好的 normalize 結果，降級走 rule 路徑時沿用
+    # MOST 送出的 request id（真的外送過才有）：逾時或 5xx 時 ai_service 可能已處理並計費，留著才能對帳。
+    # v1 的外送紀錄就是 `ai_parse_runs`（ADR-037 D7 過渡做法），所以只寫進 `run.error`，不回前端
+    request_id: str | None = None
 
     def __post_init__(self) -> None:
         code = self.upstream_code
         if code is not None and not _UPSTREAM_CODE_RE.fullmatch(code):
             object.__setattr__(self, "upstream_code", None)  # 不是 MOST／client 的代碼形狀：不收
+        rid = self.request_id
+        if rid is not None and not _REQUEST_ID_RE.fullmatch(rid):
+            object.__setattr__(self, "request_id", None)
 
     def record(self) -> dict[str, Any]:
         """寫進 `ai_parse_runs.error` 的完整版（維運用）。"""
-        return {"error_kind": self.error_kind, "upstream_code": self.upstream_code}
+        out: dict[str, Any] = {"error_kind": self.error_kind, "upstream_code": self.upstream_code}
+        if self.request_id is not None:
+            out["request_id"] = self.request_id
+        return out
 
     def public(self) -> dict[str, Any]:
         """回給前端的版本：維運類分類不帶 `upstream_code`。"""
@@ -745,16 +755,25 @@ async def _parse_external(
         kind = res.error_kind.value if res.error_kind is not None else "unknown"
         if kind != "disabled":
             logger.warning("external ai_service returned failed (%s); degrading to rule_based", kind)
-        code = (res.provenance or {}).get("upstream_code")
-        return _Degraded(kind, code if isinstance(code, str) else None, norm=norm)
+        prov_failed = res.provenance or {}
+        code, rid = prov_failed.get("upstream_code"), prov_failed.get("request_id")
+        return _Degraded(
+            kind,
+            code if isinstance(code, str) else None,
+            norm=norm,
+            request_id=rid if isinstance(rid, str) else None,
+        )
+    # 從這裡開始 ai_service 已經回應（也已計費）：之後的降級都要帶 request_id，v1 才能和 ai_service 對帳
+    sent_rid = (res.provenance or {}).get("request_id")
+    sent_rid = sent_rid if isinstance(sent_rid, str) else None
     if not res.motions:
-        return _Degraded("empty_result", None, norm=norm)
+        return _Degraded("empty_result", None, norm=norm, request_id=sent_rid)
     served_bundle = (res.provenance or {}).get("bundle_code")
     if served_bundle is not None and served_bundle != external.service_bundle_code:
         # client 本來就驗過 BUNDLE_MISMATCH；這裡是縱深防禦：run 若用設定的 bundle 當鍵、卻存了別的 bundle 的結果，
         # 之後換 bundle 仍會命中這份舊結果
         logger.error("external ai_service served an unexpected bundle; degrading to rule_based")
-        return _Degraded("contract_mismatch", "BUNDLE_MISMATCH", norm=norm)
+        return _Degraded("contract_mismatch", "BUNDLE_MISMATCH", norm=norm, request_id=sent_rid)
 
     source_ref = SourceRef(
         kind="interactive",
@@ -792,7 +811,7 @@ async def _parse_external(
         validate_provenance(prov)
     except Exception as exc:  # noqa: BLE001
         logger.error("external ai_service result could not be turned into a plan (%s)", _exc_summary(exc))
-        return _Degraded("contract_mismatch", "PLAN_BUILD_FAILED", norm=norm)
+        return _Degraded("contract_mismatch", "PLAN_BUILD_FAILED", norm=norm, request_id=sent_rid)
     if dropped_keys:
         # 鍵名是 adapter／guard 固定的，不是外部字串；ai_service 新增欄位時維運才看得到
         logger.warning("external ai_service provenance keys dropped by the allow-list: %s", sorted(dropped_keys))
