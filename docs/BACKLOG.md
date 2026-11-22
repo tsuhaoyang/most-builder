@@ -338,3 +338,30 @@
   - 不做每人每日上限（使用者少、風險低），等真的有人用光全站額度再開。
   - 「保留一部分全域預算給未超量的人」不做（複雜、效果類似）。
 - 對應文件：[ADR-037](decisions/ADR-037-ai-service-integration.md) D8。
+
+## BL-ENG-17 — ai_service 的 slot code enum 是 MOST rule-set 的複本
+- 領域：`nlp-compiler`
+- 性質：**需跟 ai_service 團隊協調**（本票有一半的選項在 ai_service 端）。
+- 現況（2026-11-22，S3 PR-A 時記錄）：ai_service 的 `packs/most/schemas/wi-motion-parse.schema.json` 用 enum 釘死 `ruleset_MINIMOST_FACTORY_V2` 的 code 清單
+  （見該 schema 註解與 ai_service `docs/specs/e2e-wi-motion-poc.md` §3.2）。bundle 不可變，換 prompt 或 schema 就是新 bundle code。
+  ai_service 的 context 白名單只有 `part_id`／`station`／`stage`，MOST 無法在請求時帶「允許的 code」。
+  MOST 的契約測試目前只釘 schema 的 sha256，不比對 enum 內容。
+- 影響：MOST 改 rule-set 版本時，ai_service 要另發 bundle，否則 AI 會選到已不存在的 code。MOST 端 mapper 會標 `unknown_code` 並置空，所以不會算錯，
+  只會變成建議無效、需人工補。ADR-037 §4 已記「rule-set 改版後 bundle 內的 code 清單要另行更新」。
+- 建議做法（只列選項與待決問題，尚未決定）：
+  - 等 ai_service 支援動態 enum，或允許消費端在請求時帶入允許的 code？（需 ai_service 團隊排程；context 白名單也要跟著改。）
+  - MOST 端加契約測試，比對 ai_service schema 的 enum 與目標 rule-set？（只擋漂移，不解決根因；測試要能讀到 ai_service 的 schema，來源與版本怎麼取待決。）
+  - rule-set 發布流程是否要加「通知 ai_service 發新 bundle」的檢查點？
+- 對應文件：[ADR-037](decisions/ADR-037-ai-service-integration.md) §4。
+
+## BL-ENG-18 — `rule_plan_adapter` 的來源映射對未知來源 fail-open
+- 領域：`nlp-compiler`
+- 現況（2026-11-22，S3 PR-A 時記錄；既有行為，不在 PR-A 範圍）：`src/ddm_v2/nlp/rule_plan_adapter.py` 約第 122 行
+  `_SOURCE_MAP.get(c.source, "synonym_exact")` 對未映射的來源預設成 `synonym_exact`，而 `routing._eligible_auto` 唯一接受的來源就是 `synonym_exact`。
+  `_CANDIDATE_SOURCE_TO_LEGACY`（約第 289 行）也沒有 `ai_service`。
+- 影響：目前 AI 候選不經過這個 adapter，所以不會發生。若日後有路徑讓 `ai_service` 候選經它，會被當成最高信任來源。
+- 建議做法（只列選項與待決問題，尚未決定）：
+  - 預設改成 `default`，或對未映射來源丟錯？（丟錯會讓未預期的來源在執行期失敗，需確認既有呼叫端不會觸發。）
+  - 補 `ai_service` 的映射測試（斷言它不會變成 `synonym_exact`）？
+  - 兩個映射表是否改成「新增 `CandidateSource` 值時測試強制補映射」？
+- 對應文件：[ADR-037](decisions/ADR-037-ai-service-integration.md) D3。
