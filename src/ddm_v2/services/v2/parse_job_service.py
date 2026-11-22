@@ -237,6 +237,8 @@ async def create_parse_job(
             select(AiDeploymentBundle).where(
                 AiDeploymentBundle.code == code,
                 AiDeploymentBundle.status == "active",
+                # 見 wi_ai_service._get_active_bundle：external 佔位 bundle 不可被選為 parse bundle
+                AiDeploymentBundle.kind != "external",
             )
         )
     ).scalar_one_or_none()

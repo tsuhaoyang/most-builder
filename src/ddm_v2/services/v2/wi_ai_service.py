@@ -100,6 +100,9 @@ async def _get_active_bundle(
         select(AiDeploymentBundle).where(
             AiDeploymentBundle.code == code,
             AiDeploymentBundle.status == "active",
+            # v2_0050 的佔位 bundle（kind=external）只給外部 ai_service 的落盤用，
+            # 不是 rule_based／llm 路徑可選的 bundle（否則 analyst 傳 bundle_code 就能選到）
+            AiDeploymentBundle.kind != "external",
         )
     )
     bundle = q.scalar_one_or_none()
