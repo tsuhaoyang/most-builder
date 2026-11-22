@@ -37,6 +37,14 @@ ROUTING_REASONS = frozenset(
         "next_operation",
         "i_range_assumed",
         "m_zero_pure_inspection_assumed",
+        # ADR-037 D3（外部 ai_service 路徑；`ai_integration/plan_adapter.py` 產生）。
+        # 六者都在下方 `_eligible_auto` 的 blocked 內：這條路徑的 motion 一律人工採用（D4），沒有自動落盤。
+        "ai_source_no_evidence",     # ai_service 的回應沒有 evidence span（ADR-033 D3 的字面子字串不變式不適用）
+        "ai_unknown_code",           # 某個 slot code 不在目標 rule-set，已被置空
+        "ai_return_a_position",      # `return` 型 A 位置：compile 尚無對應分支，不臆測格位
+        "ai_hand_hint_mismatch",     # ai_service 的手別提示與 MOST 已知手別不同（只作提示，不採信）
+        "ai_addon_truncated",        # 候選有多個 P addon，compile 一次只能掛一個，預覽只用第一個
+        "ai_candidate_preview",      # 該 draft 是用 ai_service 的候選算的預覽，`chosen` 仍是空的
     }
 )
 
@@ -137,6 +145,13 @@ def _eligible_auto(
         "role_text_not_in_source",
         "dependency_dropped",
         "i_range_assumed",
+        # ADR-037 D3：外部 ai_service 路徑一律人工採用，這些旗標顯式擋 auto
+        "ai_source_no_evidence",
+        "ai_unknown_code",
+        "ai_return_a_position",
+        "ai_hand_hint_mismatch",
+        "ai_addon_truncated",
+        "ai_candidate_preview",
         # D3-027（D3-026 複審 H1）：E 型豁免的假設旗標顯式擋 auto——先前擋
         # auto 靠「M 候選 chosen=None」的結構巧合（linker 對 controlled_move
         # 恆掛 M 候選集），豁免語意的保證不得倚賴另一模組的實作細節

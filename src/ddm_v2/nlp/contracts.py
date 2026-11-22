@@ -186,6 +186,8 @@ CandidateSource = Literal[
     "embedding",
     "llm_rerank",
     "default",
+    # ADR-037 D3：外部 ai_service 選的 slot code。只是候選——MOST 不因它而自動採用
+    "ai_service",
 ]
 
 

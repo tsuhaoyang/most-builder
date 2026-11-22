@@ -306,7 +306,7 @@ def test_routing_reasons_only_grow():
 # `>=` 之所以夠用，前提是抽取器**完整**——見 `_eligible_auto_blocked_elts` 的
 # 「驗證不過濾」。抽取器若會靜默丟掉元素，這個地板數的是「丟完還剩幾個」，
 # 結構上不可能發現自己漏了東西。
-_MIN_BLOCKED_REASONS = 14
+_MIN_BLOCKED_REASONS = 20
 
 # `ROUTING_REASONS` 有、`blocked` **刻意沒有**的旗標，以及各自的理由。
 #
