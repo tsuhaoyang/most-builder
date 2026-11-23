@@ -208,6 +208,18 @@ erDiagram
 - migration `v2_0054` 的 downgrade：有任何區域、快照、歸區或非內建類別就拒絕。
 - 與 `work_vocab_items.external_code` 的 DSX 綁定並存，互不影響（ADR-038 D7）。
 
+### 2.6d 距離建議與建模政策預設（兩張表）
+
+> 欄位全貌以 migration `v2_0055`（W7b）與 `models/v2/distance.py` 為準；決策見 ADR-038 D5.6 的 W7b 追記。（2026-11-24，W7b，依審查建議，Howard 授權）
+
+| 表 | 重點 |
+|---|---|
+| `wi_row_distance_suggestions` | 一列一格的距離建議。`worksheet_id` FK→`most_worksheets`（CASCADE）；`wi_row_id` **軟參考**（無 FK：整份存檔會刪除重建 `wi_rows`，有 FK 會連帶刪掉建議；列被刪後留下的建議由讀取時過濾、下次計算時清掉）；`slot`（`a0`｜`a3`｜`m3`｜`a6`）；`status`（`suggested`｜`needs_ie`｜`unavailable`）；`field`（`reach_cm`｜`foot_cm`｜`distance_cm`）；`distance_cm`（numeric(8,1)）；`reason`；`endpoints`（JSONB，`{from, to}` 的出處）；`snapshot_id` FK→`sku_placement_snapshots`（SET NULL）；`threshold_cm`、`person_offset_cm`、`modeling_policy_version_id`（FK，RESTRICT）；`computed_by/at`、`applied_by/at`。唯一鍵 `(worksheet_id, wi_row_id, slot)`；CHECK：`suggested` 必須有 `field` 與 `distance_cm` |
+| `modeling_policy_defaults` | 新建工時表使用哪個建模政策版本。主鍵 `code`；`version_id` FK→`modeling_policy_versions`（RESTRICT）；`set_by`、`set_at`。明確指定，不以 `MAX(version_no)` 隱式選版（R2a）。migration 種入指向 V1 的一列；沒有列時 `policy_service` 退回 V1 |
+
+- 距離設定（門檻、人端偏移）不是獨立表，放在 `modeling_policy_versions.policy_json["distance"]`；沒有這段的版本用程式常數 `DEFAULT_DISTANCE_SETTINGS`（凍結）。
+- migration `v2_0055` 的 downgrade：有任何距離建議、或預設不是 V1 就拒絕。同一 migration 修正 `v2_0054` 三個 CHECK 約束名（重複前綴）。
+
 ### 2.7 `most_cycles`（GM/CM 七格填值）— **快照 + 可回放**
 | 欄位 | 型別 | 說明 |
 |---|---|---|

@@ -155,6 +155,8 @@ ADR-031 §1.1 量過：正式 gold 的 35 條 cycle，A 格全是 `A0`；距離�
 - 現有的 DSX a3 查詢（`POST /api/v2/dsx/a3-distance`）在新流程落地前繼續可用（D7）。
 - > **2026-11-23 修訂，Howard 裁決**：這個案子只改 MOST。DSX 需要配合或確認的事項，整理在一份獨立文件（由主 context 於 W7 撰寫，路徑待定），由 Howard 交給 DSX repo。
 
+> **2026-11-24，W7b，依審查建議，Howard 授權**（上一則「路徑待定」的結果；原文保留）：該文件已寫成 [`docs/architecture/dsx-changes-for-adr-038.md`](../architecture/dsx-changes-for-adr-038.md)，列出 DSX 需確認的假設（`anchor_cm` 是否已含旋轉與人端偏移、站內原點、`placement_revision`、共用場景），由 Howard 轉交 DSX repo。
+
 > **2026-11-24，W7a，依審查建議，Howard 授權**（D5.3–D5.4 的 W7a 實作結果；原文保留）：
 >
 > - **W7 拆兩個 PR**。W7a：區域類別、按 SKU 的區域、DSX 物件清單代理、同步快照、物件歸區、「這份 WI 用到的物件」。W7b：建模政策門檻與人端偏移、算距離與建議、套用後 `distance_status=confirmed`、DSX 配合事項文件。下列各點只描述 W7a 已落地的部分。
@@ -203,6 +205,18 @@ ADR-031 §1.1 量過：正式 gold 的 35 條 cycle，A 格全是 `A0`；距離�
 > - 「改動作內容後已 `confirmed` 的距離狀態是否退回」（D6 追記 B）在 W7b 決定。
 > - `anchor_cm` 是否已含旋轉與人端偏移，需 DSX 確認，列入 `docs/architecture/dsx-changes-for-adr-038.md`（W7b 產出）。
 
+> **2026-11-24，W7b，依審查建議，Howard 授權**（D5.6 的 W7b 實作結果；原文保留，migration `v2_0055`、API 見 `src/ddm_v2/api/routes/v2/distance.py` 檔頭）：
+>
+> - **建議的儲存**：`wi_row_distance_suggestions`，一列一格（`a0`｜`a3`｜`m3`｜`a6`），`status`＝`suggested`｜`needs_ie`｜`unavailable`，`field`＝`reach_cm`｜`foot_cm`｜`distance_cm`。每格記兩端點出處、`snapshot_id`、使用的門檻、人端偏移與建模政策版本。`wi_row_id` 是軟參考（不設 FK，因為整份存檔會刪除重建 `wi_rows`）；唯一鍵 `(worksheet_id, wi_row_id, slot)`。
+> - **端點**：`a0`＝人→從哪裡；GM 的 `a3`、CM 的 `m3`＝從哪裡→到哪裡；`a6`＝到哪裡→人。**決定**：列上沒有「從哪裡」時，`a0` 與 `a3`／`m3` 的起點都用 object。人＝站內原點＋人端偏移。物件位置：歸區有物件座標用它，否則用區域中心。
+> - **欄位判定**：用**未取整**的距離比門檻與 75 cm。≤門檻填 `reach_cm`，>門檻填 `foot_cm`；`a6` >門檻 → `needs_ie`；`m3` 只填唯一的 ladder 分量（ladder 判定用存檔時同一個規則版本），>75 cm 或沒有、有多個 ladder 分量 → `needs_ie`。缺端點 → `unavailable`，原因 `endpoint_missing`｜`not_assigned`｜`zone_not_synced`。`needs_ie` 與 `unavailable` 不寫入任何值。套用 A 格時，另一個距離欄位清為 0。
+> - **距離設定（D5.6 (b)）**：存在建模政策的 `policy_json["distance"]`（`reach_foot_threshold_cm`、`person_offset_cm`）。版本沒有這段時用 `DEFAULT_DISTANCE_SETTINGS`（70 cm、`[0, 0, 140]`）；這組常數凍結，要換值就發布新版本。admin 以 `POST /api/v2/modeling-policy/distance-settings` 發布新版本（advisory lock 序列化）並把預設指過去；新建工時表的政策版本由新表 `modeling_policy_defaults` **明確指定**（種入 V1），不以 `MAX(version_no)` 隱式選版（R2a）。既有工時表（含 clone）沿用自己的版本，不受影響。
+> - **已知限制**：沒有「指回舊版」的路徑；沒有獨立稽核表（版本列記 `created_by`／`published_by`，預設指標記 `set_by`／`set_at`）；既有工時表不能改用新版本。
+> - **套用（`apply`）**：請求帶 `base_revision` 與 `computed_at`（使用者看到的那次計算）。**列級套用，不做格位級部分套用**：只有該列全部格位都是 `suggested` 才套用，否則 409 `DISTANCE_NOT_APPLICABLE`，detail 列出各列原因（`no_suggestion`、`marked_not_applicable`、`needs_ie`、`unavailable` 及其原因）。`computed_at` 與存著的不符，或重算結果和存著的不同 → 409 `DISTANCE_SUGGESTION_CHANGED`（要重新算再確認）。各列規則版本不一致 → 409 `CONFLICT`（`field=rule_set_code`）。成功時走整份存檔（從 DB 原樣重組），目標列 `distance_status=confirmed`，TMU 由引擎重算。
+> - **權限**：`GET distance-suggestions` 與 `GET distance-settings` viewer；`compute`、`apply` analyst 且工時表須是草稿版本；`POST distance-settings` admin。
+> - **新錯誤碼**：`DISTANCE_NOT_APPLICABLE`、`DISTANCE_SUGGESTION_CHANGED`。
+> - 同一 migration 順手修正 `v2_0054` 三個 CHECK 約束名（命名慣例已加前綴，原名重複前綴）。
+
 ### D6 完成檢查：缺距離的列不得核准或發布（12 月上線；Howard 2026-11-23）
 
 - 工時表要核准或發布時，每一列的距離狀態必須是下列之一，否則擋下：
@@ -228,6 +242,14 @@ ADR-031 §1.1 量過：正式 gold 的 35 條 cycle，A 格全是 `A0`；距離�
 > - **A 開關何時打開**：目前由 `drafts/commit` 打開。W4 工作區前端上線時，在工作區建立的新工時表一開始就設 true。匯入與模組實體化不打開；匯入改走編輯區後自然涵蓋。
 > - **B 改動作內容是否退回已確認狀態**：暫不退回。留待 W7（自動算距離）一併決定。
 > - **C 核准檢查順序**：先 level 再距離，維持。
+
+> **2026-11-24，W7b，依審查建議，Howard 授權**（取代上方「B 改動作內容是否退回已確認狀態：暫不退回」；原文保留）：
+>
+> - **B 的決定：退回。** 整份存檔時，若該列**沒帶** `distance_status`、舊值是 `confirmed`，且 `distance_inputs` 有任何不同 → 退回未標示（空）。`distance_inputs` 包含：GM／CM 種類、object／from／to，a0／a3／a6 的 `reach`／`foot`，m3 各分量的動詞與距離。理由：`confirmed` 代表「使用者確認過這組距離建議」，距離相關內容變了，確認就不再成立。
+> - **不退回的情形**：舊值是 `manual` 或 `not_applicable`（人自己負責）；呼叫端明確帶了 `distance_status`（以帶的為準，由呼叫端負責）。
+> - **重新同步 DSX 後**區域中心改變，已 `confirmed` 的列**不**自動退回（符合 D5.4：座標只在使用者按同步時更新，已確認的值是當時的決定）。畫面提示留給後續（見交付計畫 W8）。
+> - 套用成功時，目標列的 `distance_status` 設為 `confirmed`（見 D5.6 W7b 追記）。
+> - **對前端的要求**（W4／W8）：整份存檔開始帶 `distance_status` 時，要「讀回什麼就帶回什麼」，且不得讓上述退回規則失效；建議未改動的列不帶此欄。
 
 ### D7 12 月範圍
 

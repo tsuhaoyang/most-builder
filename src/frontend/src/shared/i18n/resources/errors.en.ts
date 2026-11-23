@@ -81,6 +81,8 @@ const errorsEn: ErrorCatalog = {
   DSX_UNREACHABLE: 'Cannot reach DSX',
   DSX_NOT_READY: 'DSX coordinates are not ready yet; load the 3D scene in DSX first',
   ZONE_IN_USE: 'Objects are still assigned to this zone; unassign them first',
+  DISTANCE_NOT_APPLICABLE: 'Some rows need an IE decision or have no computable distance; fill them in manually',
+  DISTANCE_SUGGESTION_CHANGED: 'The distance suggestions have changed; recompute and confirm again',
   // ── WI context / worksheet ──────────────────────────────────────────────
   WI_CONTEXT_INVALID: 'The WI context is invalid',
   SIMO_PAIR_INVALID: 'The SIMO pairing is invalid',

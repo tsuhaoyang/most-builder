@@ -64,6 +64,7 @@ from ddm_v2.api.routes.v2.audit_log import router as v2_audit_log_router
 from ddm_v2.api.routes.v2.calculate import router as v2_calculate_router
 from ddm_v2.api.routes.v2.cases import router as v2_cases_router
 from ddm_v2.api.routes.v2.catalog import router as v2_catalog_router
+from ddm_v2.api.routes.v2.distance import router as v2_distance_router
 from ddm_v2.api.routes.v2.dsx import router as v2_dsx_router
 from ddm_v2.api.routes.v2.export import router as v2_export_router
 from ddm_v2.api.routes.v2.i18n import router as v2_i18n_router
@@ -135,6 +136,7 @@ V2_ROUTERS: tuple[tuple[str, APIRouter], ...] = (
     ("lb_writeback", v2_lb_writeback_router),
     ("dsx", v2_dsx_router),
     ("zone", v2_zone_router),
+    ("distance", v2_distance_router),
 )
 
 
