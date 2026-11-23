@@ -382,6 +382,33 @@ domains:
       - 語系碼↔資源鍵對照（locale.py 與前端 i18n.ts）前後端值域必須逐字相同，改一邊必須改另一邊（ADR-032 I6）
       - schema 一律加法演進；改名／刪欄走加新欄→雙寫→廢舊欄（ADR-011）
 
+  - id: spatial-distance
+    title: 區域、DSX 座標快照、物件歸區與自動算距離（ADR-038 D5）
+    anchors: [zone_service, sync_from_dsx, set_object_zones, worksheet_objects, dsx_client]
+    paths:
+      - "src/ddm_v2/services/v2/zone_service.py"
+      - "src/ddm_v2/api/routes/v2/zone.py"
+      - "src/ddm_v2/schemas/v2/zone.py"
+      - "src/ddm_v2/models/v2/zone.py"
+      - "src/ddm_v2/services/v2/dsx_client.py"
+      - "migrations/versions_v2/v2_0054_sku_zones.py"
+      - "tests/integration/test_zones.py"
+      - "tests/unit/test_dsx_client_w7.py"
+    docs:
+      - docs/decisions/ADR-038-unified-wi-workspace-and-two-stage-distance.md
+      - docs/decisions/ADR-031-spatial-layout-and-distance-acquisition.md
+      - docs/roadmap/adr-038-delivery-plan.md
+    keywords: [zone, 區域, dsx, placement, 座標, 快照, snapshot, 歸區, 距離, distance, reach, foot, 標準工作站]
+    invariants:
+      - 區域、座標快照、物件歸區一律按 SKU（skus.id）保存，不按工序版本、不按廠區；不新增工位主數據（ADR-038 D5.1）
+      - 區域中心座標只由「從 DSX 同步」寫入並記快照 id；不即時查 DSX，3D 裡的拖動在下次同步前不改變任何已存座標（ADR-038 D5.4、I6）
+      - 快照裡找不到綁定物件時清空中心並回報，不沿用舊座標；換綁 DSX 物件清空中心（要重新同步）
+      - DSX 三種失敗分開回報（未開 503 DSX_DISABLED、連不到 502 DSX_UNREACHABLE、未就緒 409 DSX_NOT_READY）；物件清單連不到回 available=false，不偽裝成空清單（ADR-038 D5.3／D5.4）
+      - DSX 沒有認證：瀏覽器不直連 DSX；DSX 回應當不可信輸入（本文 ≤ 2 MB、≤ 2000 筆，超過整份拒絕不截斷；字串 ≤ 200；座標 |v| ≤ 1000 cm 且為有限數；拒絕重複 id；station_id 必填；placement_revision 0..2^31-1）
+      - 鎖順序一律先 SKU 再區域；物件歸區只接受未刪除且啟用的物件；呼叫 DSX 前先結束資料庫交易（不在等 DSX 時佔連線）
+      - 物件歸區的區域必須屬於同一 SKU（複合 FK）；區域還有物件歸區時不能刪（ZONE_IN_USE）
+      - 算出的距離只是建議（帶出處），不直接寫入 TMU 路徑；MOST 只算公分，TMU 一律由引擎算（ADR-031 I1、I4、I5）
+
   - id: excel-import
     title: Excel／CSV 匯入
     anchors: [import_service, TARGET_FIELDS, map_columns, submit_import, dsx_service]
@@ -441,6 +468,8 @@ domains:
       - "tests/integration/test_nl_draft_ai_route.py"
       # tests：編輯區 6 個端點的角色斷言（viewer 含 GET 都 403）
       - "tests/integration/test_wi_drafts.py"
+      # tests：區域／同步／歸區 11 個端點的角色斷言（讀 viewer、寫 analyst、新增類別 admin、GET /dsx/objects analyst）
+      - "tests/integration/test_zones.py"
     docs:
       - docs/decisions/ADR-019-worksheet-access-control.md
       - docs/architecture/rbac-spec.md

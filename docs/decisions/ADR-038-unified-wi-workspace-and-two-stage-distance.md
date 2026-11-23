@@ -155,6 +155,18 @@ ADR-031 §1.1 量過：正式 gold 的 35 條 cycle，A 格全是 `A0`；距離�
 - 現有的 DSX a3 查詢（`POST /api/v2/dsx/a3-distance`）在新流程落地前繼續可用（D7）。
 - > **2026-11-23 修訂，Howard 裁決**：這個案子只改 MOST。DSX 需要配合或確認的事項，整理在一份獨立文件（由主 context 於 W7 撰寫，路徑待定），由 Howard 交給 DSX repo。
 
+> **2026-11-24，W7a，依審查建議，Howard 授權**（D5.3–D5.4 的 W7a 實作結果；原文保留）：
+>
+> - **W7 拆兩個 PR**。W7a：區域類別、按 SKU 的區域、DSX 物件清單代理、同步快照、物件歸區、「這份 WI 用到的物件」。W7b：建模政策門檻與人端偏移、算距離與建議、套用後 `distance_status=confirmed`、DSX 配合事項文件。下列各點只描述 W7a 已落地的部分。
+> - **資料**（migration `v2_0054`，欄位以 migration 與 `models/v2/zone.py` 為準；表的說明見 data-model-and-storage-spec §2.6c）：`zone_categories`、`sku_zones`、`sku_placement_snapshots`、`sku_object_zones` 四張表。內建類別 6 個：`work_surface`、`incoming`、`outgoing`、`tool`、`fixture`、`other`（`name_zh`／`name_en`），admin 可新增。同一 SKU 的區域名稱唯一。
+> - **端點與角色**：共 11 個，見 `docs/architecture/rbac-spec.md`。讀取 viewer、寫入 analyst、新增類別 admin；`GET /dsx/objects` analyst（整合未開或連不到時回 200＋`available=false`＋原因，不回空清單）。
+> - **同步（D5.4）**：區域中心取快照中該物件的 DSX `anchor_cm`（取放錨點後的量測點）；該物件沒有 `anchor_cm` 時退回 `station_local_cm`。每筆在快照裡記 `point_source`（`anchor`｜`station_local`）。快照裡找不到綁定物件的區域，清空中心並在回應中回報；換綁 DSX 物件同樣清空中心。回應附前一份快照，供畫面提示。呼叫 DSX 前先結束資料庫交易，不在等 DSX 時佔著連線。每個 SKU 保留最近 20 份快照。
+> - **錯誤碼**：`DSX_DISABLED` 503、`DSX_UNREACHABLE` 502、`DSX_NOT_READY` 409、`ZONE_IN_USE` 409（區域還有物件歸在它底下時不能刪）。
+> - **DSX 回應當不可信輸入**：本文 ≤ 2 MB；筆數 ≤ 2000，超過整份拒絕、不截斷；字串 ≤ 200 字；座標絕對值 ≤ 1000 cm 且須為有限數；拒絕重複 id；`station_id` 必填；`placement_revision` 須在 0 到 2^31−1。
+> - **鎖順序**：一律先鎖 SKU，再鎖區域。歸區只接受未刪除且啟用的詞彙物件。
+> - **不動的部分（D7）**：既有 `external_code`／`__to` 綁定與 a3 查詢（`POST /dsx/a3-distance`）維持原狀。以區域綁定取代它們的遷移留待後續。
+> - **migration downgrade**：有任何區域、快照、歸區或非內建類別就拒絕。
+
 #### D5.5 資料面要有物件座標（現在先用區域）
 
 - 現在沒有物件座標，距離一律用**區域中心點**估算（Howard 2026-11-23：精度問題現階段不處理）。
@@ -162,6 +174,8 @@ ADR-031 §1.1 量過：正式 gold 的 35 條 cycle，A 格全是 `A0`；距離�
 - 取用順序：有物件座標用物件座標，否則用所屬區域的中心點。算出的距離記錄來源（`zone_center`｜`object_coordinate`）與快照版本，供審核判斷準確度。
 - 座標掛在「擺放」上，不掛在物件身分上（ADR-031 D2：擺放與物件身分分離）。資料形狀方向：
   `SKU →（多個）區域（類別、DSX 物件 id、中心座標）`；`(SKU, 物件) → 區域，＋可選的物件座標`。座標存 3D。
+
+> **2026-11-24，W7a，依審查建議，Howard 授權**（D5.5 的 W7a 實作結果；原文保留）：`sku_object_zones` 以 (SKU, 物件) 為主鍵，帶可空的物件座標三欄（`object_x/y/z`，W7a 不寫入，三欄須同空或同有）；區域以複合外鍵 (`zone_id`, `sku_id`) 保證與歸區同屬一個 SKU，刪除用 RESTRICT。取用順序（物件座標優先、否則區域中心）與距離來源記錄（`zone_center`｜`object_coordinate`）在 W7b 算距離時才落地。
 
 #### D5.6 算出的距離是建議，且不是每一格都算得出來
 
@@ -179,6 +193,15 @@ ADR-031 §1.1 量過：正式 gold 的 35 條 cycle，A 格全是 `A0`；距離�
 > - **(c) 超出範圍的處理**：M 位置不分伸手／走動；超過 75 cm 是引擎錯誤，不是飽和，標「需 IE 裁決」，不截斷（ADR-031 I5）。A6 不得填 foot（ADR-014 E1、ADR-031 §1.3）；若 a6 超過門檻，不自動改填 reach，也不歸零，標「需 IE 裁決」。
 > - **(d) 已知風險**：DSX 實測（`dsx_ai_factory/team_docs/most/03-open-questions.md` P4）從肩量到物件 bbox 中心，8 個物件全落 A24，原因是終點用了幾何中心。本案改用使用者擺到「手會去的地方」的區域中心，預期改善，但**未實測**。每個算出的距離記錄使用的起點、門檻與快照版本。
 > - **(e) 動作本身的行程**（撕包裝袋等，ADR-031 §1.2）仍由人填。
+
+> **2026-11-24，W7a，依審查建議，Howard 授權**（W7b 的建模決定，主 context 依建議；原文保留）：算距離時沿用 DSX 現行語句模型（其 schema 註解 `a0`＝人→從哪裡、`a6`＝到哪裡→人）：
+>
+> - `a0`：人 →「從哪裡」；語句沒有「從」時用「物件」。
+> - `a3`、M：「從哪裡」→「到哪裡」。
+> - `a6`：「到哪裡」→ 人。
+> - 每個結果記 `snapshot_id`、`point_source`、使用的門檻與人端偏移。
+> - 「改動作內容後已 `confirmed` 的距離狀態是否退回」（D6 追記 B）在 W7b 決定。
+> - `anchor_cm` 是否已含旋轉與人端偏移，需 DSX 確認，列入 `docs/architecture/dsx-changes-for-adr-038.md`（W7b 產出）。
 
 ### D6 完成檢查：缺距離的列不得核准或發布（12 月上線；Howard 2026-11-23）
 
