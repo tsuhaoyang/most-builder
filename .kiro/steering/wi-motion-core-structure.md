@@ -6,11 +6,15 @@ inclusion: always
 
 > **重要性（User 定調 2026-09-11）**：這是 MOST 系統的核心組織結構，**未來會很常用、影響很大**。
 > 所有涉及 MOST 工序、Level System、LB 整合、匯出的 agent 都必須理解這兩層。
-> 以實讀 code + Workbench UI 截圖確認，非推測。
+> 以實讀 code 確認，非推測。
+>
+> **2026-11-23 更新（ADR-038）**：WI 的編輯改在「每份 WI 一個工作區」進行。MOST 工作台（`workbench-v3`）
+> 與它的「WI 大綱」畫面依 ADR-038 D4 移除（前端移除進行中），所以本檔不再以工作台當例子。
+> 兩層結構本身不變。
 
 ## 兩層結構
 
-MOST 的工序組織分**兩層**（Workbench「WI outline」截圖可見：「13 WIs · 29 motions」）：
+MOST 的工序組織分**兩層**：
 
 1. **motion 層（最小單位）**：一個 **motion = 一個七格 GM/CM MOST model = 一個 cycle**。
    - 每個 motion 有自己的 narrative（WI 語句/動作描述，如「右手抓握電動起子保持住至機箱」）、hand、frequency、
@@ -25,15 +29,21 @@ MOST 的工序組織分**兩層**（Workbench「WI outline」截圖可見：「1
 
 ## Code 層對應（實讀確認）
 
-| 概念層 | UI | 資料落點（v2） |
+| 概念層 | 工時表（worksheet，正本） | 工作區編輯區（ADR-038，規劃中） |
 |---|---|---|
-| WI 層 | Workbench「WI outline」的一列 | `motion_module`（`category='wi-template'`）；一個 module 一句名稱/語句。`schemas/v2/motion_module.py:79`：「'wi-template'：WI 大綱項（rows = 動作快照複本；對應 v3 MI statements）」 |
-| motion 層 | WI 展開的子列、及上方「動作清單」（All 29） | 該 module 的 `rows[]`（每 row 一個動作/cycle，含 narrative/hand/frequency/simo/computed）；`WiOutline.tsx:2-6` |
+| WI 層 | 同一個 `wi_rows.wi_group`（作業名稱，ADR-035 D10；同名＝同作業的**候選**成員）的那些列 | 草稿列依 WI 語句分組顯示，可「整組確認」 |
+| motion 層 | 一筆 `wi_rows` ＋ 一筆 `most_cycles`（`most_cycle.wi_row_id` unique，1:1，`worksheet.py`） | 一個草稿列（審核單位；ADR-038 D2） |
 
-- worksheet 情境（`wi_rows` + `most_cycles`，1:1）是**另一條線**（實際案件的工時表）；WI outline 的 `category='wi-template'`
-  motion_module 是**動作/WI 範本組織**。兩者都體現「一句 WI ⊃ 多個 motion」的組織意圖，但落在不同表。
-- v2 現況 `most_cycle.wi_row_id` 為 **unique（1:1）**（`worksheet.py:153`）——即在 worksheet 情境，一個 wi_row 一個 cycle；
-  「一個 WI 多 motion」的多層組織體現在 motion_module 的 `rows[]` 與 WI outline 的 groupby。
+- 工時表是一份 SKU 工序版本的正式工時（`process_version` ⇔ `most_worksheet`，1:1）。**一個 WI 在工時表裡是多列**：
+  每個 motion 一列，靠 `wi_group` 組回同一個 WI。
+  - `wi_group` 是可為空的文字欄位，不是硬鍵：空值的列不屬於任何 WI 分組；同名只是「可能同一作業」，不要拿它當唯一識別。
+- 【規劃中，ADR-038 D3】新內容（人工、單句 AI、整份上傳）先進工作區的**編輯區**，確認後按「寫入工時表」才落盤。
+  一句 WI 經 AI 拆成多個 motion，所以 Excel 的一列進到工時表會變成好幾列。編輯區尚未實作，現況是直接編輯工時表。
+- 舊的範本資料：`motion_module`（`category='wi-template'`，`rows[]` 是 WI 底下的 motion 快照）也體現同樣的兩層，
+  但它屬於要移除畫面的範本庫，資料保留、不再有入口，也**不提供跨 SKU 重用**（ADR-038 D4）。
+  **不要**再把它當成 WI 的主要落點，也不要建議「從範本庫插入」。
+- `motion_templates`（動作範本，與 `motion_module` 是不同的表）**保留並繼續使用**：Excel 匯入的範本比對（ADR-025）
+  與規則解析的 L0 範本提示（`nlp/linking.py`）都靠它（ADR-038 D4）。
 
 ## 對 LB 整合的關鍵含意（見 `docs/lb-integration/MOST_LB_CONTRACT.md` D1）
 
@@ -47,6 +57,7 @@ MOST 的工序組織分**兩層**（Workbench「WI outline」截圖可見：「1
 ## 使用守則（給所有 agent）
 
 - 談「工時計算/TMU/單一動作」→ 指 **motion 層**。
-- 談「一句作業描述/WI 大綱/組織」→ 指 **WI 層**（含多 motion）。
+- 談「一句作業描述/作業分組/組織」→ 指 **WI 層**（含多 motion）。
 - 不要把「WI」與「motion」混為一談；不要假設「一個 WI = 一個動作」（一個 WI 常含多個 motion）。
 - 涉及 LB 匯出時，task 粒度一律對到 **motion**，WI 是上層分組。
+- 涉及 AI 解析或審核時：審核單位是 **motion**，畫面依 **WI** 分組（ADR-038 D2）。
