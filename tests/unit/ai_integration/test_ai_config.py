@@ -80,7 +80,7 @@ def test_d8_defaults():
     """ADR-037 D8 的保守預設值（暫定，量測後調整）。"""
     cfg = load_config(_env())
     assert (cfg.concurrency_interactive, cfg.concurrency_batch) == (2, 1)
-    assert (cfg.per_user_per_minute, cfg.daily_budget) == (30, 2000)
+    assert (cfg.per_user_per_minute, cfg.daily_budget) == (30, 10000)  # ADR-038 D7
 
 
 @pytest.mark.parametrize(
