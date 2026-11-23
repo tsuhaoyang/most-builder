@@ -185,6 +185,7 @@ domains:
       - docs/architecture/data-model-and-storage-spec.md
       - docs/decisions/ADR-020-simo-contribution-semantics.md
       - docs/decisions/ADR-037-ai-service-integration.md
+      - docs/decisions/ADR-038-unified-wi-workspace-and-two-stage-distance.md
     keywords: [worksheet, 工時表, wi_row, most_cycle, simo, clone, 另存, revision, 版本衝突, cycle]
     invariants:
       - SIMO 標記列（simo_group_id 非空）貢獻 0，時間由未標記主列吸收；不取 group max（ADR-020，對齊 v3 認證版）
@@ -192,6 +193,7 @@ domains:
       - 前端不算 TMU；儲存 body 由 buildSaveBody 產出，derive() 的 null（非鏈首層級）須忠實保留
       - 【規劃中，ADR-037 實作後生效】AI 來源列的 provenance 由伺服器依 review_item_id 設定，前端不得傳值；mapper 一律輸出 simo_group_id／simo_with_row_id 為 null（ADR-037 D3、ADR-020）
       - 【規劃中，ADR-037 實作後生效】AI 採用落盤只走既有 save_worksheet，帶 base_revision，不得另開寫 wi_rows／most_cycles 的路徑（ADR-037 D5）
+      - 新產生內容先進編輯區、經「寫入工時表」才落盤【規劃中，ADR-038】
 
   - id: motion-module
     title: 動作範本庫與 WI 大綱（motion_module／template matching）
@@ -224,10 +226,12 @@ domains:
     docs:
       - docs/decisions/ADR-025-import-template-matching-p2.md
       - docs/architecture/data-model-and-storage-spec.md
+      - docs/decisions/ADR-038-unified-wi-workspace-and-two-stage-distance.md
     keywords: [motion module, 動作範本, wi outline, wi 大綱, template, 範本比對, wi set, instantiate, 實體化, vocab, 語彙]
     invariants:
       - WI 層＝一句語句＋多個 motion（category='wi-template' 的 module.rows[]）；LB task 粒度對到 motion 不是 WI
       - 範本實體化（from-module）帶 wi_group=module.name_zh；TMU 由後端算，前端不自算
+      - 工作台（workbench-v3）與 WI 專案頁的畫面依 ADR-038 D4 移除；後端與資料保留，motion_templates 繼續供匯入比對與規則解析使用【規劃中，前端尚未移除】
 
   - id: nlp-compiler
     title: NL→MOST 編譯器與 planner（外部 AI 入站防腐）

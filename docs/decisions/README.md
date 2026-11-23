@@ -23,7 +23,7 @@
 | [ADR-019-worksheet-access-control.md](ADR-019-worksheet-access-control.md) | Worksheet 讀取端點存取控制：維持已登入 viewer+ | 🟢 accepted |
 | [ADR-020-simo-contribution-semantics.md](ADR-020-simo-contribution-semantics.md) | SIMO 標記列貢獻 0，時間由未標記主列吸收 | 🟢 accepted |
 | [ADR-021-ia-restructure-v3-parity.md](ADR-021-ia-restructure-v3-parity.md) | 前端資訊架構以 v3 驗證畫面為母版 | 🟢 accepted |
-| [ADR-022-workbench-two-layer-correction.md](ADR-022-workbench-two-layer-correction.md) | 工作台動作/WI 兩層模型、WI 大綱與 row inspector | 🟢 accepted |
+| [ADR-022-workbench-two-layer-correction.md](ADR-022-workbench-two-layer-correction.md) | 工作台動作/WI 兩層模型、WI 大綱與 row inspector | 🟢 accepted；**UI 部分由 ADR-038 取代**（2026-11-23，D4；資料模型保留） |
 | [ADR-023-dictionary-governance-unification.md](ADR-023-dictionary-governance-unification.md) | MOST 字典 active、clone-on-write、認證血緣與回放 | 🟢 accepted |
 | [ADR-024-master-data-vs-dictionary-boundary.md](ADR-024-master-data-vs-dictionary-boundary.md) | 主數據、MOST 字典與業務產出的責任分界 | 🟢 accepted |
 | [ADR-025-import-template-matching-p2.md](ADR-025-import-template-matching-p2.md) | 匯入預覽接 template match，IE 核對後以 active rule-set 重算 | 🟢 accepted |
@@ -32,7 +32,7 @@
 | [ADR-028-most-engine-boundary-validation-and-single-authority.md](ADR-028-most-engine-boundary-validation-and-single-authority.md) | most_engine 邊界驗證加嚴（三層權威、無 strict 旗標）與刪除重複計算實作 | 🟡 proposed |
 | [ADR-029-python-dependency-locking-and-audit-gate.md](ADR-029-python-dependency-locking-and-audit-gate.md) | Python 依賴鎖版（hash-pinned 雙鎖檔、pip 格式）＋阻斷式 pip-audit＋nightly 上游漂移偵測 | 🟡 proposed |
 | [ADR-030-in-process-parse-worker-topology.md](ADR-030-in-process-parse-worker-topology.md) | ai_parse_jobs 背景 worker 部署拓撲：in-process 預設開啟＝過渡；per-process 迴圈語意與 dedicated worker 觸發條件 | 🟡 proposed |
-| [ADR-031-spatial-layout-and-distance-acquisition.md](ADR-031-spatial-layout-and-distance-acquisition.md) | 空間佈局與距離取得（2026-08-17 修訂：空間單位＝**工位（站）**，原「佈局跟產線走」作廢）：`stations` 主數據＋站內局部座標擺放表（與詞彙身分分離）＋列級工位綁定 `wi_rows.station_id` → 產生帶出處的 `reach_cm`／`foot_cm`／`distance_cm` 建議；引擎仍是唯一換算權威 | 🟡 proposed |
+| [ADR-031-spatial-layout-and-distance-acquisition.md](ADR-031-spatial-layout-and-distance-acquisition.md) | 空間佈局與距離取得（2026-08-17 修訂：空間單位＝**工位（站）**，原「佈局跟產線走」作廢）：`stations` 主數據＋站內局部座標擺放表（與詞彙身分分離）＋列級工位綁定 `wi_rows.station_id` → 產生帶出處的 `reach_cm`／`foot_cm`／`distance_cm` 建議；引擎仍是唯一換算權威。**2026-11-23 ADR-038 追記**：工位模型在 MOST 不採用，改按 SKU 的標準工作站＋區域層、MOST 快照為計算正本；距離治理規則照常適用 | 🟡 proposed |
 | [ADR-032-bilingual-ui-and-data-label-layer.md](ADR-032-bilingual-ui-and-data-label-layer.md) | 雙語（中／英）UI 外殼與資料標籤層：機器翻譯先全灌＋人工後修、使用者個人 `locale`、API 回應語言中立、`i18n_review_state` 側表與待審清單；**修訂 ADR-023 規則 1 矩陣**（`_en` 於 published/active 可後補）；英文敘事為平行樣板系統；AI parser 英文化（第三層）明確不做 | ✅ accepted（2026-08-18） |
 | [ADR-033-llm-planner-scope-narrowing.md](ADR-033-llm-planner-scope-narrowing.md) | LLM planner 範圍收窄（`quantity`／距離不再由模型產出） | 🟢 accepted；**D2 由 ADR-037 部分修訂**（2026-11-14） |
 | [ADR-034-language-aware-error-contract.md](ADR-034-language-aware-error-contract.md) | 語言感知錯誤契約：RFC 9457 對齊、穩定 code＋結構化 detail、前端 catalog 組句 | 🟢 accepted |

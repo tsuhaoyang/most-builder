@@ -132,6 +132,8 @@ Suggest(ai_service) → Map(mapper) → Validate(link/compile/engine_gate/routin
     `ai_hand_hint_mismatch`（hand 分歧）、`ai_addon_truncated`（compile 一次只能掛一個 P addon，預覽只用第一個）、
     `ai_candidate_preview`（該 draft 是用候選算的預覽，`chosen` 仍空；經 draft.issues 進 routing reasons）。
   - **延後到 S4**：「code 與 linker 分歧」「AI 已展開成 N 個 motion」「數量待指定」三個 reason，與 D3 的 linker 比對同時做，第一版不新增。
+  - **審核落點（2026-11-23，ADR-038 追記）**：審核佇列的落點是 [ADR-038](ADR-038-unified-wi-workspace-and-two-stage-distance.md) 的工作區編輯區（D3）；不再提供「採用到編輯器」捷徑。
+  - **legacy slots 待決事項已關閉（2026-11-23，ADR-038 追記）**：實作計畫「路由開放前置條件」中 legacy slots 在首次與重播不一致的待決事項，由 ADR-038 D3 關閉（AI 結果不使用 legacy 相容欄位）。
   - **`ai_candidate_preview` 保留為 routing reason**（Howard 2026-11-22 裁決）：`CycleDraft` 沒有可放旗標的欄位，另加欄位會改到既有 rule 路徑的輸出，所以用 reason 表達「這份是預覽、不是決定」。
 - 人工修改在 plan 層操作，改完由 MOST 重跑 link → compile → engine_gate，**不重新呼叫 ai_service**。
   首輪只做最小編輯：`set_slot`、`set_distance`、`set_quantity`（後兩者寫 D3 的出處欄位）。
@@ -262,7 +264,7 @@ Suggest(ai_service) → Map(mapper) → Validate(link/compile/engine_gate/routin
   |---|---|
   | 並行（interactive／batch） | 2／1 |
   | 每人每分鐘請求 | 30 |
-  | 每日請求預算（超過即停並降級） | 2000 |
+  | 每日請求預算（超過即停並降級） | 2000（2026-11-23 改為 10,000，ADR-038 D7；程式預設值另以小 PR 更新） |
   | 單次匯入列數 | 沿用現行上限 1000 |
   | 每句 motion 數 | 20 |
   | 自由文字欄位長度 | 200 字 |

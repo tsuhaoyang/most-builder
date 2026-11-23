@@ -9,6 +9,7 @@
 
 ## 決策（相關 ADR）
 - [ADR-020](../decisions/ADR-020-simo-contribution-semantics.md) — SIMO 標記列貢獻 0（對齊 v3 認證版）
+- [ADR-038](../decisions/ADR-038-unified-wi-workspace-and-two-stage-distance.md) — 統一 WI 工作區（編輯區→寫入工時表，規劃中）
 
 ## 程式入口
 - 路徑：`src/ddm_v2/services/v2/worksheet_service.py`、`worksheet_revision.py`、`process_version_service.py`、`catalog_service.py`、`cases_service.py`、`src/ddm_v2/api/routes/v2/{worksheet,cases,catalog}.py`、`src/ddm_v2/models/v2/worksheet.py`、`src/ddm_v2/schemas/v2/{worksheet,cases}.py`、`src/frontend/src/features/{wi-workbench,workbench-v3,cases,catalog}/**`
