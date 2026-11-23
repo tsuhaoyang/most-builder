@@ -8,7 +8,9 @@
 
 ## 狀態
 
-🔄 執行中（ADR-037 於 2026-11-14 核可）。S0 文件回寫、S1 舊 LLM 路徑移除、S2 adapter／fake／契約測試已完成；S3 進行中：PR #8（guard）、#9（migration v2_0050）、#10（plan adapter）、#11（`wi_ai_service` 接線）已合併；路由 PR（`nl-draft` 接線）在分支 `feat/s3-nl-draft-ai-route`。**路由合併後外部路徑即可達，`DDM_AI_SERVICE_ENABLED` 預設關是唯一防線，見「路由開放前置條件」。**與 ADR-037 衝突時以 ADR-037 為準。
+🔄 執行中（ADR-037 於 2026-11-14 核可）。S0 文件回寫、S1 舊 LLM 路徑移除、S2 adapter／fake／契約測試已完成；S3 進行中：PR #8（guard）、#9（migration v2_0050）、#10（plan adapter）、#11（`wi_ai_service` 接線）、#12（路由）已合併；**路由合併後外部路徑即可達，`DDM_AI_SERVICE_ENABLED` 預設關是唯一防線，見「路由開放前置條件」。**與 ADR-037 衝突時以 ADR-037 為準。
+
+**2026-11-23，ADR-038 追記**：S3 前端、S4、S5 依 [ADR-038](../decisions/ADR-038-unified-wi-workspace-and-two-stage-distance.md) 重新規劃：單句與整份共用工作區編輯區，審核佇列即編輯區（D2、D3）。前端拆分待另行提出。
 
 > 來源：MOST 與 ai_service 兩邊的唯讀盤點、架構規劃，以及兩輪審查（架構、資安、code、nlp-compiler、wi-workbench、excel-import、auth-rbac）。
 > 本文件中「ADR-033 P3」指 ADR-033 遷移路徑的第 3 階段；本計畫自己的階段寫作 S0–S5，避免撞名。
@@ -24,9 +26,9 @@
 | S0 | ADR-037 核可；回寫 ADR-033／026／027／025／035、domains.yaml、rbac-spec、data-model spec | 否 | 否 |
 | S1 | 移除 MOST 內舊 LLM 路徑；確定性元件搬家 | 否（正式環境本來就關） | 否 |
 | S2 | `WiParserPort`、`AiServiceClient`、mapper、fake server、契約測試 | 否 | 否（只用 fake） |
-| S3 | ADR-033 P3；單句路徑接上（工時表編輯情境，開關後） | 是 | 是（已實作的 `structured-completion`） |
-| S4 | 審核佇列、逐項審核、最小編輯、經編輯器落盤到 worksheet | 是 | 否 |
-| S5 | Excel 批量（併入既有 parse-jobs） | 是 | 是（逐句；flow 落地後換 adapter） |
+| S3 | ADR-033 P3；單句路徑接上（工時表編輯情境，開關後）。**前端依 ADR-038 重新規劃（2026-11-23）** | 是 | 是（已實作的 `structured-completion`） |
+| S4 | 審核佇列、逐項審核、最小編輯、經編輯器落盤到 worksheet。**依 ADR-038 重新規劃（2026-11-23）：審核佇列即工作區編輯區** | 是 | 否 |
+| S5 | Excel 批量（併入既有 parse-jobs）。**依 ADR-038 重新規劃（2026-11-23）：與單句共用編輯區** | 是 | 是（逐句；flow 落地後換 adapter） |
 | 延後 | motion_module 落盤（含工作台 AI）、回饋通道、flow／job adapter、拆分／合併編輯 | — | 部分 |
 
 ## 2. S1：移除舊 LLM 路徑
@@ -123,6 +125,8 @@ DB 欄位不動；寫入端不再產生 `kind='llm'`，但**舊 `kind='llm'` 列
 
 ## 4. S3：ADR-033 P3＋單句路徑（開關後）
 
+> 2026-11-23，ADR-038 追記：S3 前端部分依 ADR-038 重新規劃（單句與整份共用工作區編輯區）。以下 PR-A／PR-B 為後端，不受影響。
+
 **拆分（2026-11-22）**：S3 分兩個 PR。
 - **PR-A（已落地）**：純函式與契約加法。`ai_integration/plan_adapter.py`（`MotionSuggestion` → `WorkInstructionPlan`＋候選；`chosen` 恆為 None，`preview_drafts` 用候選複本算預覽）、`CandidateSource` 加 `ai_service`、六個 routing reason、契約凍結表（`test_contract_enum_freeze`）。
 - **PR-B（已落地於本分支，2026-11-22；Howard 核可設計 Q1–Q6「照建議」）**：`wi_ai_service` 接線。實際行為：
@@ -145,21 +149,22 @@ DB 欄位不動；寫入端不再產生 `kind='llm'`，但**舊 `kind='llm'` 列
 
 下列各項是 PR-B 審查發現的，狀態以 2026-11-22 路由 PR 為準。路由 PR 合併後外部路徑已接上，**未完成項在打開 `DDM_AI_SERVICE_ENABLED` 前必須完成**。
 
-- **前端不得直接採用預覽 draft（❌ 未完成；打開開關的硬性前置）**：路由合併後開關預設關是唯一防線，前端修正與 `ai_error` 文案落地前，不得在任何環境開啟 `DDM_AI_SERVICE_ENABLED`。`AiDraftPanel.tsx`、`ActionModuleWorkspace.tsx` 的 adopt 只檢查 `draft.cycle` 是否存在，會把帶 `ai_candidate_preview` 的 cycle 載入編輯器（`source='ai'`）。需停用，或導向 S4 審核流程（ADR-037 D3 澄清）。
+- **前端不得直接採用預覽 draft（❌ 未完成；打開開關的硬性前置）**：**2026-11-23，ADR-038 追記：由 ADR-038 D3 的編輯區取代（尚未實作）。**以下為原文：路由合併後開關預設關是唯一防線，前端修正與 `ai_error` 文案落地前，不得在任何環境開啟 `DDM_AI_SERVICE_ENABLED`。`AiDraftPanel.tsx`、`ActionModuleWorkspace.tsx` 的 adopt 只檢查 `draft.cycle` 是否存在，會把帶 `ai_candidate_preview` 的 cycle 載入編輯器（`source='ai'`）。需停用，或導向 S4 審核流程（ADR-037 D3 澄清）。
 - **稽核與角色（D7）（✅ 已完成；稽核改為 v1 過渡）**：稽核依 ADR-037 D7 修訂（2026-11-22）不做外送事件，v1 以 `ai_parse_runs` 代替，失敗外送的 `request_id` 寫進 run 的 `error`（涵蓋 ai_service 回 failed 與已回應但 MOST 端降級）。角色檢查在路由（analyst 以上才傳 `external`），有 `tests/integration/test_nl_draft_ai_route.py` 鎖定。
 - **`worksheet_id` 存取權驗證（已裁決不做）**：Howard 2026-11-22：權限由未來的統一平台重新設計，MOST 不發明站點權限模型；`scope` 只用於隔離合併。重播回 `cached`／`cached_run_id` 的探測風險記於 [BL-ENG-19](../BACKLOG.md#bl-eng-19--worksheet-路由沒有站點層級的存取控制延後)。
 - **`known_hand`／`scope` 的來源（✅ 已完成）**：`hand` 由請求欄位帶入，`scope` 取 worksheet 所屬站點，否則 `'none'`。`known_hand` 是整句一個值，逐 motion 比對會對左右手不同的句子誤報（保守方向）。無手別來源時不標，手別提示存在 `motion_labels`。
 - **`ai_error` 文案與信封碼（❌ 未完成）**：補 zh-TW／en 對稱文案與 ADR-034 信封碼，與 `QUOTA_EXCEEDED` 一併登記。
-- **legacy slots 在 fresh 與重播不一致（未決定）**：fresh 是 rule parser 的建議值，重播是空的 `chosen`，前端相容欄位的顯示前後不同。路由開放前須決定：(i) 重播也用 rule parser 重算（會隨當下 synonym 漂移），或 (ii) fresh 也輸出空的 `chosen`（AI 路徑不預填；審查者傾向此案）。
+- **legacy slots 在 fresh 與重播不一致（✅ 已由 ADR-038 D3 關閉，2026-11-23：AI 結果不使用 legacy 相容欄位）**：原文保留：fresh 是 rule parser 的建議值，重播是空的 `chosen`，前端相容欄位的顯示前後不同。路由開放前須決定：(i) 重播也用 rule parser 重算（會隨當下 synonym 漂移），或 (ii) fresh 也輸出空的 `chosen`（AI 路徑不預填；審查者傾向此案）。
 - **快取 TTL（未決定，待 Howard）**：ai_service 在同一 bundle code 底下更新 model 或 prompt 時，快取不會 miss（`prompt_version`、`model_served` 要呼叫後才知道）。ADR-037 D8 沒有明文處理這個缺口。是否加 TTL，或把 `prompt_version` 變動視為 miss，尚未決定。
 
 ### 12 月開 AI 前的清單
 
 全部完成前，不得在任何環境開啟 `DDM_AI_SERVICE_ENABLED`。
 
-- [ ] 前端 adopt 停用，或導向 S4 審核流程。
+- [ ] 前端 adopt 停用，或導向 S4 審核流程（2026-11-23，ADR-038：由 D3 的編輯區取代，尚未實作）。
 - [ ] `ai_error`／`QUOTA_EXCEEDED` 的 zh-TW／en 文案與 ADR-034 信封碼。
-- [ ] legacy slots 二選一（重播重算，或 fresh 也輸出空 `chosen`）。
+- [x] legacy slots：已由 ADR-038 D3 關閉（2026-11-23；AI 結果不使用 legacy 相容欄位，原二選一不再需要）。
+- [x] 每日額度：已決定 10,000 次（Howard 2026-11-23，ADR-038 D7；原 ADR-037 D8 為 2000）。程式預設值另以小 PR 更新。
 - [ ] 快取 TTL 決定。
 - [ ] 進入條件：30 句延遲量測；`most` 金鑰最小權限已確認。
 - [ ] 部署：verify 模式（見 [lb-most-auth](../architecture/lb-most-auth.md)）；金鑰用檔案。
@@ -192,6 +197,8 @@ DB 欄位不動；寫入端不再產生 `kind='llm'`，但**舊 `kind='llm'` 列
 
 ## 5. S4：審核佇列、逐項審核、最小編輯
 
+> 2026-11-23，ADR-038 追記：依 ADR-038 重新規劃，審核佇列即工作區編輯區（D3），不另做獨立頁面。
+
 - 表（加法）：
   - `ai_review_items`：`worksheet_id`、`source_revision`、`source_input_hash`、site／owner、`committed_wi_row_ids`（陣列）與各列內容雜湊、狀態、AI 建議與引擎結果快照。
   - `ai_review_revisions`：plan 層編輯歷史。
@@ -215,6 +222,8 @@ DB 欄位不動；寫入端不再產生 `kind='llm'`，但**舊 `kind='llm'` 列
 - 稽核：accept、commit、重設。
 
 ## 6. S5：Excel 批量
+
+> 2026-11-23，ADR-038 追記：依 ADR-038 重新規劃，整份上傳的結果進同一個編輯區（D2）。
 
 - 併入既有 `/imports/{id}/parse-jobs` 與 job 表；明訂 `ImportRow.status` 與 `ai_review_items.status` 的對應。
 - 只送 `description`；超過 `MAX_PARSE_TEXT_CHARS` 不外送；超過單批上限自動切批；單次匯入列數上限；`lane=batch`。

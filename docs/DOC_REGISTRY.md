@@ -107,7 +107,7 @@ MOST→LB 匯出的語意以 [MOST_LB_DATA_CONTRACT_SPEC.md](lb-integration/MOST
 
 完整狀態與主題索引見 [decisions/README.md](decisions/README.md)。
 
-- **Accepted：** ADR-011～015、ADR-018～027、ADR-029、ADR-037（WI AI Parser 改接外部 ai_service，2026-11-14）。
+- **Accepted：** ADR-011～015、ADR-018～027、ADR-029、ADR-037（WI AI Parser 改接外部 ai_service，2026-11-14）、ADR-038（統一 WI 工作區與距離兩段式，2026-11-23）。
 - **Proposed：** ADR-016、ADR-017、ADR-028、ADR-030、ADR-031（ADR-031＝空間佈局與距離取得：座標→引擎距離輸入的建議層，待 User 核可；臂展閾值與產線實體粒度尚未定值）。
 - **ADR-032**＝雙語（中／英）UI 外殼與資料標籤層，**2026-08-18 accepted**（其 D4 修訂 ADR-023 規則 1 矩陣，須回寫 ADR-023；本表〈Roadmap〉的「全面中英雙語」草案隨之被取代）。實作分三階段（Phase A 前端框架＋locale／Phase B 標籤機器翻譯＋審核追蹤／Phase C 引擎敘事英文樣板），依序進行中。
 - ADR-026/027 已於 2026-08-10 accepted；實作仍依 roadmap 分批（L4 jobs 先於 worksheet revision／outbox）。

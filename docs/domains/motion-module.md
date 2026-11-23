@@ -11,6 +11,7 @@
 ## 決策（相關 ADR）
 - [ADR-025](../decisions/ADR-025-import-template-matching-p2.md) — 匯入範本比對 P2
 - [ADR-017](../decisions/ADR-017-motion-modules-library.md) — 動作範本庫（proposed）
+- [ADR-038](../decisions/ADR-038-unified-wi-workspace-and-two-stage-distance.md) — 統一 WI 工作區；工作台與 WI 專案頁畫面移除（D4，規劃中）
 
 ## 程式入口
 - 路徑：`src/ddm_v2/services/v2/{motion_module_service,template_matching,wi_set_service,wi_context_service}.py`、`src/ddm_v2/api/routes/v2/{motion_module,motion_template,wi_set,wi_context,vocab}.py`、`src/ddm_v2/models/v2/{motion_module,motion_template,wi_set,wi_context,vocab}.py`、`src/ddm_v2/schemas/v2/{motion_module,motion_template,wi_set,wi_context,vocab}.py`、`src/frontend/src/features/{wi-project,master-data}/**`

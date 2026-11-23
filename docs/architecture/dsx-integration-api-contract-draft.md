@@ -1,6 +1,14 @@
 # DSX 整合 API 契約草案（MVP，v2）
 
 **狀態：** ⏳ 草案——先建 MVP、邊做邊調（User 2026-08-24 裁決，不卡在 ADR-031 正式核可才動工）
+**2026-11-23，ADR-038 追記：** [ADR-038](../decisions/ADR-038-unified-wi-workspace-and-two-stage-distance.md) D5 調整本文方向，下列各項優先於本文原述（原文保留備查）：
+- 距離計算方向改為 **MOST 拉 DSX `GET /api/v1/placements`、存按 SKU 的快照，距離由 MOST 算**（D5.4）。
+- MOST 代理 DSX `GET /api/v1/objects`，供區域綁定下拉（D5.3）。
+- `work_vocab_items.external_code` 綁定與 `__to` 後綴由**區域綁定**取代（D5.3）。
+- v1 只用 DSX 既有 API，**DSX 不需改程式**。
+- 現有 `POST /api/v2/dsx/a3-distance` 在新流程落地前繼續可用（D5.4、D7）。
+- **需通知 DSX 方。**
+
 **日期：** 2026-08-24（v2，取代同日 v1——v1 假設「DSX push 給 MOST」的方向錯誤，見 §0.1）
 **關聯：**
 [ADR-031](../decisions/ADR-031-spatial-layout-and-distance-acquisition.md)（proposed，距離治理規則 D4／I1／I5／I4 本文直接沿用）、
