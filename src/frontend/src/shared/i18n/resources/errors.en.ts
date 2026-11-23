@@ -71,6 +71,8 @@ const errorsEn: ErrorCatalog = {
   LEVEL_POLICY_MISMATCH: 'Level policy mismatch',
   LEVEL_VALIDATION_FAILED: 'Level System validation failed',
   LEVEL_VALIDATION_REQUIRED: 'Level System validation is required first',
+  // ── Distance completeness check (ADR-038 D6) ────────────────────────────
+  DISTANCE_STATUS_MISSING: 'Some rows have no distance status yet, so the worksheet cannot be approved',
   // ── WI context / worksheet ──────────────────────────────────────────────
   WI_CONTEXT_INVALID: 'The WI context is invalid',
   SIMO_PAIR_INVALID: 'The SIMO pairing is invalid',

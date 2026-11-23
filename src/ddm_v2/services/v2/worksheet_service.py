@@ -14,9 +14,11 @@ from dataclasses import dataclass
 from datetime import datetime, timezone
 from typing import Any
 
-from sqlalchemy import delete, select
+from sqlalchemy import delete, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from ddm_v2.errors.registry import ErrorCode
+from ddm_v2.exceptions import ConflictError
 from ddm_v2.models.v2.policy import LevelPolicyVersion, ModelingPolicyVersion
 from ddm_v2.models.v2.rule_set import RuleSet
 from ddm_v2.models.v2.vocab import WorkVocabItem
@@ -27,7 +29,7 @@ from ddm_v2.most_engine.narrative_en import build_narrative_en
 from ddm_v2.most_engine.providers import build_label_map, load_options_from_db
 from ddm_v2.most_engine.rule_set_data import TMU_TO_SEC
 from ddm_v2.schemas.v2.most import cycle_in_to_engine, resolve_cycle_rule_set
-from ddm_v2.schemas.v2.worksheet import WorksheetSaveIn
+from ddm_v2.schemas.v2.worksheet import WiRowSaveIn, WorksheetSaveIn
 from ddm_v2.services.v2.audit_service import log_audit
 from ddm_v2.services.v2.level_validation_service import assert_publishable, validate_and_persist
 from ddm_v2.services.v2.outbox_service import enqueue_worksheet_saved
@@ -215,6 +217,7 @@ async def save_worksheet(
         base_revision=payload.base_revision,
         edited_by=edited_by,
     )
+    await assert_version_still_draft(session, ws.process_version_id)
 
     # 工序表級寬放%（data-model §2.5）：payload 有帶才更新（加法相容）；帶 null＝清除。
     if "allowance_percent" in payload.model_fields_set:
@@ -232,7 +235,7 @@ async def save_worksheet(
             await session.execute(
                 select(
                     WiRow.id, WiRow.provenance, WiRow.source_import_id,
-                    WiRow.source_module_id, WiRow.source_module_version,
+                    WiRow.source_module_id, WiRow.source_module_version, WiRow.distance_status,
                 ).where(WiRow.worksheet_id == worksheet_id)
             )
         ).all()
@@ -248,6 +251,7 @@ async def save_worksheet(
         computed=computed,
         rs_row=rs_row,
         origin_of=lambda r: _origin_from_prior(prior.get(r.id)),
+        distance_status_of=lambda r: _distance_status_for_save(r, prior.get(r.id)),
     )
     await session.flush()
     return await finalize_content_change(session, ws, edited_by=edited_by)
@@ -274,6 +278,16 @@ def _origin_from_prior(prior: Any) -> RowOrigin:
     )
 
 
+def _distance_status_for_save(row_in: WiRowSaveIn, prior: Any) -> str | None:
+    """整份存檔時的距離狀態（ADR-038 D6）：有帶就用帶的（含 null＝清除）；沒帶就保留同 id 既有列的值。
+
+    現有前端還不認得這個欄位，整份存檔時不能把人標過的狀態洗掉。
+    """
+    if "distance_status" in row_in.model_fields_set:
+        return row_in.distance_status
+    return prior.distance_status if prior is not None else None
+
+
 def persist_computed_rows(
     session: AsyncSession,
     *,
@@ -281,6 +295,7 @@ def persist_computed_rows(
     computed: list[ComputedRow],
     rs_row: RuleSet,
     origin_of: Callable[[Any], RowOrigin],
+    distance_status_of: Callable[[Any], str | None] = lambda r: r.distance_status,
 ) -> None:
     """把計算好的列寫成 wi_row＋most_cycle＋level_entry（只 add，不 flush）。
 
@@ -299,6 +314,7 @@ def persist_computed_rows(
             to_vocab_id=r.to_vocab_id, tool_vocab_id=r.tool_vocab_id,
             frequency=r.frequency, simo_group_id=cr.simo_group_id,
             wi_group=r.wi_group, provenance=origin.provenance,
+            distance_status=distance_status_of(r),
             source_import_id=origin.source_import_id,
             source_module_id=origin.source_module_id,
             source_module_version=origin.source_module_version,
@@ -375,6 +391,7 @@ async def read_worksheet(session: AsyncSession, worksheet_id: uuid.UUID) -> dict
             "frequency": float(wr.frequency),
             "simo_group_id": wr.simo_group_id,
             "wi_group": wr.wi_group,
+            "distance_status": wr.distance_status,  # ADR-038 D6
             # F-03b §2 provenance（軟參考，非 FK）
             "source_module_id": str(wr.source_module_id) if wr.source_module_id else None,
             "source_module_version": wr.source_module_version,
@@ -422,6 +439,7 @@ async def read_worksheet(session: AsyncSession, worksheet_id: uuid.UUID) -> dict
             "level_policy": level_policy,
             "revision_no": int(ws.revision_no or 1),
             "content_hash": ws.content_hash,
+            "distance_check_required": bool(ws.distance_check_required),
             "last_edited_by": ws.last_edited_by,
             "last_edited_at": ws.last_edited_at.isoformat() if ws.last_edited_at else None}
 
@@ -442,15 +460,72 @@ async def _version_info(session: AsyncSession, worksheet_id: uuid.UUID) -> dict[
             "sku_id": str(pv.sku_id), "versions": siblings}
 
 
+MAX_MISSING_ROWS_REPORTED = 200
+
+
+async def _reload_process_version(session: AsyncSession, pv_id: uuid.UUID) -> ProcessVersion:
+    return (
+        await session.execute(
+            select(ProcessVersion).where(ProcessVersion.id == pv_id).execution_options(populate_existing=True)
+        )
+    ).scalar_one()
+
+
+async def assert_version_still_draft(session: AsyncSession, pv_id: uuid.UUID) -> None:
+    """拿到工時表列鎖之後再確認一次版本仍是 draft。
+
+    進入時的檢查在鎖之前；若剛好有核准在進行，鎖釋放時版本可能已是 approved，不能再寫進去。
+    """
+    pv = await _reload_process_version(session, pv_id)
+    if pv.status != "draft":
+        raise NotEditable(f"版本狀態為 {pv.status}，已凍結不可存（請另存新檔）")
+
+
+async def assert_distance_complete(session: AsyncSession, ws: MostWorksheet) -> None:
+    """距離完成檢查（ADR-038 D6）：開啟檢查的工時表，每一列都要有距離狀態才能核准。
+
+    以明確狀態判斷，不看距離數值（A0 是合法值）。未開啟的工時表（既有資料）不檢查。
+    """
+    if not ws.distance_check_required:
+        return
+    cond = (WiRow.worksheet_id == ws.id, WiRow.distance_status.is_(None))
+    missing_count = (await session.execute(select(func.count()).select_from(WiRow).where(*cond))).scalar_one()
+    if missing_count:
+        # 只列前 MAX_MISSING_ROWS_REPORTED 列避免超大回應；總數看 missing_count
+        rows = (
+            await session.execute(
+                select(WiRow.id, WiRow.seq_no).where(*cond).order_by(WiRow.seq_no).limit(MAX_MISSING_ROWS_REPORTED)
+            )
+        ).all()
+        raise ConflictError(
+            f"有 {missing_count} 列尚未標示距離狀態，無法核准",
+            detail={
+                "code": ErrorCode.DISTANCE_STATUS_MISSING,
+                "missing_count": missing_count,
+                "rows": [{"wi_row_id": str(r.id), "seq_no": r.seq_no} for r in rows],
+            },
+        )
+
+
 async def publish_worksheet(session: AsyncSession, worksheet_id: uuid.UUID, actor: str | None = None) -> dict[str, Any]:
-    ws = await session.get(MostWorksheet, worksheet_id)
+    # 先鎖工時表列再做任何檢查（ADR-038 W2）：存檔與編輯區寫入都經 bump_worksheet_revision 鎖同一列，
+    # 鎖住後核准與它們依序執行，下面的檢查看到的是已提交的最新列，不會被並行存檔繞過。
+    ws = (
+        await session.execute(
+            select(MostWorksheet)
+            .where(MostWorksheet.id == worksheet_id)
+            .with_for_update()
+            .execution_options(populate_existing=True)
+        )
+    ).scalar_one_or_none()
     if ws is None:
         raise WorksheetNotFound(str(worksheet_id))
-    pv = await session.get(ProcessVersion, ws.process_version_id)
+    pv = await _reload_process_version(session, ws.process_version_id)
     if pv.status != "draft":
         raise NotEditable(f"版本狀態為 {pv.status}，無法核准")
     # R2b §9.5：publish 前查現有 valid run；不得在此新建證據
     await assert_publishable(session, worksheet_id)
+    await assert_distance_complete(session, ws)
     pv.status = "approved"
     pv.published_at = datetime.now(timezone.utc)
     pv.published_by = actor
@@ -486,6 +561,7 @@ async def clone_worksheet(session: AsyncSession, worksheet_id: uuid.UUID, actor:
                            level_policy_version_id=ws.level_policy_version_id,
                            allowance_percent=ws.allowance_percent, status="draft",
                            revision_no=1, content_hash=None,
+                           distance_check_required=ws.distance_check_required,
                            last_edited_by=actor, last_edited_at=datetime.now(timezone.utc))
     session.add(new_pv)
     session.add(new_ws)
@@ -499,7 +575,7 @@ async def clone_worksheet(session: AsyncSession, worksheet_id: uuid.UUID, actor:
                           object_vocab_id=wr.object_vocab_id, from_vocab_id=wr.from_vocab_id,
                           to_vocab_id=wr.to_vocab_id, tool_vocab_id=wr.tool_vocab_id,
                           frequency=wr.frequency, simo_group_id=wr.simo_group_id,
-                          wi_group=wr.wi_group,
+                          wi_group=wr.wi_group, distance_status=wr.distance_status,
                           provenance=wr.provenance, source_row_id=wr.id))
         cyc = (await session.execute(select(MostCycle).where(MostCycle.wi_row_id == wr.id))).scalar_one_or_none()
         if cyc:

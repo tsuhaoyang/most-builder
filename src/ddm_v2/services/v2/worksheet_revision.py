@@ -73,7 +73,11 @@ async def _resync_worksheet(
 
 
 def content_hash_from_read(payload: dict[str, Any]) -> str:
-    """自 read_worksheet 形狀（或等價）計算 content_hash。"""
+    """自 read_worksheet 形狀（或等價）計算 content_hash。
+
+    刻意不含 `distance_status`（ADR-038 D6）：它是審核標記，不是 LB 消費的內容；納入會讓既有工時表下次存檔時雜湊無故改變。
+    下游不得以「雜湊相同」判斷沒有變更而略過事件（純改距離狀態時 revision 會變、雜湊不變）。
+    """
     slim = {
         "allowance_percent": payload.get("allowance_percent"),
         "rows": [

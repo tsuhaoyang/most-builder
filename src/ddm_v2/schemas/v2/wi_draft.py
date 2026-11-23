@@ -10,6 +10,7 @@ from typing import Any, Literal
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
 from ddm_v2.schemas.v2.most import CycleIn
+from ddm_v2.schemas.v2.worksheet import DistanceStatus
 
 DraftSource = Literal["manual", "ai_service", "rule_based", "imported"]
 DraftStatus = Literal["pending", "confirmed", "committed"]
@@ -53,6 +54,7 @@ class WiDraftContent(BaseModel):
     frequency: float = Field(default=1, gt=0, le=10_000)
     wi_group: str | None = Field(default=None, max_length=200)
     narrative: str | None = Field(default=None, max_length=2000)
+    distance_status: DistanceStatus | None = None  # ADR-038 D6；寫入時帶到工時表
     cycle: CycleIn
 
     @field_validator("wi_group", mode="before")

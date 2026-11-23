@@ -188,6 +188,8 @@ domains:
       - "src/frontend/e2e/smoke.spec.ts"
       # tests：編輯區（W1）整合測試
       - "tests/integration/test_wi_drafts.py"
+      # tests：每列距離狀態與完成檢查（W2）
+      - "tests/integration/test_distance_status.py"
     docs:
       - docs/architecture/data-model-and-storage-spec.md
       - docs/decisions/ADR-020-simo-contribution-semantics.md
@@ -203,6 +205,8 @@ domains:
       - 新產生內容先進編輯區、經「寫入工時表」才落盤（ADR-038）。W1 已落地後端（`wi_draft_rows` 資料表與 6 個 API，2026-11-23）；前端編輯區仍規劃中
       - 整份存檔（save_worksheet）不得抹除既有列（沿用 id）的 provenance／source_import_id／source_module_*；新 id 才是 manual（ADR-037 D5，2026-11-23 W1）
       - 編輯區草稿不得出現在工時表讀取、匯出、LB 投影或核准流程（ADR-038 I2）
+      - 距離完成檢查以每列明確的 `distance_status` 判斷，不看距離數值（A0 是合法值）；`distance_check_required` 只在 `drafts/commit` 打開、之後不關，未開啟的既有工時表不檢查（ADR-038 D6，2026-11-23 W2）。`distance_status` 不入 content_hash
+      - 整份存檔（save_worksheet）列沒帶 `distance_status`＝保留同 id 既有值，帶 null 才清除；核准先鎖工時表列再依序做 level gate、距離檢查，存檔與編輯區寫入拿到列鎖後須再確認版本仍是 draft（ADR-038 D6，2026-11-23 W2）
       - 外部 AI 草稿（source='ai_service'）在 engine_gate 寫入檢查落地（W3）前不得寫入工時表（commit 須 Fail-Fast，ADR-037 D3／D5）
 
   - id: motion-module

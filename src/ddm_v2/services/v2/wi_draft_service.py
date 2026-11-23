@@ -38,6 +38,7 @@ from ddm_v2.services.v2.worksheet_service import (
     RowSequenceError,
     RuleSetNotFound,
     WorksheetNotFound,
+    assert_version_still_draft,
     compute_rows_for_save,
     finalize_content_change,
     persist_computed_rows,
@@ -303,6 +304,8 @@ async def commit_drafts(
     await bump_worksheet_revision(
         session, worksheet_id=worksheet_id, base_revision=base_revision, edited_by=actor
     )
+    # 拿到列鎖後再確認版本仍是 draft（並行核准時，進入時的檢查可能已過期）
+    await assert_version_still_draft(session, ws.process_version_id)
     drafts = list(
         (
             await session.execute(
@@ -359,6 +362,7 @@ async def commit_drafts(
                 frequency=content.frequency,
                 narrative=content.narrative,
                 wi_group=content.wi_group,
+                distance_status=content.distance_status,
                 cycle=cycle,
                 level=LevelFieldsIn(),
             )
@@ -381,6 +385,8 @@ async def commit_drafts(
         rs_row=ctx.rs_row,
         origin_of=lambda r: origin_by_row[r.id],
     )
+    # ADR-038 D6：經新工作區寫入過的工時表開啟距離完成檢查，之後不自動關閉
+    ws.distance_check_required = True
     now = _now()
     for d in drafts:
         d.status = "committed"

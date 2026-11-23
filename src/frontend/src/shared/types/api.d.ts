@@ -3712,6 +3712,8 @@ export interface components {
             wi_group?: string | null;
             /** Narrative */
             narrative?: string | null;
+            /** Distance Status */
+            distance_status?: ("confirmed" | "manual" | "not_applicable") | null;
             cycle: components["schemas"]["CycleIn"];
         };
         /**
@@ -3853,6 +3855,8 @@ export interface components {
             narrative?: string | null;
             /** Wi Group */
             wi_group?: string | null;
+            /** Distance Status */
+            distance_status?: ("confirmed" | "manual" | "not_applicable") | null;
             cycle: components["schemas"]["CycleIn"];
             level?: components["schemas"]["LevelFieldsIn"];
         };
@@ -4106,6 +4110,11 @@ export interface components {
             revision_no: number;
             /** Content Hash */
             content_hash?: string | null;
+            /**
+             * Distance Check Required
+             * @default false
+             */
+            distance_check_required: boolean;
             /** Last Edited By */
             last_edited_by?: string | null;
             /** Last Edited At */

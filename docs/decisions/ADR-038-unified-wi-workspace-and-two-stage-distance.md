@@ -182,6 +182,21 @@ ADR-031 §1.1 量過：正式 gold 的 35 條 cycle，A 格全是 `A0`；距離�
 - 草稿可以存檔；只擋核准與發布。
 - 理由：距離為 0 會讓 TMU 偏低，卻被當成正式工時（ADR-031 I5：不得靜默低估）。
 
+> **2026-11-23，W2 實作狀態（Howard 授權：有建議就照建議做）**：D6 的後端已在 W2 實作（migration `v2_0052`）。
+>
+> - **欄位**：`wi_rows.distance_status`（可空；`confirmed`｜`manual`｜`not_applicable`；CHECK `ck_wi_rows_distance_status`）、`most_worksheets.distance_check_required`（boolean，預設 false）。既有列與既有工時表維持空與 false，不受檢查。downgrade 在有任何列狀態或任何工時表已開啟檢查時拒絕。
+> - **開關**：只在 `POST /worksheets/{id}/drafts/commit` 打開，之後不關。clone 複製開關與每列狀態。
+> - **整份存檔（PUT）**：列沒帶 `distance_status` 時保留同 id 既有值；帶 `null` 才清除。編輯區草稿 content 可帶 `distance_status`，寫入工時表時一併帶入。
+> - **核准（`POST /worksheets/{id}/publish`）**：先鎖工時表列（`FOR UPDATE`），再做 level gate，再做距離檢查。開關為 true 且有列的狀態為空時回 `409 DISTANCE_STATUS_MISSING`，detail 含 `missing_count` 與 `rows[{wi_row_id, seq_no}]`（依 `seq_no`，最多 200 列）。存檔與編輯區寫入在拿到列鎖後再確認版本仍是 draft，修掉並行核准時寫進已核准版本的競態。
+> - **範圍**：已開啟檢查的工時表，經其他路徑（匯入 submit、模組實體化）建立的列沒有狀態，一樣擋核准。檢查只驗證「有沒有標示」，不驗證標示是否正確，核准者仍需判斷。
+> - **`content_hash`**：`distance_status` 刻意不入 `content_hash`。下游不得以雜湊相同當作距離狀態沒變。
+>
+> **W2 審查後的決定（2026-11-23，依審查建議，Howard 授權）**：
+>
+> - **A 開關何時打開**：目前由 `drafts/commit` 打開。W4 工作區前端上線時，在工作區建立的新工時表一開始就設 true。匯入與模組實體化不打開；匯入改走編輯區後自然涵蓋。
+> - **B 改動作內容是否退回已確認狀態**：暫不退回。留待 W7（自動算距離）一併決定。
+> - **C 核准檢查順序**：先 level 再距離，維持。
+
 ### D7 12 月範圍
 
 > **2026-11-23 修訂，Howard 裁決**：自動算距離（區域設定、綁 DSX 物件、DSX 座標同步、物件歸區、依區域座標算距離並預填建議）**提前到 12 月底上線**。下文「12 月」一律指 12 月底。原表保留如下，**由其後的「12 月底範圍」表取代**。
