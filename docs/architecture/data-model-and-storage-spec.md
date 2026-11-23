@@ -159,6 +159,7 @@ erDiagram
 | `study_date` | date | DATE 欄 |
 | `default_rule_set_version_id` | UUID FK→rule_sets | 此單預設採用的規則版本 |
 | `status` | text | 與 version 同步或獨立（草稿/完成） |
+| `distance_check_required` | boolean NOT NULL 預設 false | 距離完成檢查開關（[ADR-038](../decisions/ADR-038-unified-wi-workspace-and-two-stage-distance.md) D6，migration `v2_0052`）。為 true 時，核准要求每一列都有 `distance_status`，否則 `409 DISTANCE_STATUS_MISSING`。只在 `POST /worksheets/{id}/drafts/commit` 打開，之後不關；clone 複製此值；既有工時表為 false、不檢查 |
 
 ### 2.6 `wi_rows`（方法步 / 工序列）— **穩定 id 是關鍵**
 | 欄位 | 型別 | 說明 |
@@ -175,6 +176,7 @@ erDiagram
 | `tool_vocab_id` | UUID FK→work_vocab_items | 器具/治具（選填） |
 | `frequency` | numeric | 次數（≥1，允許分數） |
 | `simo_group_id` | text | 同組＝雙手同時（SIMO；指派 UX 待 C5） |
+| `distance_status` | text NULL | 距離狀態（ADR-038 D6，CHECK `ck_wi_rows_distance_status`）：`confirmed`（建議或 DSX 結果經人確認）｜`manual`（人工填）｜`not_applicable`（此動作無距離）；空＝未標示。檢查只看狀態、不看數值（A0 是合法值），也不驗證標示是否正確。整份存檔沒帶此欄＝保留同 id 既有值，帶 null＝清除；clone 複製。**不入 `content_hash`**，下游不得以雜湊相同當作沒變 |
 | `provenance` | text | `manual` / `bom_draft`（Q3：BOM 產生的草稿標記）；**規劃中（尚未實作）**：加 `ai_external`（外部 ai_service 建議經人工採用的列），由伺服器依 `review_item_id` 設定、前端不得傳值；採用路徑見 [ADR-037](../decisions/ADR-037-ai-service-integration.md) D5 |
 | `created_at`/`updated_at` | timestamptz | |
 

@@ -412,6 +412,10 @@ worksheet_revision, level_policy_version_id, input_hash)` 的 latest valid run�
 回 `409 LEVEL_VALIDATION_REQUIRED`；目前 revision 已有 invalid run 回 `422 LEVEL_VALIDATION_FAILED`
 並附 issues；policy mismatch 回 `409 LEVEL_POLICY_MISMATCH`。不得重用舊 revision 的 valid run。
 
+Level gate 通過後，若該 worksheet 的 `distance_check_required` 為 true 且有列的 `distance_status` 為空，回
+`409 DISTANCE_STATUS_MISSING`（detail 含 `missing_count` 與依 `seq_no` 的 `rows[]`，最多 200；
+[ADR-038](../decisions/ADR-038-unified-wi-workspace-and-two-stage-distance.md) D6）。
+
 ---
 
 ## 10. AI Deployment Bundle 與 Operational Store
