@@ -65,6 +65,8 @@ ADR-031 §1.1 量過：正式 gold 的 35 條 cycle，A 格全是 `A0`；距離�
 - 每個草稿列帶兩個標示：
   - **來源**：`manual`（手動）｜`ai_service`（外部 AI）｜`rule_based`（規則解析，含 AI 降級）｜匯入來源（Excel 列號）。
   - **狀態**：`pending`（待確認）｜`missing_distance`（缺距離）｜`confirmed`（已確認）。刪除的列從編輯區移除。
+  - > **2026-11-23，W1，Howard 核可**：W1 實作的草稿狀態為 `pending`｜`confirmed`｜`committed`。`committed`＝已寫入工時表的草稿，保留為紀錄，不能修改或刪除（記 `committed_wi_row_id`）。`missing_distance` **不是草稿狀態**，屬 W2 的距離狀態，不存在 `wi_draft_rows.status`。
+  - > **2026-11-23，W1，Howard 核可**：`rule_based` 草稿寫入後，`wi_rows.provenance` 為 `manual`（與人工列同等看待）；出處以 `wi_draft_rows.source` 為準。`ai_service` 寫入後標 `ai_external`，`imported` 標 `imported`。
 - **審核單位是 motion**（工時表的一列），畫面上依 WI 語句分組（沿用 `wi_rows.wi_group`），並提供「整組確認」（Howard 2026-11-23 同意）。
   一句 WI 通常拆成多個 motion，所以 Excel 的一列進到工時表會變成好幾列。
 - 情境 2 就是只有一組的情境 3：**單句與整份走同一套審核畫面**（ADR-037 D4「單一管線」）。
@@ -75,6 +77,12 @@ ADR-031 §1.1 量過：正式 gold 的 35 條 cycle，A 格全是 `A0`；距離�
 - 「確認」只改編輯區的狀態，不寫工時表。最後按「寫入工時表」，把已確認的列一次寫入，走**既有儲存路徑**並套用 revision CAS（ADR-037 D5、ADR-027 §2）。
 - 編輯區要能保存（中途關掉頁面，已確認的標記與修改不遺失）。
 - 「刪除」只刪編輯區的草稿列，不影響工時表。
+- > **2026-11-23，W1，Howard 核可（W1 追記）**：
+  > - **規則版本**：寫入時一律以工時表的 `default_rule_set`（無則 active）重算，草稿 cycle 內的 `rule_set_code` 被覆蓋。已知風險：既有列若是別的規則版本，之後整份存檔會以第一列的規則版本重算全部列（既有行為，追加路徑讓它更容易發生）。
+  > - **stale 條件**：W1 只做兩個：版本非草稿不能寫入；revision 版本鎖不符回 409。其餘 stale 條件與內容雜湊在 W3。版本鎖先於取草稿檢查：兩人同時按寫入，第二個得 409（不是「沒有可寫入的列」）。
+  > - **上限**：每份工時表編輯區最多 5000 列（含已寫入的紀錄）；每列內容上限 16KB；拒絕 NaN／±Inf。
+  > - **刪除稽核**：刪除尚未寫入的草稿不寫稽核表，只留伺服器 log（誰刪了誰建的哪一列）；寫入工時表經 worksheet revision 留 actor。
+  > - **共用編輯區**：任一 analyst 可改、刪、確認、寫入別人建的草稿；`created_by`／`updated_by`／`confirmed_by`／`committed_by` 各自記錄。不做 ownership 與站點限制（BL-ENG-19）。
 - **本 ADR 定義 ADR-037 D4 審核的落點**：ADR-037 規劃的「審核佇列」就是工作區的編輯區，不另做獨立頁面。
 - AI 草稿的處理（滿足 ADR-037 D3 澄清「預覽不是可接受依據」）：
   - AI 的格位代碼在編輯區是**候選**（`chosen` 為空），畫面上可直接看到預填的值，但列狀態為 `pending`。

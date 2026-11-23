@@ -172,6 +172,11 @@ domains:
       - "src/ddm_v2/models/v2/worksheet.py"
       - "src/ddm_v2/schemas/v2/worksheet.py"
       - "src/ddm_v2/schemas/v2/cases.py"
+      # ADR-038 工作區編輯區（W1）
+      - "src/ddm_v2/services/v2/wi_draft_service.py"
+      - "src/ddm_v2/api/routes/v2/wi_draft.py"
+      - "src/ddm_v2/models/v2/wi_draft.py"
+      - "src/ddm_v2/schemas/v2/wi_draft.py"
       - "src/frontend/src/features/wi-workbench/**"
       - "src/frontend/src/features/workbench-v3/**"
       - "src/frontend/src/features/cases/**"
@@ -181,6 +186,8 @@ domains:
       - "src/frontend/e2e/support/workbenchNlMocks.ts"
       - "src/frontend/e2e/wi-set-add.spec.ts"
       - "src/frontend/e2e/smoke.spec.ts"
+      # tests：編輯區（W1）整合測試
+      - "tests/integration/test_wi_drafts.py"
     docs:
       - docs/architecture/data-model-and-storage-spec.md
       - docs/decisions/ADR-020-simo-contribution-semantics.md
@@ -193,7 +200,10 @@ domains:
       - 前端不算 TMU；儲存 body 由 buildSaveBody 產出，derive() 的 null（非鏈首層級）須忠實保留
       - 【規劃中，ADR-037 實作後生效】AI 來源列的 provenance 由伺服器依 review_item_id 設定，前端不得傳值；mapper 一律輸出 simo_group_id／simo_with_row_id 為 null（ADR-037 D3、ADR-020）
       - 【規劃中，ADR-037 實作後生效】AI 採用落盤只走既有 save_worksheet，帶 base_revision，不得另開寫 wi_rows／most_cycles 的路徑（ADR-037 D5）
-      - 新產生內容先進編輯區、經「寫入工時表」才落盤【規劃中，ADR-038】
+      - 新產生內容先進編輯區、經「寫入工時表」才落盤（ADR-038）。W1 已落地後端（`wi_draft_rows` 資料表與 6 個 API，2026-11-23）；前端編輯區仍規劃中
+      - 整份存檔（save_worksheet）不得抹除既有列（沿用 id）的 provenance／source_import_id／source_module_*；新 id 才是 manual（ADR-037 D5，2026-11-23 W1）
+      - 編輯區草稿不得出現在工時表讀取、匯出、LB 投影或核准流程（ADR-038 I2）
+      - 外部 AI 草稿（source='ai_service'）在 engine_gate 寫入檢查落地（W3）前不得寫入工時表（commit 須 Fail-Fast，ADR-037 D3／D5）
 
   - id: motion-module
     title: 動作範本庫與 WI 大綱（motion_module／template matching）
@@ -420,6 +430,8 @@ domains:
       - "tests/unit/test_outbox.py"
       # tests：nl-draft 依角色分流（viewer 200＋rule_based）與 GET /wi-ai/status 的角色斷言
       - "tests/integration/test_nl_draft_ai_route.py"
+      # tests：編輯區 6 個端點的角色斷言（viewer 含 GET 都 403）
+      - "tests/integration/test_wi_drafts.py"
     docs:
       - docs/decisions/ADR-019-worksheet-access-control.md
       - docs/architecture/rbac-spec.md
@@ -429,4 +441,5 @@ domains:
     invariants:
       - 角色階層 viewer < analyst < approver < admin（程式 auth/deps.py ROLE_ORDER；口語 IE＝analyst、manager＝approver）；gateway 模式信任入站 X-Username，只綁 loopback（ADR-019、ADR-023 D7b）
       - shared/api/client.ts 是唯一 API 入口；shared/types/api.d.ts 由 OpenAPI 產生、不可手改
+      - 編輯區全端點 analyst+，viewer 含 GET 都 403（ADR-038；rbac-spec 讀取例外）
       - 角色判斷只用 `CurrentUser.has` 或 `require_role`，不得另立角色表或比對角色字串；依角色分流（而非拒絕）的端點須在 rbac-spec 註明（例：`POST /worksheets/nl-draft`，viewer 得 200＋rule_based）
