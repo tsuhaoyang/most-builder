@@ -12,6 +12,8 @@
 
 **2026-11-23，ADR-038 追記**：S3 前端、S4、S5 依 [ADR-038](../decisions/ADR-038-unified-wi-workspace-and-two-stage-distance.md) 重新規劃：單句與整份共用工作區編輯區，審核佇列即編輯區（D2、D3）。前端拆分待另行提出。
 
+**2026-11-23 修訂，Howard 裁決（ADR-038 D7）**：12 月底範圍含自動算距離（區域設定、DSX 座標同步、物件歸區、依區域座標算距離）。PR 順序：W2、W3，然後 W7（區域與距離後端）與 W4（工作區畫面）平行，再 W5（整份上傳整合）、W8（距離畫面），W6（移除舊畫面）最後。
+
 **2026-11-23，W1，Howard 核可（W1 進度）**：W1（編輯區資料表 `wi_draft_rows` 與 6 個 API）已在 `feat/w1-wi-draft-rows` 分支實作。**W3 待辦**：外部 AI 草稿寫入前的 engine_gate 檢查（目前寫入時 Fail-Fast 拒絕 `ai_service` 草稿）、其餘 stale 條件與列內容雜湊（W1 只做「非草稿版本」與「revision 不符 409」）。
 
 > 來源：MOST 與 ai_service 兩邊的唯讀盤點、架構規劃，以及兩輪審查（架構、資安、code、nlp-compiler、wi-workbench、excel-import、auth-rbac）。
