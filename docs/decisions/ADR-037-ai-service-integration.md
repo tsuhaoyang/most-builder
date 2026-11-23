@@ -158,6 +158,12 @@ Suggest(ai_service) → Map(mapper) → Validate(link/compile/engine_gate/routin
   由伺服器設 provenance 為 `ai_external`；前端不得直接傳 provenance。`wi_rows.provenance` 的 CHECK 以加法 migration 擴充，downgrade 處理已有新值的列。
   審核項記錄每個落盤列的內容雜湊；之後的存檔中，`wi_row_id` 在 `committed_wi_row_ids` 內且雜湊未變的列，由伺服器維持 `ai_external`。
   （存檔是整份取代，不能靠 `updated_at` 判斷；同一雜湊也用於下列「引用列被改動」的判定。）
+  > **2026-11-23，W1，Howard 核可（W1 追記，ADR-038）**：
+  > - **整份存檔保留既有列來源的規則改為列 id 比對**：存檔時列 id 沿用的列，保留原 `provenance`、`source_import_id`、`source_module_id`、`source_module_version`；新 id 的列為 `manual`。**不再以「內容雜湊未變」判斷是否維持 `ai_external`**（上一段後半的雜湊條件由本條取代）。
+  >   列是否被人改過（供 stale 判定「引用列被改動」）由 W3 另記內容雜湊處理，不靠 provenance。
+  >   後果：人改過內容的 AI 列仍標 `ai_external`（過度標示，方向安全）。
+  > - **「採用流程」的落盤入口由 ADR-038 的 `POST /worksheets/{id}/drafts/commit` 取代**（上面第 2、3 步的前端追加＋`save_worksheet`）。該入口仍共用 save 的元件：revision CAS、`compute_rows_for_save`、`persist_computed_rows`、`finalize_content_change`，沒有第二套計算或寫入。
+  > - **外部 AI 草稿（`source='ai_service'`）在 W3 補上 engine_gate 檢查前，寫入時 Fail-Fast 拒絕**（409，`field=source`）。
 - 一句 N 個 motion → N 列 WiRow＋N 個 cycle（`most_cycle.wi_row_id` 1:1 不變）。審核項的落盤參照存 `wi_row_id` 陣列（cycle id 每次存檔重建，不可作參照）。
 - **TMU**：審核預覽與落盤都用 `compute_rows_for_save` 與目標 worksheet 的 rule-set；審核畫面的值標為預覽，以落盤結果為準。
 - **stale 條件**：目標 worksheet 的 `default_rule_set_id` 改變；process_version 非 draft；目標被刪除；

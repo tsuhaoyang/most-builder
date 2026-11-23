@@ -55,7 +55,7 @@ MOST：① 讀 header 取身分(員工編號)  ② 查本地 app_users 取 MOST 
 
 | 動作 | 需要角色 |
 |------|----------|
-| 讀（檢視 WI/Level/Rule-set/匯出預覽） | viewer+（任何已登入者） |
+| 讀（檢視 WI/Level/Rule-set/匯出預覽）；**編輯區除外**，見下表 | viewer+（任何已登入者） |
 | 編輯（worksheet save、level 標註、vocab CRUD、rule-set 草稿編輯） | **analyst+** |
 | 發布（worksheet publish、rule-set publish）、另存新檔 | **approver+** |
 | 使用者角色管理（授予/停用） | **admin** |
@@ -72,6 +72,20 @@ MOST：① 讀 header 取身分(員工編號)  ② 查本地 app_users 取 MOST 
 | 重設他人已決項目 | approver（須填理由） |
 | 啟用／停用整合 | admin |
 | `GET /wi-ai/status`（已實作） | 登入即可（只回 `enabled`／`available`） |
+
+**工作區編輯區（ADR-038 D2／D3，W1 已實作）**（2026-11-23，W1，Howard 核可）：
+
+| 端點 | 最低角色 |
+|------|----------|
+| `GET /worksheets/{id}/drafts`（列出） | **analyst**（viewer 得 403） |
+| `POST /worksheets/{id}/drafts`（新增） | analyst |
+| `PATCH`／`DELETE /worksheet-drafts/{id}` | analyst |
+| `POST /worksheets/{id}/drafts/confirm` | analyst |
+| `POST /worksheets/{id}/drafts/commit`（寫入工時表） | analyst |
+
+- **讀取例外**：ADR-019「讀取全開 viewer+」只適用工時表正本。編輯區含未確認的 AI 草稿與匯入原文，讀取也需 analyst（與上表「看審核佇列含原文 analyst」一致）。
+- 編輯區不做 ownership 與站點限制（ADR-038、BL-ENG-19）：任一 analyst 可改、刪、確認、寫入別人建的草稿。已寫入（`committed`）的草稿不可改刪。
+- 刪除尚未寫入的草稿不寫稽核表，只留伺服器 log；寫入工時表經 worksheet revision 留 actor。
 
 本專案目前沒有站點層級的存取控制，見 [BL-ENG-19](../BACKLOG.md#bl-eng-19--worksheet-路由沒有站點層級的存取控制延後)。
 

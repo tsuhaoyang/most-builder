@@ -12,6 +12,8 @@
 
 **2026-11-23，ADR-038 追記**：S3 前端、S4、S5 依 [ADR-038](../decisions/ADR-038-unified-wi-workspace-and-two-stage-distance.md) 重新規劃：單句與整份共用工作區編輯區，審核佇列即編輯區（D2、D3）。前端拆分待另行提出。
 
+**2026-11-23，W1，Howard 核可（W1 進度）**：W1（編輯區資料表 `wi_draft_rows` 與 6 個 API）已在 `feat/w1-wi-draft-rows` 分支實作。**W3 待辦**：外部 AI 草稿寫入前的 engine_gate 檢查（目前寫入時 Fail-Fast 拒絕 `ai_service` 草稿）、其餘 stale 條件與列內容雜湊（W1 只做「非草稿版本」與「revision 不符 409」）。
+
 > 來源：MOST 與 ai_service 兩邊的唯讀盤點、架構規劃，以及兩輪審查（架構、資安、code、nlp-compiler、wi-workbench、excel-import、auth-rbac）。
 > 本文件中「ADR-033 P3」指 ADR-033 遷移路徑的第 3 階段；本計畫自己的階段寫作 S0–S5，避免撞名。
 

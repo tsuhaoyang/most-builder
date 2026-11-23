@@ -1691,6 +1691,79 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v2/worksheets/{worksheet_id}/drafts": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List Drafts */
+        get: operations["list_drafts_api_v2_worksheets__worksheet_id__drafts_get"];
+        put?: never;
+        /** Create Drafts */
+        post: operations["create_drafts_api_v2_worksheets__worksheet_id__drafts_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v2/worksheet-drafts/{draft_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /** Delete Draft */
+        delete: operations["delete_draft_api_v2_worksheet_drafts__draft_id__delete"];
+        options?: never;
+        head?: never;
+        /** Patch Draft */
+        patch: operations["patch_draft_api_v2_worksheet_drafts__draft_id__patch"];
+        trace?: never;
+    };
+    "/api/v2/worksheets/{worksheet_id}/drafts/confirm": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Confirm Drafts */
+        post: operations["confirm_drafts_api_v2_worksheets__worksheet_id__drafts_confirm_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v2/worksheets/{worksheet_id}/drafts/commit": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Commit Drafts
+         * @description 版本衝突走 `WorksheetRevisionConflict`（ConflictError，REVISION_CONFLICT），草稿維持已確認、整筆回滾。
+         */
+        post: operations["commit_drafts_api_v2_worksheets__worksheet_id__drafts_commit_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v2/i18n/review/summary": {
         parameters: {
             query?: never;
@@ -3580,6 +3653,169 @@ export interface components {
              * @enum {string}
              */
             source: "manual" | "imported" | "ai_assisted" | "system";
+        };
+        /**
+         * WiDraftCommitIn
+         * @description 寫入工時表：把所有已確認的列追加到表尾。必帶 `base_revision`（樂觀鎖，ADR-027 §2）。
+         */
+        WiDraftCommitIn: {
+            /** Base Revision */
+            base_revision: number;
+        };
+        /** WiDraftCommitOut */
+        WiDraftCommitOut: {
+            /**
+             * Worksheet Id
+             * Format: uuid
+             */
+            worksheet_id: string;
+            /** Revision No */
+            revision_no: number;
+            /** Committed */
+            committed: components["schemas"]["WiDraftOut"][];
+        };
+        /**
+         * WiDraftConfirmIn
+         * @description 確認一些列或一整組。`draft_ids` 與 `group_key` 擇一。
+         */
+        WiDraftConfirmIn: {
+            /** Draft Ids */
+            draft_ids?: string[] | null;
+            /** Group Key */
+            group_key?: string | null;
+        };
+        /**
+         * WiDraftContent
+         * @description 一列草稿的內容：同 `WiRowSaveIn`，去掉 id／seq_no（寫入時才決定）與 level（寫入時留空，ADR-037 D5）。
+         */
+        WiDraftContent: {
+            /** Sub Activity */
+            sub_activity?: string | null;
+            /** Key Parts */
+            key_parts?: string | null;
+            /** Hand */
+            hand?: ("LH" | "RH" | "BH") | null;
+            /** Object Vocab Id */
+            object_vocab_id?: string | null;
+            /** From Vocab Id */
+            from_vocab_id?: string | null;
+            /** To Vocab Id */
+            to_vocab_id?: string | null;
+            /** Tool Vocab Id */
+            tool_vocab_id?: string | null;
+            /**
+             * Frequency
+             * @default 1
+             */
+            frequency: number;
+            /** Wi Group */
+            wi_group?: string | null;
+            /** Narrative */
+            narrative?: string | null;
+            cycle: components["schemas"]["CycleIn"];
+        };
+        /**
+         * WiDraftCreateIn
+         * @description 手動新增草稿列（ADR-038 D2：手動列也進編輯區）。AI／匯入的草稿由後端產生（W3），不經此端點。
+         */
+        WiDraftCreateIn: {
+            /** Items */
+            items: components["schemas"]["WiDraftCreateItem"][];
+        };
+        /** WiDraftCreateItem */
+        WiDraftCreateItem: {
+            content: components["schemas"]["WiDraftContent"];
+            /** Group Key */
+            group_key?: string | null;
+            /**
+             * Order In Group
+             * @default 0
+             */
+            order_in_group: number;
+        };
+        /** WiDraftListOut */
+        WiDraftListOut: {
+            /**
+             * Worksheet Id
+             * Format: uuid
+             */
+            worksheet_id: string;
+            /** Items */
+            items: components["schemas"]["WiDraftOut"][];
+        };
+        /** WiDraftOut */
+        WiDraftOut: {
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /**
+             * Worksheet Id
+             * Format: uuid
+             */
+            worksheet_id: string;
+            /** Group Key */
+            group_key: string;
+            /** Order In Group */
+            order_in_group: number;
+            /** Sort Order */
+            sort_order: number;
+            /**
+             * Source
+             * @enum {string}
+             */
+            source: "manual" | "ai_service" | "rule_based" | "imported";
+            /**
+             * Status
+             * @enum {string}
+             */
+            status: "pending" | "confirmed" | "committed";
+            /** Content */
+            content: {
+                [key: string]: unknown;
+            };
+            /** Ai Candidates */
+            ai_candidates?: {
+                [key: string]: unknown;
+            } | null;
+            /** Ai Parse Run Id */
+            ai_parse_run_id?: string | null;
+            /** Import Row Id */
+            import_row_id?: string | null;
+            /** Source Revision */
+            source_revision?: number | null;
+            /** Created By */
+            created_by: string;
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /** Updated By */
+            updated_by?: string | null;
+            /**
+             * Updated At
+             * Format: date-time
+             */
+            updated_at: string;
+            /** Confirmed By */
+            confirmed_by?: string | null;
+            /** Confirmed At */
+            confirmed_at?: string | null;
+            /** Committed By */
+            committed_by?: string | null;
+            /** Committed At */
+            committed_at?: string | null;
+            /** Committed Wi Row Id */
+            committed_wi_row_id?: string | null;
+        };
+        /**
+         * WiDraftPatchIn
+         * @description 修改一列；改了內容就回到 pending（要重新確認）。
+         */
+        WiDraftPatchIn: {
+            content: components["schemas"]["WiDraftContent"];
         };
         /** WiRowSaveIn */
         WiRowSaveIn: {
@@ -7608,6 +7844,206 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_drafts_api_v2_worksheets__worksheet_id__drafts_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                worksheet_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["WiDraftListOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    create_drafts_api_v2_worksheets__worksheet_id__drafts_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                worksheet_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["WiDraftCreateIn"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["WiDraftListOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    delete_draft_api_v2_worksheet_drafts__draft_id__delete: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                draft_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    patch_draft_api_v2_worksheet_drafts__draft_id__patch: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                draft_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["WiDraftPatchIn"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["WiDraftOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    confirm_drafts_api_v2_worksheets__worksheet_id__drafts_confirm_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                worksheet_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["WiDraftConfirmIn"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["WiDraftListOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    commit_drafts_api_v2_worksheets__worksheet_id__drafts_commit_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                worksheet_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["WiDraftCommitIn"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["WiDraftCommitOut"];
+                };
             };
             /** @description Validation Error */
             422: {

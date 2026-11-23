@@ -9,6 +9,7 @@
 from __future__ import annotations
 
 import uuid
+from collections.abc import Callable
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from typing import Any
@@ -223,21 +224,84 @@ async def save_worksheet(
     computed, ctx = await compute_rows_for_save(session, ws, payload)
     rs_row = ctx.rs_row
 
+    # 存檔前記下既有列的來源（ADR-038 W1：整份取代原本會把每一列都重寫成 manual，
+    # 匯入列與 AI 寫入列一存檔就失去出處）。id 沿用的列保留原來源；新 id 才是 manual。
+    prior = {
+        row.id: row
+        for row in (
+            await session.execute(
+                select(
+                    WiRow.id, WiRow.provenance, WiRow.source_import_id,
+                    WiRow.source_module_id, WiRow.source_module_version,
+                ).where(WiRow.worksheet_id == worksheet_id)
+            )
+        ).all()
+    }
+
     # 整份取代（cascade 連帶刪 cycle/level）
     await session.execute(delete(WiRow).where(WiRow.worksheet_id == worksheet_id))
     await session.flush()
 
+    persist_computed_rows(
+        session,
+        worksheet_id=worksheet_id,
+        computed=computed,
+        rs_row=rs_row,
+        origin_of=lambda r: _origin_from_prior(prior.get(r.id)),
+    )
+    await session.flush()
+    return await finalize_content_change(session, ws, edited_by=edited_by)
+
+
+@dataclass(frozen=True)
+class RowOrigin:
+    """一列的來源（`wi_rows.provenance` 與出處欄）。"""
+
+    provenance: str = "manual"
+    source_import_id: uuid.UUID | None = None
+    source_module_id: uuid.UUID | None = None
+    source_module_version: int | None = None
+
+
+def _origin_from_prior(prior: Any) -> RowOrigin:
+    if prior is None:
+        return RowOrigin()
+    return RowOrigin(
+        provenance=prior.provenance or "manual",
+        source_import_id=prior.source_import_id,
+        source_module_id=prior.source_module_id,
+        source_module_version=prior.source_module_version,
+    )
+
+
+def persist_computed_rows(
+    session: AsyncSession,
+    *,
+    worksheet_id: uuid.UUID,
+    computed: list[ComputedRow],
+    rs_row: RuleSet,
+    origin_of: Callable[[Any], RowOrigin],
+) -> None:
+    """把計算好的列寫成 wi_row＋most_cycle＋level_entry（只 add，不 flush）。
+
+    整份存檔（`save_worksheet`）與編輯區寫入（`wi_draft_service.commit_drafts`，追加到表尾）共用，
+    兩條路徑寫出的列逐欄一致。`origin_of(row_in) -> RowOrigin` 決定每列的來源。
+    """
     now = datetime.now(timezone.utc)
     for cr in computed:
         r = cr.row_in
         result = cr.result
+        origin: RowOrigin = origin_of(r)
         session.add(WiRow(
             id=r.id, worksheet_id=worksheet_id, seq_no=r.seq_no,
             sub_activity=r.sub_activity, key_parts=r.key_parts, hand=r.hand,
             object_vocab_id=r.object_vocab_id, from_vocab_id=r.from_vocab_id,
             to_vocab_id=r.to_vocab_id, tool_vocab_id=r.tool_vocab_id,
             frequency=r.frequency, simo_group_id=cr.simo_group_id,
-            wi_group=r.wi_group, provenance="manual",
+            wi_group=r.wi_group, provenance=origin.provenance,
+            source_import_id=origin.source_import_id,
+            source_module_id=origin.source_module_id,
+            source_module_version=origin.source_module_version,
         ))
         session.add(MostCycle(
             id=uuid.uuid4(), wi_row_id=r.id, seq_kind=result.seq, rule_set_id=rs_row.id,
@@ -260,7 +324,13 @@ async def save_worksheet(
             general_role=lv.general_role, merge_lock=lv.merge_lock, action_type=lv.action_type,
             machine_unattended=lv.machine_unattended,
         ))
-    await session.flush()
+
+
+async def finalize_content_change(
+    session: AsyncSession, ws: MostWorksheet, *, edited_by: str | None
+) -> dict[str, Any]:
+    """內容變更後的收尾（content hash、level validation、outbox），回傳讀取結果。存檔與編輯區寫入共用。"""
+    worksheet_id = ws.id
     out = await read_worksheet(session, worksheet_id)
     ch = content_hash_from_read(out)
     await set_content_hash(session, worksheet_id=worksheet_id, content_hash=ch)

@@ -67,8 +67,8 @@ from ddm_v2.api.routes.v2.catalog import router as v2_catalog_router
 from ddm_v2.api.routes.v2.dsx import router as v2_dsx_router
 from ddm_v2.api.routes.v2.export import router as v2_export_router
 from ddm_v2.api.routes.v2.i18n import router as v2_i18n_router
-from ddm_v2.api.routes.v2.lb_writeback import router as v2_lb_writeback_router
 from ddm_v2.api.routes.v2.import_excel import router as v2_import_router
+from ddm_v2.api.routes.v2.lb_writeback import router as v2_lb_writeback_router
 from ddm_v2.api.routes.v2.motion_module import router as v2_motion_module_router
 from ddm_v2.api.routes.v2.motion_template import router as v2_motion_template_router
 from ddm_v2.api.routes.v2.nl_draft import router as v2_nl_draft_router
@@ -78,6 +78,7 @@ from ddm_v2.api.routes.v2.search import router as v2_search_router
 from ddm_v2.api.routes.v2.synonyms import router as v2_synonyms_router
 from ddm_v2.api.routes.v2.vocab import router as v2_vocab_router
 from ddm_v2.api.routes.v2.wi_context import router as v2_wi_context_router
+from ddm_v2.api.routes.v2.wi_draft import router as v2_wi_draft_router
 from ddm_v2.api.routes.v2.wi_set import router as v2_wi_set_router
 from ddm_v2.api.routes.v2.worksheet import router as v2_worksheet_router
 
@@ -128,6 +129,7 @@ V2_ROUTERS: tuple[tuple[str, APIRouter], ...] = (
     ("cases", v2_cases_router),
     ("wi_set", v2_wi_set_router),
     ("wi_context", v2_wi_context_router),
+    ("wi_draft", v2_wi_draft_router),
     ("i18n", v2_i18n_router),
     ("lb_writeback", v2_lb_writeback_router),
     ("dsx", v2_dsx_router),

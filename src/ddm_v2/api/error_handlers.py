@@ -11,6 +11,8 @@ e2e 環境回裸 `500 Internal Server Error`。結果是「後端拒絕時要給
 """
 from __future__ import annotations
 
+import math
+
 from fastapi import FastAPI, Request, status
 from fastapi.encoders import jsonable_encoder
 from fastapi.exceptions import RequestValidationError
@@ -35,6 +37,21 @@ from ddm_v2.exceptions import (
 from ddm_v2.schemas.common import ErrorDetail, ErrorResponse
 from ddm_v2.services.v2.policy_service import NoDefaultPolicy
 from ddm_v2.services.v2.rule_set_service import NoActiveRuleSet
+
+
+def _json_safe(value):
+    """把 NaN／±Inf 換成 None。
+
+    Python 的 JSON 解析器接受 `NaN`／`Infinity` 字面值，驗證失敗時 pydantic 會把原始輸入放進 errors[].input；
+    JSONResponse 以 allow_nan=False 序列化，遇到它就丟 ValueError——結果「請求不合格」變成 500。
+    """
+    if isinstance(value, float) and not math.isfinite(value):
+        return None
+    if isinstance(value, dict):
+        return {k: _json_safe(v) for k, v in value.items()}
+    if isinstance(value, list):
+        return [_json_safe(v) for v in value]
+    return value
 
 
 def _envelope(code: str, message: str, detail: dict | None, status_code: int) -> JSONResponse:
@@ -168,7 +185,7 @@ def register_exception_handlers(app: FastAPI) -> None:
         ``error`` 信封（原始 errors 陣列位於 ``error.detail.errors``，形狀不變），
         錯誤契約徹底收斂為單一信封（追蹤見 ADR-034 §7 KI-034-1，已 resolved）。
         """
-        errors = jsonable_encoder(exc.errors())
+        errors = _json_safe(jsonable_encoder(exc.errors()))
         content = ErrorResponse(
             error=ErrorDetail(
                 code=ErrorCode.VALIDATION_ERROR,
