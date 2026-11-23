@@ -50,6 +50,9 @@ export const ERROR_CODES = [
   'LEVEL_VALIDATION_REQUIRED',
   // 距離完成檢查（ADR-038 D6）
   'DISTANCE_STATUS_MISSING',
+  // 編輯區草稿（ADR-038 D3）
+  'DRAFT_INCOMPLETE',
+  'DRAFT_STALE',
   // WI context / worksheet
   'WI_CONTEXT_INVALID',
   'SIMO_PAIR_INVALID',

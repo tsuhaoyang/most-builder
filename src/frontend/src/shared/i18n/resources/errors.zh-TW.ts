@@ -77,6 +77,9 @@ const errorsZh: ErrorCatalog = {
   LEVEL_VALIDATION_REQUIRED: '需先通過 Level System 驗證',
   // ── 距離完成檢查（ADR-038 D6）──────────────────────────────────────────
   DISTANCE_STATUS_MISSING: '有列尚未標示距離狀態，無法核准',
+  // ── 編輯區草稿（ADR-038 D3）────────────────────────────────────────────
+  DRAFT_INCOMPLETE: '有草稿解析不完整，請先補齊再確認',
+  DRAFT_STALE: '有草稿已過期，已退回待確認，請檢查後重新確認',
   // ── WI context / 工序表 ────────────────────────────────────────────────
   WI_CONTEXT_INVALID: 'WI 情境設定不正確',
   SIMO_PAIR_INVALID: 'SIMO 同動配對不正確',

@@ -76,6 +76,10 @@ class ErrorCode(str, Enum):
     # --- 距離完成檢查（ADR-038 D6）---
     DISTANCE_STATUS_MISSING = "DISTANCE_STATUS_MISSING"  # 409：開啟檢查的工時表有列沒標距離狀態
 
+    # --- 編輯區草稿（ADR-038 D3，W3）---
+    DRAFT_INCOMPLETE = "DRAFT_INCOMPLETE"  # 409：解析出的草稿不完整且沒有人補過，不能確認或寫入
+    DRAFT_STALE = "DRAFT_STALE"            # 409：草稿過期（規則版本改了／Excel 列變了），已退回待確認
+
     # --- LB projection export (ADR-035 WP8) ---
     LB_EXPORT_BLOCKED = "LB_EXPORT_BLOCKED"
 

@@ -17,6 +17,7 @@ from __future__ import annotations
 import logging
 import uuid
 from collections.abc import Sequence
+from dataclasses import dataclass
 from datetime import datetime, timezone
 from typing import Any
 
@@ -28,10 +29,11 @@ from ddm_v2.models.v2.import_staging import ImportRow
 from ddm_v2.models.v2.rule_set import RuleSet
 from ddm_v2.models.v2.wi_draft import WiDraftRow
 from ddm_v2.models.v2.worksheet import MostWorksheet, ProcessVersion, WiRow
+from ddm_v2.nlp.contracts import CycleDraft, ParseRunResult
 from ddm_v2.schemas.v2.wi_draft import WiDraftContent, WiDraftCreateItem
 from ddm_v2.schemas.v2.worksheet import LevelFieldsIn, WiRowSaveIn, WorksheetSaveIn
 from ddm_v2.services.v2.rule_set_service import get_active_rule_set_code
-from ddm_v2.services.v2.worksheet_revision import bump_worksheet_revision
+from ddm_v2.services.v2.worksheet_revision import bump_worksheet_revision, canonical_json, sha256_hex
 from ddm_v2.services.v2.worksheet_service import (
     NotEditable,
     RowOrigin,
@@ -76,8 +78,20 @@ class TooManyDrafts(Exception):
     pass
 
 
-class SourceNotCommittable(Exception):
-    """這個來源的草稿目前不能寫入（外部 AI 草稿要等 W3 補上 engine_gate 檢查，ADR-037 D3）。"""
+class DraftIncomplete(Exception):
+    """解析出的草稿不完整（或引擎算不過）且沒有人補過 cycle，不能確認或寫入（ADR-037 D3）。"""
+
+    def __init__(self, draft_ids: Sequence[uuid.UUID]) -> None:
+        self.draft_ids = sorted(draft_ids, key=str)
+        super().__init__(f"有 {len(self.draft_ids)} 列草稿解析不完整，請先補齊")
+
+
+class DraftsStale(Exception):
+    """已確認的草稿過期（ADR-037 D5）：draft_id → 原因。"""
+
+    def __init__(self, reasons: dict[uuid.UUID, str]) -> None:
+        self.reasons = reasons
+        super().__init__(f"{len(reasons)} 列草稿已過期")
 
 
 class DraftContentInvalid(Exception):
@@ -97,6 +111,87 @@ class DraftComputeError(Exception):
         self.cause = exc
 
 
+def _provenance_for(d: WiDraftRow) -> str:
+    """寫入後的 `wi_rows.provenance`：外部 AI 一律 ai_external；其餘來自 Excel 列的標 imported（沿用匯入的語意）。"""
+    if d.source == "ai_service":
+        return "ai_external"
+    if d.import_row_id is not None:
+        return "imported"
+    return _PROVENANCE_BY_SOURCE[d.source]
+
+
+def cycle_hash(cycle: dict[str, Any]) -> str:
+    """草稿 cycle 的雜湊（不含 rule_set_code：寫入時一律換成工時表的版本）。判斷人有沒有補過解析結果。"""
+    return sha256_hex(canonical_json({k: v for k, v in (cycle or {}).items() if k != "rule_set_code"}))
+
+
+def is_unfilled_incomplete(d: WiDraftRow) -> bool:
+    """解析時不完整、而且 cycle 到現在還沒被人改過。人工草稿（沒有 parse_snapshot）一律 False。"""
+    snap = d.parse_snapshot
+    if not snap or snap.get("complete"):
+        return False
+    return cycle_hash((d.content or {}).get("cycle") or {}) == snap.get("cycle_hash")
+
+
+async def _current_import_hashes(
+    session: AsyncSession, row_ids: Sequence[uuid.UUID | None]
+) -> dict[uuid.UUID, str]:
+    ids = [r for r in row_ids if r is not None]
+    if not ids:
+        return {}
+    rows = (await session.execute(select(ImportRow.id, ImportRow.input_hash).where(ImportRow.id.in_(ids)))).all()
+    return {r.id: r.input_hash for r in rows}
+
+
+async def detect_stale(
+    session: AsyncSession, ws: MostWorksheet, drafts: Sequence[WiDraftRow]
+) -> dict[uuid.UUID, str]:
+    """ADR-037 D5 的過期條件中，草稿層要判斷的兩個（版本非草稿、工時表被刪、revision 鎖另外處理）：
+    - 工時表改綁規則版本（`default_rule_set_id` 與草稿的基準不同）；
+    - 來源 Excel 列的輸入變了或被刪了（輸入雜湊不同）。
+    一般存檔（revision 遞增）不算過期：草稿追加到表尾，不引用既有列。
+    """
+    hashes = await _current_import_hashes(session, [d.import_row_id for d in drafts])
+    out: dict[uuid.UUID, str] = {}
+    for d in drafts:
+        if d.source_rule_set_id != ws.default_rule_set_id:
+            out[d.id] = "rule_set_changed"
+            continue
+        want = (d.parse_snapshot or {}).get("import_input_hash")
+        if want is not None and (d.import_row_id is None or hashes.get(d.import_row_id) != want):
+            out[d.id] = "import_row_changed"
+    return out
+
+
+async def mark_stale_drafts(session: AsyncSession, worksheet_id: uuid.UUID, *, actor: str) -> dict[uuid.UUID, str]:
+    """把已確認但過期的草稿退回待確認並記原因（寫入失敗後另開交易呼叫）。鎖順序同 commit：先工時表、再草稿。"""
+    await session.execute(select(MostWorksheet.id).where(MostWorksheet.id == worksheet_id).with_for_update())
+    ws = await _get_worksheet(session, worksheet_id)
+    await session.refresh(ws)
+    drafts = list(
+        (
+            await session.execute(
+                select(WiDraftRow)
+                .where(WiDraftRow.worksheet_id == worksheet_id, WiDraftRow.status == "confirmed")
+                .order_by(WiDraftRow.sort_order, WiDraftRow.order_in_group, WiDraftRow.created_at, WiDraftRow.id)
+                .with_for_update()
+            )
+        ).scalars()
+    )
+    stale = await detect_stale(session, ws, drafts)
+    now = _now()
+    for d in drafts:
+        if d.id in stale:
+            d.status = "pending"
+            d.stale_reason = stale[d.id]
+            d.confirmed_by = None
+            d.confirmed_at = None
+            d.updated_by = actor
+            d.updated_at = now
+    await session.flush()
+    return stale
+
+
 def _now() -> datetime:
     return datetime.now(timezone.utc)
 
@@ -112,6 +207,22 @@ async def _require_editable(session: AsyncSession, ws: MostWorksheet) -> None:
     pv = await session.get(ProcessVersion, ws.process_version_id)
     if pv is not None and pv.status != "draft":
         raise NotEditable(f"版本狀態為 {pv.status}，已凍結不可編輯（請另存新檔）")
+
+
+async def assert_room_for(session: AsyncSession, worksheet_id: uuid.UUID, n: int = 1) -> None:
+    """編輯區還放得下 n 列（先擋，免得 AI 回來才發現滿了、額度白花）。寫入時 add_drafts 會在鎖內再檢查一次。"""
+    existing = (
+        await session.execute(select(func.count()).select_from(WiDraftRow).where(WiDraftRow.worksheet_id == worksheet_id))
+    ).scalar_one()
+    if existing + n > MAX_DRAFTS_PER_WORKSHEET:
+        raise TooManyDrafts(f"編輯區最多 {MAX_DRAFTS_PER_WORKSHEET} 列（目前 {existing}）")
+
+
+async def get_editable_worksheet(session: AsyncSession, worksheet_id: uuid.UUID) -> MostWorksheet:
+    """取工時表並確認它的工序版本仍是草稿（先擋，免得為一份不能寫的工時表花 AI 額度）。"""
+    ws = await _get_worksheet(session, worksheet_id)
+    await _require_editable(session, ws)
+    return ws
 
 
 async def _get_draft(session: AsyncSession, draft_id: uuid.UUID, *, for_update: bool = False) -> WiDraftRow:
@@ -147,10 +258,13 @@ async def add_drafts(
     ai_parse_run_id: uuid.UUID | None = None,
     import_row_ids: Sequence[uuid.UUID | None] | None = None,
     ai_candidates: Sequence[dict[str, Any] | None] | None = None,
+    parse_snapshots: Sequence[dict[str, Any] | None] | None = None,
 ) -> list[WiDraftRow]:
-    """新增草稿列。手動路由只傳 `source='manual'`；AI／匯入（W3）由後端呼叫並帶出處。"""
+    """新增草稿列。手動路由只傳 `source='manual'`；解析產生的草稿走 `add_parsed_drafts`。"""
     if source not in _PROVENANCE_BY_SOURCE:
         raise ValueError(f"unknown draft source: {source}")
+    if parse_snapshots is not None and len(parse_snapshots) != len(items):
+        raise ValueError("parse_snapshots must align with items")
     if import_row_ids is not None and len(import_row_ids) != len(items):
         raise ValueError("import_row_ids must align with items")
     if ai_candidates is not None and len(ai_candidates) != len(items):
@@ -187,6 +301,8 @@ async def add_drafts(
             ai_parse_run_id=ai_parse_run_id,
             import_row_id=import_row_ids[i] if import_row_ids is not None else None,
             source_revision=int(ws.revision_no or 1),
+            source_rule_set_id=ws.default_rule_set_id,
+            parse_snapshot=parse_snapshots[i] if parse_snapshots is not None else None,
             created_by=actor,
             created_at=now,
             updated_at=now,
@@ -263,14 +379,23 @@ async def confirm_drafts(
     committed = [d for d in drafts if d.status == "committed"]
     if committed:
         raise DraftStateConflict(f"已寫入工時表的草稿不能再確認：{sorted(str(d.id) for d in committed)}")
+    pending = [d for d in drafts if d.status == "pending"]
+    incomplete = [d.id for d in pending if is_unfilled_incomplete(d)]
+    if incomplete:
+        raise DraftIncomplete(incomplete)
+    # 確認＝人看過目前的內容：以現在的規則版本與 Excel 列為新的基準，清掉過期標記
+    hashes = await _current_import_hashes(session, [d.import_row_id for d in pending])
     now = _now()
-    for d in drafts:
-        if d.status == "pending":
-            d.status = "confirmed"
-            d.confirmed_by = actor
-            d.confirmed_at = now
-            d.updated_by = actor
-            d.updated_at = now
+    for d in pending:
+        d.status = "confirmed"
+        d.confirmed_by = actor
+        d.confirmed_at = now
+        d.updated_by = actor
+        d.updated_at = now
+        d.stale_reason = None
+        d.source_rule_set_id = ws.default_rule_set_id
+        if d.parse_snapshot and d.parse_snapshot.get("import_input_hash") is not None:
+            d.parse_snapshot = {**d.parse_snapshot, "import_input_hash": hashes.get(d.import_row_id)}
     await session.flush()
     return drafts
 
@@ -283,6 +408,9 @@ async def _target_rule_set_code(session: AsyncSession, ws: MostWorksheet) -> str
             raise RuleSetNotFound(str(ws.default_rule_set_id))
         return rs.code
     return await get_active_rule_set_code(session)
+
+
+target_rule_set_code = _target_rule_set_code
 
 
 async def commit_drafts(
@@ -318,11 +446,15 @@ async def commit_drafts(
     )
     if not drafts:
         raise NothingToCommit(str(worksheet_id))
-    ai = [d for d in drafts if d.source == "ai_service"]
-    if ai:
-        # Fail-Fast：ADR-037 D3 要求可接受的 AI motion 還要過 engine_gate（無 high 級問題），寫入路徑尚未實作（W3）。
-        # W3 之前不讓任何外部 AI 草稿進工時表，即使有人從後端灌進來。
-        raise SourceNotCommittable(f"外部 AI 草稿暫時不能寫入（W3 前）：{sorted(str(d.id) for d in ai)}")
+    # ADR-037 D3「可接受的 motion」：解析出的草稿要完整、引擎算得過（下面 compute_rows_for_save 會再算一次，
+    # 算不過就整筆失敗）；不完整的只有在人補過 cycle 之後才可接受。確認時已擋過，這裡是寫入當下的權威檢查。
+    incomplete = [d.id for d in drafts if is_unfilled_incomplete(d)]
+    if incomplete:
+        raise DraftIncomplete(incomplete)
+    stale = await detect_stale(session, ws, drafts)
+    if stale:
+        # 呼叫端回滾本交易後，以 `mark_stale_drafts` 另開交易把它們退回待確認
+        raise DraftsStale(stale)
 
     code = await _target_rule_set_code(session, ws)
     next_seq = (
@@ -368,7 +500,7 @@ async def commit_drafts(
             )
         )
         origin_by_row[row_id] = RowOrigin(
-            provenance=_PROVENANCE_BY_SOURCE[d.source],
+            provenance=_provenance_for(d),
             source_import_id=import_ids.get(d.import_row_id) if d.import_row_id else None,
         )
         draft_by_row[row_id] = d.id
@@ -397,3 +529,147 @@ async def commit_drafts(
     await session.flush()
     out = await finalize_content_change(session, ws, edited_by=actor)
     return out, drafts
+
+
+# ════════ 解析結果 → 編輯區（ADR-038 D2 情境 2／3，W3）════════
+
+# 解析不出 cycle 時的佔位（讓這一列照樣進編輯區給人補）。parse_snapshot.complete=False 且 cycle 沒被改過 → 不能確認。
+PLACEHOLDER_CYCLE: dict[str, Any] = {"seq": "GM"}
+WI_GROUP_MAX = 200
+MAX_SNAPSHOT_ISSUES = 50
+MAX_ISSUE_CHARS = 200
+# 每個參數只留前幾個候選；整列候選序列化後超過上限就不存（只影響「哪些格是 AI 填的」的顯示，不進計算）
+MAX_TOP_K = 5
+MAX_CANDIDATES_BYTES = 16 * 1024
+
+
+@dataclass(frozen=True)
+class ParsedDraft:
+    item: WiDraftCreateItem
+    candidates: dict[str, Any] | None
+    snapshot: dict[str, Any]
+
+
+def _engine_ok(d: CycleDraft) -> bool:
+    return d.engine_result is not None and not any(i.startswith("engine_reject_") for i in d.issues)
+
+
+def drafts_from_parse(
+    result: ParseRunResult,
+    *,
+    text: str,
+    hand: str | None,
+    wi_group: str | None,
+    ai_status: str,
+    group_key: str | None = None,
+) -> list[ParsedDraft]:
+    """把一次解析（一句 WI）轉成同一組的草稿列，依 action 順序。純函式。
+
+    - 每個 motion 一列；同一句共用 `group_key`；`wi_group` 預設原句，超過 200 字截斷並記在 snapshot（ADR-037 D5）。
+    - cycle 用解析的預覽值（AI 路徑是候選算的預覽，`chosen` 仍空；ADR-038 D3：畫面上預填、狀態 pending）。
+    - `complete`＝解析判定完整且引擎算得過（engine_gate 無 `engine_reject_*`）＝ADR-037 D3「可接受的 motion」。
+    - 一個 motion 都沒解析出來時，仍放一列佔位（降級或失敗的結果照樣進編輯區，ADR-038 D3）。
+    - 手別只用 MOST 已知的（使用者輸入或 Excel 欄），不採信 ai_service 的提示（ADR-037 D3）。
+    """
+    key = group_key or str(uuid.uuid4())
+    raw_group = (wi_group or text or "").strip()
+    truncated = len(raw_group) > WI_GROUP_MAX
+    group = raw_group[:WI_GROUP_MAX] or None
+    order = {a.action_id: a.sequence_order for a in result.plan.actions}
+    cands_by_action: dict[str, list[dict[str, Any]]] = {}
+    for c in result.slot_candidates:
+        dumped_c = c.model_dump(mode="json")
+        dumped_c["top_k"] = (dumped_c.get("top_k") or [])[:MAX_TOP_K]
+        cands_by_action.setdefault(c.action_id, []).append(dumped_c)
+    drafts = sorted(result.drafts, key=lambda d: (order.get(d.action_id, 10**9), d.action_id))
+    out: list[ParsedDraft] = []
+    if not drafts:
+        drafts = [CycleDraft(action_id="none", cycle=None, complete=False, issues=["no_motion_parsed"])]
+    for idx, d in enumerate(drafts):
+        issues = list(d.issues)
+        complete = bool(d.complete and d.cycle and _engine_ok(d))
+        narrative = (d.narrative or None) and d.narrative[:2000]
+        try:
+            content = WiDraftContent(hand=hand, narrative=narrative, wi_group=group, cycle=d.cycle or PLACEHOLDER_CYCLE)
+        except PydanticValidationError:
+            content = WiDraftContent(hand=hand, narrative=narrative, wi_group=group, cycle=PLACEHOLDER_CYCLE)
+            complete = False
+            issues.append("cycle_invalid")
+        dumped = content.model_dump(mode="json")
+        snapshot = {
+            "complete": complete,
+            "issues": [i[:MAX_ISSUE_CHARS] for i in issues[:MAX_SNAPSHOT_ISSUES]],
+            "cycle_hash": cycle_hash(dumped["cycle"]),
+            "ai_status": ai_status,
+            "action_id": d.action_id,
+            "routing_status": result.routing_status,
+            "wi_group_truncated": truncated,
+        }
+        cands = cands_by_action.get(d.action_id)
+        if cands and len(canonical_json(cands)) > MAX_CANDIDATES_BYTES:
+            cands = None
+            snapshot["candidates_dropped"] = True
+        out.append(
+            ParsedDraft(
+                item=WiDraftCreateItem(content=content, group_key=key, order_in_group=idx),
+                candidates={"slot_candidates": cands} if cands else None,
+                snapshot=snapshot,
+            )
+        )
+    return out
+
+
+def parsed_source(ai_status: str) -> str:
+    """草稿來源：外部 AI 成功＝ai_service；沒試或降級＝rule_based（ADR-038 D2）。"""
+    return "ai_service" if ai_status == "ai_service" else "rule_based"
+
+
+async def add_parsed_drafts(
+    session: AsyncSession,
+    worksheet_id: uuid.UUID,
+    result: ParseRunResult,
+    *,
+    text: str,
+    hand: str | None,
+    wi_group: str | None,
+    ai_status: str,
+    actor: str,
+    import_row: ImportRow | None = None,
+) -> list[WiDraftRow]:
+    """解析結果寫進編輯區。來自 Excel 列時（`import_row`）同一列重新解析會取代它沒人動過的草稿；
+    已經有人確認、寫入或修改過的不再追加（人已經處理了），回傳空 list。
+    """
+    # 先鎖工時表（與 add_drafts 同一把鎖）：同一 Excel 列的兩個解析不會都判定「沒人動過」而各寫一份
+    await session.execute(select(MostWorksheet.id).where(MostWorksheet.id == worksheet_id).with_for_update())
+    if import_row is not None:
+        existing = list(
+            (
+                await session.execute(
+                    select(WiDraftRow).where(
+                        WiDraftRow.worksheet_id == worksheet_id, WiDraftRow.import_row_id == import_row.id
+                    )
+                )
+            ).scalars()
+        )
+        # 有人確認、寫入或改過（updated_by 有值）就不動它們，也不追加重複的列
+        if any(d.status != "pending" or d.updated_by is not None for d in existing):
+            return []
+        for d in existing:
+            await session.delete(d)
+        await session.flush()
+    parsed = drafts_from_parse(result, text=text, hand=hand, wi_group=wi_group, ai_status=ai_status)
+    snapshots = [
+        {**p.snapshot, "import_input_hash": import_row.input_hash} if import_row is not None else p.snapshot
+        for p in parsed
+    ]
+    return await add_drafts(
+        session,
+        worksheet_id,
+        [p.item for p in parsed],
+        source=parsed_source(ai_status),
+        actor=actor,
+        ai_parse_run_id=uuid.UUID(result.run_id) if result.run_id else None,
+        import_row_ids=[import_row.id] * len(parsed) if import_row is not None else None,
+        ai_candidates=[p.candidates for p in parsed],
+        parse_snapshots=snapshots,
+    )

@@ -73,6 +73,9 @@ const errorsEn: ErrorCatalog = {
   LEVEL_VALIDATION_REQUIRED: 'Level System validation is required first',
   // ── Distance completeness check (ADR-038 D6) ────────────────────────────
   DISTANCE_STATUS_MISSING: 'Some rows have no distance status yet, so the worksheet cannot be approved',
+  // ── Workspace drafts (ADR-038 D3) ───────────────────────────────────────
+  DRAFT_INCOMPLETE: 'Some drafts were parsed incompletely; fill them in before confirming',
+  DRAFT_STALE: 'Some drafts are out of date and were moved back to pending; review and confirm them again',
   // ── WI context / worksheet ──────────────────────────────────────────────
   WI_CONTEXT_INVALID: 'The WI context is invalid',
   SIMO_PAIR_INVALID: 'The SIMO pairing is invalid',

@@ -14,6 +14,7 @@ from ddm_v2.schemas.v2.worksheet import DistanceStatus
 
 DraftSource = Literal["manual", "ai_service", "rule_based", "imported"]
 DraftStatus = Literal["pending", "confirmed", "committed"]
+StaleReason = Literal["rule_set_changed", "import_row_changed"]
 Hand = Literal["LH", "RH", "BH"]
 
 MAX_DRAFTS_PER_REQUEST = 200
@@ -146,6 +147,10 @@ class WiDraftOut(BaseModel):
     committed_by: str | None = None
     committed_at: datetime | None = None
     committed_wi_row_id: uuid.UUID | None = None
+    # W3（v2_0053）
+    source_rule_set_id: uuid.UUID | None = None
+    parse_snapshot: dict[str, Any] | None = None  # 解析當下的 complete／issues 等；人工草稿為 null
+    stale_reason: StaleReason | None = None
 
 
 class WiDraftListOut(BaseModel):
@@ -157,3 +162,29 @@ class WiDraftCommitOut(BaseModel):
     worksheet_id: uuid.UUID
     revision_no: int
     committed: list[WiDraftOut]
+
+
+class WiDraftFromSentenceIn(BaseModel):
+    """單句解析後寫進編輯區（ADR-038 D2 情境 2）。規則版本取工時表的，不由前端指定。"""
+
+    model_config = ConfigDict(extra="forbid")
+
+    text: str = Field(min_length=1, max_length=2000)
+    # MOST 已知的手別（使用者輸入）；給了才和 ai_service 的手別提示比對，不採信 ai_service 的值
+    hand: Hand | None = None
+    # 作業名稱；沒給就用原句（ADR-037 D5：Excel 欄 → 使用者輸入 → 原句）
+    wi_group: str | None = Field(default=None, max_length=200)
+
+
+class WiDraftParseInfo(BaseModel):
+    run_id: uuid.UUID | None = None
+    status: Literal["ai_service", "degraded", "rule_based"]
+    routing_status: str
+    routing_reasons: list[str]
+
+
+class WiDraftFromSentenceOut(BaseModel):
+    worksheet_id: uuid.UUID
+    group_key: str
+    items: list[WiDraftOut]
+    ai: WiDraftParseInfo

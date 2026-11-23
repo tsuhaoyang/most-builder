@@ -89,6 +89,66 @@ class ExternalAi:
     scope: str
     known_hand: Hand | None = None
 
+# single-flight 的隔離範圍：沒有 worksheet、或 worksheet 找不到站點時用這個常數
+NO_SCOPE = "none"
+
+
+async def worksheet_scope(session: AsyncSession, worksheet_id: UUID | None) -> str:
+    """worksheet 所屬站點的 id（worksheet → process_version → sku → product → site）。只用於隔離合併，不是存取檢查。"""
+    if worksheet_id is None:
+        return NO_SCOPE
+    from ddm_v2.models.v2.org import Product, Sku
+    from ddm_v2.models.v2.worksheet import ProcessVersion
+
+    site_id = (
+        await session.execute(
+            select(Product.site_id)
+            .join(Sku, Sku.product_id == Product.id)
+            .join(ProcessVersion, ProcessVersion.sku_id == Sku.id)
+            .join(MostWorksheet, MostWorksheet.process_version_id == ProcessVersion.id)
+            .where(MostWorksheet.id == worksheet_id)
+        )
+    ).scalar_one_or_none()
+    return str(site_id) if site_id is not None else NO_SCOPE
+
+
+async def external_for(
+    session: AsyncSession,
+    *,
+    is_analyst: bool,
+    actor: str,
+    worksheet_id: UUID | None,
+    known_hand: Hand | None,
+) -> ExternalAi | None:
+    """這個請求要不要走外部 ai_service（ADR-037 D7）：analyst 以上，且整合開著、設定合格。否則 None（rule_based）。
+
+    角色先判斷：viewer 連 runtime 都不碰（不觸發 DNS 等初始化）。單句 nl-draft 與編輯區的 from-sentence 共用。
+    """
+    if not is_analyst:
+        return None
+    from ddm_v2.ai_integration.runtime import get_runtime_async
+
+    runtime = await get_runtime_async()
+    if not (runtime.available and runtime.service_bundle_code):
+        return None
+    return ExternalAi(
+        port=runtime.parser,
+        service_bundle_code=runtime.service_bundle_code,
+        actor=actor,
+        scope=await worksheet_scope(session, worksheet_id),
+        known_hand=known_hand,
+    )
+
+
+def ai_status_of(provenance: dict) -> str:
+    """`ai_service`（外部結果，含快取重播）｜`degraded`（試了外部但降級）｜`rule_based`（沒有試外部）。"""
+    if provenance.get("planner") == "ai_service":
+        return "ai_service"
+    if provenance.get("ai_error"):
+        return "degraded"
+    return "rule_based"
+
+
 # 同步 CPU 段（normalize_with_map／RuleBasedParser.parse）的逾時上限。
 # 為什麼是 10s：長度上限（MAX_PARSE_TEXT_CHARS=2000）已把病理最壞情況鎖在
 # 本機實測 ≈2–3s；10s ≈ 3 倍餘裕（涵蓋較慢的部署 CPU），同時把「守衛被繞過」
