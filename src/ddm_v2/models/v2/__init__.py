@@ -48,6 +48,7 @@ from ddm_v2.models.v2.rule_set_tables import (
 from ddm_v2.models.v2.synonym import RuleOptionSynonym
 from ddm_v2.models.v2.vocab import WorkVocabItem
 from ddm_v2.models.v2.wi_context import WiRowContext
+from ddm_v2.models.v2.wi_draft import WiDraftRow
 from ddm_v2.models.v2.wi_set import WiSetItem, WiSetProject
 from ddm_v2.models.v2.worksheet import (
     LevelEntry,
@@ -59,6 +60,7 @@ from ddm_v2.models.v2.worksheet import (
 
 __all__ = [
     "Base",
+    "WiDraftRow",
     "TimestampMixin",
     "Site",
     "Product",
