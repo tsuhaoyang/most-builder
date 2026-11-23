@@ -75,6 +75,8 @@ const errorsZh: ErrorCatalog = {
   LEVEL_POLICY_MISMATCH: 'Level 政策不一致',
   LEVEL_VALIDATION_FAILED: 'Level System 驗證未通過',
   LEVEL_VALIDATION_REQUIRED: '需先通過 Level System 驗證',
+  // ── 距離完成檢查（ADR-038 D6）──────────────────────────────────────────
+  DISTANCE_STATUS_MISSING: '有列尚未標示距離狀態，無法核准',
   // ── WI context / 工序表 ────────────────────────────────────────────────
   WI_CONTEXT_INVALID: 'WI 情境設定不正確',
   SIMO_PAIR_INVALID: 'SIMO 同動配對不正確',

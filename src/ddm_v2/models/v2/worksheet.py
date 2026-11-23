@@ -89,6 +89,8 @@ class MostWorksheet(Base, TimestampMixin):
         BigInteger, nullable=False, server_default=text("1")
     )
     content_hash: Mapped[str | None] = mapped_column(Text)
+    # ADR-038 D6（v2_0052）：經新工作區寫入後為 true，核准需每列都有距離狀態
+    distance_check_required: Mapped[bool] = mapped_column(Boolean, nullable=False, server_default=text("false"))
     last_edited_by: Mapped[str | None] = mapped_column(Text)
     last_edited_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
 
@@ -119,6 +121,8 @@ class WiRow(Base, TimestampMixin):
     frequency: Mapped[float] = mapped_column(Numeric(10, 3), nullable=False, server_default=text("1"))
     simo_group_id: Mapped[str | None] = mapped_column(Text)
     wi_group: Mapped[str | None] = mapped_column(Text)  # 作業名稱（ADR-035 D10；同名＝同作業候選成員）
+    # ADR-038 D6（v2_0052）：confirmed｜manual｜not_applicable；空＝沒標示
+    distance_status: Mapped[str | None] = mapped_column(Text)
     provenance: Mapped[str] = mapped_column(Text, nullable=False, server_default=text("'manual'"))
     source_row_id: Mapped[UUID | None] = mapped_column(PG_UUID(as_uuid=True))  # clone 血緣
     # impl-04：模組實體化追溯（同 NULL 或同非 NULL）
@@ -141,6 +145,10 @@ class WiRow(Base, TimestampMixin):
         # v2_0001 誤用長名（已含 ck_ 前綴）導致雙前綴；v2_0015 migration 已用 raw SQL DROP IF EXISTS 修正。
         CheckConstraint("hand IS NULL OR hand IN ('LH','RH','BH')", name="hand"),
         CheckConstraint("provenance IN ('manual','bom_draft','imported','ai_external')", name="provenance"),  # 2b: 加 imported；v2_0051 加 ai_external
+        CheckConstraint(  # ADR-038 D6（v2_0052）
+            "distance_status IS NULL OR distance_status IN ('confirmed','manual','not_applicable')",
+            name="distance_status",
+        ),
         CheckConstraint("frequency > 0", name="frequency_pos"),
         UniqueConstraint("worksheet_id", "seq_no", name="uq_wi_rows_worksheet_id_seq_no"),
     )

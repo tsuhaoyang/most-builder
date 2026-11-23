@@ -2,7 +2,7 @@
 from __future__ import annotations
 
 import uuid
-from typing import Any
+from typing import Any, Literal
 
 from pydantic import BaseModel, Field, field_validator
 
@@ -32,6 +32,11 @@ class LevelFieldsIn(BaseModel):
     machine_unattended: bool | None = None  # 三態（ADR-035 D10 §3.4）：null=未答/false=要顧/true=不用顧
 
 
+# ADR-038 D6：每列距離狀態。confirmed＝系統算出或 DSX 查到、經人確認；manual＝人工填；
+# not_applicable＝此動作無距離。None＝沒標示。
+DistanceStatus = Literal["confirmed", "manual", "not_applicable"]
+
+
 class WiRowSaveIn(BaseModel):
     id: uuid.UUID                       # 前端生成的穩定 id（F4）
     seq_no: int
@@ -47,6 +52,8 @@ class WiRowSaveIn(BaseModel):
     simo_with_row_id: uuid.UUID | None = None   # 輸入形式（E5 配對，service 僅標記從屬列）
     narrative: str | None = None        # 敘述（前端合成；存 most_cycles.narrative_zh，供匯出 METHOD）
     wi_group: str | None = Field(default=None, max_length=200)  # 作業名稱（ADR-035 D10）
+    # ADR-038 D6：未帶＝保留該列既有值（id 沿用時）；帶 null＝清除
+    distance_status: DistanceStatus | None = None
     cycle: CycleIn
     level: LevelFieldsIn = Field(default_factory=LevelFieldsIn)
 
@@ -109,5 +116,7 @@ class WorksheetReadOut(BaseModel):
     # R1 / ADR-027
     revision_no: int = 1
     content_hash: str | None = None
+    # ADR-038 D6：true＝核准需每列都有距離狀態（經新工作區寫入後開啟）
+    distance_check_required: bool = False
     last_edited_by: str | None = None
     last_edited_at: str | None = None
