@@ -7,7 +7,7 @@
 
 ## 狀態
 
-🔄 執行中。W1（PR #16）、W2（PR #19）已合併；W3 審查完成、PR 開立中（`feat/w3-drafts-from-ai`）。與 ADR-038 衝突時以 ADR-038 為準。
+🔄 執行中。W1（PR #16）、W2（PR #19）、W3（PR #20）已合併；W7a 審查完成、PR 開立中（`feat/w7-zones-distance`）。W7 拆為 W7a／W7b（2026-11-24，W7a，依審查建議，Howard 授權）。與 ADR-038 衝突時以 ADR-038 為準。
 
 ## 工作方式（Howard 2026-11-23）
 
@@ -53,7 +53,28 @@
 4. tick 內寫草稿目前會持有工時表列鎖到 tick 結束（limit ≤4），改逐列交易後解除。
 5. 用假 port 與假 ai_service 測；不需要真 ai_service。順序：W3 之後、W5 之前。
 
-### W7：區域與自動算距離（後端）
+### W7a：區域、DSX 座標快照、物件歸區（後端；2026-11-24，W7a，依審查建議，Howard 授權）
+1. migration `v2_0054`（加法）：`zone_categories`（6 個內建，admin 可新增）、`sku_zones`、`sku_placement_snapshots`（每 SKU 保留最近 20 份）、`sku_object_zones`（複合 FK 保證同 SKU，RESTRICT；物件座標欄預留）。downgrade 有使用者資料就拒絕。
+2. 11 個端點（見 rbac-spec）：讀 viewer、寫 analyst、新增類別 admin、`GET /dsx/objects` analyst。
+3. 同步：區域中心取快照中的 DSX `anchor_cm`，沒有時退回 `station_local_cm`，每筆記 `point_source`；快照找不到的綁定物件 → 清空中心並回報；換綁清空；回傳前一份快照。呼叫 DSX 前結束交易。
+4. DSX 失敗分開回報：`DSX_DISABLED` 503、`DSX_UNREACHABLE` 502、`DSX_NOT_READY` 409；物件清單連不到回 200＋`available=false`，不回空清單。`ZONE_IN_USE` 409。
+5. DSX 回應當不可信輸入：本文 ≤ 2 MB、≤ 2000 筆（超過整份拒絕不截斷）、字串 ≤ 200、座標 |v| ≤ 1000 cm、拒絕重複 id、`station_id` 必填、`placement_revision` 0..2^31−1。
+6. 鎖順序先 SKU 再區域；歸區只接受未刪除且啟用的物件；既有 `external_code`／`__to` 綁定與 a3 查詢不動（D7）。
+7. 用假 DSX（測試內的 ASGI app）測；**不需要真 DSX**。
+
+### W7b：算距離與建議（後端；2026-11-24，W7a，依審查建議，Howard 授權）
+1. 建模政策新增：伸手／走動門檻（預設 70 cm）、人端偏移（預設肩高 140 cm）；工時表記住使用的政策版本。
+2. 算距離：`a0`＝人→「從哪裡」（沒有 from 用 object）、`a3`／M＝從哪裡→到哪裡、`a6`＝到哪裡→人（沿用 DSX 現行語句模型）；≤門檻填 `reach_cm`、>門檻填 `foot_cm`；M>75 cm、a6>門檻標「需 IE 裁決」不截斷。
+3. 每個結果記錄 `snapshot_id`、`point_source`、使用的門檻、人端偏移、來源（`zone_center`｜`object_coordinate`）。
+4. 結果是建議：預填到草稿或列上、不直接寫入 TMU 路徑；確認後 `distance_status=confirmed`。
+5. 決定「改動作內容後已 `confirmed` 的距離狀態是否退回」（W2 留待項）。
+6. 用假 DSX 測；**不需要真 DSX**。
+7. 產出 `docs/architecture/dsx-changes-for-adr-038.md`：DSX 方需要配合或確認的事項（交 Howard 轉給 DSX repo）。須列：`anchor_cm` 是否已含旋轉與人端偏移。
+
+~~### W7：區域與自動算距離（後端）~~（2026-11-24，W7a，依審查建議，Howard 授權：已拆為 W7a／W7b，原條目如下保留）
+
+<details><summary>原 W7 條目</summary>
+
 1. migration（加法）：區域類別（固定清單、admin 可新增）、按 SKU 的區域（類別、名稱、DSX 物件 id、中心座標 3D）、按 SKU 的座標快照（DSX `placement_revision`、同步時間、同步者）、按 SKU 的物件歸區（含預留的物件座標）。
 2. MOST 代理 DSX `GET /api/v1/objects`（下拉清單）與 `GET /api/v1/placements`（同步）；DSX 連不到、座標未就緒（409）、物件找不到各有明確結果，不偽裝成空清單。
 3. 建模政策新增：伸手／走動門檻（預設 70 cm）、人端偏移（預設肩高 140 cm）；工時表記住使用的政策版本。
@@ -61,6 +82,8 @@
 5. 結果是建議：預填到草稿或列上、不直接寫入 TMU 路徑；確認後 `distance_status=confirmed`。
 6. 用假 DSX（測試內的 ASGI app）測；**不需要真 DSX**。
 7. 產出 `docs/architecture/dsx-changes-for-adr-038.md`：DSX 方需要配合或確認的事項（交 Howard 轉給 DSX repo）。
+
+</details>
 
 ### W4：工作區畫面（前端）
 1. 從工時表編輯器改造：編輯區列表（依 WI 分組、來源與狀態標示）、單列與整組確認、修改、刪除、「寫入工時表」。
@@ -85,6 +108,10 @@
 3. 「需 IE 裁決」與 DSX 連不到等狀態有明確顯示。
 4. 每列可標「此動作無距離」或手動值；核准時缺狀態的錯誤能指到該列。
 5. e2e（mock API）：設區域→同步→歸區→算距離→確認→核准通過；缺狀態時核准被擋。
+
+6. （2026-11-24，W7a，依審查建議，Howard 授權，W7a 帶來的待辦）同步時提示「與上次站別／版本不同」（用回應附的前一份快照比對 `dsx_station_id`、`placement_revision`）。
+7. （同上）同一 DSX 物件被多個區域綁定時提示。
+8. （同上，後續）快照回復功能。W7a 只保留最近 20 份，沒有回復入口。
 
 ### W6：移除舊畫面（前端）
 1. 側欄移除 MOST 工作台與 WI 專案；工時表編輯器移除「從 WI 庫插入」；對應 e2e 移除或改寫。
@@ -117,3 +144,10 @@
 | 2026-11-24 | W3 | 超長與解析失敗的 Excel 列 | 不產生草稿；W5 畫面必須列出並提供「建空白草稿」。理由：超長列不外送（`MAX_PARSE_TEXT_CHARS`），失敗列沒有可放的 cycle |
 | 2026-11-24 | W3 | job 規則版本與工時表不同 | 不寫草稿，原因記在 `item.last_error.drafts`，job 照跑。理由：用別的規則版本算的 cycle 進編輯區，寫入時才重算失敗，也判斷不出過期 |
 | 2026-11-24 | W3 | 已知限制：列鎖時間 | tick 內寫草稿會持有工時表列鎖到 tick 結束（limit ≤4）；W3b 改逐列交易時一併解決 |
+| 2026-11-24 | W7 | 拆成 W7a／W7b（2026-11-24，W7a，依審查建議，Howard 授權） | W7a：區域類別、區域、DSX 物件清單代理、同步快照、物件歸區、這份 WI 用到的物件。W7b：建模政策、算距離與建議、`distance_status=confirmed`、DSX 配合文件。理由：資料與同步可先獨立審查，算距離依賴其結果；驗收條件隨之拆開 |
+| 2026-11-24 | W7a | 區域中心取哪個點 | 取 DSX `anchor_cm`（取放錨點後的量測點），沒有才退回 `station_local_cm`，每筆記 `point_source`。理由：距離要量到手會去的地方；`anchor_cm` 是否已含旋轉與人端偏移需 DSX 確認（W7b 文件列出） |
+| 2026-11-24 | W7a | DSX 回應超過筆數上限 | 整份拒絕、不截斷（2000 筆、本文 2 MB）。理由：截斷會讓快照靜默缺物件，距離算錯而看不出來 |
+| 2026-11-24 | W7a | 鎖順序 | 一律先鎖 SKU 再鎖區域。理由：避免同步、刪除、歸區互相死結 |
+| 2026-11-24 | W7b | a0／a3／M／a6 的起訖點 | a0＝人→「從哪裡」（沒有 from 用 object）；a3／M＝從哪裡→到哪裡；a6＝到哪裡→人。沿用 DSX 現行語句模型（其 schema 註解 a0=人→從哪裡、a6=到哪裡→人）；結果記 `snapshot_id`、`point_source`、門檻、人端偏移 |
+| 2026-11-24 | W7b | 〈W2 留待 W7〉改動作內容是否退回 `confirmed` | 在 W7b 決定（有自動距離後才有依據） |
+| 2026-11-24 | W8 | W7a 帶來的待辦 | 同步時提示站別／版本不同、快照回復功能（後續）、同一 DSX 物件被多個區域綁定時提示 |

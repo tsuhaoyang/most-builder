@@ -80,6 +80,12 @@ class ErrorCode(str, Enum):
     DRAFT_INCOMPLETE = "DRAFT_INCOMPLETE"  # 409：解析出的草稿不完整且沒有人補過，不能確認或寫入
     DRAFT_STALE = "DRAFT_STALE"            # 409：草稿過期（規則版本改了／Excel 列變了），已退回待確認
 
+    # --- 區域與 DSX 座標（ADR-038 D5，W7）---
+    DSX_DISABLED = "DSX_DISABLED"          # 503：DSX 整合未開啟
+    DSX_UNREACHABLE = "DSX_UNREACHABLE"    # 502：DSX 連不到、逾時或回應看不懂
+    DSX_NOT_READY = "DSX_NOT_READY"        # 409：DSX 座標尚未就緒（3D 場景未載入）
+    ZONE_IN_USE = "ZONE_IN_USE"            # 409：區域還有物件歸在它底下
+
     # --- LB projection export (ADR-035 WP8) ---
     LB_EXPORT_BLOCKED = "LB_EXPORT_BLOCKED"
 

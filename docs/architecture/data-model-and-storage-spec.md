@@ -193,6 +193,21 @@ erDiagram
 - migration `v2_0053` 的 downgrade：有任何**尚未寫入**的草稿帶 `parse_snapshot` 或 `stale_reason` 就拒絕（丟掉它們會讓不完整的 AI 草稿通過寫入檢查）；已寫入的草稿不計。
 - 草稿一律追加到工時表表尾、不引用既有列，所以 stale 只看規則版本與 Excel 列，不看 worksheet revision。
 
+### 2.6c 區域、座標快照與物件歸區（四張表）
+
+> 欄位全貌以 migration `v2_0054`（W7a）與 `models/v2/zone.py` 為準；決策見 [ADR-038](../decisions/ADR-038-unified-wi-workspace-and-two-stage-distance.md) D5。（2026-11-24，W7a，依審查建議，Howard 授權）
+
+| 表 | 重點 |
+|---|---|
+| `zone_categories` | 區域類別。`code` 唯一且須符合 `^[a-z][a-z0-9_]{0,39}$`；`name_zh`、`name_en`、`sort_order`、`builtin`。migration 種入 6 個內建類別：`work_surface`、`incoming`、`outgoing`、`tool`、`fixture`、`other`；admin 可新增（`builtin=false`） |
+| `sku_zones` | 按 SKU 的區域（`sku_id` FK→skus，CASCADE）。`category_id` FK→`zone_categories`（RESTRICT）、`name`（同 SKU 唯一）、`dsx_object_id`（可空）、`center_x/y/z`（numeric(10,2) 公分，三欄須同空或同有）、`center_snapshot_id` FK→`sku_placement_snapshots`（SET NULL）。中心座標只由「從 DSX 同步」寫入；`(id, sku_id)` 唯一，供歸區的複合 FK 使用 |
+| `sku_placement_snapshots` | 每次同步一份。`dsx_station_id`、`placement_revision`（DSX 版本）、`placements`（JSONB，`[{object_id,x,y,z,point_source}]`，站內局部座標、公分、原點為作業員站位；`point_source`＝`anchor`｜`station_local`）、`placement_count`、`synced_by`、`synced_at`。每個 SKU 由服務層保留最近 20 份 |
+| `sku_object_zones` | (`sku_id`, `vocab_item_id`)→區域，主鍵即這組。`vocab_item_id` FK→`work_vocab_items`（CASCADE）。`(zone_id, sku_id)` 複合 FK→`sku_zones(id, sku_id)`（RESTRICT），保證區域與歸區同屬一個 SKU，且還有歸區時刪不掉區域。預留 `object_x/y/z`（可空，三欄同空或同有；W7a 不寫入） |
+
+- 快照不可變；之後的距離都用快照，不即時查 DSX。
+- migration `v2_0054` 的 downgrade：有任何區域、快照、歸區或非內建類別就拒絕。
+- 與 `work_vocab_items.external_code` 的 DSX 綁定並存，互不影響（ADR-038 D7）。
+
 ### 2.7 `most_cycles`（GM/CM 七格填值）— **快照 + 可回放**
 | 欄位 | 型別 | 說明 |
 |---|---|---|

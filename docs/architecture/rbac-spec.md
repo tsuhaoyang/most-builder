@@ -101,6 +101,26 @@ JIT：第一次出現的員工編號 → 自動建一筆 **viewer**（無 MOST �
 
 ---
 
+**區域、DSX 座標同步與物件歸區（ADR-038 D5，W7a 已實作）**（2026-11-24，W7a，依審查建議，Howard 授權）：
+
+| 端點 | 最低角色 |
+|------|----------|
+| `GET /zone-categories` | viewer（`current_user`） |
+| `POST /zone-categories`（新增類別） | **admin** |
+| `GET /skus/{sku_id}/zones`（區域與最近一次同步） | viewer |
+| `POST /skus/{sku_id}/zones` | analyst |
+| `PATCH`／`DELETE /zones/{zone_id}` | analyst |
+| `POST /skus/{sku_id}/zones/sync`（從 DSX 同步，存快照） | analyst |
+| `GET /dsx/objects`（代理 DSX 物件清單） | analyst |
+| `GET /skus/{sku_id}/object-zones` | viewer |
+| `PUT /skus/{sku_id}/object-zones` | analyst |
+| `GET /worksheets/{worksheet_id}/objects`（這份 WI 用到的物件與歸區） | viewer |
+
+- 共 11 個端點。讀取沿用 ADR-019 的「讀取全開 viewer+」；寫入 analyst；只有新增類別需要 admin。
+- `GET /dsx/objects` 雖是讀取，但會對外呼叫 DSX（DSX 沒有認證），所以要 analyst。整合未開或連不到時回 200＋`available=false`＋原因，不回空清單。
+- 同步等寫入端點的 DSX 失敗：`DSX_DISABLED` 503、`DSX_UNREACHABLE` 502、`DSX_NOT_READY` 409。刪除還有歸區的區域：`ZONE_IN_USE` 409。
+- 區域不做 ownership 與站點限制：任一 analyst 可改別人建的區域。
+
 ## 5. 資料模型：`app_users`（MOST 本地授權）
 
 | 欄位 | 型別 | 說明 |

@@ -76,6 +76,11 @@ const errorsEn: ErrorCatalog = {
   // ── Workspace drafts (ADR-038 D3) ───────────────────────────────────────
   DRAFT_INCOMPLETE: 'Some drafts were parsed incompletely; fill them in before confirming',
   DRAFT_STALE: 'Some drafts are out of date and were moved back to pending; review and confirm them again',
+  // ── Zones and DSX coordinates (ADR-038 D5) ──────────────────────────────
+  DSX_DISABLED: 'DSX integration is turned off',
+  DSX_UNREACHABLE: 'Cannot reach DSX',
+  DSX_NOT_READY: 'DSX coordinates are not ready yet; load the 3D scene in DSX first',
+  ZONE_IN_USE: 'Objects are still assigned to this zone; unassign them first',
   // ── WI context / worksheet ──────────────────────────────────────────────
   WI_CONTEXT_INVALID: 'The WI context is invalid',
   SIMO_PAIR_INVALID: 'The SIMO pairing is invalid',

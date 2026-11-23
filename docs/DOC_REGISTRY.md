@@ -36,7 +36,7 @@ MOST→LB 匯出的語意以 [MOST_LB_DATA_CONTRACT_SPEC.md](lb-integration/MOST
 
 > **ADR 索引層（重要，一跳可達）**：本索引**不**逐一列 24 份 ADR 的連結；ADR 的主題／狀態索引集中在 [decisions/README.md](decisions/README.md)。路徑為 **DOC_REGISTRY.md → decisions/README.md → 各 ADR**（三層入口的 ADR 索引層）。ADR 非孤兒，經此一跳可達。
 
-### 領域索引（11 個業務領域）
+### 領域索引（12 個業務領域）
 
 | 領域 | 索引 | 一句話 | 缺口票 |
 |---|---|---|---|
@@ -51,6 +51,7 @@ MOST→LB 匯出的語意以 [MOST_LB_DATA_CONTRACT_SPEC.md](lb-integration/MOST
 | i18n | [domains/i18n.md](domains/i18n.md) | 雙語標籤與錯誤信封 | — |
 | excel-import | [domains/excel-import.md](domains/excel-import.md) | Excel／CSV 匯入 | BL-DOC-5 |
 | auth-rbac | [domains/auth-rbac.md](domains/auth-rbac.md) | 認證／RBAC／稽核／搜尋 | BL-DOC-4 |
+| spatial-distance | [domains/spatial-distance.md](domains/spatial-distance.md) | 區域、DSX 座標快照、物件歸區、自動算距離 | — |
 
 [BACKLOG.md](BACKLOG.md) 收**兩類票**（2026-09-21 起，分類定義見該檔檔頭）：**BL-DOC-1…5**＝有程式、缺單一權威規格的區域（對應領域索引誠實標「現況以程式為準」，不現場編規格）；**BL-ENG-1…3**＝程式／UI 的已知缺陷或待統一項（讓文件裡的「另案」有編號可追）。優先序見該檔。
 
