@@ -180,6 +180,19 @@ erDiagram
 | `provenance` | text | `manual` / `bom_draft`（Q3：BOM 產生的草稿標記）；**規劃中（尚未實作）**：加 `ai_external`（外部 ai_service 建議經人工採用的列），由伺服器依 `review_item_id` 設定、前端不得傳值；採用路徑見 [ADR-037](../decisions/ADR-037-ai-service-integration.md) D5 |
 | `created_at`/`updated_at` | timestamptz | |
 
+### 2.6b `wi_draft_rows`（工作區編輯區草稿）
+
+> 欄位全貌以 migration `v2_0051`（W1）、`v2_0053`（W3）與 `models/v2/wi_draft.py` 為準。決策見 [ADR-038](../decisions/ADR-038-unified-wi-workspace-and-two-stage-distance.md) D2／D3。下表只列 W3 加的三欄（2026-11-24，W3，依審查建議，Howard 授權）。
+
+| 欄位 | 型別 | 說明 |
+|---|---|---|
+| `source_rule_set_id` | UUID NULL FK→rule_sets（`ON DELETE SET NULL`） | 草稿建立（或最後一次確認）時，目標工時表的 `default_rule_set_id`。寫入時若與工時表現值不同 → 該草稿過期（`rule_set_changed`）。既有列由 migration 以工時表目前的規則版本回填，不會因升級被判過期 |
+| `parse_snapshot` | JSONB NULL | 解析產生的草稿（單句 AI、整份上傳）在建立當下的紀錄：`complete`、`issues`（≤50 筆，每筆 ≤200 字）、`cycle_hash`（建立時 cycle 的雜湊，不含 `rule_set_code`，用來判斷人有沒有補過）、`import_input_hash`（Excel 列的 `input_hash`）、`ai_status`、`action_id`、`routing_status`、`wi_group_truncated`、`candidates_dropped`。人工建的草稿為 NULL。`complete=false` 且 cycle 雜湊未變 → 確認與寫入回 409 `DRAFT_INCOMPLETE`。確認時 `import_input_hash` 更新為 Excel 列現值 |
+| `stale_reason` | text NULL | 過期原因，CHECK `ck_wi_draft_rows_stale_reason`：`rule_set_changed`｜`import_row_changed`。寫入偵測到過期時，另開交易把草稿退回 `pending` 並記此欄；再次確認時清除 |
+
+- migration `v2_0053` 的 downgrade：有任何**尚未寫入**的草稿帶 `parse_snapshot` 或 `stale_reason` 就拒絕（丟掉它們會讓不完整的 AI 草稿通過寫入檢查）；已寫入的草稿不計。
+- 草稿一律追加到工時表表尾、不引用既有列，所以 stale 只看規則版本與 Excel 列，不看 worksheet revision。
+
 ### 2.7 `most_cycles`（GM/CM 七格填值）— **快照 + 可回放**
 | 欄位 | 型別 | 說明 |
 |---|---|---|

@@ -190,6 +190,8 @@ domains:
       - "tests/integration/test_wi_drafts.py"
       # tests：每列距離狀態與完成檢查（W2）
       - "tests/integration/test_distance_status.py"
+      # tests：解析結果寫進編輯區（W3）
+      - "tests/integration/test_wi_drafts_parsed.py"
     docs:
       - docs/architecture/data-model-and-storage-spec.md
       - docs/decisions/ADR-020-simo-contribution-semantics.md
@@ -207,7 +209,9 @@ domains:
       - 編輯區草稿不得出現在工時表讀取、匯出、LB 投影或核准流程（ADR-038 I2）
       - 距離完成檢查以每列明確的 `distance_status` 判斷，不看距離數值（A0 是合法值）；`distance_check_required` 只在 `drafts/commit` 打開、之後不關，未開啟的既有工時表不檢查（ADR-038 D6，2026-11-23 W2）。`distance_status` 不入 content_hash
       - 整份存檔（save_worksheet）列沒帶 `distance_status`＝保留同 id 既有值，帶 null 才清除；核准先鎖工時表列再依序做 level gate、距離檢查，存檔與編輯區寫入拿到列鎖後須再確認版本仍是 draft（ADR-038 D6，2026-11-23 W2）
-      - 外部 AI 草稿（source='ai_service'）在 engine_gate 寫入檢查落地（W3）前不得寫入工時表（commit 須 Fail-Fast，ADR-037 D3／D5）
+      - 解析產生的草稿（單句 AI、整份上傳）的可接受性＝人按確認＋寫入時 `compute_rows_for_save` 以工時表規則版本重算（等價 engine_gate）；解析不完整（`parse_snapshot.complete=false`）且 cycle 未被人改過 → 確認與寫入 409 `DRAFT_INCOMPLETE`。`rule_based` 草稿同規則；W1 的外部 AI 草稿 Fail-Fast 已移除（ADR-038 D3、ADR-037 D3／D5，2026-11-24 W3）
+      - 草稿一律追加表尾、不引用既有列，所以 stale 只看兩個條件：`source_rule_set_id` ≠ 工時表 `default_rule_set_id`（`rule_set_changed`）、Excel 列 `input_hash` 變了或被刪（`import_row_changed`）→ 409 `DRAFT_STALE`，整筆寫入作廢、另開交易把草稿退回 pending 並記 `stale_reason`；一般存檔不算過期（ADR-038 D3，2026-11-24 W3）
+      - 草稿寫入後 provenance：`ai_service`→`ai_external`；來自 Excel 列→`imported`（帶 `source_import_id`）；其餘→`manual`。外部 AI 與 `nl-draft` 同一套分流（`wi_ai_service.external_for`），單句端點先確認工時表可編輯、編輯區有空位才呼叫 AI（2026-11-24 W3）
 
   - id: motion-module
     title: 動作範本庫與 WI 大綱（motion_module／template matching）
@@ -286,8 +290,8 @@ domains:
       - ADR-033 D1（LLM 不產數值）、D6（逐項降級）、D7（距離單一來源）對外部 AI 回應維持為入站不變量（ADR-037 D3）
       - AI 建議一律逐項人工採用，不設批次或自動接受（ADR-037 D4、ADR-026 §3）；wi_ai_auto_enabled 現況為預設關、可由 env 開啟，ADR-037 落地時須改為不可開
       - 外部 AI 路徑（`parse_interactive(external=...)`）一律 `compute_routing(auto_enabled=False)`，不受 `wi_ai_auto_enabled` 影響（ADR-037 D4；2026-11-22 PR-B 落地）。上一條「須改為不可開」仍未完成：rule 路徑仍讀該旗標。路由已接線（2026-11-22，`nl_draft` 在 analyst 以上且整合可用時傳 `external`；預設關）
-      - 【規劃中，ADR-037 實作後生效】只有 complete=True、compute_cycle 通過、engine_gate 無 high 的 motion 可接受（ADR-037 D3）。前端採用端尚未實作（2026-11-22）：`DDM_AI_SERVICE_ENABLED` 開啟時會違反本條
-      - ai_service 候選的預覽 draft（`chosen` 恆為 None，`preview_drafts`）其 complete／引擎結果不得作為「可接受 motion」的依據；人工採用須由人寫入 `chosen`，再重跑 compile 與引擎（含 engine_gate），不得沿用預覽（ADR-037 D3 澄清，2026-11-22）。前端採用端尚未實作（現行 adopt 只檢查 `draft.cycle`）：`DDM_AI_SERVICE_ENABLED` 開啟時會違反本條
+      - 可接受的 motion（ADR-037 D3）在工作區的落實：人按「確認」＝人工採用（取代「人寫入 `chosen`」；`ai_candidates` 的 `chosen` 仍為 null、只供顯示），寫入時 `compute_rows_for_save` 重算（等價 engine_gate：唯一拒絕條件是 `compute_cycle` 丟 `SequenceError`）；`parse_snapshot.complete` 只是「要人先補」的提示（→ 409 `DRAFT_INCOMPLETE`），不是依據（ADR-038 D3，2026-11-24 W3）。舊前端 adopt 捷徑（`AiDraftPanel.tsx`、`ActionModuleWorkspace.tsx`，只檢查 `draft.cycle`）在 W4／W6 移除前仍在：`DDM_AI_SERVICE_ENABLED` 開啟時仍違反本條
+      - ai_service 候選的預覽 draft（`chosen` 恆為 None，`preview_drafts`）其 complete／引擎結果不得作為「可接受 motion」的依據（ADR-037 D3 澄清，2026-11-22）。編輯區草稿以預覽值預填但狀態為 pending，須經人確認、寫入時重算才算數（ADR-038 D3，2026-11-24 W3）；批次外部 AI 延後到 W3b（`parse_interactive` 外部路徑只支援單句）
       - 凍結列舉不得收窄，舊 ai_parse_runs 列須讀得回（ADR-037 D1）
       - 【規劃中，ADR-037 實作後生效】外送只含 WI 語句與白名單 context（ADR-037 D6／D7）
 
@@ -403,6 +407,7 @@ domains:
       - 匯入建列填 wi_group（TARGET_FIELDS 含 wi_group）
       - 超過 MAX_PARSE_TEXT_CHARS 的列不外送（現況已生效：import_service 標 review、parse_job 跳過）
       - 【規劃中，ADR-037 實作後生效】批量 AI 只送 description；Excel 數量為權威，歸屬依 ADR-037 D6 四條規則預填且逐項審核
+      - 匯入綁了 `worksheet_id` 時，parse job 每列解析後寫進該工時表的編輯區（savepoint），不直接寫工時表；手別與作業名稱取 Excel 欄；job 規則版本與工時表不同、工時表不可寫、編輯區滿 → 不寫，原因記在 `item.last_error.drafts`；重新解析同一列只取代沒人動過的 pending 草稿（ADR-038 D3，2026-11-24 W3）。既有 submit 保留
 
   - id: auth-rbac
     title: 認證與 RBAC（角色階層、稽核、搜尋）

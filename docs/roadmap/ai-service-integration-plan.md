@@ -16,6 +16,8 @@
 
 **2026-11-23，W1，Howard 核可（W1 進度）**：W1（編輯區資料表 `wi_draft_rows` 與 6 個 API）已在 `feat/w1-wi-draft-rows` 分支實作。**W3 待辦**：外部 AI 草稿寫入前的 engine_gate 檢查（目前寫入時 Fail-Fast 拒絕 `ai_service` 草稿）、其餘 stale 條件與列內容雜湊（W1 只做「非草稿版本」與「revision 不符 409」）。
 
+**2026-11-24，W3，依審查建議，Howard 授權（W3 進度）**：上段 W3 待辦（engine_gate 檢查、stale 條件）已在 W3 實作，單句與整份上傳寫進編輯區；批次外部 AI（S5 的 batch lane）與 Excel 數量權威拆到 W3b。狀態與驗收見 [adr-038-delivery-plan.md](adr-038-delivery-plan.md)。
+
 > 來源：MOST 與 ai_service 兩邊的唯讀盤點、架構規劃，以及兩輪審查（架構、資安、code、nlp-compiler、wi-workbench、excel-import、auth-rbac）。
 > 本文件中「ADR-033 P3」指 ADR-033 遷移路徑的第 3 階段；本計畫自己的階段寫作 S0–S5，避免撞名。
 

@@ -83,6 +83,15 @@ ADR-031 §1.1 量過：正式 gold 的 35 條 cycle，A 格全是 `A0`；距離�
   > - **上限**：每份工時表編輯區最多 5000 列（含已寫入的紀錄）；每列內容上限 16KB；拒絕 NaN／±Inf。
   > - **刪除稽核**：刪除尚未寫入的草稿不寫稽核表，只留伺服器 log（誰刪了誰建的哪一列）；寫入工時表經 worksheet revision 留 actor。
   > - **共用編輯區**：任一 analyst 可改、刪、確認、寫入別人建的草稿；`created_by`／`updated_by`／`confirmed_by`／`committed_by` 各自記錄。不做 ownership 與站點限制（BL-ENG-19）。
+- > **2026-11-24，W3，依審查建議，Howard 授權（W3 追記）**：W3（單句與整份上傳寫進編輯區，migration `v2_0053`）實作結果。以下修訂 W1 追記中「stale 條件」「provenance」與 ADR-037 D3／D5 的 W1 追記；原文保留。
+  > - **可接受的 motion（ADR-037 D3 在工作區的落實）**：依本節「使用者確認時，畫面上的值才成為該列的決定值」，在工作區按「確認」就是 ADR-037 D3 要求的「人工採用」，取代「人寫入 `chosen`」的機制。`ai_parse_runs`／`ai_candidates` 內的 `chosen` 仍為 null，只供畫面顯示哪些格是 AI 填的。寫入時 `compute_rows_for_save` 以工時表的規則版本重算 cycle，等價 engine_gate（engine_gate 唯一的拒絕條件是 `compute_cycle` 丟 `SequenceError`），算不過整筆失敗。`parse_snapshot.complete` 只是「要不要人先補」的提示：解析不完整、而且 cycle 到現在沒被人改過（`cycle_hash` 與建立時相同）→ 確認與寫入都回 409 `DRAFT_INCOMPLETE`；它不是可接受的依據。同一規則也套用在 `rule_based` 草稿。W1 的「外部 AI 草稿寫入時 Fail-Fast」已移除，由本條取代。
+  > - **stale**：寫入時，已確認的草稿若 `source_rule_set_id` ≠ 工時表的 `default_rule_set_id`（`rule_set_changed`），或來源 Excel 列的 `input_hash` 與建立時不同、或該列已被刪（`import_row_changed`）→ 409 `DRAFT_STALE`。這次寫入整筆作廢（含 revision 遞增）；另開交易把這些草稿退回 `pending`、記 `stale_reason`。重新確認時以現在的規則版本與 Excel 列為新基準並清除 `stale_reason`。套用於所有草稿。ADR-037 D5 的「引用列被改動」不適用，因為草稿一律追加到表尾、不引用既有列；一般存檔（revision 遞增）不算過期。這關閉 W1 追記「其餘 stale 條件在 W3」。
+  > - **provenance（修訂 W1 追記）**：`ai_service` → `ai_external`；來自 Excel 列的草稿（`rule_based`、帶 `import_row_id`）→ `imported`，並帶 `source_import_id`；其餘照 W1（`rule_based`、手動 → `manual`）。
+  > - **單句端點** `POST /api/v2/worksheets/{id}/drafts/from-sentence`（analyst+）：body 為 `text`（≤2000 字）、`hand`、`wi_group`（≤200 字）。規則版本取工時表的。先確認工時表可編輯、編輯區還有空位，才呼叫 AI（不白花額度）。外部 AI 分流與 `nl-draft` 同一套（`wi_ai_service.external_for`）；AI 降級或失敗時照樣進編輯區、來源標 `rule_based`。一句一組（共用 `group_key`），`wi_group` 預設為原句截 200 字（截斷記在 `parse_snapshot.wi_group_truncated`）；解析不出 motion 時仍放一列佔位草稿。既有 `nl-draft` 保留。
+  > - **整份上傳**：匯入綁了 `worksheet_id` 時，parse job 每列解析後寫進該工時表的編輯區（包在 savepoint 內）；手別與作業名稱（`wi_group`）取 Excel 欄。job 的規則版本與工時表不同、工時表不可寫、編輯區滿 → 該列不寫草稿，原因記在 `item.last_error.drafts`，job 照跑。重新解析同一列：取代沒人動過的 `pending` 草稿；已有人確認、寫入或改過（`updated_by` 有值）的不動，也不追加新的。既有的 submit 保留。
+  > - **欄位**（migration `v2_0053`，加法）：`wi_draft_rows.source_rule_set_id`、`parse_snapshot`（JSONB）、`stale_reason`。見 [data-model-and-storage-spec](../architecture/data-model-and-storage-spec.md) §2.6b。
+  > - **錯誤碼**：`DRAFT_INCOMPLETE`（detail：`incomplete_count`、`draft_ids` ≤200）、`DRAFT_STALE`（detail：`stale_count`、`drafts[{draft_id, reason}]` ≤200）。
+  > - **延後與已知限制**：批次的外部 AI（batch lane）與 ADR-037 D6 的 Excel 數量權威移到 W3b；超長與解析失敗的 Excel 列不產生草稿，畫面處理在 W5。見 [交付計畫](../roadmap/adr-038-delivery-plan.md)。
 - **本 ADR 定義 ADR-037 D4 審核的落點**：ADR-037 規劃的「審核佇列」就是工作區的編輯區，不另做獨立頁面。
 - AI 草稿的處理（滿足 ADR-037 D3 澄清「預覽不是可接受依據」）：
   - AI 的格位代碼在編輯區是**候選**（`chosen` 為空），畫面上可直接看到預填的值，但列狀態為 `pending`。
