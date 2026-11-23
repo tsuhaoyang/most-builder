@@ -17,6 +17,7 @@ from ddm_v2.models.v2.base import Base, uuid_pk
 
 DRAFT_SOURCES = ("manual", "ai_service", "rule_based", "imported")
 DRAFT_STATUSES = ("pending", "confirmed", "committed")
+STALE_REASONS = ("rule_set_changed", "import_row_changed")
 
 
 class WiDraftRow(Base):
@@ -52,10 +53,20 @@ class WiDraftRow(Base):
     committed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     # 軟參考（見 migration v2_0051 檔頭：整份取代的存檔會讓 FK 擋住或連帶刪除）
     committed_wi_row_id: Mapped[UUID | None] = mapped_column(PG_UUID(as_uuid=True))
+    # v2_0053（W3）：建立或最後確認時工時表的規則版本；改綁後已確認的草稿寫入時轉過期
+    source_rule_set_id: Mapped[UUID | None] = mapped_column(
+        PG_UUID(as_uuid=True), ForeignKey("rule_sets.id", ondelete="SET NULL")
+    )
+    # v2_0053：解析產生的草稿在建立當下的紀錄（complete／issues／cycle_hash／import_input_hash／ai_status）
+    parse_snapshot: Mapped[dict | None] = mapped_column(JSONB)
+    stale_reason: Mapped[str | None] = mapped_column(Text)
 
     __table_args__ = (
         CheckConstraint("source IN ('manual','ai_service','rule_based','imported')", name="source"),
         CheckConstraint("status IN ('pending','confirmed','committed')", name="status"),
+        CheckConstraint(
+            "stale_reason IS NULL OR stale_reason IN ('rule_set_changed','import_row_changed')", name="stale_reason"
+        ),
         CheckConstraint(
             "status = 'pending' OR (confirmed_by IS NOT NULL AND confirmed_at IS NOT NULL)",
             name="confirmed_has_actor",

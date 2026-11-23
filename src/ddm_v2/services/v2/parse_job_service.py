@@ -509,6 +509,51 @@ async def _finalize_job_status(session: AsyncSession, job: AiParseJob) -> None:
     job.completed_at = now
 
 
+_VALID_HANDS = ("LH", "RH", "BH")
+
+
+async def _write_drafts(
+    session: AsyncSession, worksheet_id: UUID, result: Any, row: ImportRow, *, actor: str, rule_set_id: UUID
+) -> dict[str, Any] | None:
+    """把一列 Excel 的解析結果寫進目標工時表的編輯區（ADR-038 D2 情境 3）。成功回 None，沒寫回原因。
+
+    包在 savepoint 裡：預期內的原因（工時表不可寫、編輯區滿了、job 的規則版本與工時表不同）只記在
+    `item.last_error.drafts`，不影響這一列的解析結果與 job 計數；其他例外回滾 savepoint 後照 tick 的列級隔離處理
+    （重試或標 failed），不會留下半套草稿。
+    手別與作業名稱取 Excel 欄（ADR-037 D5：Excel 欄優先）；手別不是 LH／RH／BH 就不帶。
+    """
+    from ddm_v2.models.v2.worksheet import MostWorksheet
+    from ddm_v2.services.v2 import wi_draft_service as drafts_svc
+    from ddm_v2.services.v2.worksheet_service import NotEditable, WorksheetNotFound
+
+    ws = await session.get(MostWorksheet, worksheet_id)
+    if ws is not None and ws.default_rule_set_id is not None and ws.default_rule_set_id != rule_set_id:
+        # 用別的規則版本算的 cycle 進編輯區，寫入時才以工時表版本重算失敗；草稿也判斷不出過期，所以不寫
+        return {"written": 0, "reason": "rule_set_mismatch"}
+    nd = row.normalized_data or {}
+    hand = nd.get("hand") if nd.get("hand") in _VALID_HANDS else None
+    group = str(nd.get("wi_group")).strip() if nd.get("wi_group") else None
+    try:
+        async with session.begin_nested():
+            written = await drafts_svc.add_parsed_drafts(
+                session,
+                worksheet_id,
+                result,
+                text=_row_text(nd),
+                hand=hand,
+                wi_group=group,
+                ai_status=wi_ai_service.ai_status_of(result.provenance),
+                actor=actor,
+                import_row=row,
+            )
+    except (NotEditable, WorksheetNotFound, drafts_svc.TooManyDrafts) as exc:
+        logger.warning("parse job: drafts not written for import_row %s: %s", row.id, type(exc).__name__)
+        return {"written": 0, "reason": type(exc).__name__}
+    if not written:
+        return {"written": 0, "reason": "already_reviewed"}
+    return None
+
+
 async def tick_job(
     session: AsyncSession,
     *,
@@ -555,6 +600,10 @@ async def tick_job(
     reaped = await _reap_exhausted_items(session, job.id)
     agg["processed"] += reaped
     agg["failed"] += reaped
+
+    # ADR-038 W3：匯入綁了目標工時表時，每列解析完就寫進它的編輯區（不再直接寫工時表）
+    rec = await session.get(ExcelImport, import_id)
+    target_ws_id = rec.worksheet_id if rec is not None else None
 
     claimed = await _claim_items(
         session,
@@ -629,6 +678,12 @@ async def tick_job(
             item.status = item_status
             row.status = row_status  # type: ignore[assignment]
             item.last_error = last_error
+            if target_ws_id is not None:
+                note = await _write_drafts(
+                    session, target_ws_id, result, row, actor=job.requested_by, rule_set_id=rs.id
+                )
+                if note is not None:
+                    item.last_error = {**(item.last_error or {}), "drafts": note}
             agg["processed"] += 1
             agg[bucket] += 1
             processed_now += 1

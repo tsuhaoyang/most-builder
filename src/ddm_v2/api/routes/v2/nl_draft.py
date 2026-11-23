@@ -25,7 +25,6 @@ from uuid import UUID
 
 from fastapi import APIRouter, Depends
 from pydantic import BaseModel, Field
-from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from ddm_v2.ai_integration.runtime import get_runtime_async
@@ -33,12 +32,9 @@ from ddm_v2.auth.deps import CurrentUser, current_user
 from ddm_v2.database import get_db_session
 from ddm_v2.errors.registry import ErrorCode
 from ddm_v2.exceptions import NotFoundError, ServiceUnavailableError
-from ddm_v2.models.v2.org import Product, Sku
-from ddm_v2.models.v2.worksheet import MostWorksheet, ProcessVersion
 from ddm_v2.nlp.contracts import ParseContext
 from ddm_v2.services.v2 import synonym_service as syn_svc
 from ddm_v2.services.v2 import wi_ai_service
-from ddm_v2.services.v2.wi_ai_service import ExternalAi
 
 router = APIRouter(prefix="/api/v2", tags=["v2-nl-draft"])
 
@@ -59,32 +55,10 @@ class NLDraftIn(BaseModel):
     hand: Literal["LH", "RH", "BH"] | None = None
 
 
-# single-flight 的隔離範圍：沒有 worksheet、或 worksheet 找不到站點時用這個常數
-NO_SCOPE = "none"
-
-
-async def _worksheet_scope(session: AsyncSession, worksheet_id: UUID | None) -> str:
-    """worksheet 所屬站點的 id（worksheet → process_version → sku → product → site）。只用於隔離合併。"""
-    if worksheet_id is None:
-        return NO_SCOPE
-    site_id = (
-        await session.execute(
-            select(Product.site_id)
-            .join(Sku, Sku.product_id == Product.id)
-            .join(ProcessVersion, ProcessVersion.sku_id == Sku.id)
-            .join(MostWorksheet, MostWorksheet.process_version_id == ProcessVersion.id)
-            .where(MostWorksheet.id == worksheet_id)
-        )
-    ).scalar_one_or_none()
-    return str(site_id) if site_id is not None else NO_SCOPE
-
-
-def _ai_status(provenance: dict) -> str:
-    if provenance.get("planner") == "ai_service":
-        return "ai_service"
-    if provenance.get("ai_error"):
-        return "degraded"
-    return "rule_based"
+# 共用邏輯在 wi_ai_service（from-sentence 也用）；這裡保留舊名給既有引用
+NO_SCOPE = wi_ai_service.NO_SCOPE
+_worksheet_scope = wi_ai_service.worksheet_scope
+_ai_status = wi_ai_service.ai_status_of
 
 
 class WiAiStatusOut(BaseModel):
@@ -109,21 +83,15 @@ async def nl_draft(
             previous_row_summary=payload.context.previous_row_summary,
         )
 
-    external: ExternalAi | None = None
     # ADR-037 D7：觸發 AI 需 analyst 以上；viewer 只走 rule_based，不外送。
     # 這裡是「依角色分流」不是「拒絕」（viewer 仍拿 200＋rule_based），所以不能用 require_role 依賴；
-    # 判斷仍走同一套 ROLE_ORDER（`CurrentUser.has`）。角色先判斷：viewer 連 runtime 都不碰。
-    runtime = await get_runtime_async() if user.has("analyst") else None
-    if runtime is not None and runtime.available and runtime.service_bundle_code:
-        external = ExternalAi(
-            port=runtime.parser,
-            service_bundle_code=runtime.service_bundle_code,
-            actor=user.employee_no,
-            scope=await _worksheet_scope(session, payload.worksheet_id),
-            known_hand=payload.hand,
-        )
-        # `current_user` 對第一次出現的人會 JIT 建帳（已 flush、尚未 commit）；外部路徑會在呼叫前 commit，
-        # 連帶把它提交——這正是請求成功時本來就會發生的事，不是需要回滾的寫入。
+    # 判斷仍走同一套 ROLE_ORDER（`CurrentUser.has`）。
+    # `current_user` 對第一次出現的人會 JIT 建帳（已 flush、尚未 commit）；外部路徑會在呼叫前 commit，
+    # 連帶把它提交——這正是請求成功時本來就會發生的事，不是需要回滾的寫入。
+    external = await wi_ai_service.external_for(
+        session, is_analyst=user.has("analyst"), actor=user.employee_no,
+        worksheet_id=payload.worksheet_id, known_hand=payload.hand,
+    )
 
     try:
         result, legacy = await wi_ai_service.parse_interactive(

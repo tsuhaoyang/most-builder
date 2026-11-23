@@ -82,8 +82,11 @@ MOST：① 讀 header 取身分(員工編號)  ② 查本地 app_users 取 MOST 
 | `PATCH`／`DELETE /worksheet-drafts/{id}` | analyst |
 | `POST /worksheets/{id}/drafts/confirm` | analyst |
 | `POST /worksheets/{id}/drafts/commit`（寫入工時表） | analyst |
+| `POST /worksheets/{id}/drafts/from-sentence`（單句解析，W3） | analyst（viewer 得 403） |
 
 - **讀取例外**：ADR-019「讀取全開 viewer+」只適用工時表正本。編輯區含未確認的 AI 草稿與匯入原文，讀取也需 analyst（與上表「看審核佇列含原文 analyst」一致）。
+- **單句解析寫進編輯區**（2026-11-24，W3，依審查建議，Howard 授權）：`POST /worksheets/{id}/drafts/from-sentence` 最低角色 **analyst**（viewer 得 403）。與 `nl-draft` 不同：它不「依角色分流」，viewer 不能用。外部 AI 分流沿用 `wi_ai_service.external_for`（analyst 以上且整合可用才外送）。
+- 寫入（`drafts/commit`）與確認（`drafts/confirm`）新增兩個 409：`DRAFT_INCOMPLETE`、`DRAFT_STALE`（ADR-038 D3 W3 追記）；角色不變。
 - 編輯區不做 ownership 與站點限制（ADR-038、BL-ENG-19）：任一 analyst 可改、刪、確認、寫入別人建的草稿。已寫入（`committed`）的草稿不可改刪。
 - 刪除尚未寫入的草稿不寫稽核表，只留伺服器 log；寫入工時表經 worksheet revision 留 actor。
 

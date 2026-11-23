@@ -97,6 +97,7 @@ MOST 內的 LLM 專屬程式移除：`llm_client`、`prompts/*`、`LLMClientPort
 - **可接受的 motion**：plan 完整（`complete=True`）、`compute_cycle` 通過、engine_gate 無 high 級問題。其餘只能人工補齊並重驗後才可接受。
   - **預覽不是依據**（2026-11-22 澄清，不修訂本條）：S3 的預覽 draft 是用 ai_service 候選的複本算的（`chosen` 恆為 None，`preview_drafts`），
     其 `complete` 與引擎結果**不得**作為「可接受的 motion」的依據。人工採用（實作計畫 S4）必須由人寫入 `chosen`，再重跑 compile 與引擎（含 engine_gate），不得沿用預覽。
+  > **2026-11-24，W3，依審查建議，Howard 授權（W3 追記，ADR-038 D3）**：在工作區，「人按確認」就是這裡的人工採用（取代「人寫入 `chosen`」的機制；`ai_candidates` 的 `chosen` 仍為 null，只供顯示）。寫入時 `compute_rows_for_save` 以目標工時表規則版本重算，等價 engine_gate（其唯一拒絕條件是 `compute_cycle` 丟 `SequenceError`）。`parse_snapshot.complete` 只是提示：不完整且 cycle 未被人改 → 409 `DRAFT_INCOMPLETE`。預覽 draft 仍不是依據。同一規則也套用在 `rule_based` 草稿。細節見 [ADR-038](ADR-038-unified-wi-workspace-and-two-stage-distance.md) D3 的 W3 追記。
 
 **不採信的欄位**
 - `hand`、`seq_kind` 不採信。手別來源依序為 Excel 欄、使用者輸入、MOST 確定性解析；ai_service 的值只作提示，不一致時標審核。
@@ -164,6 +165,11 @@ Suggest(ai_service) → Map(mapper) → Validate(link/compile/engine_gate/routin
   >   後果：人改過內容的 AI 列仍標 `ai_external`（過度標示，方向安全）。
   > - **「採用流程」的落盤入口由 ADR-038 的 `POST /worksheets/{id}/drafts/commit` 取代**（上面第 2、3 步的前端追加＋`save_worksheet`）。該入口仍共用 save 的元件：revision CAS、`compute_rows_for_save`、`persist_computed_rows`、`finalize_content_change`，沒有第二套計算或寫入。
   > - **外部 AI 草稿（`source='ai_service'`）在 W3 補上 engine_gate 檢查前，寫入時 Fail-Fast 拒絕**（409，`field=source`）。
+  > **2026-11-24，W3，依審查建議，Howard 授權（W3 追記，ADR-038 D3）**：
+  > - **W1 追記的「外部 AI 草稿在 W3 補上 engine_gate 檢查前 Fail-Fast 拒絕」已移除**，由上列 D3 的 W3 追記取代。
+  > - **stale 條件在草稿層實作兩個**：工時表 `default_rule_set_id` 改變（`rule_set_changed`）、來源 Excel 列 `input_hash` 改變或被刪（`import_row_changed`）→ 409 `DRAFT_STALE`，整筆寫入作廢，草稿退回 pending 並記 `stale_reason`。「引用列被改動」不適用（草稿追加表尾）。
+  > - **provenance**：`ai_service` → `ai_external`；來自 Excel 列的 `rule_based` 草稿 → `imported`（帶 `source_import_id`）；其餘照 W1。
+  > - Excel 批量的外部 AI 與 D6 的 Excel 數量權威延後到 W3b（見 [交付計畫](../roadmap/adr-038-delivery-plan.md)）。
 - 一句 N 個 motion → N 列 WiRow＋N 個 cycle（`most_cycle.wi_row_id` 1:1 不變）。審核項的落盤參照存 `wi_row_id` 陣列（cycle id 每次存檔重建，不可作參照）。
 - **TMU**：審核預覽與落盤都用 `compute_rows_for_save` 與目標 worksheet 的 rule-set；審核畫面的值標為預覽，以落盤結果為準。
 - **stale 條件**：目標 worksheet 的 `default_rule_set_id` 改變；process_version 非 draft；目標被刪除；

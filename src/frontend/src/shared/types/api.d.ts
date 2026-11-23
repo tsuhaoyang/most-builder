@@ -1764,6 +1764,29 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v2/worksheets/{worksheet_id}/drafts/from-sentence": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Drafts From Sentence
+         * @description 單句 WI → 解析 → 同一組草稿（ADR-038 D2 情境 2）。規則版本用工時表的（ADR-037 D3：目標 worksheet 的 rule-set）。
+         *
+         *     外部 AI 依開關與設定（`wi_ai_service.external_for`，與 nl-draft 同一套）；失敗降級為規則解析，草稿照樣進編輯區，
+         *     來源標 rule_based。外部路徑會在呼叫前 commit（ADR-037 D8），所以這裡在那之前只讀不寫。
+         */
+        post: operations["drafts_from_sentence_api_v2_worksheets__worksheet_id__drafts_from_sentence_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v2/i18n/review/summary": {
         parameters: {
             query?: never;
@@ -3735,6 +3758,31 @@ export interface components {
              */
             order_in_group: number;
         };
+        /**
+         * WiDraftFromSentenceIn
+         * @description 單句解析後寫進編輯區（ADR-038 D2 情境 2）。規則版本取工時表的，不由前端指定。
+         */
+        WiDraftFromSentenceIn: {
+            /** Text */
+            text: string;
+            /** Hand */
+            hand?: ("LH" | "RH" | "BH") | null;
+            /** Wi Group */
+            wi_group?: string | null;
+        };
+        /** WiDraftFromSentenceOut */
+        WiDraftFromSentenceOut: {
+            /**
+             * Worksheet Id
+             * Format: uuid
+             */
+            worksheet_id: string;
+            /** Group Key */
+            group_key: string;
+            /** Items */
+            items: components["schemas"]["WiDraftOut"][];
+            ai: components["schemas"]["WiDraftParseInfo"];
+        };
         /** WiDraftListOut */
         WiDraftListOut: {
             /**
@@ -3811,6 +3859,28 @@ export interface components {
             committed_at?: string | null;
             /** Committed Wi Row Id */
             committed_wi_row_id?: string | null;
+            /** Source Rule Set Id */
+            source_rule_set_id?: string | null;
+            /** Parse Snapshot */
+            parse_snapshot?: {
+                [key: string]: unknown;
+            } | null;
+            /** Stale Reason */
+            stale_reason?: ("rule_set_changed" | "import_row_changed") | null;
+        };
+        /** WiDraftParseInfo */
+        WiDraftParseInfo: {
+            /** Run Id */
+            run_id?: string | null;
+            /**
+             * Status
+             * @enum {string}
+             */
+            status: "ai_service" | "degraded" | "rule_based";
+            /** Routing Status */
+            routing_status: string;
+            /** Routing Reasons */
+            routing_reasons: string[];
         };
         /**
          * WiDraftPatchIn
@@ -8052,6 +8122,41 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["WiDraftCommitOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    drafts_from_sentence_api_v2_worksheets__worksheet_id__drafts_from_sentence_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                worksheet_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["WiDraftFromSentenceIn"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["WiDraftFromSentenceOut"];
                 };
             };
             /** @description Validation Error */

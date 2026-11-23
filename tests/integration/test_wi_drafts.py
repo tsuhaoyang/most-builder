@@ -4,7 +4,7 @@
 - 新增／列出／修改（回 pending）／刪除／確認（單列與整組）的狀態機；已寫入的草稿不能改、不能刪、不能再確認。
 - 寫入工時表：只寫已確認的列、追加到表尾、TMU 由引擎以目標規則版本重算（不沿用任何預覽值）、level 留空、
   依來源標 provenance、同交易把草稿標 committed 並記寫入的列 id、版本鎖不符 → 409 且什麼都不寫。
-- 只在草稿版本的工序上可以寫；viewer 一律 403。
+- 只在草稿版本的工序上可以寫；viewer 一律 403。（W1 的「外部 AI 草稿一律不能寫入」已由 W3 的寫入檢查取代。）
 - 修正：整份存檔不再把既有列的來源抹成 manual（imported／ai_external 保留）。
 - migration v2_0051 的約束與 downgrade 拒絕條件。
 """
@@ -271,7 +271,10 @@ async def _backend_draft(db_session, ws_id, source: str):
     return d
 
 
-@pytest.mark.parametrize(("source", "provenance"), [("rule_based", "manual"), ("manual", "manual")])
+# W3 起外部 AI 草稿可寫入（改由寫入檢查把關，見 test_wi_drafts_parsed.py），標 ai_external
+@pytest.mark.parametrize(
+    ("source", "provenance"), [("rule_based", "manual"), ("manual", "manual"), ("ai_service", "ai_external")]
+)
 async def test_provenance_follows_the_draft_source(client, db_session, source, provenance):
     ws, _ = await _seed_ws(db_session)
     d = await _backend_draft(db_session, ws.id, source)
@@ -279,17 +282,6 @@ async def test_provenance_follows_the_draft_source(client, db_session, source, p
     assert (await _commit(client, ws.id, base_revision=1)).status_code == 200
     row = (await db_session.execute(select(WiRow).where(WiRow.worksheet_id == ws.id))).scalar_one()
     assert row.provenance == provenance
-
-
-async def test_external_ai_drafts_cannot_be_committed_before_w3(client, db_session):
-    """Fail-Fast：AI 草稿還要過 engine_gate（ADR-037 D3），寫入路徑 W3 才補；在那之前一列都不寫。"""
-    ws, _ = await _seed_ws(db_session)
-    (manual,) = await _create(client, ws.id, [{"content": _content()}])
-    ai = await _backend_draft(db_session, ws.id, "ai_service")
-    await _confirm(client, ws.id, draft_ids=[manual["id"], str(ai.id)])
-    r = await _commit(client, ws.id, base_revision=1)
-    assert r.status_code == 409 and r.json()["error"]["detail"]["field"] == "source"
-    assert (await db_session.execute(select(WiRow).where(WiRow.worksheet_id == ws.id))).scalars().all() == []
 
 
 # ═════════ 已寫入的草稿是紀錄 ═════════
