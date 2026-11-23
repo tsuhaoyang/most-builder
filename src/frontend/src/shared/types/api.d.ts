@@ -2117,6 +2117,75 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v2/worksheets/{worksheet_id}/distance-suggestions": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List Suggestions */
+        get: operations["list_suggestions_api_v2_worksheets__worksheet_id__distance_suggestions_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v2/worksheets/{worksheet_id}/distance-suggestions/compute": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Compute */
+        post: operations["compute_api_v2_worksheets__worksheet_id__distance_suggestions_compute_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v2/worksheets/{worksheet_id}/distance-suggestions/apply": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Apply */
+        post: operations["apply_api_v2_worksheets__worksheet_id__distance_suggestions_apply_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v2/modeling-policy/distance-settings": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Settings */
+        get: operations["get_settings_api_v2_modeling_policy_distance_settings_get"];
+        put?: never;
+        /** Publish Settings */
+        post: operations["publish_settings_api_v2_modeling_policy_distance_settings_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/": {
         parameters: {
             query?: never;
@@ -2472,6 +2541,104 @@ export interface components {
             status: string;
             /** Is Active */
             is_active: boolean;
+        };
+        /** DistanceApplyIn */
+        DistanceApplyIn: {
+            /** Base Revision */
+            base_revision: number;
+            /**
+             * Computed At
+             * Format: date-time
+             */
+            computed_at: string;
+            /** Wi Row Ids */
+            wi_row_ids: string[];
+        };
+        /**
+         * DistanceSettingsIn
+         * @description admin 發布新的距離設定（建模政策新版本，之後新建的工時表才用；既有工時表不變）。
+         */
+        DistanceSettingsIn: {
+            /** Reach Foot Threshold Cm */
+            reach_foot_threshold_cm: number;
+            /** Person Offset Cm */
+            person_offset_cm: number[];
+        };
+        /** DistanceSettingsOut */
+        DistanceSettingsOut: {
+            /**
+             * Modeling Policy Version Id
+             * Format: uuid
+             */
+            modeling_policy_version_id: string;
+            /** Version No */
+            version_no: number;
+            /** Reach Foot Threshold Cm */
+            reach_foot_threshold_cm: number;
+            /** Person Offset Cm */
+            person_offset_cm: number[];
+            /**
+             * Source
+             * @enum {string}
+             */
+            source: "policy" | "default";
+        };
+        /** DistanceSuggestionListOut */
+        DistanceSuggestionListOut: {
+            /**
+             * Worksheet Id
+             * Format: uuid
+             */
+            worksheet_id: string;
+            /** Items */
+            items: components["schemas"]["DistanceSuggestionOut"][];
+        };
+        /** DistanceSuggestionOut */
+        DistanceSuggestionOut: {
+            /**
+             * Wi Row Id
+             * Format: uuid
+             */
+            wi_row_id: string;
+            /**
+             * Slot
+             * @enum {string}
+             */
+            slot: "a0" | "a3" | "m3" | "a6";
+            /**
+             * Status
+             * @enum {string}
+             */
+            status: "suggested" | "needs_ie" | "unavailable";
+            /** Field */
+            field: ("reach_cm" | "foot_cm" | "distance_cm") | null;
+            /** Distance Cm */
+            distance_cm: number | null;
+            /** Reason */
+            reason: string | null;
+            /** Endpoints */
+            endpoints: {
+                [key: string]: unknown;
+            };
+            /** Snapshot Id */
+            snapshot_id: string | null;
+            /** Threshold Cm */
+            threshold_cm: number;
+            /** Person Offset Cm */
+            person_offset_cm: number[];
+            /** Modeling Policy Version Id */
+            modeling_policy_version_id: string | null;
+            /** Computed By */
+            computed_by: string;
+            /**
+             * Computed At
+             * Format: date-time
+             */
+            computed_at: string;
+            /** Applied By */
+            applied_by: string | null;
+            /** Applied At */
+            applied_at: string | null;
         };
         /**
          * DsxObjectListOut
@@ -9225,6 +9392,156 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["WorksheetObjectsOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_suggestions_api_v2_worksheets__worksheet_id__distance_suggestions_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                worksheet_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DistanceSuggestionListOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    compute_api_v2_worksheets__worksheet_id__distance_suggestions_compute_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                worksheet_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DistanceSuggestionListOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    apply_api_v2_worksheets__worksheet_id__distance_suggestions_apply_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                worksheet_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["DistanceApplyIn"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["WorksheetReadOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_settings_api_v2_modeling_policy_distance_settings_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DistanceSettingsOut"];
+                };
+            };
+        };
+    };
+    publish_settings_api_v2_modeling_policy_distance_settings_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["DistanceSettingsIn"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DistanceSettingsOut"];
                 };
             };
             /** @description Validation Error */

@@ -20,6 +20,7 @@ from ddm_v2.models.v2.auth import AppUser
 from ddm_v2.models.v2.base import Base, TimestampMixin
 from ddm_v2.models.v2.bom import BomImport, BomItem
 from ddm_v2.models.v2.codes import CodePrefixRegistry
+from ddm_v2.models.v2.distance import ModelingPolicyDefault, WiRowDistanceSuggestion
 from ddm_v2.models.v2.dsx_suggestion import WiRowDsxSuggestion
 from ddm_v2.models.v2.i18n import I18nReviewState
 from ddm_v2.models.v2.import_staging import ExcelImport, ImportProfile, ImportRow
@@ -62,6 +63,8 @@ from ddm_v2.models.v2.zone import SkuObjectZone, SkuPlacementSnapshot, SkuZone, 
 __all__ = [
     "Base",
     "WiDraftRow",
+    "ModelingPolicyDefault",
+    "WiRowDistanceSuggestion",
     "SkuObjectZone",
     "SkuPlacementSnapshot",
     "SkuZone",

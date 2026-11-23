@@ -85,6 +85,8 @@ const errorsZh: ErrorCatalog = {
   DSX_UNREACHABLE: 'DSX 無法連線',
   DSX_NOT_READY: 'DSX 座標尚未就緒，請先在 DSX 載入 3D 場景',
   ZONE_IN_USE: '還有物件歸在這個區域，請先取消歸區',
+  DISTANCE_NOT_APPLICABLE: '有列的距離需 IE 裁決或算不出來，請人工填寫',
+  DISTANCE_SUGGESTION_CHANGED: '距離建議已改變，請重新計算後再確認',
   // ── WI context / 工序表 ────────────────────────────────────────────────
   WI_CONTEXT_INVALID: 'WI 情境設定不正確',
   SIMO_PAIR_INVALID: 'SIMO 同動配對不正確',

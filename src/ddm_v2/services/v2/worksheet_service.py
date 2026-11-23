@@ -236,7 +236,18 @@ async def save_worksheet(
                 select(
                     WiRow.id, WiRow.provenance, WiRow.source_import_id,
                     WiRow.source_module_id, WiRow.source_module_version, WiRow.distance_status,
+                    WiRow.object_vocab_id, WiRow.from_vocab_id, WiRow.to_vocab_id,
                 ).where(WiRow.worksheet_id == worksheet_id)
+            )
+        ).all()
+    }
+    prior_cycles = {
+        row.wi_row_id: row.slot_inputs
+        for row in (
+            await session.execute(
+                select(MostCycle.wi_row_id, MostCycle.slot_inputs)
+                .join(WiRow, WiRow.id == MostCycle.wi_row_id)
+                .where(WiRow.worksheet_id == worksheet_id)
             )
         ).all()
     }
@@ -251,7 +262,7 @@ async def save_worksheet(
         computed=computed,
         rs_row=rs_row,
         origin_of=lambda r: _origin_from_prior(prior.get(r.id)),
-        distance_status_of=lambda r: _distance_status_for_save(r, prior.get(r.id)),
+        distance_status_of=lambda r: _distance_status_for_save(r, prior.get(r.id), prior_cycles.get(r.id)),
     )
     await session.flush()
     return await finalize_content_change(session, ws, edited_by=edited_by)
@@ -278,14 +289,42 @@ def _origin_from_prior(prior: Any) -> RowOrigin:
     )
 
 
-def _distance_status_for_save(row_in: WiRowSaveIn, prior: Any) -> str | None:
+def distance_inputs(cycle: dict[str, Any] | None, object_id: Any, from_id: Any, to_id: Any) -> tuple[Any, ...]:
+    """一列和距離有關的輸入：GM／CM、物件／從哪裡／到哪裡、a0／a3／a6 的距離欄位、m3 各分量的動詞與距離。"""
+    c = cycle or {}
+
+    def a(slot: str) -> tuple[float, float]:
+        s = c.get(slot) or {}
+        return (float(s.get("reach_cm") or 0), float(s.get("foot_cm") or 0))
+
+    m = tuple(
+        (x.get("verb_code"), float(x.get("distance_cm") or 0))
+        for x in ((c.get("m3") or {}).get("m_components") or [])
+    )
+    ids = tuple(str(v) if v is not None else None for v in (object_id, from_id, to_id))
+    return (c.get("seq"), *ids, a("a0"), a("a3"), a("a6"), m)
+
+
+def _distance_status_for_save(row_in: WiRowSaveIn, prior: Any, prior_cycle: dict[str, Any] | None) -> str | None:
     """整份存檔時的距離狀態（ADR-038 D6）：有帶就用帶的（含 null＝清除）；沒帶就保留同 id 既有列的值。
 
     現有前端還不認得這個欄位，整份存檔時不能把人標過的狀態洗掉。
+    例外（W7b，W2 留待項）：`confirmed`（系統算出、人確認）的列，若 `distance_inputs` 有任何不同，
+    那個確認已不對應現在的值，退回未標示（要重新算或改標 manual）。`manual`／`not_applicable` 是人自己的判斷，不動。
+    呼叫端明確帶了 `distance_status` 就以帶的為準（由呼叫端負責）。
     """
     if "distance_status" in row_in.model_fields_set:
         return row_in.distance_status
-    return prior.distance_status if prior is not None else None
+    if prior is None:
+        return None
+    if prior.distance_status == "confirmed":
+        before = distance_inputs(prior_cycle, prior.object_vocab_id, prior.from_vocab_id, prior.to_vocab_id)
+        after = distance_inputs(
+            row_in.cycle.model_dump(mode="json"), row_in.object_vocab_id, row_in.from_vocab_id, row_in.to_vocab_id
+        )
+        if before != after:
+            return None
+    return prior.distance_status
 
 
 def persist_computed_rows(

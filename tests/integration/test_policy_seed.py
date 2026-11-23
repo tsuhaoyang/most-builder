@@ -62,6 +62,9 @@ async def test_seed_creates_rows_when_absent(db_session):
         "UPDATE most_worksheets SET modeling_policy_version_id=NULL, level_policy_version_id=NULL"))
     await db_session.execute(text("UPDATE ai_parse_jobs SET modeling_policy_version_id=NULL"))
     await db_session.execute(text("DELETE FROM level_validation_runs"))
+    # v2_0055（ADR-038 W7b）：預設指標與距離建議也引用 modeling_policy_versions
+    await db_session.execute(text("DELETE FROM modeling_policy_defaults"))
+    await db_session.execute(text("UPDATE wi_row_distance_suggestions SET modeling_policy_version_id=NULL"))
     await db_session.execute(text("DELETE FROM modeling_policy_versions"))
     await db_session.execute(text("DELETE FROM level_policy_versions"))
     db_session.expunge_all()  # identity map 可能還握著剛被刪的列，會讓 session.get 誤判為存在

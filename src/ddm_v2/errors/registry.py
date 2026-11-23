@@ -85,6 +85,8 @@ class ErrorCode(str, Enum):
     DSX_UNREACHABLE = "DSX_UNREACHABLE"    # 502：DSX 連不到、逾時或回應看不懂
     DSX_NOT_READY = "DSX_NOT_READY"        # 409：DSX 座標尚未就緒（3D 場景未載入）
     ZONE_IN_USE = "ZONE_IN_USE"            # 409：區域還有物件歸在它底下
+    DISTANCE_NOT_APPLICABLE = "DISTANCE_NOT_APPLICABLE"          # 409：有格位需 IE 裁決或算不出來，不能直接套用
+    DISTANCE_SUGGESTION_CHANGED = "DISTANCE_SUGGESTION_CHANGED"  # 409：重算結果和看到的不同，要重新算再確認
 
     # --- LB projection export (ADR-035 WP8) ---
     LB_EXPORT_BLOCKED = "LB_EXPORT_BLOCKED"
