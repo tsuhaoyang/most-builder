@@ -39,6 +39,7 @@
 | [ADR-035-lb-projection-layer-and-motion-decomposition.md](ADR-035-lb-projection-layer-and-motion-decomposition.md) | **LB 投影層**：持工具 motion 確定性拆 acquire/use/release、`repeat_count` 為 cyclic 乘數、compiler `resolve_multiplier`、分層 DAG 傳遞縮減、`level_entries` 六個 LB 標記欄、匯出前 E/W 碼；最高原則＝`lb-integration/MOST_LB_DATA_CONTRACT_SPEC.md` | 🟢 accepted（2026-09-12，Howard 核可） |
 | [ADR-036-lb-writeback-consumption.md](ADR-036-lb-writeback-consumption.md) | **LB 回寫消費**（反方向）：唯讀快照＋逐列放置、屬性回流只有 `offline` 且走 MOST 正門（組內傳染＋R1–R9）、結構欄不回流、一 motion 對多 task 的聚合、驗證與失敗處理；契約欄位權威在 LB `MOST_INTEGRATION_INPUT_SPEC.md` §8 | 🟢 accepted（2026-09-18，Howard 核可；D6「件數」一條待整合架構師修訂） |
 | [ADR-037-ai-service-integration.md](ADR-037-ai-service-integration.md) | **WI AI Parser 改接外部 ai_service**：宣告 ADR-027 §7 拆分成立；LLM 歸 ai_service，MOST 保留確定性管線、審核與落盤；slot code 只當候選（修訂 ADR-033 D2）；逐項採用、首輪只落盤到 worksheet（既有儲存路徑＋revision CAS）；Excel 數量歸屬規則；RBAC、服務間認證與外送 | 🟢 accepted（2026-11-14，Howard 核可） |
+| [ADR-038-unified-wi-workspace-and-two-stage-distance.md](ADR-038-unified-wi-workspace-and-two-stage-distance.md) | **統一 WI 工作區與距離兩段式**：每份 WI（SKU 工序版本）一個工作區，分編輯區與工時表；人工／單句 AI／整份上傳共用編輯區、逐列與整組確認後一次寫入；移除 MOST 工作台與 WI 專案頁畫面（資料保留、不做跨 SKU 重用）；距離＝先設區域（按 SKU 的標準工作站，不採用 ADR-031 工位模型）、編輯後物件歸區、MOST 拉 DSX 座標存快照後計算（DSX 為操作介面）；完成檢查與 AI 額度 1 萬；12 月範圍切分 | 🟢 accepted（2026-11-23，Howard 核可） |
 
 ## 狀態說明
 
