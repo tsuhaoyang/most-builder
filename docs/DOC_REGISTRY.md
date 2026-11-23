@@ -178,6 +178,7 @@ MOST 目前**無獨立 `DOC_CONVENTION.md`**（跨 repo 複製全文會變成第
 |---|---|
 | [roadmap/wi-ai-and-batch-modeling-delivery-plan.md](roadmap/wi-ai-and-batch-modeling-delivery-plan.md) | 前瞻交付計畫（未排程） |
 | [roadmap/ai-service-integration-plan.md](roadmap/ai-service-integration-plan.md) | MOST↔ai_service 整合與舊 LLM 清理的分階段計畫（S0–S5）；依 ADR-037（accepted 2026-11-14） |
+| [roadmap/adr-038-delivery-plan.md](roadmap/adr-038-delivery-plan.md) | ADR-038 統一 WI 工作區的 12 月底交付計畫：W2–W8 每個 PR 的驗收條件、共同關卡、整體驗收情境與決策紀錄 |
 | [v4-integration/](v4-integration/00-overview.md)（14 份） | v4↔MOST 整合評估；**內容多指向 LB repo，屬跨 repo 參考**；未排程，實作前需補 spec 並核准 |
 
 ## 過程紀錄（歷史過程，非現況規範）
