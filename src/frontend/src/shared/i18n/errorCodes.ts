@@ -53,6 +53,11 @@ export const ERROR_CODES = [
   // 編輯區草稿（ADR-038 D3）
   'DRAFT_INCOMPLETE',
   'DRAFT_STALE',
+  // 區域與 DSX 座標（ADR-038 D5）
+  'DSX_DISABLED',
+  'DSX_UNREACHABLE',
+  'DSX_NOT_READY',
+  'ZONE_IN_USE',
   // WI context / worksheet
   'WI_CONTEXT_INVALID',
   'SIMO_PAIR_INVALID',

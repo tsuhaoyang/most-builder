@@ -81,6 +81,7 @@ from ddm_v2.api.routes.v2.wi_context import router as v2_wi_context_router
 from ddm_v2.api.routes.v2.wi_draft import router as v2_wi_draft_router
 from ddm_v2.api.routes.v2.wi_set import router as v2_wi_set_router
 from ddm_v2.api.routes.v2.worksheet import router as v2_worksheet_router
+from ddm_v2.api.routes.v2.zone import router as v2_zone_router
 
 logger = logging.getLogger(__name__)
 
@@ -133,6 +134,7 @@ V2_ROUTERS: tuple[tuple[str, APIRouter], ...] = (
     ("i18n", v2_i18n_router),
     ("lb_writeback", v2_lb_writeback_router),
     ("dsx", v2_dsx_router),
+    ("zone", v2_zone_router),
 )
 
 

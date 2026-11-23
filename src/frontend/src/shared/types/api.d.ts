@@ -1994,6 +1994,129 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v2/zone-categories": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List Categories */
+        get: operations["list_categories_api_v2_zone_categories_get"];
+        put?: never;
+        /** Add Category */
+        post: operations["add_category_api_v2_zone_categories_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v2/skus/{sku_id}/zones": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List Zones */
+        get: operations["list_zones_api_v2_skus__sku_id__zones_get"];
+        put?: never;
+        /** Create Zone */
+        post: operations["create_zone_api_v2_skus__sku_id__zones_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v2/zones/{zone_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /** Delete Zone */
+        delete: operations["delete_zone_api_v2_zones__zone_id__delete"];
+        options?: never;
+        head?: never;
+        /** Patch Zone */
+        patch: operations["patch_zone_api_v2_zones__zone_id__patch"];
+        trace?: never;
+    };
+    "/api/v2/skus/{sku_id}/zones/sync": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Sync Zones */
+        post: operations["sync_zones_api_v2_skus__sku_id__zones_sync_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v2/dsx/objects": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Dsx Objects */
+        get: operations["dsx_objects_api_v2_dsx_objects_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v2/skus/{sku_id}/object-zones": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List Object Zones */
+        get: operations["list_object_zones_api_v2_skus__sku_id__object_zones_get"];
+        /** Set Object Zones */
+        put: operations["set_object_zones_api_v2_skus__sku_id__object_zones_put"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v2/worksheets/{worksheet_id}/objects": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Worksheet Objects */
+        get: operations["worksheet_objects_api_v2_worksheets__worksheet_id__objects_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/": {
         parameters: {
             query?: never;
@@ -2349,6 +2472,29 @@ export interface components {
             status: string;
             /** Is Active */
             is_active: boolean;
+        };
+        /**
+         * DsxObjectListOut
+         * @description DSX 連不到時 `available=false` 並帶原因，不會回空清單假裝沒有物件（D5.3）。
+         */
+        DsxObjectListOut: {
+            /** Available */
+            available: boolean;
+            /** Reason */
+            reason?: ("integration_disabled" | "dsx_unreachable") | null;
+            /** Objects */
+            objects?: components["schemas"]["DsxObjectOut"][];
+        };
+        /** DsxObjectOut */
+        DsxObjectOut: {
+            /** Id */
+            id: string;
+            /** Label Zh */
+            label_zh: string;
+            /** Vocab Code */
+            vocab_code: string | null;
+            /** Visible */
+            visible: boolean;
         };
         /**
          * DsxUiUrlOut
@@ -3148,6 +3294,52 @@ export interface components {
             /** Hand */
             hand?: ("LH" | "RH" | "BH") | null;
         };
+        /** ObjectZoneItemIn */
+        ObjectZoneItemIn: {
+            /**
+             * Vocab Item Id
+             * Format: uuid
+             */
+            vocab_item_id: string;
+            /** Zone Id */
+            zone_id: string | null;
+        };
+        /** ObjectZoneListOut */
+        ObjectZoneListOut: {
+            /**
+             * Sku Id
+             * Format: uuid
+             */
+            sku_id: string;
+            /** Items */
+            items: components["schemas"]["ObjectZoneOut"][];
+        };
+        /** ObjectZoneOut */
+        ObjectZoneOut: {
+            /**
+             * Vocab Item Id
+             * Format: uuid
+             */
+            vocab_item_id: string;
+            /**
+             * Zone Id
+             * Format: uuid
+             */
+            zone_id: string;
+            object_point: components["schemas"]["Point3"] | null;
+            /** Assigned By */
+            assigned_by: string;
+            /**
+             * Assigned At
+             * Format: date-time
+             */
+            assigned_at: string;
+        };
+        /** ObjectZonesIn */
+        ObjectZonesIn: {
+            /** Items */
+            items: components["schemas"]["ObjectZoneItemIn"][];
+        };
         /**
          * OptionEnTextIn
          * @description `PATCH /rule-sets/{code}/params/{param}/options/{code}/en` 的 body。
@@ -3187,6 +3379,15 @@ export interface components {
             idempotency_key?: string | null;
             /** Bundle Code */
             bundle_code?: string | null;
+        };
+        /** Point3 */
+        Point3: {
+            /** X */
+            x: number;
+            /** Y */
+            y: number;
+            /** Z */
+            z: number;
         };
         /**
          * PolicyVersionInfo
@@ -3463,6 +3664,32 @@ export interface components {
             /** Tmu */
             tmu: number;
         };
+        /** SnapshotOut */
+        SnapshotOut: {
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /**
+             * Sku Id
+             * Format: uuid
+             */
+            sku_id: string;
+            /** Dsx Station Id */
+            dsx_station_id: string;
+            /** Placement Revision */
+            placement_revision: number;
+            /** Synced By */
+            synced_by: string;
+            /**
+             * Synced At
+             * Format: date-time
+             */
+            synced_at: string;
+            /** Placement Count */
+            placement_count: number;
+        };
         /** SubmitIn */
         SubmitIn: {
             /**
@@ -3493,6 +3720,17 @@ export interface components {
             revision_no?: number | null;
             /** Content Hash */
             content_hash?: string | null;
+        };
+        /** SyncOut */
+        SyncOut: {
+            snapshot: components["schemas"]["SnapshotOut"];
+            previous_snapshot?: components["schemas"]["SnapshotOut"] | null;
+            /** Zones */
+            zones: components["schemas"]["ZoneOut"][];
+            /** Missing Zone Ids */
+            missing_zone_ids: string[];
+            /** Unbound Zone Ids */
+            unbound_zone_ids: string[];
         };
         /** SynonymIn */
         SynonymIn: {
@@ -4149,6 +4387,44 @@ export interface components {
             /** Level Policy Version Id */
             level_policy_version_id?: string | null;
         };
+        /**
+         * WorksheetObjectOut
+         * @description 這份 WI 用到的物件（去重）與目前的歸區（D5.2 步驟 3）。
+         */
+        WorksheetObjectOut: {
+            /**
+             * Vocab Item Id
+             * Format: uuid
+             */
+            vocab_item_id: string;
+            /** Kind */
+            kind: string;
+            /** Name Zh */
+            name_zh: string;
+            /** Name En */
+            name_en: string | null;
+            /** Roles */
+            roles: ("object" | "from" | "to" | "tool")[];
+            /** Row Count */
+            row_count: number;
+            /** Zone Id */
+            zone_id: string | null;
+        };
+        /** WorksheetObjectsOut */
+        WorksheetObjectsOut: {
+            /**
+             * Worksheet Id
+             * Format: uuid
+             */
+            worksheet_id: string;
+            /**
+             * Sku Id
+             * Format: uuid
+             */
+            sku_id: string;
+            /** Objects */
+            objects: components["schemas"]["WorksheetObjectOut"][];
+        };
         /** WorksheetReadOut */
         WorksheetReadOut: {
             /**
@@ -4227,6 +4503,106 @@ export interface components {
             /** Repeat Count */
             repeat_count?: number | null;
             manual_override?: components["schemas"]["ManualOverride"] | null;
+        };
+        /**
+         * ZoneCategoryIn
+         * @description admin 新增類別（D5.3：固定清單可新增）。內建類別不能改。
+         */
+        ZoneCategoryIn: {
+            /** Code */
+            code: string;
+            /** Name Zh */
+            name_zh: string;
+            /** Name En */
+            name_en: string;
+            /**
+             * Sort Order
+             * @default 100
+             */
+            sort_order: number;
+        };
+        /** ZoneCategoryOut */
+        ZoneCategoryOut: {
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** Code */
+            code: string;
+            /** Name Zh */
+            name_zh: string;
+            /** Name En */
+            name_en: string;
+            /** Sort Order */
+            sort_order: number;
+            /** Builtin */
+            builtin: boolean;
+        };
+        /** ZoneIn */
+        ZoneIn: {
+            /**
+             * Category Id
+             * Format: uuid
+             */
+            category_id: string;
+            /** Name */
+            name: string;
+            /** Dsx Object Id */
+            dsx_object_id?: string | null;
+        };
+        /** ZoneListOut */
+        ZoneListOut: {
+            /**
+             * Sku Id
+             * Format: uuid
+             */
+            sku_id: string;
+            /** Zones */
+            zones: components["schemas"]["ZoneOut"][];
+            last_snapshot?: components["schemas"]["SnapshotOut"] | null;
+        };
+        /** ZoneOut */
+        ZoneOut: {
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /**
+             * Sku Id
+             * Format: uuid
+             */
+            sku_id: string;
+            /**
+             * Category Id
+             * Format: uuid
+             */
+            category_id: string;
+            /** Name */
+            name: string;
+            /** Dsx Object Id */
+            dsx_object_id: string | null;
+            center: components["schemas"]["Point3"] | null;
+            /** Center Snapshot Id */
+            center_snapshot_id: string | null;
+            /**
+             * Updated At
+             * Format: date-time
+             */
+            updated_at: string;
+        };
+        /**
+         * ZonePatchIn
+         * @description 改了 `dsx_object_id` 會清掉中心座標，要重新同步。
+         */
+        ZonePatchIn: {
+            /** Category Id */
+            category_id?: string | null;
+            /** Name */
+            name?: string | null;
+            /** Dsx Object Id */
+            dsx_object_id?: string | null;
         };
         /**
          * ReorderRequest
@@ -8518,6 +8894,337 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["A3DistanceOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_categories_api_v2_zone_categories_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ZoneCategoryOut"][];
+                };
+            };
+        };
+    };
+    add_category_api_v2_zone_categories_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ZoneCategoryIn"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ZoneCategoryOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_zones_api_v2_skus__sku_id__zones_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                sku_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ZoneListOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    create_zone_api_v2_skus__sku_id__zones_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                sku_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ZoneIn"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ZoneOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    delete_zone_api_v2_zones__zone_id__delete: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                zone_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    patch_zone_api_v2_zones__zone_id__patch: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                zone_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ZonePatchIn"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ZoneOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    sync_zones_api_v2_skus__sku_id__zones_sync_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                sku_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SyncOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    dsx_objects_api_v2_dsx_objects_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DsxObjectListOut"];
+                };
+            };
+        };
+    };
+    list_object_zones_api_v2_skus__sku_id__object_zones_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                sku_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ObjectZoneListOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    set_object_zones_api_v2_skus__sku_id__object_zones_put: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                sku_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ObjectZonesIn"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ObjectZoneListOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    worksheet_objects_api_v2_worksheets__worksheet_id__objects_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                worksheet_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["WorksheetObjectsOut"];
                 };
             };
             /** @description Validation Error */

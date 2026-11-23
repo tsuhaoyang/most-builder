@@ -80,6 +80,11 @@ const errorsZh: ErrorCatalog = {
   // ── 編輯區草稿（ADR-038 D3）────────────────────────────────────────────
   DRAFT_INCOMPLETE: '有草稿解析不完整，請先補齊再確認',
   DRAFT_STALE: '有草稿已過期，已退回待確認，請檢查後重新確認',
+  // ── 區域與 DSX 座標（ADR-038 D5）────────────────────────────────────────
+  DSX_DISABLED: 'DSX 整合未開啟',
+  DSX_UNREACHABLE: 'DSX 無法連線',
+  DSX_NOT_READY: 'DSX 座標尚未就緒，請先在 DSX 載入 3D 場景',
+  ZONE_IN_USE: '還有物件歸在這個區域，請先取消歸區',
   // ── WI context / 工序表 ────────────────────────────────────────────────
   WI_CONTEXT_INVALID: 'WI 情境設定不正確',
   SIMO_PAIR_INVALID: 'SIMO 同動配對不正確',
