@@ -7,7 +7,7 @@
 
 ## 狀態
 
-🔄 執行中。W1（PR #16）、W2（PR #19）、W3（PR #20）已合併；W7a 審查完成、PR 開立中（`feat/w7-zones-distance`）。W7 拆為 W7a／W7b（2026-11-24，W7a，依審查建議，Howard 授權）。與 ADR-038 衝突時以 ADR-038 為準。
+🔄 執行中。W1（PR #16）、W2（PR #19）、W3（PR #20）已合併；W7a 已合併（PR #21）；W7b 實作完成、PR 開立中（`feat/w7b-distance-compute`，2026-11-24，W7b，依審查建議，Howard 授權）。W7 拆為 W7a／W7b（2026-11-24，W7a，依審查建議，Howard 授權）。與 ADR-038 衝突時以 ADR-038 為準。
 
 ## 工作方式（Howard 2026-11-23）
 
@@ -71,6 +71,16 @@
 6. 用假 DSX 測；**不需要真 DSX**。
 7. 產出 `docs/architecture/dsx-changes-for-adr-038.md`：DSX 方需要配合或確認的事項（交 Howard 轉給 DSX repo）。須列：`anchor_cm` 是否已含旋轉與人端偏移。
 
+**W7b 完成對應**（2026-11-24，W7b，依審查建議，Howard 授權；migration `v2_0055`，API 見 `api/routes/v2/distance.py`）：
+- 第 1 項 ✅：距離設定在 `policy_json["distance"]`，沒有時用凍結的 `DEFAULT_DISTANCE_SETTINGS`；`modeling_policy_defaults` 明確指定新工時表的政策版本；admin 發布新版本；既有工時表沿用自己的版本。
+- 第 2 項 ✅：端點與欄位判定如 ADR-038 D5.6 W7b 追記（列上沒有 from 時 a0 與 a3／m3 起點都用 object；用未取整距離）。
+- 第 3 項 ✅：`wi_row_distance_suggestions` 記錄 `snapshot_id`、端點出處、門檻、人端偏移與政策版本。
+- 第 4 項 ✅：`apply` 列級套用，需 `base_revision` 與 `computed_at`；成功後 `distance_status=confirmed`。
+- 第 5 項 ✅：決定「退回」（ADR-038 D6 W7b 追記，取代 W2 的「暫不退回」）。
+- 第 6 項 ✅：以假 DSX 測（`tests/integration/test_distance_suggestions.py`、`tests/unit/test_distance_suggest.py`）。
+- 第 7 項 ✅：文件已寫；待 DSX 方回覆。
+- 已知限制：距離設定沒有「指回舊版」路徑、沒有獨立稽核表、既有工時表不能改用新版本。
+
 ~~### W7：區域與自動算距離（後端）~~（2026-11-24，W7a，依審查建議，Howard 授權：已拆為 W7a／W7b，原條目如下保留）
 
 <details><summary>原 W7 條目</summary>
@@ -94,6 +104,8 @@
 6. e2e（mock API）：手動新增→確認→寫入；單句→草稿分組→整組確認→寫入；降級訊息；409 提示。
 7. （2026-11-24，W3，依審查建議，Howard 授權，W3 帶來的畫面需求）草稿列顯示 `stale_reason`（`rule_set_changed`｜`import_row_changed`，兩個值要有 zh-TW／en 標籤）、`parse_snapshot.wi_group_truncated`、`parse_snapshot.issues`。`stale_reason=import_row_changed` 時提示「刪除後重新解析」（重新解析不會取代人動過的草稿）。確認「不完整但已被改過」的草稿前，可先乾算引擎提早報錯。處理 409 `DRAFT_INCOMPLETE`、`DRAFT_STALE`。
 
+8. （2026-11-24，W7b，依審查建議，Howard 授權）整份存檔開始帶 `distance_status` 時，要「讀回什麼就帶回什麼」，且不得讓 `confirmed` 的退回規則失效（ADR-038 D6 W7b 追記）；建議未改動的列不帶此欄。存檔後某列的 `distance_status` 被退回為空時，畫面要提示。
+
 ### W5：整份上傳整合進工作區（前端）
 1. 匯入改為工作區內的一種輸入；上傳、欄位對應後建 parse job，顯示進度，解析完的列先出現在編輯區。
 2. 失敗與需人工檢查的列有標示。
@@ -112,6 +124,9 @@
 6. （2026-11-24，W7a，依審查建議，Howard 授權，W7a 帶來的待辦）同步時提示「與上次站別／版本不同」（用回應附的前一份快照比對 `dsx_station_id`、`placement_revision`）。
 7. （同上）同一 DSX 物件被多個區域綁定時提示。
 8. （同上，後續）快照回復功能。W7a 只保留最近 20 份，沒有回復入口。
+9. （2026-11-24，W7b，依審查建議，Howard 授權，W7b 帶來的待辦）套用失敗（409 `DISTANCE_NOT_APPLICABLE`）時依回應列出每列原因（`no_suggestion`、`marked_not_applicable`、`needs_ie`、`unavailable` 與其原因）；`DISTANCE_SUGGESTION_CHANGED` 時提示重新計算再確認。
+10. （同上，後續）重新同步 DSX 後，提示「已確認的距離與新座標不同」（已 `confirmed` 的列不自動退回）。
+11. （同上）顯示與修改距離設定（admin）；說明只影響之後新建的工時表。
 
 ### W6：移除舊畫面（前端）
 1. 側欄移除 MOST 工作台與 WI 專案；工時表編輯器移除「從 WI 庫插入」；對應 e2e 移除或改寫。
@@ -151,3 +166,11 @@
 | 2026-11-24 | W7b | a0／a3／M／a6 的起訖點 | a0＝人→「從哪裡」（沒有 from 用 object）；a3／M＝從哪裡→到哪裡；a6＝到哪裡→人。沿用 DSX 現行語句模型（其 schema 註解 a0=人→從哪裡、a6=到哪裡→人）；結果記 `snapshot_id`、`point_source`、門檻、人端偏移 |
 | 2026-11-24 | W7b | 〈W2 留待 W7〉改動作內容是否退回 `confirmed` | 在 W7b 決定（有自動距離後才有依據） |
 | 2026-11-24 | W8 | W7a 帶來的待辦 | 同步時提示站別／版本不同、快照回復功能（後續）、同一 DSX 物件被多個區域綁定時提示 |
+| 2026-11-24 | W7b | 列上沒有「從哪裡」時的起點 | a0 與 a3／m3 的起點都用 object（審查建議保留）。理由：沿用 DSX 現行語句模型，句子沒有「從」時物件就是起點 |
+| 2026-11-24 | W7b | 〈W2 留待 W7〉改動作內容是否退回 `confirmed`（取代 W2「暫不退回」） | 退回：整份存檔沒帶 `distance_status`、舊值 `confirmed` 且 `distance_inputs` 有任何不同 → 退回未標示；`manual`／`not_applicable` 不動，明確帶值以帶的為準。重新同步 DSX 不自動退回（符合 D5.4）。理由：確認的是那組距離，內容變了確認就不成立 |
+| 2026-11-24 | W7b | 套用粒度 | 列級，不做格位級部分套用；全部格位 `suggested` 才套用，並要帶 `computed_at`。理由：部分套用會讓一列的距離一半是建議、一半是舊值，卻標成 `confirmed` |
+| 2026-11-24 | W7b | 欄位判定用未取整距離 | 比門檻與 75 cm 時不先取整；`needs_ie`／`unavailable` 不寫入、不截斷（ADR-031 I5） |
+| 2026-11-24 | W7b | 距離設定放哪、誰能改 | 放建模政策 `policy_json["distance"]`；沒有時用凍結的 `DEFAULT_DISTANCE_SETTINGS`；admin 發布新版本；新工時表的版本由 `modeling_policy_defaults` 明確指定（種 V1，符合 R2a）。理由：既有工時表的距離算法不能被悄悄改變 |
+| 2026-11-24 | W7b | 已知限制（不處理） | 沒有指回舊版的路徑、沒有獨立稽核表（版本列與指標有 created_by／published_by／set_by／set_at）、既有工時表不能改用新版本 |
+| 2026-11-24 | W7b | `wi_row_id` 不設 FK | 整份存檔會刪除重建 `wi_rows`，有 FK 會連帶刪掉建議；讀取時過濾、計算時清除孤兒 |
+| 2026-11-24 | W7b | DSX 配合文件 | 寫成 `docs/architecture/dsx-changes-for-adr-038.md`，由 Howard 轉交 DSX repo；ADR-038 D5.4 的「路徑待定」改指向它 |

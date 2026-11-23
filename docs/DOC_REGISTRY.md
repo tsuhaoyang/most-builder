@@ -79,6 +79,7 @@ MOST→LB 匯出的語意以 [MOST_LB_DATA_CONTRACT_SPEC.md](lb-integration/MOST
 | [v2 權威模型與反 Legacy 守則](architecture/v2-authoritative-model-guide.md) | 版本語意、兩層工作台、rule-set 回放與禁止模式 | ✅ |
 | [WI AI Parser](architecture/wi-ai-parser-system-spec.md) | 互動/批次 WI 解析、compiler、審核與 learning loop | 🔄 ADR-026 accepted |
 | [DSX 整合 API 契約（草案）](architecture/dsx-integration-api-contract-draft.md) | DSX 3D 擺放整合的 API 契約草案 | ⏳ 草案——先建 MVP、邊做邊調 |
+| [ADR-038 對 DSX 的配合與確認事項](architecture/dsx-changes-for-adr-038.md) | 距離改由 MOST 算之後，DSX 需確認的假設（anchor_cm、原點、revision、共用場景）；由 Howard 轉交 DSX repo | 📤 待 DSX 確認 |
 | [WI AI Parser 實作規格](llm/wi-ai-parser-implementation-spec.md) | 實作層：契約、模組、DB、prompt、測試與 L0–L4 分期 | 🔄 |
 | [WI AI Parser 交付追蹤](llm/wi-ai-parser-worklog.md) | Phase 狀態、卡點、D3 決策、checkpoint 與驗收紀錄 | 🔄 交付期間持續更新 |
 | [WI AI Eval Reports](llm/eval-reports/README.md) | gold plan 評測輸出（`wi_ai_eval.py`） | 🔄 L3+ |

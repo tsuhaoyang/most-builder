@@ -121,6 +121,19 @@ JIT：第一次出現的員工編號 → 自動建一筆 **viewer**（無 MOST �
 - 同步等寫入端點的 DSX 失敗：`DSX_DISABLED` 503、`DSX_UNREACHABLE` 502、`DSX_NOT_READY` 409。刪除還有歸區的區域：`ZONE_IN_USE` 409。
 - 區域不做 ownership 與站點限制：任一 analyst 可改別人建的區域。
 
+**距離建議與距離設定（ADR-038 D5.6，W7b 已實作）**（2026-11-24，W7b，依審查建議，Howard 授權）：
+
+| 端點 | 最低角色 |
+|------|----------|
+| `GET /worksheets/{worksheet_id}/distance-suggestions` | viewer |
+| `POST /worksheets/{worksheet_id}/distance-suggestions/compute` | analyst（工時表須是草稿版本） |
+| `POST /worksheets/{worksheet_id}/distance-suggestions/apply` | analyst（工時表須是草稿版本） |
+| `GET /modeling-policy/distance-settings` | viewer |
+| `POST /modeling-policy/distance-settings`（發布新的距離設定） | **admin** |
+
+- 共 5 個端點。讀取沿用「讀取全開 viewer+」；算與套用是寫入，需 analyst；改距離設定影響之後新建的所有工時表，只給 admin。
+- `apply` 的 409：`DISTANCE_NOT_APPLICABLE`、`DISTANCE_SUGGESTION_CHANGED`、`WORKSHEET_REVISION_CONFLICT`。
+
 ## 5. 資料模型：`app_users`（MOST 本地授權）
 
 | 欄位 | 型別 | 說明 |
