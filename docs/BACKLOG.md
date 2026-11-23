@@ -365,3 +365,14 @@
   - 補 `ai_service` 的映射測試（斷言它不會變成 `synonym_exact`）？
   - 兩個映射表是否改成「新增 `CandidateSource` 值時測試強制補映射」？
 - 對應文件：[ADR-037](decisions/ADR-037-ai-service-integration.md) D3。
+
+## BL-ENG-19 — worksheet 路由沒有站點層級的存取控制（延後）
+- 領域：`auth-rbac`
+- 狀態：延後（Howard 2026-11-22：權限由未來的統一平台重新設計 RBAC／ABAC，MOST 現階段不發明站點權限模型）。
+- 現況（2026-11-22，S3 nl-draft 路由接線時記錄）：MOST 所有 worksheet 路由都沒有站點層級的存取控制。`app_users.site_ids` 只在 admin 管理使用者與稽核查詢過濾時用到；任何登入的 analyst 都能讀改任何廠區的 worksheet。
+  `nl-draft` 重播會回 `cached`／`cached_run_id`，理論上可探測別人是否用過某句語句（需先知道 worksheet UUID）。
+- 影響：有國外工廠，跨廠區的讀改是否允許是業務決定，尚未做出。
+- 建議做法（只列注意事項，不是設計）：
+  - 若統一平台來不及而需要暫時做，必須所有 worksheet 路由一起做，不得只在單一路由加，否則權限不一致。
+  - 角色判斷只用 `CurrentUser.has`／`require_role`，平台接手時只換這一層。
+- 對應文件：[rbac-spec](architecture/rbac-spec.md)、[ADR-037](decisions/ADR-037-ai-service-integration.md) D7。

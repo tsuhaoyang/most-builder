@@ -1396,6 +1396,26 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v2/wi-ai/status": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Wi Ai Status
+         * @description 外部 AI 是否啟用、是否可用（viewer 可見）。不含金鑰、內部 URL、bundle 細節。
+         */
+        get: operations["wi_ai_status_api_v2_wi_ai_status_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v2/nl-drafts/{run_id}/reviews": {
         parameters: {
             query?: never;
@@ -1995,7 +2015,10 @@ export interface components {
         };
         /** ApplyOfflineIn */
         ApplyOfflineIn: {
-            /** Snapshot Id */
+            /**
+             * Snapshot Id
+             * Format: uuid
+             */
             snapshot_id: string;
             /** Wi Row Ids */
             wi_row_ids: string[];
@@ -3026,6 +3049,8 @@ export interface components {
             context?: components["schemas"]["NLDraftContextIn"] | null;
             /** Worksheet Id */
             worksheet_id?: string | null;
+            /** Hand */
+            hand?: ("LH" | "RH" | "BH") | null;
         };
         /**
          * OptionEnTextIn
@@ -3499,6 +3524,13 @@ export interface components {
             external_code?: string | null;
             /** Is Active */
             is_active?: boolean | null;
+        };
+        /** WiAiStatusOut */
+        WiAiStatusOut: {
+            /** Enabled */
+            enabled: boolean;
+            /** Available */
+            available: boolean;
         };
         /** WiContextOut */
         WiContextOut: {
@@ -6847,6 +6879,26 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    wi_ai_status_api_v2_wi_ai_status_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["WiAiStatusOut"];
                 };
             };
         };

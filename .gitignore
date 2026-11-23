@@ -4,6 +4,8 @@ __pycache__/
 *.py[cod]
 *.egg-info/
 .env
+# docker secrets 的金鑰檔（docker-compose.yml 的 ai_service 金鑰說明）：絕不進版控
+/secrets/
 frontend/node_modules/
 data/runtime-db.json
 data/runtime-db.json.lock

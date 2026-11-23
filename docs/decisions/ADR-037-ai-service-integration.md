@@ -187,7 +187,7 @@ Suggest(ai_service) → Map(mapper) → Validate(link/compile/engine_gate/routin
 
 | 動作 | 最低角色 |
 |---|---|
-| 觸發 AI 解析（單句、批量） | analyst（viewer 只走 `rule_based`，不外送） |
+| 觸發 AI 解析（單句、批量） | analyst（viewer 只走 `rule_based`，不外送）。單句是「依角色分流」（既有 `POST /worksheets/nl-draft`，viewer 得 200＋`rule_based`）；批量是「拒絕」（`require_role("analyst")`，viewer 得 403）（2026-11-22 追記，Howard 核可） |
 | 看審核佇列與項目（含原文） | analyst（viewer 只看彙總計數）；列表依 `site_ids` 與 owner 過濾 |
 | 逐項接受、人工修改 | analyst；落盤另受既有 service 的守衛 |
 | 重設他人已決項目 | approver（須填理由） |
@@ -219,9 +219,16 @@ Suggest(ai_service) → Map(mapper) → Validate(link/compile/engine_gate/routin
 **背景 worker 與稽核**
 - worker 每次出站前從 DB 重新檢查提交者仍 active 且角色 ≥ analyst，否則該 job 標 cancelled 並記稽核。job 記 acting user id，不快取角色。
 - 每次外送由 MOST 產生 request id 並隨請求送出，與 ai_service 回傳的 `run_id` 一併記錄，供兩邊對帳。
-- 稽核事件 append-only（無刪改 API，資料庫角色不授予 UPDATE／DELETE），actor 一律取自 `CurrentUser`：外送（誰、何時、bundle、筆數、request id、`run_id`，不記原文）、
+- **（最終型態；v1 過渡做法見下方「外送稽核的 v1 過渡做法」，2026-11-22 追記）** 稽核事件 append-only（無刪改 API，資料庫角色不授予 UPDATE／DELETE），actor 一律取自 `CurrentUser`：外送（誰、何時、bundle、筆數、request id、`run_id`，不記原文）、
   accept、commit、重設、整合啟用／停用、金鑰輪替。
 - **同句合併（D8 single-flight）的稽核（2026-11-20 追記，Howard 核可）**：合併的等待者沒有自己的外送，其 provenance 不帶 `run_id`、`request_id`，改記 `shared_run_id`（指向領頭者那次外送的 `run_id`）。稽核「外送」事件的筆數只計真的外送的請求，等待者不算一次外送。S3 落盤 `ai_parse_runs` 時，必須能處理「無 `run_id`、有 `shared_run_id`」的結果。
+- **外送稽核的 v1 過渡做法（2026-11-22 追記，Howard 核可）**：
+  - v1 **不做**稽核「外送」事件：不新增 `workflow_audit_log` 事件類型，不加 migration。
+  - v1 的外送紀錄就是 `ai_parse_runs`：`created_by`、`created_at`、`provenance` 內的 bundle、`request_id`、`run_id`、`upstream_run_id`。
+  - 失敗的外送，MOST 送出的 `request_id` 要寫進該 run 的 `error`（只寫 DB，不回前端），涵蓋兩種情況：ai_service 回 failed；ai_service 已回應但 MOST 端降級（空結果、bundle 不符、plan／provenance 建不起來）。
+  - 正式的稽核事件，以及上一條原文的「資料庫角色不授予 UPDATE／DELETE」，留給未來的統一平台（整合 MOST、LB、DES；RBAC／ABAC 將於該平台重新設計）。
+  - 已知且接受的後果：(1) `ai_parse_runs` 在 DB 層沒有不可修改保護；(2) 外部呼叫前沒有持久紀錄，程序在呼叫途中崩潰就沒有外送紀錄；(3) 稽核查詢維持 approver 以上（既有 `GET /audit-log`）。
+  - 上方「同句合併」那條的「稽核『外送』事件的筆數」，v1 對應為「`ai_parse_runs` 中帶 `run_id` 的 run 數」。
 - **provenance 鍵 allow-list（2026-11-22 追記，Howard 核可）**：`ai_parse_runs.provenance` 與回應的 `provenance` 只允許 `ai_integration/provenance.py` 列的鍵（ai_service 出處的 13 個鍵，加 MOST 自己的 `motion_labels`、`dropped`）。每次寫入前都驗證，驗證失敗屬降級（走 rule_based），不寫入。
 
 **輸出安全**

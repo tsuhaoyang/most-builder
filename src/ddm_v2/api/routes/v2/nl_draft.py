@@ -5,22 +5,40 @@ POST /api/v2/worksheets/nl-draft
   → 舊 NLDraftResult 欄位 + ai（ParseRunResult 形） + multi_action_warning
 
 唯讀於 worksheet；寫入 ai_parse_runs（AI 專用表）。建議結果需 IE 確認才寫入 slot_inputs。
+
+外部 ai_service（ADR-037 S3）：**analyst 以上**且整合可用（開關開、設定合格）時才走外部；
+viewer、開關關、設定不合格 → 一律 rule_based，不外送。外部失敗會降級成 rule_based（`ai.status=degraded`）。
+`ai.status`：`ai_service`（外部結果，含快取重播）｜`degraded`（試了外部但降級）｜`rule_based`（沒有試外部）。
+
+權限：只用既有的四級角色（`require_role` 的同一套 ROLE_ORDER）。**不做站點層級的存取控制**——MOST 目前
+所有 worksheet 路由都沒有，權限之後由統一平台重新設計（BL-ENG-19）。`scope`（single-flight 的隔離範圍）
+取 worksheet 所屬的站點，只用來隔離合併，不是存取檢查。
+
+GET /api/v2/wi-ai/status（viewer 可見）：只回 `enabled`／`available`，不含金鑰、內部 URL、bundle 細節（ADR-037 D7）。
+`available` 只代表「開關開著且設定通過檢查」：不打網路探測（任何人重新整理都會觸發外送）、不讀熔斷器
+（`allow()` 會改變半開狀態）。
 """
 from __future__ import annotations
 
+from typing import Literal
 from uuid import UUID
 
 from fastapi import APIRouter, Depends
 from pydantic import BaseModel, Field
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from ddm_v2.ai_integration.runtime import get_runtime_async
 from ddm_v2.auth.deps import CurrentUser, current_user
 from ddm_v2.database import get_db_session
 from ddm_v2.errors.registry import ErrorCode
 from ddm_v2.exceptions import NotFoundError, ServiceUnavailableError
+from ddm_v2.models.v2.org import Product, Sku
+from ddm_v2.models.v2.worksheet import MostWorksheet, ProcessVersion
 from ddm_v2.nlp.contracts import ParseContext
 from ddm_v2.services.v2 import synonym_service as syn_svc
 from ddm_v2.services.v2 import wi_ai_service
+from ddm_v2.services.v2.wi_ai_service import ExternalAi
 
 router = APIRouter(prefix="/api/v2", tags=["v2-nl-draft"])
 
@@ -37,6 +55,41 @@ class NLDraftIn(BaseModel):
     rule_set_code: str = Field(..., min_length=1)
     context: NLDraftContextIn | None = None
     worksheet_id: UUID | None = None
+    # 工時表該列的手別（MOST 已知的手別來源）。給了才和 ai_service 的手別提示比對；不採信 ai_service 的值
+    hand: Literal["LH", "RH", "BH"] | None = None
+
+
+# single-flight 的隔離範圍：沒有 worksheet、或 worksheet 找不到站點時用這個常數
+NO_SCOPE = "none"
+
+
+async def _worksheet_scope(session: AsyncSession, worksheet_id: UUID | None) -> str:
+    """worksheet 所屬站點的 id（worksheet → process_version → sku → product → site）。只用於隔離合併。"""
+    if worksheet_id is None:
+        return NO_SCOPE
+    site_id = (
+        await session.execute(
+            select(Product.site_id)
+            .join(Sku, Sku.product_id == Product.id)
+            .join(ProcessVersion, ProcessVersion.sku_id == Sku.id)
+            .join(MostWorksheet, MostWorksheet.process_version_id == ProcessVersion.id)
+            .where(MostWorksheet.id == worksheet_id)
+        )
+    ).scalar_one_or_none()
+    return str(site_id) if site_id is not None else NO_SCOPE
+
+
+def _ai_status(provenance: dict) -> str:
+    if provenance.get("planner") == "ai_service":
+        return "ai_service"
+    if provenance.get("ai_error"):
+        return "degraded"
+    return "rule_based"
+
+
+class WiAiStatusOut(BaseModel):
+    enabled: bool
+    available: bool
 
 
 @router.post("/worksheets/nl-draft")
@@ -56,6 +109,22 @@ async def nl_draft(
             previous_row_summary=payload.context.previous_row_summary,
         )
 
+    external: ExternalAi | None = None
+    # ADR-037 D7：觸發 AI 需 analyst 以上；viewer 只走 rule_based，不外送。
+    # 這裡是「依角色分流」不是「拒絕」（viewer 仍拿 200＋rule_based），所以不能用 require_role 依賴；
+    # 判斷仍走同一套 ROLE_ORDER（`CurrentUser.has`）。角色先判斷：viewer 連 runtime 都不碰。
+    runtime = await get_runtime_async() if user.has("analyst") else None
+    if runtime is not None and runtime.available and runtime.service_bundle_code:
+        external = ExternalAi(
+            port=runtime.parser,
+            service_bundle_code=runtime.service_bundle_code,
+            actor=user.employee_no,
+            scope=await _worksheet_scope(session, payload.worksheet_id),
+            known_hand=payload.hand,
+        )
+        # `current_user` 對第一次出現的人會 JIT 建帳（已 flush、尚未 commit）；外部路徑會在呼叫前 commit，
+        # 連帶把它提交——這正是請求成功時本來就會發生的事，不是需要回滾的寫入。
+
     try:
         result, legacy = await wi_ai_service.parse_interactive(
             session,
@@ -64,6 +133,7 @@ async def nl_draft(
             created_by=user.employee_no,
             context=ctx,
             worksheet_id=payload.worksheet_id,
+            external=external,
         )
     except syn_svc.RuleSetNotFound:
         msg = f"rule-set 不存在：{payload.rule_set_code}"
@@ -95,7 +165,15 @@ async def nl_draft(
             "routing_reasons": result.routing_reasons,
             "provenance": result.provenance,
             "source_revision": result.source_revision,
+            "status": _ai_status(result.provenance),
         },
         "multi_action_warning": multi_action,
     }
     return body
+
+
+@router.get("/wi-ai/status", response_model=WiAiStatusOut)
+async def wi_ai_status(_: CurrentUser = Depends(current_user)) -> WiAiStatusOut:
+    """外部 AI 是否啟用、是否可用（viewer 可見）。不含金鑰、內部 URL、bundle 細節。"""
+    rt = await get_runtime_async()
+    return WiAiStatusOut(enabled=rt.enabled, available=rt.available)
