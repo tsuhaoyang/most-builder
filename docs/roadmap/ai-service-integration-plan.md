@@ -174,6 +174,7 @@ DB 欄位不動；寫入端不再產生 `kind='llm'`，但**舊 `kind='llm'` 列
 - [x] legacy slots：已由 ADR-038 D3 關閉（2026-11-23；AI 結果不使用 legacy 相容欄位，原二選一不再需要）。
 - [x] 每日額度：已決定 10,000 次（Howard 2026-11-23，ADR-038 D7；原 ADR-037 D8 為 2000）。程式預設值另以小 PR 更新。
 - [x] 快取 TTL 決定：不設 TTL，快取鍵加版本（2026-11-24，真實量測後，Howard 核可；ADR-037 D8）。
+- [ ] ai_service S-085 完整 schema 驗證／`poc004` 上線，MOST 換 bundle code、schema 複本與 sha256，重測（2026-11-24，ai_service A3 回覆後，依審查建議，Howard 授權）。
 - [ ] 進入條件：30 句延遲量測；`most` 金鑰最小權限已確認。
 - [ ] 部署：verify 模式（見 [lb-most-auth](../architecture/lb-most-auth.md)）；金鑰用檔案。
 
@@ -217,10 +218,16 @@ DB 欄位不動；寫入端不再產生 `kind='llm'`，但**舊 `kind='llm'` 列
 
 **落差（待處理或待裁決）**：
 1. ✅ **已處理（2026-11-24，真實量測後，Howard 核可；ADR-037 D2）**：改為 `NO_MOTION` 分類（不重試、不計熔斷、降級 rule_based），回應帶 `ai.reason`，前端有文案。原文保留：ai_service 對無法解析的句子（例：「依照SOP完成其餘作業」）回 200 且 `motions: []`（schema 允許空陣列）。MOST mapper 把它當 `contract_mismatch`（`motions_empty`）並降級；小寫的原因碼被 `ai_error` 的格式檢查濾掉，降級原因只剩 `contract_mismatch`、看不出是「AI 判定沒有動作」。（舊的 `contract_mismatch`／`motions_empty` 已被 `NO_MOTION` 取代。）
-2. `b4`（GM 的 s4）值常被 plan adapter 以不在目標 rule-set 為由丟棄（`dropped` 中 `a1:b4` 22 次），對應契約 §7 #2「code 清單與 rule-set 沒有同步機制」。
+2. `b4`（GM 的 s4）被 plan adapter 丟棄（`dropped` 中 `a1:b4` 22 次）。**歸因更正（2026-11-24，ai_service A3 回覆後，依審查建議，Howard 授權）**：原歸因「契約 §7 #2 code 清單同步」是錯的；ai_service 查明代碼清單與 V2 完全一致。b4 被丟是因為 MOST compile 只有一個 B 參數（`b1`），GM 的 s4 沒有位置（`plan_adapter._dropped_slots`），屬 MOST 端待辦，見 [BL-ENG-23](../BACKLOG.md)。原文保留：~~對應契約 §7 #2「code 清單與 rule-set 沒有同步機制」。~~
 3. 所有 AI 預覽 draft 的 `complete=True`（40／40）：寫進編輯區後 `parse_snapshot.complete` 為 True，人按確認即可寫入（ADR-038 D3 W3 追記的決定；寫入時引擎重算把關）。
 4. 429 在互動路徑上實際等於降級：`Retry-After` 約 42–46 s，加上一次呼叫約 22 s，超過 60 s 總時限，所以不會重試。
 5. 冷啟動：閒置後第一次呼叫可能超過 60 s（本次 1 次）。
+6. **`ai_unknown_code` 的根因與暫行處理（2026-11-24，ai_service A3 回覆後，依審查建議，Howard 授權）**：ai_service 查明路徑 A（路徑 B 同）的 json_schema 驗證器只支援 `type`／`required`／`properties`／`items`／`enum`，`$ref`／`allOf`／`if-then`／`oneOf`／`const`／`additionalProperties` 被忽略，所以 wi-motion-parse schema 實際只檢查最外層。MOST 量測的 12 筆 `ai_unknown_code` run 都被記 `schema_valid=true`、重試 0 次；完整驗證後全數違反：LLM 自創代碼（s3 `m_press_button`；s4 `x_confirm_pos`、`x_align_pos`、`x_slot_latch`、`x_slot_lock`；s5 `i_blow_clean`、`i_clean_slot`；s5 base `p_pull`；addon `a_stick`）與 GM／CM 骨架混用（另含 `b_none`）。不是 MOST V2 清單問題。
+   - ai_service 修正計畫：S-085（完整 JSON Schema 驗證）、S-086（新 bundle `poc004`，約束解碼）、S-087（更正契約把 ok 說成通過 schema）。
+   - `poc004` 上線時 MOST 要同步換 `DDM_AI_SERVICE_BUNDLE_CODE`、schema 複本與 sha256（契約 §9）。
+   - MOST 暫行處理（本分支 `fix/ai-unknown-code-visible`）：`drafts_from_parse` 在解析的 `routing_reasons` 含 `ai_unknown_code` 時，把它放進同句每列草稿 `parse_snapshot.issues` 的第一個；編輯區顯示「AI 回了不認得的代碼，那些格位沒有採用 AI 的值。請逐格核對後再確認。」。**不改 `complete`**：不認得的代碼已被丟、不進計算，cycle 仍經引擎驗證；`complete=false` 會逼人為了過檢查而改資料；該旗標是整句層級。
+   - 「不自動採用」的依據：`wi_ai_auto_enabled` 硬關、`compute_routing(auto_enabled=False)`、編輯區只有人按確認（逐列或整組，整組確認也是人的動作且提示可見）、寫入時引擎重算。ai_service 要求 MOST 在 S-085／`poc004` 前維持 `ai_unknown_code` 的人工審核。
+   - 回收條件：S-085／`poc004` 上線並重測後重新評估。
 
 ### 路徑 B（延後）（2026-11-24，W3b，依審查建議，Howard 授權）
 

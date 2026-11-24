@@ -399,3 +399,10 @@
 - 影響：zh-TW／en 檔有無人引用的鍵，增加維護與翻譯負擔；不影響行為。
 - 建議做法：用 grep 掃出前端程式未引用的鍵，zh-TW 與 en 同時刪除，保持 key 集合對稱（ADR-032）；刪前確認沒有動態組鍵的引用。
 - 對應文件：[ADR-038](decisions/ADR-038-unified-wi-workspace-and-two-stage-distance.md) D4（W6 追記）、[交付計畫](roadmap/adr-038-delivery-plan.md)。
+
+## BL-ENG-23 — compile 沒有 GM 第二個 B（s4）的位置，AI 的 b4 被丟
+- 領域：`nlp-compiler`
+- 現況（2026-11-24，ai_service A3 回覆後，依審查建議，Howard 授權）：GM 的 s4（第二個 B）在 MOST compile 沒有位置，只有一個 B 參數（`b1`）。真實量測中 AI 回的 `b4` 被 plan adapter 丟棄 22 次（`plan_adapter._dropped_slots`，`dropped` 中 `a1:b4`）。ai_service 確認代碼清單與 V2 一致，所以不是清單同步問題，原歸因已更正。
+- 影響：AI 建議的第二次彎腰（`b4`）不進草稿，人要自己補；不影響 TMU 計算正確性（被丟的值不進計算）。
+- 建議做法：評估 compile／plan 加 `b4` 的參數與 plan adapter 對應。會動 `nlp-compiler`，需過黃金 `run_all.py`（GM=28／CM=29）與 compiler 單元測試；契約或 plan JSON 變動走加法演進（ADR-011）。
+- 對應文件：[ai-service-integration-plan](roadmap/ai-service-integration-plan.md)〈真實量測〉落差 2、[ADR-037](decisions/ADR-037-ai-service-integration.md) D3。
