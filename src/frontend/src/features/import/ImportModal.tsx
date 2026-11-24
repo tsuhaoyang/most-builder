@@ -27,11 +27,14 @@ const txt = (v: unknown) => (v === null || v === undefined ? '' : String(v))
 const STEP_KEYS = ['upload', 'map', 'preview', 'done'] as const
 
 /**
+ * 2026-11-24 起只從工作區以 `drafts` 模式開啟（Howard 選 A）。`submit` 模式與範本採用面板（ADR-025 D10）
+ * 已無畫面入口，保留程式供 BL-ENG-21（範本採用搬進工作區）重用；W6 之後再評估刪除。
+ *
  * `drafts`（ADR-038 W5）：從工作區開啟。上傳時綁定工時表，欄位對應後建 parse job；每列解析完寫進編輯區，
  * 確認後才寫入工時表。沒有範本採用面板（解析器本身會參考範本）。
  * `submit`（舊流程）：範本採用後直接寫進工時表。
  */
-export function ImportModal({ onClose, mode = 'submit', worksheetId, ruleSetCode, onJobCreated }: {
+export function ImportModal({ onClose, mode = 'drafts', worksheetId, ruleSetCode, onJobCreated }: {
   onClose: () => void
   mode?: 'submit' | 'drafts'
   worksheetId?: string

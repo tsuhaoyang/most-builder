@@ -444,3 +444,30 @@ test('匯入草稿顯示 Excel 數量的預填依據', async ({ page }) => {
   await expect(q.nth(0)).toContainText('Excel 數量 2：已預填（規則 2）')
   await expect(q.nth(1)).toContainText('只套用到加工與放置類動作')
 })
+
+
+test('標頭「匯入 Excel」直接打開工作區的整份上傳（不再有直接寫入的舊流程）', async ({ page }) => {
+  const fake = new FakeDrafts()
+  await install(page, fake)
+  await enterWorkspace(page)
+  await page.getByTestId('input-mode-manual').click()
+  await page.getByRole('button', { name: /匯入 Excel/ }).click()
+  await expect(page.getByTestId('upload-entry')).toBeVisible()
+  await expect(page.getByTestId('input-mode-upload')).toHaveAttribute('aria-selected', 'true')
+  await expect(page.getByRole('heading', { name: /匯入 Excel/ })).toHaveCount(0)
+})
+
+
+test('沒有開啟工時表時按標頭「匯入 Excel」：之後開工時表不會自動跳到上傳', async ({ page }) => {
+  const fake = new FakeDrafts()
+  await install(page, fake)
+  await page.goto('/')
+  await page.waitForLoadState('networkidle')
+  await page.getByRole('button', { name: /匯入 Excel/ }).click()
+  await expect(page.getByText('請先從分析案件開啟工時表')).toBeVisible()
+  await page.getByRole('button', { name: '前往分析案件' }).click()
+  await page.getByText('工作區測試').click()
+  await page.getByRole('button', { name: '編輯工時表' }).click()
+  await expect(page.getByTestId('draft-area')).toBeVisible()
+  await expect(page.getByTestId('input-mode-manual')).toHaveAttribute('aria-selected', 'true')
+})

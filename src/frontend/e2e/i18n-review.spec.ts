@@ -159,7 +159,7 @@ async function setup(page: Page, opts: SetupOpts = {}) {
   const backend = makeMockBackend(opts.items ?? ALL_ITEMS)
   const seen: Captured[] = []
   // S10：`**/api/**` 在 dev 模式會誤中自己的原始碼路徑（如 `/src/shared/api/client.ts`）；
-  // 與多數既有 spec（smoke／d10-import-match／d11-retired-badge／ux-compliance）對齊，
+  // 與多數既有 spec（smoke／d11-retired-badge／ux-compliance）對齊，
   // 只攔真正的 API 路徑。
   await page.route('/api/**', route => {
     const req = route.request()

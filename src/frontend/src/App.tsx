@@ -2,7 +2,6 @@ import { useState, useEffect } from 'react'
 import { useTranslation } from 'react-i18next'
 import { useMe, canEdit } from './shared/auth/useMe'
 import { useLocaleSync } from './shared/i18n/useLocaleSync'
-import { ImportModal } from './features/import/ImportModal'
 import { WiWorkbench } from './features/wi-workbench/WiWorkbench'
 import { LevelSystem } from './features/level-system/LevelSystem'
 import { DictionaryPage } from './features/dictionary/DictionaryPage'
@@ -21,7 +20,6 @@ import { useWorkspace } from './shared/workspace'
 export default function App() {
   const { t } = useTranslation()
   const [tab, setTab] = useState<string>('dashboard')
-  const [importOpen, setImportOpen] = useState(false)
   const { data: me } = useMe()
   const activeWs = useWorkspace(s => s.activeWs)
   useLocaleSync(me) // ADR-032 D3.2：/me 到達後伺服器 locale 成為權威值
@@ -72,9 +70,11 @@ export default function App() {
       onTabChange={setTab}
       me={me}
       canEdit={canEdit(me)}
-      onImportClick={() => setImportOpen(true)}
+      // ADR-038 W5 後（Howard 2026-11-24 選 A）：匯入一律在工作區進編輯區；舊的「範本採用後直接寫入」不再有入口。
+      // 沒有開啟中的工時表時，工作區頁顯示「請先從分析案件開啟工時表」，且不留下「要上傳」的旗標
+      // （否則之後開任一份工時表都會自動跳到上傳）。
+      onImportClick={() => { if (activeWs) useWorkspace.getState().setUploadRequested(true); setTab('wi') }}
     >
-      {importOpen && <ImportModal onClose={() => setImportOpen(false)} />}
       {/* key={tab} remounts the boundary on tab switch → error state auto-clears.
           reset 目標與當前 tab 相同時 setTab 是 no-op → 改 full reload（review #4）。
           全域 WorksheetBar 已去全域化（ADR-021 Phase 3）：工序表情境只存在於分析案件的編輯情境。
