@@ -392,3 +392,10 @@
 - 影響：使用者暫時不能在匯入時逐列採用範本建議。解析器的 L0 範本提示（`nlp/linking.py`）仍在用 `motion_templates`，所以範本資料仍有作用（ADR-038 D4）。
 - 建議做法：工作區上傳在欄位對應後顯示採用面板；被採用的列由後端用範本 cycle 建草稿（`source=imported`、帶 `import_row_id`、`parse_snapshot.complete=true`、記範本 id），其餘列交給 parse job。parse job 對「已有範本草稿」的列不取代（現有規則：有人動過才保留，範本草稿要明確標記為保留）。恢復 D10 的 e2e。草稿若需新旗標或來源值，走加法演進（ADR-011）。
 - 對應文件：[ADR-025](decisions/ADR-025-import-template-matching-p2.md)、[ADR-038](decisions/ADR-038-unified-wi-workspace-and-two-stage-distance.md) D3（W5 追記）、[交付計畫](roadmap/adr-038-delivery-plan.md)。
+
+## BL-ENG-22 — 清理只被已移除畫面使用的 i18n 鍵
+- 領域：`i18n`、`motion-module`
+- 現況（2026-11-24，W6，依審查建議，Howard 授權）：W6 移除工作台（`workbench-v3`）與 WI 專案畫面後，只被這些畫面使用的 i18n 鍵（`workbench.wiOutline`、`inspector`、`slot`、`nl`、`wiSet` 等）暫留。`workbench.wiEditor` 的插入相關鍵已在 W6 PR 刪除。
+- 影響：zh-TW／en 檔有無人引用的鍵，增加維護與翻譯負擔；不影響行為。
+- 建議做法：用 grep 掃出前端程式未引用的鍵，zh-TW 與 en 同時刪除，保持 key 集合對稱（ADR-032）；刪前確認沒有動態組鍵的引用。
+- 對應文件：[ADR-038](decisions/ADR-038-unified-wi-workspace-and-two-stage-distance.md) D4（W6 追記）、[交付計畫](roadmap/adr-038-delivery-plan.md)。

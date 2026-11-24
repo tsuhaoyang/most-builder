@@ -10,8 +10,6 @@ import type { NavItem } from './sidebar.types'
 
 const PRIMARY_NAV: NavItem[] = [
   { id: 'dashboard',    labelKey: 'nav.dashboard',    shortLabelKey: 'navShort.dashboard' },
-  { id: 'workbench-v3', labelKey: 'nav.workbenchV3',  shortLabelKey: 'navShort.workbenchV3' },
-  { id: 'wi-project',   labelKey: 'nav.wiProject',    shortLabelKey: 'navShort.wiProject' },
   { id: 'level',        labelKey: 'nav.level',        shortLabelKey: 'navShort.level' },
   { id: 'case',         labelKey: 'nav.case',         shortLabelKey: 'navShort.case' },
   { id: 'dictionaries', labelKey: 'nav.dictionaries', shortLabelKey: 'navShort.dictionaries', minRole: 'analyst' },

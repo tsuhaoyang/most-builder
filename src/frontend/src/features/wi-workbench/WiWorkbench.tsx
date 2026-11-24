@@ -27,12 +27,8 @@ import { derive } from '../level-system/logic'
 import { buildSaveBody } from './savePayload'
 import { useWorksheetWorkspace } from './useWorksheetWorkspace'
 import { useRowNarr } from './useRowNarr'
-import {
-  useWiTemplates, useInstantiateToWorksheet,
-  type MotionModuleSummary,
-} from '../workbench-v3/api'
-import { DsxA3Suggestion } from '../workbench-v3/DsxA3Suggestion'
-import { DsxUiEntry } from '../workbench-v3/DsxUiViewer'
+import { DsxA3Suggestion } from './dsx/DsxA3Suggestion'
+import { DsxUiEntry } from './dsx/DsxUiViewer'
 import { Trans, useTranslation } from 'react-i18next'
 
 /** 三種輸入（ADR-038 D2）：手動＝下方編輯器；單句＝解析成草稿；整份上傳＝匯入精靈（W5 接進編輯區） */
@@ -43,98 +39,6 @@ interface WiGroup { id: string; name: string; rowIds: string[] }
 type SlotKey = 'a0' | 'b1' | 'g' | 'a3' | 'b4' | 'p' | 'm' | 'x' | 'i' | 'a6'
 
 const HAND_CODES = ['RH', 'LH', 'BH'] as const
-
-// ── [ADR-022 E-4] Toast（插入 WI 結果回饋）──────────────────────────────────────
-interface WiToastState { msg: string; type: 'ok' | 'warn' | 'err' }
-
-function WiToast({ toast }: { toast: WiToastState | null }) {
-  if (!toast) return null
-  const bg = toast.type === 'ok' ? 'bg-emerald-600' : toast.type === 'warn' ? 'bg-amber-500' : 'bg-red-600'
-  return (
-    <div className={`fixed bottom-6 right-6 z-50 px-4 py-2 rounded shadow-lg text-white text-sm ${bg}`}>
-      {toast.msg}
-    </div>
-  )
-}
-
-// ── [ADR-022 E-4] 從 WI 庫插入 modal ───────────────────────────────────────────
-// 列 category='wi-template' 可見清單（後端已做能見度過濾）；名稱/動作數/TMU＋搜尋。
-// 選一筆 → 呼叫既有實體化端點 POST /worksheets/{wid}/rows/from-module（instantiate）。
-// 獨立元件：只在 modal 開啟（掛載）時才發 list 查詢。
-function InsertWiModal({ onClose, onInsert, inserting }: {
-  onClose: () => void
-  onInsert: (mod: MotionModuleSummary) => void
-  inserting: boolean
-}) {
-  const { t } = useTranslation()
-  const { data: wis = [], isLoading } = useWiTemplates()
-  const [q, setQ] = useState('')
-  const filtered = q.trim()
-    ? wis.filter(w => w.name_zh.toLowerCase().includes(q.trim().toLowerCase()))
-    : wis
-  return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40" onClick={onClose}>
-      <div
-        className="bg-white rounded-xl border shadow-2xl p-5 max-w-2xl w-full mx-4 space-y-3"
-        onClick={e => e.stopPropagation()}
-        data-testid="insert-wi-modal"
-      >
-        <div className="flex items-center justify-between">
-          <h3 className="font-semibold text-base">{t('workbench.wiEditor.insertTitle')}</h3>
-          <button onClick={onClose} className="text-slate-400 hover:text-slate-600 text-lg leading-none" aria-label={t('workbench.wiEditor.closeAria')}>✕</button>
-        </div>
-        <input
-          className="w-full border rounded px-2 py-1.5 text-sm"
-          placeholder={t('workbench.wiEditor.searchPlaceholder')}
-          value={q}
-          onChange={e => setQ(e.target.value)}
-          autoFocus
-        />
-        <div className="max-h-80 overflow-y-auto border rounded">
-          <table className="w-full text-sm">
-            <thead className="sticky top-0 bg-slate-100">
-              <tr className="text-left">
-                <th className="p-2">{t('workbench.wiEditor.colName')}</th>
-                <th className="p-2 w-20 text-right">{t('workbench.wiEditor.colActions')}</th>
-                <th className="p-2 w-24 text-right">TMU</th>
-                <th className="p-2 w-20"></th>
-              </tr>
-            </thead>
-            <tbody>
-              {isLoading && (
-                <tr><td colSpan={4} className="p-3 text-slate-400 text-center">{t('workbench.wiEditor.loading')}</td></tr>
-              )}
-              {!isLoading && filtered.length === 0 && (
-                <tr><td colSpan={4} className="p-3 text-slate-400 text-center">
-                  {q ? t('workbench.wiEditor.noMatch') : t('workbench.wiEditor.empty')}
-                </td></tr>
-              )}
-              {filtered.map(w => (
-                <tr key={w.id} className="border-t hover:bg-slate-50">
-                  <td className="p-2 max-w-sm"><span className="truncate block" title={w.name_zh}>{w.name_zh}</span></td>
-                  <td className="p-2 text-right">{w.action_count ?? '—'}</td>
-                  <td className="p-2 text-right">
-                    {w.total_tmu != null ? <b className="text-blue-700">{w.total_tmu}</b> : '—'}
-                  </td>
-                  <td className="p-2 text-right">
-                    <button
-                      onClick={() => onInsert(w)}
-                      disabled={inserting || !w.current_version}
-                      title={!w.current_version ? t('workbench.wiEditor.noVersionTitle') : undefined}
-                      className="text-xs px-2.5 py-1 bg-blue-600 text-white rounded disabled:opacity-40"
-                    >
-                      {inserting ? t('workbench.wiEditor.inserting') : t('workbench.wiEditor.insert')}
-                    </button>
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-      </div>
-    </div>
-  )
-}
 
 // ── [ADR-023 §3.4-4] 使用已下架規則版本的警示徽章 ──────────────────────────────
 // 純提示：本工序表基於已下架的 rule-set 版本；值仍為原版回放（正確），只是重新分析時
@@ -265,51 +169,6 @@ export function WiWorkbench() {
 
   // ── [C] slot modal ─────────────────────────────────────────────────────────
   const [activeSlot, setActiveSlot] = useState<SlotKey | null>(null)
-
-  // ── [ADR-022 E-4] 從 WI 庫插入（實體化搬進案件編輯情境）────────────────────────
-  const [insertWiOpen, setInsertWiOpen] = useState(false)
-  const instantiate = useInstantiateToWorksheet()
-  const [wiToast, setWiToast] = useState<WiToastState | null>(null)
-  const wiToastTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
-  function showWiToast(msg: string, type: WiToastState['type'] = 'ok') {
-    if (wiToastTimer.current) clearTimeout(wiToastTimer.current)
-    setWiToast({ msg, type })
-    wiToastTimer.current = setTimeout(() => setWiToast(null), 3500)
-  }
-
-  async function insertWiFromLibrary(mod: MotionModuleSummary) {
-    if (!activeWs) { showWiToast(t('workbench.wiEditor.needWorksheet'), 'err'); return }
-    try {
-      // 既有實體化端點：POST /api/v2/worksheets/{wid}/rows/from-module（body: module_id）。
-      // hook onSuccess 會 invalidate ['worksheet', wid] → wsData refetch → 上方 effect
-      // setRows 重灌工時表（後端已算好每列 TMU，前端不自算）。
-      const result = await instantiate.mutateAsync({
-        worksheetId: activeWs,
-        moduleId: mod.id,
-        baseRevision: useWiStore.getState().revisionNo,
-      })
-      if (typeof result.revision_no === 'number') {
-        useWiStore.getState().setRevisionMeta({
-          revisionNo: result.revision_no,
-          contentHash: result.content_hash ?? null,
-        })
-      }
-      setInsertWiOpen(false)
-      showWiToast(t('workbench.wiEditor.inserted', { name: mod.name_zh, count: result.new_rows.length }), 'ok')
-      // TMU 漂移警告（沿 ProcessWorkspace 既有機制：instantiate 回應內 tmu_drift）
-      if (result.tmu_drift && result.tmu_drift.length > 0) {
-        setTimeout(() => showWiToast(t('workbench.wiEditor.insertedRecalc'), 'warn'), 1500)
-      }
-    } catch (e) {
-      const err = e as Error & { code?: string | null; humanMessage?: string; status?: number }
-      if (err.status === 409 && err.code === 'WORKSHEET_REVISION_CONFLICT') {
-        showWiToast(t('workbench.wiEditor.insertConflict'), 'err')
-        qc.invalidateQueries({ queryKey: ['worksheet', activeWs] })
-      } else {
-        showWiToast(t('workbench.wiEditor.insertFailed', { message: err.humanMessage || err.message }), 'err')
-      }
-    }
-  }
 
   // ── debounced backend calculate ───────────────────────────────────────────
   const payload = useMemo(() => (opts ? buildPayload(cur, opts.code) : null), [cur, opts])
@@ -534,8 +393,7 @@ export function WiWorkbench() {
   const currentSlots = gm ? gmSlots : cmSlots
 
   // Modal label per slot
-  // 與 workbench-v3/SlotBuilder 的格位 modal 抬頭逐字相同 → 共用同一組 key，
-  // 不再各抄一份（同一個格位在兩個編輯器叫不同名字是遲早會發生的漂移）。
+  // 格位 modal 抬頭共用 workbench.slot.modalTitle（原與已移除的 workbench-v3/SlotBuilder 共用）
   const slotModalLabel = (k: SlotKey) => t(`workbench.slot.modalTitle.${k}`)
 
   // ── [D] DnD handlers ───────────────────────────────────────────────────────
@@ -848,22 +706,12 @@ export function WiWorkbench() {
         <div className="flex items-center justify-between mb-2">
           <div className="flex items-center gap-3">
             <h2 className="font-semibold">{t('workbench.wiEditor.worksheetTitle')}</h2>
-            {/* [ADR-022 E-4] 從 WI 庫插入（實體化；需編輯權限＋已開啟工時表） */}
-            {editable && activeWs && (
-              <button
-                onClick={() => setInsertWiOpen(true)}
-                className="text-sm px-3 py-1 border border-blue-300 text-blue-700 rounded-lg hover:bg-blue-50"
-                data-testid="insert-wi-btn"
-              >
-                {t('workbench.wiEditor.insertFromWi')}
-              </button>
-            )}
             {/* DSX 3D 擺放介面入口：內部／工程用，非正式功能，故用低調樣式跟主要
                 動作按鈕區隔。見 DsxUiViewer.tsx 檔頭註——單一觀看者限制反映在開啟前
                 的確認對話框裡，不在這裡處理。
                 editable 門檻：這會搶走唯一的 WebRTC 觀看者名額，不該讓最低權限的人
                 （包含唯讀模式下看歷史版工時表的 viewer）有能力把正在工作的人踢下線——
-                跟旁邊「從 WI 庫插入」一致，後端端點維持 current_user 不用改（純讀取，
+                後端端點維持 current_user 不用改（純讀取，
                 升級門檻換不到實質保護）。 */}
             {editable && <DsxUiEntry />}
           </div>
@@ -1098,16 +946,6 @@ export function WiWorkbench() {
             })}
           </div>
         </div>
-      )}
-
-      {/* ═══ [ADR-022 E-4] 從 WI 庫插入 modal + toast ═══ */}
-      <WiToast toast={wiToast} />
-      {insertWiOpen && (
-        <InsertWiModal
-          onClose={() => setInsertWiOpen(false)}
-          onInsert={insertWiFromLibrary}
-          inserting={instantiate.isPending}
-        />
       )}
 
       {/* ═══ [C] Slot Modal ═══ */}
