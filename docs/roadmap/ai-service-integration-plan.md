@@ -159,19 +159,19 @@ DB 欄位不動；寫入端不再產生 `kind='llm'`，但**舊 `kind='llm'` 列
 - **稽核與角色（D7）（✅ 已完成；稽核改為 v1 過渡）**：稽核依 ADR-037 D7 修訂（2026-11-22）不做外送事件，v1 以 `ai_parse_runs` 代替，失敗外送的 `request_id` 寫進 run 的 `error`（涵蓋 ai_service 回 failed 與已回應但 MOST 端降級）。角色檢查在路由（analyst 以上才傳 `external`），有 `tests/integration/test_nl_draft_ai_route.py` 鎖定。
 - **`worksheet_id` 存取權驗證（已裁決不做）**：Howard 2026-11-22：權限由未來的統一平台重新設計，MOST 不發明站點權限模型；`scope` 只用於隔離合併。重播回 `cached`／`cached_run_id` 的探測風險記於 [BL-ENG-19](../BACKLOG.md#bl-eng-19--worksheet-路由沒有站點層級的存取控制延後)。
 - **`known_hand`／`scope` 的來源（✅ 已完成）**：`hand` 由請求欄位帶入，`scope` 取 worksheet 所屬站點，否則 `'none'`。`known_hand` 是整句一個值，逐 motion 比對會對左右手不同的句子誤報（保守方向）。無手別來源時不標，手別提示存在 `motion_labels`。
-- **`ai_error` 文案與信封碼（❌ 未完成）**：補 zh-TW／en 對稱文案與 ADR-034 信封碼，與 `QUOTA_EXCEEDED` 一併登記。
+- **`ai_error` 文案與信封碼（✅ 已完成，2026-11-24，真實量測後，Howard 核可：降級原因走成功回應的 `ai.reason`，前端 zh-TW／en 文案含 `quota_exceeded`，不走 ADR-034 信封碼；ADR-037 D2）**：原文保留：補 zh-TW／en 對稱文案與 ADR-034 信封碼，與 `QUOTA_EXCEEDED` 一併登記。
 - **legacy slots 在 fresh 與重播不一致（✅ 已由 ADR-038 D3 關閉，2026-11-23：AI 結果不使用 legacy 相容欄位）**：原文保留：fresh 是 rule parser 的建議值，重播是空的 `chosen`，前端相容欄位的顯示前後不同。路由開放前須決定：(i) 重播也用 rule parser 重算（會隨當下 synonym 漂移），或 (ii) fresh 也輸出空的 `chosen`（AI 路徑不預填；審查者傾向此案）。
-- **快取 TTL（未決定，待 Howard）**：ai_service 在同一 bundle code 底下更新 model 或 prompt 時，快取不會 miss（`prompt_version`、`model_served` 要呼叫後才知道）。ADR-037 D8 沒有明文處理這個缺口。是否加 TTL，或把 `prompt_version` 變動視為 miss，尚未決定。
+- **快取 TTL（✅ 已決定，2026-11-24，真實量測後，Howard 核可：不設 TTL，input_hash 加入最近一次的 `prompt_version`／`model_served`；ADR-037 D8）**：原文保留：ai_service 在同一 bundle code 底下更新 model 或 prompt 時，快取不會 miss（`prompt_version`、`model_served` 要呼叫後才知道）。ADR-037 D8 沒有明文處理這個缺口。是否加 TTL，或把 `prompt_version` 變動視為 miss，尚未決定。
 
 ### 12 月開 AI 前的清單
 
 全部完成前，不得在任何環境開啟 `DDM_AI_SERVICE_ENABLED`。
 
-- [ ] 前端 adopt 停用，或導向 S4 審核流程（2026-11-23，ADR-038：由 D3 的編輯區取代，尚未實作）。
-- [ ] `ai_error`／`QUOTA_EXCEEDED` 的 zh-TW／en 文案與 ADR-034 信封碼。
+- [ ] 前端 adopt 停用，或導向 S4 審核流程（2026-11-23，ADR-038：由 D3 的編輯區取代，尚未實作）。2026-11-24 更新：工時表編輯器已由 W4 移除，`workbench-v3` 仍在，W6 移除；W6 前此項未完成。
+- [x] `ai_error`／`QUOTA_EXCEEDED` 的 zh-TW／en 文案：已完成（2026-11-24，真實量測後，Howard 核可；走 `ai.reason`，不走 ADR-034 信封碼）。
 - [x] legacy slots：已由 ADR-038 D3 關閉（2026-11-23；AI 結果不使用 legacy 相容欄位，原二選一不再需要）。
 - [x] 每日額度：已決定 10,000 次（Howard 2026-11-23，ADR-038 D7；原 ADR-037 D8 為 2000）。程式預設值另以小 PR 更新。
-- [ ] 快取 TTL 決定。
+- [x] 快取 TTL 決定：不設 TTL，快取鍵加版本（2026-11-24，真實量測後，Howard 核可；ADR-037 D8）。
 - [ ] 進入條件：30 句延遲量測；`most` 金鑰最小權限已確認。
 - [ ] 部署：verify 模式（見 [lb-most-auth](../architecture/lb-most-auth.md)）；金鑰用檔案。
 
@@ -214,7 +214,7 @@ DB 欄位不動；寫入端不再產生 `kind='llm'`，但**舊 `kind='llm'` 列
 **mapper／ADR-037 D3 行為（33 筆 run、40 個 motion）**：`chosen` 一律為空；`role.value` 沒有任何值；`measurements` 沒有任何值；`magnitude_*` 全部進 `dropped`（`a0`／`a3`／`a6.magnitude_hint`），不進計算；routing 一律 `review`，每筆都帶 `ai_source_no_evidence`、`ai_candidate_preview`、`ai_return_a_position`；`ai_unknown_code` 13 次；`ai_hand_hint_mismatch` 2 次（樣本手別欄與句子不一致的兩列，判定正確）。
 
 **落差（待處理或待裁決）**：
-1. ai_service 對無法解析的句子（例：「依照SOP完成其餘作業」）回 200 且 `motions: []`（schema 允許空陣列）。MOST mapper 把它當 `contract_mismatch`（`motions_empty`）並降級；小寫的原因碼被 `ai_error` 的格式檢查濾掉，降級原因只剩 `contract_mismatch`、看不出是「AI 判定沒有動作」。
+1. ✅ **已處理（2026-11-24，真實量測後，Howard 核可；ADR-037 D2）**：改為 `NO_MOTION` 分類（不重試、不計熔斷、降級 rule_based），回應帶 `ai.reason`，前端有文案。原文保留：ai_service 對無法解析的句子（例：「依照SOP完成其餘作業」）回 200 且 `motions: []`（schema 允許空陣列）。MOST mapper 把它當 `contract_mismatch`（`motions_empty`）並降級；小寫的原因碼被 `ai_error` 的格式檢查濾掉，降級原因只剩 `contract_mismatch`、看不出是「AI 判定沒有動作」。（舊的 `contract_mismatch`／`motions_empty` 已被 `NO_MOTION` 取代。）
 2. `b4`（GM 的 s4）值常被 plan adapter 以不在目標 rule-set 為由丟棄（`dropped` 中 `a1:b4` 22 次），對應契約 §7 #2「code 清單與 rule-set 沒有同步機制」。
 3. 所有 AI 預覽 draft 的 `complete=True`（40／40）：寫進編輯區後 `parse_snapshot.complete` 為 True，人按確認即可寫入（ADR-038 D3 W3 追記的決定；寫入時引擎重算把關）。
 4. 429 在互動路徑上實際等於降級：`Retry-After` 約 42–46 s，加上一次呼叫約 22 s，超過 60 s 總時限，所以不會重試。

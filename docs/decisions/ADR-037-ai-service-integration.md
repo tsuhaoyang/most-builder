@@ -69,6 +69,9 @@ MOST 內的 LLM 專屬程式移除：`llm_client`、`prompts/*`、`LLMClientPort
   人工建表完全不受影響。`nl-draft` 維持同步，不改成 202。降級訊息不帶內部 URL 與錯誤細節。
 - ai_service 的錯誤依 `error.code` 映射到 MOST 錯誤碼，走 ADR-034 信封，zh-TW／en 訊息對稱（ADR-032）。
 - 外部失敗降級時（2026-11-22 追記，Howard 核可），回應的 `ai_error` 是粗粒度版：維運類分類（`misconfigured`、`auth`、`deployment`、`request_rejected`、`contract_mismatch`、`internal_error`、`bundle_not_runnable`）不帶 `upstream_code`；完整版只在 `ai_parse_runs.error` 與 log。
+- **NO_MOTION 分類與降級原因欄位（2026-11-24，真實量測後，Howard 核可；加法）**：
+  - ai_service 回 200 且 `motions` 是空陣列（schema 允許）時，mapper 拋 `AiServiceErrorKind.NO_MOTION`（`upstream_code="NO_MOTION"`），取代舊的 `contract_mismatch`／`motions_empty`。不重試、不計入熔斷失敗次數，降級到 `rule_based`。它不是維運類，所以回應看得到 `upstream_code`（上一條的維運類清單不含它）。降級結果不進快取，同一句重送會再外送。
+  - `POST /worksheets/{id}/drafts/from-sentence` 的回應 `ai.reason`（`error_kind`、`upstream_code`；維運類不帶 code）說明降級原因。前端依 `error_kind` 顯示 zh-TW／en 對稱文案，不認得的值（含維運類）顯示通用說明。`ai.reason` 是成功回應內的欄位，不走 ADR-034 錯誤信封碼；`QUOTA_EXCEEDED` 有對應文案。
 - 新開關命名為 `DDM_AI_SERVICE_ENABLED`，不沿用 `DDM_WI_AI_ENABLED`，避免舊環境的 `true` 在新路徑完成前意外啟用。
 - **D8 守門新增的 port 欄位與錯誤分類（2026-11-20 追記，Howard 核可；加法）**：
   - `WiParseRequest` 新增 `actor`（觸發者）與 `scope`（single-flight 隔離範圍，例：site id）兩欄，只給 MOST 端的配額與合併使用，**絕不外送**（有測試鎖定外送 body 的 keys；與 D7「不送員工編號」一致）。
@@ -76,6 +79,7 @@ MOST 內的 LLM 專屬程式移除：`llm_client`、`prompts/*`、`LLMClientPort
   - `actor`／`scope` 缺漏、`context` 含白名單外的鍵，是呼叫端 bug，守門層拋 `ValueError`（不能讓「沒有身分」變成「不受配額限制」）。
   - mapper 對不預期的回應形狀拋任何例外（`AiServiceError` 以外），adapter 轉成該筆 `failed`，`error_kind=CONTRACT_MISMATCH`、`upstream_code=MAPPER_REJECTED`，不讓例外穿出 port；同時記一筆 WARNING log，讓 mapper bug 對維運可見。log 訊息只帶例外類別名稱，不寫入語句與回應內容。
   - `QUOTA_EXCEEDED` 目前只是 MOST 內部分類。S3 接到路由而需要對外報錯時，必須登記 ADR-034 信封碼並補 zh-TW／en 對稱文案（ADR-032）；目前前端沒有這組文案。
+  - **持久快取鍵加版本（2026-11-24，真實量測後，Howard 核可）**：外部 run 的 `ai_parse_runs.input_hash` 另含 ai_service 最近一次外送成功的 run 所回報的 `prompt_version`、`model_served`。實際回應的版本與最近一次不同時，以實際版本記這筆，之後的查詢就對到新版本。不設 TTL。已知限制：版本變更要等任一新句子外送後才發現；上線當次舊快取一次性 miss；多版本交替（canary）時快取會抖動，且可能以 `raced` 重播舊結果；`ai_parse_runs` 日後可加 `(bundle_id, created_at)` 索引。
 
 ### D3 ai_service 選的 slot code 只當候選（修訂 ADR-033 D2）
 
