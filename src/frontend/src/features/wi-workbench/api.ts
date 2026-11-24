@@ -64,6 +64,8 @@ export interface WsReadRow {
   frequency: number
   simo_group_id: string | null
   wi_group: string | null
+  /** ADR-038 D6：距離狀態（confirmed｜manual｜not_applicable｜null） */
+  distance_status?: 'confirmed' | 'manual' | 'not_applicable' | null
   /** F-03b §2 provenance — nullable 軟參考（非 FK） */
   source_module_id: string | null
   source_module_version: number | null

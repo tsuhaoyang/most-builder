@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import { useTranslation } from 'react-i18next'
 import { useMe, canEdit } from './shared/auth/useMe'
 import { useLocaleSync } from './shared/i18n/useLocaleSync'
@@ -25,6 +25,8 @@ export default function App() {
   const { data: me } = useMe()
   const activeWs = useWorkspace(s => s.activeWs)
   useLocaleSync(me) // ADR-032 D3.2：/me 到達後伺服器 locale 成為權威值
+  const meRef = useRef(me)
+  meRef.current = me
 
   // Allow CasesPage (and future features) to request a tab switch via custom event
   useEffect(() => {
@@ -33,7 +35,14 @@ export default function App() {
       if (target) setTab(target)
     }
     window.addEventListener('ddm:switch-tab', handler)
-    return () => window.removeEventListener('ddm:switch-tab', handler)
+    // ADR-038 W4：工作區的「整份上傳」入口開匯入精靈（W5 改為解析結果進編輯區）。
+    // 與標頭的匯入按鈕同一個門檻（可編輯者）；後端 require_role 仍是權威。
+    const openImport = () => { if (canEdit(meRef.current)) setImportOpen(true) }
+    window.addEventListener('ddm:open-import', openImport)
+    return () => {
+      window.removeEventListener('ddm:switch-tab', handler)
+      window.removeEventListener('ddm:open-import', openImport)
+    }
   }, [])
 
   const renderContent = () => {
