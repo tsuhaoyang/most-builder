@@ -201,6 +201,25 @@ DB 欄位不動；寫入端不再產生 `kind='llm'`，但**舊 `kind='llm'` 列
 3. 測試：integration 以 fake server 驗成功與各種降級；viewer 不外送；既有 `e2e/workbench-nl-*.spec.ts` 不改仍綠。
 4. 完成定義：開關開＋fake 時工時表情境可見 AI 草稿；開關關或 fake 掛掉時行為與現況一致；黃金值綠。
 
+### 真實量測（2026-11-24，本機開發值）
+
+依 ai_service 對接契約（`ai_service/docs/specs/consumer-contract-most.md`）對常駐測試實例 `127.0.0.1:8610`（bundle `most-wi-motion-parse-poc003`，`shadow`；LLM 本機 `qwen2.5:14b`；ai_service `AI_LLM_ADMISSION_CONCURRENCY=2`）真實呼叫。
+工具：`scripts/ai_service_measure.py`（`smoke`／`latency`／`errors`）。走正式程式路徑（guard → adapter → client → mapper → plan adapter → compile 預覽 → engine_gate → routing → `ai_parse_runs`），環境變數只在該程序內設定，不開放給使用者；DB 用拋棄式測試庫；句子取自 `docs/sample_excel/MiniMOST1128` 與 `tests/gold/wi_plans`（不用真實 SKU 句子：常駐實例 Postgres 持久化、無保留期，契約 §8.3 第 9 項）。報告 JSON 在 `data/ai-service-measure/`（gitignore）。
+設定：`TIMEOUT_S=60`、`CONCURRENCY_INTERACTIVE=1`（Howard 2026-11-24 核可）、`MAX_RETRY_AFTER_S=60`（PR #24）。
+
+**延遲（依序、新樣本 33 句成功，排除快取重播）**：p50 21.9 s、p90 37.1 s、p95 40.5 s、max 42.0 s、min 14.7 s、mean 24.0 s。超過 15 s 的 32／33，超過 30 s 的 5，超過 45 s 的 0。一個 motion 的句子平均 21.7 s（max 32.0），兩個 motion 平均 40.4 s（max 42.0）。另有 1 次在 60 s 逾時（第一次呼叫，推測是模型冷啟動），正確降級為 rule_based。契約自己的 30 句 max 為 53 s。
+
+**錯誤分類（實測，與契約 §4.2 一致）**：不存在的 bundle → 404 `NOT_FOUND` → `request_rejected`；未宣告的 `prompt_variant` → 422 `PROMPT_VARIANT_NOT_DECLARED` → `request_rejected`；錯金鑰 → 401 `AUTH_REQUIRED` → `auth`；同時 3 個請求（不重試）→ 1 個 429 `ADMISSION_REJECTED`、`Retry-After` 42 s → `rate_limited`，另 2 個成功；回應沒有 `X-Request-Id`（對帳靠 `provenance.run_id`，每筆成功的 run 都記到 `upstream_run_id`）。502／503／504 只有 fake 測試，沒有在共用實例上製造。
+
+**mapper／ADR-037 D3 行為（33 筆 run、40 個 motion）**：`chosen` 一律為空；`role.value` 沒有任何值；`measurements` 沒有任何值；`magnitude_*` 全部進 `dropped`（`a0`／`a3`／`a6.magnitude_hint`），不進計算；routing 一律 `review`，每筆都帶 `ai_source_no_evidence`、`ai_candidate_preview`、`ai_return_a_position`；`ai_unknown_code` 13 次；`ai_hand_hint_mismatch` 2 次（樣本手別欄與句子不一致的兩列，判定正確）。
+
+**落差（待處理或待裁決）**：
+1. ai_service 對無法解析的句子（例：「依照SOP完成其餘作業」）回 200 且 `motions: []`（schema 允許空陣列）。MOST mapper 把它當 `contract_mismatch`（`motions_empty`）並降級；小寫的原因碼被 `ai_error` 的格式檢查濾掉，降級原因只剩 `contract_mismatch`、看不出是「AI 判定沒有動作」。
+2. `b4`（GM 的 s4）值常被 plan adapter 以不在目標 rule-set 為由丟棄（`dropped` 中 `a1:b4` 22 次），對應契約 §7 #2「code 清單與 rule-set 沒有同步機制」。
+3. 所有 AI 預覽 draft 的 `complete=True`（40／40）：寫進編輯區後 `parse_snapshot.complete` 為 True，人按確認即可寫入（ADR-038 D3 W3 追記的決定；寫入時引擎重算把關）。
+4. 429 在互動路徑上實際等於降級：`Retry-After` 約 42–46 s，加上一次呼叫約 22 s，超過 60 s 總時限，所以不會重試。
+5. 冷啟動：閒置後第一次呼叫可能超過 60 s（本次 1 次）。
+
 ## 5. S4：審核佇列、逐項審核、最小編輯
 
 > 2026-11-23，ADR-038 追記：依 ADR-038 重新規劃，審核佇列即工作區編輯區（D3），不另做獨立頁面。
