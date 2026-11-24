@@ -176,6 +176,7 @@ Suggest(ai_service) → Map(mapper) → Validate(link/compile/engine_gate/routin
   `source_input_hash` 改變；審核項引用的列被改動（內容雜湊不同）或刪除。一般的存檔（revision 遞增但未動到引用列）不觸發 stale。clone 不搬移審核項。
 - **wi_group**：同一句拆出的 N 列共用同一 wi_group。來源依序為 Excel 欄、使用者輸入、該句原文；
   超過 `WiRowSaveIn.wi_group` 上限（200 字）時截斷並標示，與現行 `AiDraftPanel` 的預設規則統一。
+  > 2026-11-24，W4，依審查建議，Howard 授權：`AiDraftPanel` 已於 W4 移除；截斷規則由後端 `from-sentence` 實作（`parse_snapshot.wi_group_truncated`），見 ADR-038 D3 W3／W4 追記。
 
 ### D6 Excel 批量：只送語句；數量歸屬規則
 

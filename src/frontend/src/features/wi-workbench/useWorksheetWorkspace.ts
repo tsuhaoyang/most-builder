@@ -6,7 +6,7 @@ import { useWiStore } from './store'
 
 export function useWorksheetWorkspace(worksheetId: string) {
   const query = useWorksheet(worksheetId)
-  const setRows = useWiStore((state) => state.setRows)
+  const setRows = useWiStore((state) => state.loadRows)
   const setRevisionMeta = useWiStore((state) => state.setRevisionMeta)
 
   useEffect(() => {
@@ -38,6 +38,7 @@ export function useWorksheetWorkspace(worksheetId: string) {
       tmu: row.cycle?.total_tmu ?? 0,
       seconds: row.cycle?.total_seconds ?? 0,
       payload: row.cycle?.slot_inputs ?? null,
+      distanceStatus: row.distance_status ?? null,
     })))
     setRevisionMeta({
       revisionNo: worksheet.revision_no ?? 1,
@@ -102,6 +103,7 @@ export function useWorksheetWorkspace(worksheetId: string) {
     })
 
     useLevelStore.getState().hydrate(levelMap, groupMeta, worksheet.rows.length, workerCubMeta, worksheet.rows.length)
+    useWiStore.getState().markClean()
   }, [query.data, setRows, setRevisionMeta, worksheetId])
 
   return query

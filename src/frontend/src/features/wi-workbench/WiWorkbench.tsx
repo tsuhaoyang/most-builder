@@ -15,7 +15,11 @@ import {
   defaultCycle, buildPayload, aBandOpts, payloadToState,
   type CycleState, type ASlot, type ABand,
 } from './cycle'
-import { AiDraftPanel } from './AiDraftPanel'
+import { DraftArea } from './drafts/DraftArea'
+import { SentenceInput } from './drafts/SentenceInput'
+import { useCreateDrafts, usePatchDraft, type WiDraft, type WiDraftContent } from './drafts/api'
+import { contentOf, editorContent, editorWouldSimplify, resetDistanceRows } from './drafts/logic'
+import { resolveErrorMessage } from '../../shared/i18n/errorMessage'
 import { useLevelStore } from '../level-system/store'
 import { derive } from '../level-system/logic'
 import { buildSaveBody } from './savePayload'
@@ -28,6 +32,9 @@ import {
 import { DsxA3Suggestion } from '../workbench-v3/DsxA3Suggestion'
 import { DsxUiEntry } from '../workbench-v3/DsxUiViewer'
 import { Trans, useTranslation } from 'react-i18next'
+
+/** 三種輸入（ADR-038 D2）：手動＝下方編輯器；單句＝解析成草稿；整份上傳＝匯入精靈（W5 接進編輯區） */
+type InputMode = 'manual' | 'sentence' | 'upload'
 
 // ─── Local types ───────────────────────────────────────────────────────────────
 interface WiGroup { id: string; name: string; rowIds: string[] }
@@ -201,7 +208,7 @@ function aIsFilled(slot: ASlot): boolean {
 
 // ─── Main component ────────────────────────────────────────────────────────────
 export function WiWorkbench() {
-  const { t } = useTranslation()
+  const { t, i18n } = useTranslation()
   const { data: me } = useMe()
   const active = useActiveRuleSet()
   const { data: opts, error: optsErr } = useRuleSetOptions(active.data?.code)
@@ -213,7 +220,7 @@ export function WiWorkbench() {
   const save = useSaveWorksheet(activeWs)
   const qc = useQueryClient()
   const { data: wsData } = useWorksheetWorkspace(activeWs)
-  const { rows, addRow, delRow, setRows, totalTmu } = useWiStore()
+  const { rows, delRow, setRows, totalTmu } = useWiStore()
 
   // ── existing editor state ──────────────────────────────────────────────────
   const [cur, setCur] = useState<CycleState>(defaultCycle())
@@ -223,6 +230,16 @@ export function WiWorkbench() {
   // ADR-035 D10 F7：新列的「作業」（wi_group）名稱；add() 帶入並保留（連續加同一作業的多列）
   const [curWiGroup, setCurWiGroup] = useState('')
   const editable = canEdit(me)
+  // ── [ADR-038] 工作區：輸入方式、正在編輯的草稿 ───────────────────────────────
+  const [inputMode, setInputMode] = useState<InputMode>('manual')
+  const [editingDraft, setEditingDraft] = useState<WiDraft | null>(null)
+  // 載入編輯器後立即產出的 cycle（用來判斷使用者有沒有動格位；沒動就原封保留草稿的 cycle）
+  const [editRoundTrip, setEditRoundTrip] = useState<unknown>(undefined)
+  // 換工時表時放棄正在編輯的草稿（避免 PATCH 到上一份工時表的草稿）
+  useEffect(() => { setEditingDraft(null); setEditRoundTrip(undefined) }, [activeWs])
+  const [editorMsg, setEditorMsg] = useState<{ text: string; kind: 'ok' | 'err' } | null>(null)
+  const createDrafts = useCreateDrafts(activeWs)
+  const patchDraft = usePatchDraft(activeWs)
 
   // ── [D] drag state ──────────────────────────────────────────────────────────
   const [dragIdx, setDragIdx] = useState<number | null>(null)
@@ -573,15 +590,53 @@ export function WiWorkbench() {
   }
 
   // ── existing add/save functions ────────────────────────────────────────────
-  function add() {
-    if (tmu == null) return
-    addRow({
-      id: crypto.randomUUID(), seq: cur.seq, handCode: cur.handCode, freq: cur.freq, simoGroup: cur.simoGroup,
-      // narr 留空＝「還沒有後端敘述」；預覽句由 useRowNarr 在顯示時重算
-      // wiGroup（作業）：帶入編輯器目前輸入值；不清空 curWiGroup，連續加同一作業的多列免重打
-      nv: { ...cur.nv }, narr: '', narrEn: null, wiGroup: curWiGroup.trim() || null, tmu, seconds: tmu * TMU_SEC, payload,
-      toolVocab: null, subActivity: null, keyParts: null,
-    } as Row)
+  // ADR-038 D2：手動新增也進編輯區（確認後「寫入工時表」才落盤）；編輯草稿時改為更新該草稿（回到待確認）。
+  // 作業名稱（wi_group）不清空，連續加同一作業的多列免重打。
+  async function add() {
+    if (tmu == null || !payload || !activeWs) return
+    const content = editorContent({
+      cycle: payload, handCode: cur.handCode, freq: cur.freq, nv: cur.nv, wiGroup: curWiGroup,
+      base: editingDraft ? contentOf(editingDraft) : null,
+      baseRoundTrip: editingDraft ? editRoundTrip : undefined,
+    })
+    setEditorMsg(null)
+    try {
+      if (editingDraft) {
+        await patchDraft.mutateAsync({ id: editingDraft.id, content })
+        setEditingDraft(null)
+        setEditRoundTrip(undefined)
+        setEditorMsg({ text: t('workbench.drafts.updated'), kind: 'ok' })
+      } else {
+        await createDrafts.mutateAsync([{ content }])
+        setEditorMsg({ text: t('workbench.drafts.added'), kind: 'ok' })
+      }
+    } catch (e) {
+      setEditorMsg({ text: resolveErrorMessage(e, i18n), kind: 'err' })
+    }
+  }
+
+  function editDraft(d: WiDraft) {
+    const c: WiDraftContent = contentOf(d)
+    const loaded = payloadToState((c.cycle ?? {}) as Record<string, unknown>)
+    const next = {
+      ...loaded,
+      handCode: c.hand ?? 'RH',
+      freq: c.frequency ?? 1,
+      nv: { ...loaded.nv, obj: c.object_vocab_id ?? '', from: c.from_vocab_id ?? '', to: c.to_vocab_id ?? '' },
+    }
+    setCur(next)
+    setEditRoundTrip(opts ? buildPayload(next, opts.code) : undefined)
+    setCurWiGroup(c.wi_group ?? '')
+    setEditingDraft(d)
+    setInputMode('manual')
+    setEditorMsg(null)
+  }
+
+  function cancelEdit() {
+    setEditingDraft(null)
+    setEditRoundTrip(undefined)
+    setCur(defaultCycle())
+    setEditorMsg(null)
   }
 
   async function saveAsTemplate() {
@@ -612,15 +667,20 @@ export function WiWorkbench() {
           contentHash: res.content_hash ?? null,
         })
       }
+      // 存檔成功＝表與 level 都已存（讀回的資料若結構相同，hydrate 不會重跑，所以這裡明確清除）
+      useWiStore.getState().markClean()
       qc.invalidateQueries({ queryKey: ['wi-preview'] })
       qc.invalidateQueries({ queryKey: ['versions'] })
       qc.invalidateQueries({ queryKey: ['worksheet', activeWs] })
-      setSaveMsg(t('workbench.wiEditor.saved', {
+      const savedMsg = t('workbench.wiEditor.saved', {
         rows: res.rows.length,
         tmu: res.total_tmu,
         seconds: (res.total_tmu * TMU_SEC).toFixed(2),
         rev: res.revision_no ?? '?',
-      }))
+      })
+      // ADR-038 D6（W7b）：已確認的距離，改了距離輸入就被後端退回未標示 → 提示使用者
+      const reset = resetDistanceRows(rows, res.rows as Array<{ wi_row_id: string; distance_status?: string | null }>)
+      setSaveMsg(reset.length ? `${savedMsg} ${t('workbench.drafts.distanceReset', { count: reset.length })}` : savedMsg)
     } catch (e) {
       const err = e as Error & { code?: string | null; humanMessage?: string; status?: number }
       if (err.status === 409 && err.code === 'WORKSHEET_REVISION_CONFLICT') {
@@ -646,22 +706,40 @@ export function WiWorkbench() {
       {/* ═══ Editor section ═══ */}
       <div className="bg-white rounded-xl border p-4 space-y-3">
 
-        {/* [F] AI Draft panel（取代舊 NL 預填） */}
-        <AiDraftPanel
-          ruleSetCode={opts?.code}
-          worksheetId={activeWs || null}
-          canWriteReviews={editable}
-          onAdoptCycle={(cycle, wiGroup) => {
-            setCur((c) => {
-              const next = payloadToState(cycle)
-              // 保留手別／語彙情境，不整頁清空
-              return { ...next, handCode: c.handCode || next.handCode, nv: { ...c.nv } }
-            })
-            // ADR-035 D10 §13-5：作業欄若尚空，帶入來源語句預設（不覆蓋使用者已填值）
-            if (wiGroup) setCurWiGroup((prev) => prev.trim() ? prev : wiGroup)
-          }}
-          onLegacyFill={(patch) => setCur((c) => ({ ...c, ...patch }))}
-        />
+        {/* [ADR-038 D2] 三種輸入：手動（下方編輯器）／單句／整份上傳；產出都進編輯區 */}
+        {editable && (
+          <div className="flex flex-wrap items-center gap-1" role="tablist" data-testid="input-modes">
+            <span className="text-sm text-slate-500 mr-1">{t('workbench.drafts.inputLabel')}</span>
+            {(['manual', 'sentence', 'upload'] as const).map(m => (
+              <button key={m} type="button" role="tab" aria-selected={inputMode === m} data-testid={`input-mode-${m}`}
+                onClick={() => setInputMode(m)}
+                className={`px-2.5 py-1 text-sm rounded border ${inputMode === m ? 'bg-slate-800 text-white' : 'bg-white'}`}>
+                {t(`workbench.drafts.mode.${m}`)}
+              </button>
+            ))}
+          </div>
+        )}
+        {editable && inputMode === 'sentence' && activeWs && (
+          <SentenceInput worksheetId={activeWs} handCode={cur.handCode} wiGroup={curWiGroup} />
+        )}
+        {editable && inputMode === 'upload' && (
+          <div className="text-sm space-y-2" data-testid="upload-entry">
+            <p className="text-slate-600">{t('workbench.drafts.upload.hint')}</p>
+            <button type="button" className="px-3 py-1.5 border rounded" data-testid="upload-open"
+              onClick={() => { if (window.confirm(t('workbench.drafts.upload.confirm'))) window.dispatchEvent(new CustomEvent('ddm:open-import')) }}>
+              {t('workbench.drafts.upload.open')}
+            </button>
+          </div>
+        )}
+        {editingDraft && (
+          <div className="text-sm bg-blue-50 border border-blue-200 rounded px-2 py-1 flex items-center gap-2" data-testid="editing-draft">
+            {t('workbench.drafts.editing')}
+            {editorWouldSimplify(contentOf(editingDraft).cycle) && (
+              <span className="text-amber-700" data-testid="editing-simplify">{t('workbench.drafts.editingSimplify')}</span>
+            )}
+            <button type="button" className="text-xs underline ml-auto" onClick={cancelEdit}>{t('workbench.drafts.cancelEdit')}</button>
+          </div>
+        )}
 
         {/* Sequence type + hand */}
         <div className="flex flex-wrap items-center gap-3">
@@ -731,11 +809,29 @@ export function WiWorkbench() {
             />
           </span>
           {editable && <button onClick={saveAsTemplate} className="px-2 py-1.5 border rounded">{t('workbench.wiEditor.saveAsTemplate')}</button>}
-          <button disabled={!editable || tmu == null} onClick={add}
-            className="px-3 py-1.5 bg-blue-600 text-white rounded-lg disabled:opacity-40">{t('workbench.wiEditor.addToWorksheet')}</button>
+          <button disabled={!editable || tmu == null || createDrafts.isPending || patchDraft.isPending} onClick={add}
+            data-testid="editor-add"
+            className="px-3 py-1.5 bg-blue-600 text-white rounded-lg disabled:opacity-40">
+            {editingDraft ? t('workbench.drafts.updateDraft') : t('workbench.drafts.addToDrafts')}
+          </button>
         </div>
+        {editorMsg && (
+          <p role="status" data-testid="editor-msg"
+            className={`text-xs ${editorMsg.kind === 'ok' ? 'text-emerald-700' : 'text-red-600'}`}>{editorMsg.text}</p>
+        )}
         {!editable && <p className="text-xs text-amber-600">{t('workbench.wiEditor.noEditPermission')}</p>}
       </div>
+
+      {/* ═══ [ADR-038 D3] 編輯區：確認後寫入工時表 ═══ */}
+      {activeWs && (
+        <DraftArea
+          worksheetId={activeWs}
+          editable={editable}
+          editingId={editingDraft?.id ?? null}
+          onEdit={editDraft}
+          onCommitted={() => { if (editingDraft) cancelEdit() }}
+        />
+      )}
 
       {/* ═══ Table section ═══ */}
       <div className="bg-white rounded-xl border p-4">
