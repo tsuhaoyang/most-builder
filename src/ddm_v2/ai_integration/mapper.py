@@ -197,7 +197,8 @@ def map_content(content: Any, allow_lists: AllowLists) -> tuple[list[MotionSugge
         result_issues.append("unknown_fields_dropped:content")
     raw_motions = content["motions"]
     if not raw_motions:
-        raise AiServiceError(AiServiceErrorKind.CONTRACT_MISMATCH, upstream_code="motions_empty")
+        # 合法回應（schema 允許空陣列）：AI 判定沒有動作。和「形狀不對」分開，降級原因才看得懂
+        raise AiServiceError(AiServiceErrorKind.NO_MOTION, upstream_code="NO_MOTION")
     if len(raw_motions) > MAX_MOTIONS:
         raise AiServiceError(AiServiceErrorKind.CONTRACT_MISMATCH, upstream_code="too_many_motions")
     motions = [_motion(i, raw, allow_lists) for i, raw in enumerate(raw_motions)]

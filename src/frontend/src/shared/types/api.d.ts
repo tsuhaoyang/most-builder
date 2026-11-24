@@ -4164,6 +4164,20 @@ export interface components {
             order_in_group: number;
         };
         /**
+         * WiDraftDegradeReason
+         * @description AI 為什麼沒有結果（`status=degraded` 時）。只含 MOST 的分類代碼；維運細節（設定、金鑰）只在 run 與 log。
+         *
+         *     `error_kind` 是 `AiServiceErrorKind` 的值，或 MOST 端的 `misconfigured`／`internal_error`／`empty_result`／
+         *     `unknown`；前端依它顯示 zh-TW／en 文案，不認得的顯示通用說明。這不是錯誤回應（請求本身成功），所以不走
+         *     ADR-034 錯誤信封碼。
+         */
+        WiDraftDegradeReason: {
+            /** Error Kind */
+            error_kind: string;
+            /** Upstream Code */
+            upstream_code?: string | null;
+        };
+        /**
          * WiDraftFromSentenceIn
          * @description 單句解析後寫進編輯區（ADR-038 D2 情境 2）。規則版本取工時表的，不由前端指定。
          */
@@ -4282,6 +4296,7 @@ export interface components {
              * @enum {string}
              */
             status: "ai_service" | "degraded" | "rule_based";
+            reason?: components["schemas"]["WiDraftDegradeReason"] | null;
             /** Routing Status */
             routing_status: string;
             /** Routing Reasons */

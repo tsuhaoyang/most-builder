@@ -31,6 +31,7 @@ from ddm_v2.schemas.v2.wi_draft import (
     WiDraftCommitOut,
     WiDraftConfirmIn,
     WiDraftCreateIn,
+    WiDraftDegradeReason,
     WiDraftFromSentenceIn,
     WiDraftFromSentenceOut,
     WiDraftListOut,
@@ -62,6 +63,14 @@ def _not_found_draft(ids: str) -> NotFoundError:
 
 
 MAX_REPORTED_DRAFTS = 200
+
+
+def _degrade_reason(provenance: dict) -> WiDraftDegradeReason | None:
+    err = provenance.get("ai_error")
+    if not isinstance(err, dict) or not isinstance(err.get("error_kind"), str):
+        return None
+    code = err.get("upstream_code")
+    return WiDraftDegradeReason(error_kind=err["error_kind"], upstream_code=code if isinstance(code, str) else None)
 
 
 def _incomplete(exc: svc.DraftIncomplete) -> ConflictError:
@@ -309,6 +318,7 @@ async def drafts_from_sentence(
         ai=WiDraftParseInfo(
             run_id=uuid.UUID(result.run_id) if result.run_id else None,
             status=status,  # type: ignore[arg-type]
+            reason=_degrade_reason(result.provenance),
             routing_status=result.routing_status,
             routing_reasons=list(result.routing_reasons),
         ),

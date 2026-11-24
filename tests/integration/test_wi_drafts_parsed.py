@@ -511,3 +511,86 @@ async def test_parse_job_with_another_rule_set_does_not_write_drafts(client, db_
     items = (await db_session.execute(
         select(AiParseJobItem).where(AiParseJobItem.job_id == uuid.UUID(body["job"]["id"])))).scalars().all()
     assert items[0].last_error["drafts"]["reason"] == "rule_set_mismatch"
+
+
+# ═════════ 降級原因與快取規則（2026-11-24 真實量測後） ═════════
+
+class _VersionedPort(_Port):
+    """可切換 prompt_version 與是否回空 motions 的假 port。"""
+
+    def __init__(self):
+        super().__init__()
+        self.prompt_version = "pv-3"
+        self.empty = False
+
+    async def parse(self, requests, *, allow_lists, lane):
+        (req,) = requests
+        self.requests.append(req)
+        raw = {"motions": []} if self.empty else {"motions": [copy.deepcopy(AI_MOTION)]}
+        try:
+            motions, issues = map_content(raw, allow_lists)
+        except Exception as exc:  # noqa: BLE001  同 adapter：mapper 的 AiServiceError 轉成 failed
+            from ddm_v2.ai_integration.errors import AiServiceError
+
+            assert isinstance(exc, AiServiceError)
+            return [WiParseResult(item_id=req.item_id, status="failed", error_kind=exc.kind,
+                                  provenance={"request_id": "req-x", "upstream_code": exc.upstream_code})]
+        return [WiParseResult(item_id=req.item_id, status="ok", motions=tuple(motions), issues=tuple(issues),
+                              provenance={"request_id": "req-ok", "run_id": f"run-{uuid.uuid4().hex[:6]}",
+                                          "bundle_code": BUNDLE, "model_served": "model-x",
+                                          "prompt_version": self.prompt_version})]
+
+
+async def test_no_motion_degrades_with_a_readable_reason(client, db_session):
+    port = _VersionedPort()
+    port.empty = True
+    _install(port)
+    ws, _ = await _seed_ws(db_session)
+    r = await client.post(f"/api/v2/worksheets/{ws.id}/drafts/from-sentence", json={"text": "依照SOP完成其餘作業"})
+    assert r.status_code == 201, r.text
+    ai = r.json()["ai"]
+    assert ai["status"] == "degraded"
+    assert ai["reason"] == {"error_kind": "no_motion", "upstream_code": "NO_MOTION"}
+    assert r.json()["items"], "降級的結果照樣進編輯區"
+
+
+async def test_cache_misses_after_ai_service_changes_prompt_version(client, db_session):
+    port = _VersionedPort()
+    _install(port)
+    ws, _ = await _seed_ws(db_session)
+    url = f"/api/v2/worksheets/{ws.id}/drafts/from-sentence"
+    a, b = f"左手拿起螺絲{uuid.uuid4().hex[:4]}", f"右手放下螺絲{uuid.uuid4().hex[:4]}"
+    assert (await client.post(url, json={"text": a})).status_code == 201
+    assert (await client.post(url, json={"text": a})).status_code == 201
+    assert len(port.requests) == 1, "同一版本：第二次命中快取"
+    port.prompt_version = "pv-4"
+    assert (await client.post(url, json={"text": b})).status_code == 201  # 新句子外送，得知版本變了
+    assert len(port.requests) == 2
+    assert (await client.post(url, json={"text": a})).status_code == 201
+    assert len(port.requests) == 3, "版本變了之後舊快取不再命中"
+    assert (await client.post(url, json={"text": a})).status_code == 201
+    assert len(port.requests) == 3, "新版本的結果又會被快取"
+
+
+async def test_operational_degrade_reasons_hide_the_code(client, db_session):
+    """維運類分類（例：回應形狀不符）回前端只有分類，不帶內部代碼。"""
+    from ddm_v2.ai_integration.errors import AiServiceErrorKind
+
+    class _Broken(_Port):
+        async def parse(self, requests, *, allow_lists, lane):
+            (req,) = requests
+            self.requests.append(req)
+            return [WiParseResult(item_id=req.item_id, status="failed", error_kind=AiServiceErrorKind.CONTRACT_MISMATCH,
+                                  provenance={"request_id": "req-b", "upstream_code": "MAPPER_REJECTED"})]
+
+    _install(_Broken())
+    ws, _ = await _seed_ws(db_session)
+    r = await _from_sentence(client, ws.id)
+    assert r.status_code == 201, r.text
+    assert r.json()["ai"]["reason"] == {"error_kind": "contract_mismatch", "upstream_code": None}
+
+
+async def test_no_reason_when_not_degraded(client, db_session):
+    ws, _ = await _seed_ws(db_session)
+    r = await _from_sentence(client, ws.id)
+    assert r.json()["ai"]["status"] == "rule_based" and r.json()["ai"]["reason"] is None

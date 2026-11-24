@@ -151,12 +151,19 @@ def test_unknown_fields_are_dropped_and_issues_carry_no_external_strings():
     assert {"unknown_fields_dropped:motion", "unknown_fields_dropped:slots"} <= set(motions[0].issues)
 
 
+def test_empty_motions_means_no_motion_not_a_contract_error():
+    """ai_service 回合法的空陣列（2026-11-24 真實量測：「依照SOP完成其餘作業」）：AI 判定沒有動作。"""
+    with pytest.raises(AiServiceError) as exc:
+        map_content({"motions": []}, ALLOW)
+    assert exc.value.kind is AiServiceErrorKind.NO_MOTION
+    assert exc.value.upstream_code == "NO_MOTION"
+
+
 @pytest.mark.parametrize(
     "content,code",
     [
         ([], "motions_missing"),
         ({"output": {"motions": []}}, "motions_missing"),  # poc002 的外層包裝形狀
-        ({"motions": []}, "motions_empty"),
         ({"motions": [GM] * (MAX_MOTIONS + 1)}, "too_many_motions"),
     ],
 )

@@ -32,6 +32,9 @@ class AiServiceErrorKind(str, Enum):
     RESPONSE_TOO_LARGE = "response_too_large"
     # MOST 端配額（ADR-037 D8）：每人每分鐘、每日預算、本機並行上限。不重試、不計熔斷
     QUOTA_EXCEEDED = "quota_exceeded"
+    # ai_service 回 200 但 `motions` 是空陣列（schema 允許）：AI 判定這句沒有可建模的動作。
+    # 不是契約錯誤、不重試、不計熔斷；降級到 rule_based，畫面說明原因（2026-11-24 真實量測）
+    NO_MOTION = "no_motion"
 
 
 # 值得在同一次請求內重試的分類（其他分類重試也不會變好，或會放大成本）

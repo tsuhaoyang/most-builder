@@ -39,7 +39,12 @@ export function SentenceInput({ worksheetId, handCode, wiGroup }: {
       })
       const n = out.items.length
       if (out.ai.status === 'degraded') {
-        setResult({ kind: 'warn', text: t('workbench.drafts.sentence.degraded', { count: n }) })
+        // 後端送分類碼，文案在前端；不認得（含維運類分類，刻意不細說）就顯示通用說明
+        const kind = out.ai.reason?.error_kind ?? ''
+        const reasonKey = `workbench.drafts.sentence.reason.${kind}`
+        const reason = /^[a-z_]+$/.test(kind) && i18n.exists(reasonKey)
+          ? t(reasonKey) : t('workbench.drafts.sentence.reason.other')
+        setResult({ kind: 'warn', text: t('workbench.drafts.sentence.degraded', { count: n, reason }) })
       } else if (out.ai.status === 'rule_based') {
         setResult({ kind: 'ok', text: t('workbench.drafts.sentence.doneRule', { count: n }) })
       } else {
