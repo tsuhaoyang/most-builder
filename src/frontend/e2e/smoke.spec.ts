@@ -59,12 +59,12 @@ test('sidebar navigation renders each migrated feature', async ({ page }) => {
   await expect(page.getByRole('button', { name: '草稿', exact: true })).toBeVisible()
 })
 
-test('import wizard opens from header button', async ({ page }) => {
+test('header import button leads to the workspace upload (needs an open worksheet)', async ({ page }) => {
+  // ADR-038 W5 後（Howard 2026-11-24 選 A）：匯入一律在工作區進編輯區；沒有開啟中的工時表時先提示
   await page.goto('/')
-  // Import button is now in the header (no emoji, plain text)
   await page.getByRole('button', { name: /匯入 Excel/ }).click()
-  await expect(page.getByRole('heading', { name: /匯入 Excel/ })).toBeVisible()
-  await expect(page.getByText(/選擇 .xlsx 檔/)).toBeVisible()
+  await expect(page.getByText('請先從分析案件開啟工時表')).toBeVisible()
+  await expect(page.getByRole('heading', { name: /匯入 Excel/ })).toHaveCount(0)
 })
 
 test('MOST 工作台可試算、建立並發布一筆動作', async ({ page }) => {

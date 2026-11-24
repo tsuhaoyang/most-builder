@@ -385,3 +385,10 @@
 - 影響：`ai_review` 沒有新的採用／修改紀錄，之後依這些紀錄調整同義詞或候選排序的作法拿不到新資料。不影響 TMU 計算與草稿寫入。
 - 建議做法：後端在 `commit_drafts`（草稿寫入工時表）時，以草稿的 `ai_parse_run_id` 與最終 content（人確認、修改後寫入的內容）產生 review 事件；前端不補送。需先確認 review 事件的欄位對得上草稿的 `ai_candidates`／`parse_snapshot`，以及手動與 `rule_based` 草稿是否產生。
 - 對應文件：[ADR-038](decisions/ADR-038-unified-wi-workspace-and-two-stage-distance.md) D3（W4 追記）、[ADR-037](decisions/ADR-037-ai-service-integration.md) D4、[交付計畫](roadmap/adr-038-delivery-plan.md)〈決策紀錄〉。
+
+## BL-ENG-21 — 匯入的範本採用（ADR-025 D10）搬進工作區
+- 領域：`excel-import`、`wi-workbench`
+- 現況（2026-11-24，Howard 選 A）：標頭「匯入 Excel」改為打開工作區的整份上傳，每列解析成草稿、確認後才寫入工時表。舊的「範本採用後直接寫進工時表」流程（`ImportModal` 的 `submit` 模式、`MatchPanel`、`POST /imports/{id}/submit`）沒有畫面入口了；程式與端點保留。對應的 e2e（`d10-import-match.spec.ts`）一併移除。
+- 影響：使用者暫時不能在匯入時逐列採用範本建議。解析器的 L0 範本提示（`nlp/linking.py`）仍在用 `motion_templates`，所以範本資料仍有作用（ADR-038 D4）。
+- 建議做法：工作區上傳在欄位對應後顯示採用面板；被採用的列由後端用範本 cycle 建草稿（`source=imported`、帶 `import_row_id`、`parse_snapshot.complete=true`、記範本 id），其餘列交給 parse job。parse job 對「已有範本草稿」的列不取代（現有規則：有人動過才保留，範本草稿要明確標記為保留）。恢復 D10 的 e2e。草稿若需新旗標或來源值，走加法演進（ADR-011）。
+- 對應文件：[ADR-025](decisions/ADR-025-import-template-matching-p2.md)、[ADR-038](decisions/ADR-038-unified-wi-workspace-and-two-stage-distance.md) D3（W5 追記）、[交付計畫](roadmap/adr-038-delivery-plan.md)。

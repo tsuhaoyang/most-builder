@@ -19,6 +19,9 @@ interface WorkspaceState {
   setActiveWs: (id: string) => void
   /** 進入案件編輯情境：一併寫入 worksheet id 與案件 meta（ADR-021 Phase 3） */
   setActiveCase: (id: string, meta: ActiveCaseMeta) => void
+  /** 標頭「匯入 Excel」要求工作區打開「整份上傳」（ADR-038 W5 後；工作區讀到後清除） */
+  uploadRequested: boolean
+  setUploadRequested: (v: boolean) => void
 }
 
 export const useWorkspace = create<WorkspaceState>((set) => ({
@@ -26,4 +29,6 @@ export const useWorkspace = create<WorkspaceState>((set) => ({
   activeCaseMeta: null,
   setActiveWs: (id) => set({ activeWs: id }),
   setActiveCase: (id, meta) => set({ activeWs: id, activeCaseMeta: meta }),
+  uploadRequested: false,
+  setUploadRequested: (v) => set({ uploadRequested: v }),
 }))

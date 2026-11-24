@@ -111,6 +111,7 @@ ADR-031 §1.1 量過：正式 gold 的 35 條 cycle，A 格全是 `A0`；距離�
   > - **新端點 `GET /api/v2/imports/{id}/parse-jobs/{job_id}/items`**（analyst）：逐列回 `source_row_no`、描述前 200 字、`status`、`has_drafts`、`reason`（`text_too_long`｜`parse_failed`｜`last_error.drafts` 的原因）、`ai_error_kind`。成功 item 帶 `last_error.drafts` 不當失敗顯示（W3 追記）。
   > - **新端點 `POST /api/v2/worksheets/{id}/drafts/blank-from-import`**（analyst）：只接受綁這份工時表的匯入列（否則 404）；已有草稿的列跳過（重按不重複建）。草稿 `source=imported`、帶 `import_row_id`；`parse_snapshot.complete=false`，所以補齊格位前確認與寫入都回 409 `DRAFT_INCOMPLETE`；帶 `import_input_hash`，納入過期判斷（`import_row_changed`）。
   > - **待 Howard 裁決：標頭的「匯入 Excel」按鈕**。W5 沒有動它，仍是舊流程（ADR-025 範本採用＋直接寫工時表），**這條路仍繞過編輯區與距離檢查開關（D6）**。選項：**A** 標頭按鈕改導到工作區上傳、舊流程從畫面移除，範本採用搬進工作區另開票（審查建議）；**B** 先把範本採用搬進工作區；**C** 維持到 W6。裁決前不得把本 ADR「整份上傳進編輯區」視為涵蓋所有匯入入口。
+  > - **2026-11-24，Howard 裁決 A**：標頭「匯入 Excel」改為打開工作區的整份上傳（沒有開啟中的工時表時先提示）；舊的「範本採用＋直接寫工時表」流程從畫面移除（`ImportModal` 的 `submit` 模式、`MatchPanel`、`POST /imports/{id}/submit` 保留程式與端點），D10 的 e2e 一併移除。範本採用搬進工作區排入 [BL-ENG-21](../BACKLOG.md)。自此所有**匯入**入口都經編輯區（非匯入的直接寫入路徑——工時表編輯器的「從 WI 庫插入」、workbench-v3 的實體化——由 W6 移除畫面，D4）。
   > - **已知限制**：(1) `has_drafts` 是「現在還有草稿」，使用者刪掉某列草稿後該列會再被列出（可再建空白草稿）；(2) items 端點沒有分頁，筆數受匯入列數上限約束；(3) `drafts` 模式的 `/map` 仍計算範本比對但不顯示。
 - **本 ADR 定義 ADR-037 D4 審核的落點**：ADR-037 規劃的「審核佇列」就是工作區的編輯區，不另做獨立頁面。
 - AI 草稿的處理（滿足 ADR-037 D3 澄清「預覽不是可接受依據」）：

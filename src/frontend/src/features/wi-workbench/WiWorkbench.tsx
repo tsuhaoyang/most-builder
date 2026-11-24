@@ -238,6 +238,13 @@ export function WiWorkbench() {
   const [editRoundTrip, setEditRoundTrip] = useState<unknown>(undefined)
   // 換工時表時放棄正在編輯的草稿（避免 PATCH 到上一份工時表的草稿）
   useEffect(() => { setEditingDraft(null); setEditRoundTrip(undefined) }, [activeWs])
+  // 標頭「匯入 Excel」→ 打開整份上傳
+  const uploadRequested = useWorkspace(s => s.uploadRequested)
+  useEffect(() => {
+    if (!uploadRequested) return
+    setInputMode('upload')
+    useWorkspace.getState().setUploadRequested(false)
+  }, [uploadRequested])
   const [editorMsg, setEditorMsg] = useState<{ text: string; kind: 'ok' | 'err' } | null>(null)
   const createDrafts = useCreateDrafts(activeWs)
   const patchDraft = usePatchDraft(activeWs)
