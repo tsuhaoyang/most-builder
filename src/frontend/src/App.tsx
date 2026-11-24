@@ -8,10 +8,8 @@ import { DictionaryPage } from './features/dictionary/DictionaryPage'
 import { UsersPanel } from './features/users/UsersPanel'
 import { AppLayout } from './features/layout/AppLayout'
 import { DashboardPage } from './features/dashboard/DashboardPage'
-import { MostWorkbenchV3 } from './features/workbench-v3/MostWorkbenchV3'
 import { CasesPage } from './features/cases/CasesPage'
 import { DictionariesPage } from './features/dictionaries/DictionariesPage'
-import { WISetBuilderPage } from './features/wi-project/WISetBuilderPage'
 import { CaseContextBar } from './features/cases/CaseContextBar'
 import { ErrorBoundary } from './shared/ui/ErrorBoundary'
 import { WorksheetRequiredNotice } from './shared/ui/WorksheetRequiredNotice'
@@ -37,8 +35,7 @@ export default function App() {
   const renderContent = () => {
     switch (tab) {
       case 'dashboard':    return <DashboardPage />
-      case 'workbench-v3': return <MostWorkbenchV3 />
-      case 'wi-project':   return <WISetBuilderPage />
+      // MOST 工作台（workbench-v3）與 WI 專案（wi-project）依 ADR-038 D4 移除畫面（W6）；後端與資料保留
       // 'wi'（WiWorkbench 工時表編輯器）僅由分析案件的「編輯工時表／新建案件」入口到達
       //（ADR-021 Phase 3：案件情境頁＝CaseContextBar＋編輯器；無 activeWs 時導回分析案件）
       case 'wi':

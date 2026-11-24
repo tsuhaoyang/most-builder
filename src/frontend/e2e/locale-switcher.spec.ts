@@ -24,7 +24,7 @@ test('locale switcher toggles UI language and persists via PATCH /me/locale', as
 
   // 預設 zh-TW（DEFAULT_LOCALE；localStorage 未快取，/me 尚未回來前也是這個值）
   await expect(page.getByRole('button', { name: '儀表板' })).toBeVisible()
-  await expect(page.getByRole('button', { name: 'MOST 工作台' })).toBeVisible()
+  await expect(page.getByRole('button', { name: '分析案件' })).toBeVisible()
 
   // 用 data-testid 而非 aria-label 定位：aria-label 本身也是 i18n key
   // （切換後會變成 "Switch language"），用會變的字串定位容器是自我矛盾。
@@ -42,9 +42,9 @@ test('locale switcher toggles UI language and persists via PATCH /me/locale', as
 
   // 外殼字串即時切換（不需等 PATCH 回應——client 端立即 i18n.changeLanguage）。
   // getByRole name 是子字串比對（同既有 spec 對「儀表板」的用法）：nav 按鈕的可及名稱
-  // 是 shortLabel + label 的串接（如 "MWorkbench"），所以斷言子字串即可，不用 exact。
+  // 是 shortLabel + label 的串接（如 "CCase Analysis"），所以斷言子字串即可，不用 exact。
   await expect(page.getByRole('button', { name: 'Dashboard' })).toBeVisible()
-  await expect(page.getByRole('button', { name: 'Workbench' })).toBeVisible()
+  await expect(page.getByRole('button', { name: 'Case Analysis' })).toBeVisible()
   // 頭部品牌標題不隨語言變（沿用既有中文介面行為——MOST Workbench 是產品名，不是外殼字串）
   await expect(page.getByRole('heading', { name: 'MOST Workbench' })).toBeVisible()
   await expect(enButton).toHaveAttribute('aria-pressed', 'true')
