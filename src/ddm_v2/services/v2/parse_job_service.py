@@ -5,6 +5,7 @@ import hashlib
 import json
 import logging
 import uuid
+from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
 from typing import Any, Literal
 from uuid import UUID
@@ -320,9 +321,10 @@ async def _claim_items(
     job_id: UUID,
     limit: int,
     worker_id: str,
+    lease_s: float = LEASE_SECONDS,
 ) -> list[UUID]:
     now = datetime.now(timezone.utc)
-    lease_exp = now + timedelta(seconds=LEASE_SECONDS)
+    lease_exp = now + timedelta(seconds=lease_s)
     rows = (
         await session.execute(
             text(CLAIM_SQL),
@@ -518,8 +520,8 @@ async def _write_drafts(
     """把一列 Excel 的解析結果寫進目標工時表的編輯區（ADR-038 D2 情境 3）。成功回 None，沒寫回原因。
 
     包在 savepoint 裡：預期內的原因（工時表不可寫、編輯區滿了、job 的規則版本與工時表不同）只記在
-    `item.last_error.drafts`，不影響這一列的解析結果與 job 計數；其他例外回滾 savepoint 後照 tick 的列級隔離處理
-    （重試或標 failed），不會留下半套草稿。
+    `item.last_error.drafts`，不影響這一列的解析結果與 job 計數；其他例外回滾 savepoint 後由 `_process_item`
+    的逐列交易處理（重試或標 failed），不會留下半套草稿。
     手別與作業名稱取 Excel 欄（ADR-037 D5：Excel 欄優先）；手別不是 LH／RH／BH 就不帶。
     """
     from ddm_v2.models.v2.worksheet import MostWorksheet
@@ -545,6 +547,7 @@ async def _write_drafts(
                 ai_status=wi_ai_service.ai_status_of(result.provenance),
                 actor=actor,
                 import_row=row,
+                excel_quantity=nd.get("quantity"),
             )
     except (NotEditable, WorksheetNotFound, drafts_svc.TooManyDrafts) as exc:
         logger.warning("parse job: drafts not written for import_row %s: %s", row.id, type(exc).__name__)
@@ -596,121 +599,31 @@ async def tick_job(
         job.started_at = now
 
     # 毒 item 終點：attempt 耗盡且 lease 過期者收屍（CLAIM_SQL 已不會再撿它們）。
-    agg = {"processed": 0, "succeeded": 0, "review": 0, "failed": 0}
     reaped = await _reap_exhausted_items(session, job.id)
-    agg["processed"] += reaped
-    agg["failed"] += reaped
+    if reaped:
+        await _bump_job_counters(session, job.id, processed=reaped, failed=reaped)
 
     # ADR-038 W3：匯入綁了目標工時表時，每列解析完就寫進它的編輯區（不再直接寫工時表）
     rec = await session.get(ExcelImport, import_id)
     target_ws_id = rec.worksheet_id if rec is not None else None
+    # ADR-038 W3b：批次也走外部 AI（batch lane）。只讀，不寫——外部路徑會在呼叫前 commit
+    external = await _external_for_job(session, job, target_ws_id)
+    # 外部呼叫一筆可能要數十秒：一次只認領一筆，lease 涵蓋 AI 總時限，避免處理中被別的 worker 重認領
+    claim_limit = 1 if external is not None else max(1, min(limit, MAX_TICK_LIMIT))
+    lease_s = LEASE_SECONDS + (_external_timeout_s() if external is not None else 0)
+    claimed = await _claim_items(session, job_id=job.id, limit=claim_limit, worker_id=worker_id, lease_s=lease_s)
+    # 逐列交易（W3b）：認領先落盤，之後每一列各自 commit。外部 AI 呼叫期間不持有 job 列鎖或工時表列鎖，
+    # 一列失敗也不影響已完成的列；計數逐列原子遞增（中途掛掉也對得上已完成的列）。
+    await session.commit()
 
-    claimed = await _claim_items(
-        session,
-        job_id=job.id,
-        limit=max(1, min(limit, MAX_TICK_LIMIT)),
-        worker_id=worker_id,
-    )
+    # 逐列處理會 rollback（例外時）：rollback 讓 session 內所有 ORM 物件失效（expire_on_commit=False 只管 commit），
+    # 所以先取成純值，迴圈內不再讀 rs／bundle／job 的屬性
+    ctx = _JobCtx(job_id=job.id, import_id=import_id, requested_by=job.requested_by, rule_set_id=rs.id,
+                  rule_set_code=rs.code, bundle_code=bundle.code, worker_id=worker_id, target_ws_id=target_ws_id)
     processed_now = 0
     for item_id in claimed:
-        item = await session.get(AiParseJobItem, item_id)
-        if item is None:
-            continue
-        if job.cancel_requested_at:
-            item.status = "cancelled"
-            item.lease_owner = None
-            item.lease_expires_at = None
-            item.updated_at = datetime.now(timezone.utc)
-            continue
+        processed_now += await _process_item(session, ctx, item_id=item_id, external=external)
 
-        row = await session.get(ImportRow, item.import_row_id)
-        if row is None:
-            item.status = "failed"
-            item.last_error = {"message": "import_row missing"}
-            agg["processed"] += 1
-            agg["failed"] += 1
-            processed_now += 1
-            continue
-
-        text_in = _row_text(row.normalized_data)
-        # 長度守衛（Blocker 1a）：超長描述不進 parser（SequenceMatcher 病理輸入
-        # 會吃掉 CPU 分鐘級），標 review 交人工，不算失敗也不重試。
-        if len(text_in) > MAX_PARSE_TEXT_CHARS:
-            item.status = "review"
-            item.lease_owner = None
-            item.lease_expires_at = None
-            item.last_error = {
-                "error_type": "TextTooLong",
-                "message": (
-                    f"description {len(text_in)} chars > {MAX_PARSE_TEXT_CHARS} 上限，"
-                    "已標記人工審核"
-                ),
-            }
-            row.status = "review"
-            item.updated_at = datetime.now(timezone.utc)
-            agg["processed"] += 1
-            agg["review"] += 1
-            processed_now += 1
-            continue
-
-        item.status = "running"
-        row.status = "processing"
-        await session.flush()
-        try:
-            result, _legacy = await wi_ai_service.parse_interactive(
-                session,
-                text=text_in,
-                rule_set_code=rs.code,
-                created_by=job.requested_by,
-                source_kind="import_row",
-                import_id=import_id,
-                import_row_index=row.source_row_no,
-                bundle_code=bundle.code,
-            )
-            item.ai_parse_run_id = UUID(result.run_id)
-            bucket, item_status, row_status, last_error = _classify_outcome(
-                routing_status=result.routing_status,
-                routing_reasons=list(result.routing_reasons or []),
-                has_complete_draft=any(d.complete for d in result.drafts),
-            )
-            item.lease_owner = None
-            item.lease_expires_at = None
-            item.status = item_status
-            row.status = row_status  # type: ignore[assignment]
-            item.last_error = last_error
-            if target_ws_id is not None:
-                note = await _write_drafts(
-                    session, target_ws_id, result, row, actor=job.requested_by, rule_set_id=rs.id
-                )
-                if note is not None:
-                    item.last_error = {**(item.last_error or {}), "drafts": note}
-            agg["processed"] += 1
-            agg[bucket] += 1
-            processed_now += 1
-        except Exception as exc:  # noqa: BLE001 — row 級隔離
-            logger.exception("parse job item failed: %s", item_id)
-            attempts = item.attempt_count or 1
-            if attempts < MAX_ATTEMPTS:
-                item.status = "queued"
-                item.available_at = datetime.now(timezone.utc) + timedelta(seconds=2**attempts)
-                item.lease_owner = None
-                item.lease_expires_at = None
-                item.last_error = _sanitize_error(exc)
-                row.status = "queued"
-            else:
-                item.status = "failed"
-                item.last_error = _sanitize_error(exc)
-                row.status = "failed"
-                agg["processed"] += 1
-                agg["failed"] += 1
-                processed_now += 1
-        item.updated_at = datetime.now(timezone.utc)
-        await session.flush()
-
-    # 計數一次性遞增（原子 UPDATE）：除了少打 N 次 UPDATE，更重要的是把 ai_parse_jobs
-    # 的 row lock 縮到交易尾端——逐 item 遞增會讓第一個 item 之後的整段 LLM 呼叫
-    # 都抱著 job 列鎖，Cancel 的 UPDATE 會被卡住（code-reviewer #3）。
-    await _bump_job_counters(session, job.id, **agg)
     await _finalize_job_status(session, job)
     await session.flush()
     return {
@@ -718,3 +631,195 @@ async def tick_job(
         "processed_now": processed_now,
         "item_ids": [str(i) for i in claimed],
     }
+
+
+def _external_timeout_s() -> float:
+    """只在 runtime 判定可用後呼叫（設定已驗證過）。"""
+    from ddm_v2.ai_integration.config import load_config
+
+    return float(load_config().timeout_s)
+
+
+@dataclass(frozen=True)
+class _JobCtx:
+    job_id: UUID
+    import_id: UUID
+    requested_by: str
+    rule_set_id: UUID
+    rule_set_code: str
+    bundle_code: str
+    worker_id: str
+    target_ws_id: UUID | None
+
+
+async def _external_for_job(session: AsyncSession, job: AiParseJob, worksheet_id: UUID | None):
+    """批次要不要走外部 ai_service：job 的建立者仍是 analyst 以上（建立 job 需要 analyst），且整合可用。
+
+    ADR-037 D7：角色判斷只用既有四級角色；被撤權或停用的建立者，worker 本來就跳過他的 job。
+    """
+    from ddm_v2.ai_integration.runtime import get_runtime_async
+    from ddm_v2.auth.deps import ROLE_ORDER
+    from ddm_v2.models.v2.auth import AppUser
+
+    if not (await get_runtime_async()).available:
+        return None  # 整合沒開：不必查人（多數環境、所有既有測試）
+    user = (await session.execute(select(AppUser).where(AppUser.employee_no == job.requested_by))).scalar_one_or_none()
+    is_analyst = user is not None and user.is_active and any(
+        ROLE_ORDER.get(r, -1) >= ROLE_ORDER["analyst"] for r in (user.roles or [])
+    )
+    return await wi_ai_service.external_for(
+        session, is_analyst=is_analyst, actor=job.requested_by, worksheet_id=worksheet_id, known_hand=None,
+    )
+
+
+async def _load_item(session: AsyncSession, item_id: UUID) -> AiParseJobItem | None:
+    """從 DB 重讀（不用 identity map 裡可能過期的物件）。"""
+    return (
+        await session.execute(
+            select(AiParseJobItem).where(AiParseJobItem.id == item_id).execution_options(populate_existing=True)
+        )
+    ).scalar_one_or_none()
+
+
+async def _still_ours(session: AsyncSession, item_id: UUID, worker_id: str) -> AiParseJobItem | None:
+    """AI 回來之後、寫回之前：鎖住 item 並確認它仍是這個 worker 的、仍在處理中。
+
+    外部呼叫可能很久；若 lease 過期被別的 worker 重認領，這裡回 None，本 worker 放棄寫回（不重複計數、不重複寫草稿）。
+    """
+    item = (
+        await session.execute(
+            select(AiParseJobItem).where(AiParseJobItem.id == item_id).with_for_update()
+            .execution_options(populate_existing=True)
+        )
+    ).scalar_one_or_none()
+    if item is None or item.lease_owner != worker_id or item.status != "running":
+        return None
+    return item
+
+
+async def _process_item(session: AsyncSession, ctx: _JobCtx, *, item_id: UUID, external: Any) -> int:
+    """處理一列並 commit。回傳是否算一筆「本次處理」（0／1）。"""
+    item = await _load_item(session, item_id)
+    if item is None:
+        return 0
+    cancel_at = (
+        await session.execute(select(AiParseJob.cancel_requested_at).where(AiParseJob.id == ctx.job_id))
+    ).scalar_one()
+    if cancel_at:
+        item.status = "cancelled"
+        item.lease_owner = None
+        item.lease_expires_at = None
+        item.updated_at = datetime.now(timezone.utc)
+        await session.commit()
+        return 0
+
+    row = await session.get(ImportRow, item.import_row_id)
+    if row is None:
+        item.status = "failed"
+        item.last_error = {"message": "import_row missing"}
+        await _bump_job_counters(session, ctx.job_id, processed=1, failed=1)
+        await session.commit()
+        return 1
+
+    nd = row.normalized_data or {}
+    text_in = _row_text(nd)
+    # 長度守衛（Blocker 1a）：超長描述不進 parser（SequenceMatcher 病理輸入
+    # 會吃掉 CPU 分鐘級），標 review 交人工，不算失敗也不重試。
+    if len(text_in) > MAX_PARSE_TEXT_CHARS:
+        item.status = "review"
+        item.lease_owner = None
+        item.lease_expires_at = None
+        item.last_error = {
+            "error_type": "TextTooLong",
+            "message": (
+                f"description {len(text_in)} chars > {MAX_PARSE_TEXT_CHARS} 上限，"
+                "已標記人工審核"
+            ),
+        }
+        row.status = "review"
+        item.updated_at = datetime.now(timezone.utc)
+        await _bump_job_counters(session, ctx.job_id, processed=1, review=1)
+        await session.commit()
+        return 1
+
+    item.status = "running"
+    row.status = "processing"
+    # 外部路徑在呼叫 ai_service 前會 commit，呼叫端不能有未提交的寫入：狀態先落盤。
+    # （這次 commit 失敗時 item 停在 leased，等 lease 過期再被認領——與舊行為相同）
+    await session.commit()
+    # 權限在 tick 開頭判斷一次；外部路徑一次只認領一列（claim_limit=1），所以等同每列判斷。
+    # 改成可一次認領多列前，必須把 `_external_for_job` 移進這裡逐列判斷。
+    hand = nd.get("hand") if nd.get("hand") in _VALID_HANDS else None
+    ext = None
+    if external is not None:
+        from dataclasses import replace
+
+        ext = replace(external, known_hand=hand)
+    try:
+        result, _legacy = await wi_ai_service.parse_interactive(
+            session,
+            text=text_in,
+            rule_set_code=ctx.rule_set_code,
+            created_by=ctx.requested_by,
+            source_kind="import_row",
+            import_id=ctx.import_id,
+            import_row_index=row.source_row_no,
+            bundle_code=ctx.bundle_code,
+            external=ext,
+        )
+        item = await _still_ours(session, item_id, ctx.worker_id)
+        if item is None:
+            logger.warning("parse job item %s was reclaimed by another worker; dropping this result", item_id)
+            await session.commit()
+            return 0
+        row = await session.get(ImportRow, item.import_row_id)
+        item.ai_parse_run_id = UUID(result.run_id) if result.run_id else None
+        bucket, item_status, row_status, last_error = _classify_outcome(
+            routing_status=result.routing_status,
+            routing_reasons=list(result.routing_reasons or []),
+            has_complete_draft=any(d.complete for d in result.drafts),
+        )
+        item.lease_owner = None
+        item.lease_expires_at = None
+        item.status = item_status
+        row.status = row_status  # type: ignore[assignment]
+        item.last_error = last_error
+        ai_error = (result.provenance or {}).get("ai_error")
+        if ai_error:
+            item.last_error = {**(item.last_error or {}), "ai": ai_error}
+        if ctx.target_ws_id is not None:
+            note = await _write_drafts(
+                session, ctx.target_ws_id, result, row, actor=ctx.requested_by, rule_set_id=ctx.rule_set_id
+            )
+            if note is not None:
+                item.last_error = {**(item.last_error or {}), "drafts": note}
+        item.updated_at = datetime.now(timezone.utc)
+        await _bump_job_counters(session, ctx.job_id, processed=1, **{bucket: 1})
+        await session.commit()
+        return 1
+    except Exception as exc:  # noqa: BLE001 — row 級隔離
+        logger.exception("parse job item failed: %s", item_id)
+        await session.rollback()
+        item = await _load_item(session, item_id)
+        if item is None or item.lease_owner != ctx.worker_id:
+            await session.commit()
+            return 0
+        row = await session.get(ImportRow, item.import_row_id)
+        attempts = item.attempt_count or 1
+        item.lease_owner = None
+        item.lease_expires_at = None
+        item.last_error = _sanitize_error(exc)
+        item.updated_at = datetime.now(timezone.utc)
+        if attempts < MAX_ATTEMPTS:
+            item.status = "queued"
+            item.available_at = datetime.now(timezone.utc) + timedelta(seconds=2**attempts)
+            if row is not None:
+                row.status = "queued"
+            await session.commit()
+            return 0
+        item.status = "failed"
+        if row is not None:
+            row.status = "failed"
+        await _bump_job_counters(session, ctx.job_id, processed=1, failed=1)
+        await session.commit()
+        return 1

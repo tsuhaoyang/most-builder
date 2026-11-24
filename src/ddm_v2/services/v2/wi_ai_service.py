@@ -690,8 +690,8 @@ async def parse_interactive(
             import_id=import_id,
             import_row_index=import_row_index,
         )
-    if source_kind != "interactive":
-        raise ValueError("external ai_service path supports source_kind='interactive' only")
+    if source_kind not in {"interactive", "import_row"}:
+        raise ValueError("external ai_service path supports source_kind 'interactive' or 'import_row'")
     if len(text) > MAX_PARSE_TEXT_CHARS:
         raise TextTooLong(len(text))
     ctx = context or ParseContext(rule_set_code=rule_set_code)
@@ -706,6 +706,9 @@ async def parse_interactive(
         ctx=ctx,
         worksheet_id=worksheet_id,
         external=external,
+        source_kind=source_kind,
+        import_id=import_id,
+        import_row_index=import_row_index,
     )
     if not isinstance(outcome, _Degraded):
         return outcome
@@ -718,6 +721,8 @@ async def parse_interactive(
         worksheet_id=worksheet_id,
         bundle_code=bundle_code,
         source_kind=source_kind,
+        import_id=import_id,
+        import_row_index=import_row_index,
         degraded=outcome.record(),
         _norm=outcome.norm,
     )
@@ -733,6 +738,9 @@ async def _parse_external(
     ctx: ParseContext,
     worksheet_id: UUID | None,
     external: ExternalAi,
+    source_kind: str = "interactive",
+    import_id: UUID | None = None,
+    import_row_index: int | None = None,
 ) -> tuple[ParseRunResult, dict] | _Degraded:
     """成功回 (result, legacy)；降級回 `_Degraded`。`RuleSetNotFound` 等呼叫端錯誤照常往上拋。
 
@@ -768,7 +776,7 @@ async def _parse_external(
     #   ai_service 在同一個 bundle code 底下換模型或 prompt 時，舊快取自然 miss（2026-11-24，快取規則）。
     base_parts = [
         "external", norm, context_hash, bundle.code, external.service_bundle_code,
-        external.known_hand or "", rule_set_code, "interactive", worksheet_key,
+        external.known_hand or "", rule_set_code, source_kind, worksheet_key,
     ]
     latest_identity = await _latest_external_identity(session, bundle.id)
     input_hash = _external_input_hash(base_parts, latest_identity)
@@ -800,7 +808,8 @@ async def _parse_external(
                 )
             ],
             allow_lists=allow,
-            lane="interactive",
+            # 單句走 interactive；整份上傳走 batch lane（ADR-037 D8：兩條 lane 各自的並行上限）
+            lane="batch" if source_kind == "import_row" else "interactive",
         )
     except (ValueError, RuntimeError) as exc:
         # guard 的 ValueError（actor／scope 缺漏、context 越界）是呼叫端 bug；RuntimeError 是 schema hash 不符。
@@ -837,10 +846,10 @@ async def _parse_external(
         return _Degraded("contract_mismatch", "BUNDLE_MISMATCH", norm=norm, request_id=sent_rid)
 
     source_ref = SourceRef(
-        kind="interactive",
+        kind="import_row" if source_kind == "import_row" else "interactive",
         worksheet_id=str(worksheet_id) if worksheet_id else None,
-        import_id=None,
-        import_row_index=None,
+        import_id=str(import_id) if import_id else None,
+        import_row_index=import_row_index,
     )
     try:
         build = build_plan_from_motions(
@@ -931,7 +940,9 @@ async def _parse_external(
     run_id = uuid.uuid4()
     run = AiParseRun(
         id=run_id,
-        source_kind="interactive",
+        source_kind="import_row" if source_kind == "import_row" else "interactive",
+        import_id=import_id,
+        import_row_index=import_row_index,
         worksheet_id=worksheet_id,
         raw_text=text,
         normalized_text=norm,

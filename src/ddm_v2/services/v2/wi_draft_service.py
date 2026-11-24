@@ -15,6 +15,8 @@
 from __future__ import annotations
 
 import logging
+import math
+import re
 import uuid
 from collections.abc import Sequence
 from dataclasses import dataclass
@@ -635,6 +637,7 @@ async def add_parsed_drafts(
     ai_status: str,
     actor: str,
     import_row: ImportRow | None = None,
+    excel_quantity: Any = None,
 ) -> list[WiDraftRow]:
     """解析結果寫進編輯區。來自 Excel 列時（`import_row`）同一列重新解析會取代它沒人動過的草稿；
     已經有人確認、寫入或修改過的不再追加（人已經處理了），回傳空 list。
@@ -658,6 +661,8 @@ async def add_parsed_drafts(
             await session.delete(d)
         await session.flush()
     parsed = drafts_from_parse(result, text=text, hand=hand, wi_group=wi_group, ai_status=ai_status)
+    if import_row is not None:
+        parsed = apply_excel_quantity(parsed, result, excel_quantity)
     snapshots = [
         {**p.snapshot, "import_input_hash": import_row.input_hash} if import_row is not None else p.snapshot
         for p in parsed
@@ -673,3 +678,127 @@ async def add_parsed_drafts(
         ai_candidates=[p.candidates for p in parsed],
         parse_snapshots=snapshots,
     )
+
+
+# ════════ Excel 數量權威（ADR-037 D6，W3b）════════
+# Excel 的數量欄是權威；MOST 依序判斷歸屬並**預填**到草稿的 frequency（仍逐項審核，不自動落盤）。
+# 每列草稿的 parse_snapshot["quantity"] 記下：Excel 值、套用的規則、這一列有沒有套用、原因（畫面顯示依據，IE 可改）。
+#   規則 1：句中有數量詞且數字與 Excel 一致 → 套到物件對得上被修飾物件的 motion，其餘為 1。
+#   規則 2：句中沒有數量詞 → 整句重複：套到 process／move_place 類；其他類不套，標「未套用」。
+#   規則 3：AI 已把數量展開成同物件的 N 個 motion → 不套，標審核「AI 已展開成 N 個 motion」。
+#   規則 4：其他（對不到、多個候選、數字不一致、Excel 值不是正整數）→ 不猜，標審核。
+# 持工具時 QuantityPolicyV2 會改走 repeat_count；外部 AI 的 plan 沒有工具依賴，這裡一律預填 frequency。
+
+QUANTITY_PREFILL_TYPES = frozenset({"process", "move_place"})
+# 數量詞之後幾個字內出現物件名稱，視為修飾該物件（例「兩顆螺絲」）；遇到標點就停（不跨子句）
+_QTY_OBJECT_WINDOW = 4
+_CLAUSE_BREAK = re.compile(r"[，,。．；;、\n]")
+# 「次」與「x N」是重複次數，不修飾物件：不靠它綁物件（走規則 4，交 IE）
+_REPEAT_UNITS = frozenset({"次", "count"})
+# 與 WiDraftContent.frequency 的上限一致
+MAX_EXCEL_QUANTITY = 10_000
+# 句中「數字＋任意量詞」的寬鬆偵測：extract_counts 只認 顆／件／個／次／xN，「三支」「12 pcs」它看不到
+_LOOSE_COUNT = re.compile(r"(?:\d+|[一二兩三四五六七八九十百]+)\s*(?:支|片|根|組|條|顆|件|個|次|台|只|枚|張|塊|pcs?|PCS?)")
+
+
+def _excel_quantity(raw: Any) -> tuple[int | None, bool]:
+    """回傳 (N, 有效)。沒填或 1 → (None, True)：不處理。非正整數 → (None, False)：規則 4。"""
+    if raw is None or raw == "":
+        return None, True
+    try:
+        v = float(raw)
+    except (TypeError, ValueError):
+        return None, False
+    if not math.isfinite(v) or v <= 0 or v != int(v) or v > MAX_EXCEL_QUANTITY:
+        return None, False
+    n = int(v)
+    return (None, True) if n == 1 else (n, True)
+
+
+def _object_text(action: Any, labels: dict[str, Any]) -> str | None:
+    role = (getattr(action, "roles", None) or {}).get("object")
+    text = getattr(role, "text", None) if role is not None else None
+    if not text:
+        label = labels.get(action.action_id) or {}
+        text = label.get("object_text")
+    text = (text or "").strip()
+    return text or None
+
+
+def apply_excel_quantity(parsed: list[ParsedDraft], result: ParseRunResult, raw_quantity: Any) -> list[ParsedDraft]:
+    """依 ADR-037 D6 預填數量並在 snapshot 記依據。不改 cycle，只改 content.frequency。純函式。"""
+    from ddm_v2.nlp.quantities import extract_counts
+
+    n, valid = _excel_quantity(raw_quantity)
+    excel_is_one = valid and n is None and raw_quantity not in (None, "")
+    if n is None and valid and not excel_is_one:
+        return parsed  # Excel 沒填：不處理
+    norm = result.plan.normalized_text or ""
+    counts = extract_counts(norm)
+    actions = {a.action_id: a for a in result.plan.actions}
+    labels = {
+        lb.get("action_id"): lb for lb in ((result.provenance or {}).get("motion_labels") or []) if isinstance(lb, dict)
+    }
+    rows = [(p, actions.get(p.snapshot.get("action_id") or "")) for p in parsed]
+
+    def note(rule: str, applied: set[int], reason: str | None, n_value: Any = n) -> list[ParsedDraft]:
+        out = []
+        for i, (p, _a) in enumerate(rows):
+            q = {"excel": raw_quantity if n_value is None else n_value, "rule": rule, "applied": i in applied,
+                 "reason": None if i in applied else reason}
+            content = p.item.content
+            if i in applied:
+                content = content.model_copy(update={"frequency": float(n)})
+            snap = {**p.snapshot, "quantity": q}
+            out.append(ParsedDraft(item=p.item.model_copy(update={"content": content}), candidates=p.candidates,
+                                   snapshot=snap))
+        return out
+
+    if not valid:
+        return note("4", set(), "excel_quantity_invalid", n_value=raw_quantity)
+    if excel_is_one:
+        # Excel 寫 1，句子卻寫了別的數量：數字不一致，交 IE（規則 4）；一致或沒寫就不處理
+        if any(c.value != 1 for c in counts) or (not counts and _LOOSE_COUNT.search(norm)):
+            return note("4", set(), "sentence_quantity_differs", n_value=1)
+        return parsed
+    if not rows or all(a is None for _p, a in rows):
+        return note("4", set(), "no_motion")
+
+    objects = [_object_text(a, labels) if a is not None else None for _p, a in rows]
+    # 規則 3：同一物件、同一種動作的 motion 剛好 N 個 → AI 已展開（「拿螺絲＋鎖螺絲」不算：動作不同）。
+    # 排在規則 1 之前：展開成 N 個 motion 後若再各乘 N，合計會是 N² 倍
+    types = [a.action_type if a is not None else None for _p, a in rows]
+    for key in {(o, t) for o, t in zip(objects, types) if o}:
+        if sum(1 for o, t in zip(objects, types) if (o, t) == key) == n:
+            return note("3", set(), "ai_expanded")
+
+    if counts:
+        hits = [c for c in counts if c.value == n]
+        if not hits:
+            return note("4", set(), "sentence_quantity_differs")
+        if any(c.unit in _REPEAT_UNITS for c in hits):
+            return note("4", set(), "quantity_target_unclear")
+        targets: set[str] = set()
+        longest = max((len(o) for o in objects if o), default=0)
+        for c in hits:
+            tail = norm[c.end: c.end + _QTY_OBJECT_WINDOW + longest]
+            cut = _CLAUSE_BREAK.search(tail)
+            if cut:
+                tail = tail[: cut.start()]
+            for o in {o for o in objects if o}:
+                at = tail.find(o)
+                if 0 <= at <= _QTY_OBJECT_WINDOW:
+                    targets.add(o)
+        if len(targets) != 1:
+            return note("4", set(), "quantity_target_unclear")
+        (target,) = targets
+        return note("1", {i for i, o in enumerate(objects) if o == target}, "not_the_counted_object")
+    if _LOOSE_COUNT.search(norm):
+        # 句中有「數字＋量詞」但不是 extract_counts 認得的寫法：比不了，不猜
+        return note("4", set(), "quantity_target_unclear")
+
+    # 規則 2：沒有數量詞＝整句重複
+    applied = {i for i, (_p, a) in enumerate(rows) if a is not None and a.action_type in QUANTITY_PREFILL_TYPES}
+    if not applied:
+        return note("4", set(), "no_process_or_move_place")
+    return note("2", applied, "other_motion_not_applied")

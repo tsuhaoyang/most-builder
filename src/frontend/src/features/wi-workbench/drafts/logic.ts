@@ -59,6 +59,15 @@ export function parseIssues(d: WiDraft): string[] {
   return Array.isArray(snap?.issues) ? (snap!.issues as unknown[]).filter((x): x is string => typeof x === 'string') : []
 }
 
+export interface QuantityNote { excel: unknown; rule: string; applied: boolean; reason: string | null }
+
+/** Excel 數量的預填依據（ADR-037 D6；後端 parse_snapshot.quantity）。 */
+export function quantityNote(d: WiDraft): QuantityNote | null {
+  const snap = d.parse_snapshot as { quantity?: QuantityNote } | null | undefined
+  const q = snap?.quantity
+  return q && typeof q.rule === 'string' ? q : null
+}
+
 export function wiGroupTruncated(d: WiDraft): boolean {
   const snap = d.parse_snapshot as { wi_group_truncated?: boolean } | null | undefined
   return !!snap?.wi_group_truncated

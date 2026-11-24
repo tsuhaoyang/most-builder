@@ -369,3 +369,17 @@ test('降級原因不認得或沒給時，顯示通用說明', async ({ page }) 
   await page.getByTestId('sentence-submit').click()
   await expect(page.getByTestId('sentence-result')).toContainText('AI 服務暫時無法使用，已改用規則解析')
 })
+
+
+test('匯入草稿顯示 Excel 數量的預填依據', async ({ page }) => {
+  const fake = new FakeDrafts()
+  fake.add({ cycle: GM, narrative: '鎖螺絲', frequency: 2 }, { source: 'imported',
+    parse_snapshot: { complete: true, quantity: { excel: 2, rule: '2', applied: true, reason: null } } })
+  fake.add({ cycle: GM, narrative: '拿螺絲' }, { source: 'imported',
+    parse_snapshot: { complete: true, quantity: { excel: 2, rule: '2', applied: false, reason: 'other_motion_not_applied' } } })
+  await install(page, fake)
+  await enterWorkspace(page)
+  const q = page.getByTestId('draft-quantity')
+  await expect(q.nth(0)).toContainText('Excel 數量 2：已預填（規則 2）')
+  await expect(q.nth(1)).toContainText('只套用到加工與放置類動作')
+})

@@ -305,9 +305,14 @@ async def test_an_ai_result_is_never_auto_even_when_the_auto_flag_is_on(db_sessi
     assert result.routing_status == "review"
 
 
-async def test_external_path_supports_interactive_only_and_respects_the_length_limit(db_session):
-    with pytest.raises(ValueError, match="interactive"):
-        await _parse(db_session, _unique_text(), _ext(_Port()), source_kind="import_row")
+async def test_external_path_source_kinds_and_length_limit(db_session):
+    """W3b 起整份上傳（import_row）也走外部路徑，用 batch lane；其他 source_kind 仍拒絕。"""
+    port = _Port()
+    result, _legacy = await _parse(db_session, _unique_text(), _ext(port), source_kind="import_row")
+    assert result.provenance["planner"] == "ai_service"
+    assert [lane for _r, lane in port.calls] == ["batch"]
+    with pytest.raises(ValueError, match="import_row"):
+        await _parse(db_session, _unique_text(), _ext(_Port()), source_kind="gold")
     with pytest.raises(svc.TextTooLong):
         await _parse(db_session, "長" * 2001, _ext(_Port()))
 

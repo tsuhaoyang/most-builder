@@ -207,6 +207,20 @@ const zhTW = {
       noNarr: '（無敘述）',
       incomplete: '解析不完整：請按「編輯」補齊格位後再確認。',
       wiGroupTruncated: '作業名稱超過 200 字，已截斷。',
+      quantity: {
+        applied: 'Excel 數量 {{n}}：已預填（規則 {{rule}}），請確認。',
+        notApplied: 'Excel 數量 {{n}}：未預填（規則 {{rule}}，{{reason}}），請由 IE 指定。',
+        reason: {
+          not_the_counted_object: '數量修飾的是另一個物件',
+          other_motion_not_applied: '只套用到加工與放置類動作',
+          ai_expanded: 'AI 已展開成相同物件的多個動作，請選擇保留展開或合併',
+          sentence_quantity_differs: '句中的數字和 Excel 不一致',
+          quantity_target_unclear: '看不出數量修飾哪個物件',
+          no_process_or_move_place: '沒有加工或放置類動作可套用',
+          excel_quantity_invalid: 'Excel 的數量不是正整數',
+          no_motion: '沒有解析出動作',
+        },
+      },
       issues: '解析備註：{{list}}',
       stale: {
         rule_set_changed: '工時表的規則版本已改變，已退回待確認。請檢查後重新確認。',

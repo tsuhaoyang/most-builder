@@ -594,3 +594,140 @@ async def test_no_reason_when_not_degraded(client, db_session):
     ws, _ = await _seed_ws(db_session)
     r = await _from_sentence(client, ws.id)
     assert r.json()["ai"]["status"] == "rule_based" and r.json()["ai"]["reason"] is None
+
+
+# ═════════ W3b：整份上傳走外部 AI（batch lane）、逐列交易、Excel 數量 ═════════
+
+class _LanePort(_Port):
+    def __init__(self, *, fail=None):
+        super().__init__(fail=fail)
+        self.lanes: list[str] = []
+
+    async def parse(self, requests, *, allow_lists, lane):
+        self.lanes.append(lane)
+        return await super().parse(requests, allow_lists=allow_lists, lane=lane)
+
+
+async def _bound_import(db_session, ws_id, rows):
+    from ddm_v2.models.v2.import_staging import ExcelImport
+
+    rec = ExcelImport(id=uuid.uuid4(), worksheet_id=ws_id, source_name="w3b.xlsx", status="mapped",
+                      raw_payload={"sheets": []}, sheet="Sheet1", header_row=0, column_map={"description": 0},
+                      time_unit="sec", imported_by="TEST", staged_rows=rows)
+    db_session.add(rec)
+    await db_session.commit()
+    return rec
+
+
+async def test_batch_uses_external_ai_on_the_batch_lane_one_row_per_tick(client, db_session):
+    port = _LanePort()
+    _install(port)
+    ws, rs = await _seed_ws(db_session)
+    rec = await _bound_import(db_session, ws.id, [
+        {"_row": 1, "description": f"左手拿起螺絲{uuid.uuid4().hex[:4]}", "hand": "LH"},
+        {"_row": 2, "description": f"右手放下螺絲{uuid.uuid4().hex[:4]}", "hand": "RH"},
+    ])
+    r = await client.post(f"/api/v2/imports/{rec.id}/parse-jobs",
+                          json={"rule_set_code": rs.code, "idempotency_key": f"w3b-{uuid.uuid4().hex}"})
+    job_id = r.json()["id"]
+    first = (await client.post(f"/api/v2/imports/{rec.id}/parse-jobs/{job_id}/tick", json={"limit": 4})).json()
+    assert first["processed_now"] == 1, "外部 AI 一次只認領一列"
+    for _ in range(5):
+        st = (await client.post(f"/api/v2/imports/{rec.id}/parse-jobs/{job_id}/tick", json={"limit": 4})).json()
+        if st["job"]["status"] in {"completed", "partial", "failed"}:
+            break
+    assert st["job"]["processed"] == 2, st
+    assert port.lanes == ["batch", "batch"]
+    drafts = await _drafts(client, ws.id)
+    assert drafts and {d["source"] for d in drafts} == {"ai_service"}
+    assert all(d["import_row_id"] and d["ai_parse_run_id"] for d in drafts)
+
+
+async def test_batch_ai_failure_degrades_and_still_writes_drafts(client, db_session):
+    port = _LanePort(fail=AiServiceErrorKind.UNREACHABLE)
+    _install(port)
+    ws, rs = await _seed_ws(db_session)
+    rec = await _bound_import(db_session, ws.id, [{"_row": 1, "description": f"拿起零件{uuid.uuid4().hex[:4]}"}])
+    body = await _tick_all(client, rec.id, rs.code)
+    assert body["job"]["status"] in {"completed", "partial"} and body["job"]["failed"] == 0, body
+    drafts = await _drafts(client, ws.id)
+    assert drafts and {d["source"] for d in drafts} == {"rule_based"}
+    from ddm_v2.models.v2.ai_ops import AiParseJobItem
+
+    (item,) = (await db_session.execute(
+        select(AiParseJobItem).where(AiParseJobItem.job_id == uuid.UUID(body["job"]["id"])))).scalars().all()
+    assert item.last_error["ai"]["error_kind"] == "unreachable"
+
+
+async def test_batch_stays_rule_based_when_the_requester_lost_analyst(client, db_session):
+    from ddm_v2.models.v2.auth import AppUser
+
+    port = _LanePort()
+    _install(port)
+    ws, rs = await _seed_ws(db_session)
+    emp = f"UT_W3B_{uuid.uuid4().hex[:6]}"
+    r = await client.post("/api/v2/admin/users", json={"employee_no": emp, "display_name": emp, "roles": ["analyst"]})
+    assert r.status_code == 200, r.text
+    h = {"X-Username": emp}
+    rec = await _bound_import(db_session, ws.id, [{"_row": 1, "description": f"拿起零件{uuid.uuid4().hex[:4]}"}])
+    r = await client.post(f"/api/v2/imports/{rec.id}/parse-jobs", headers=h,
+                          json={"rule_set_code": rs.code, "idempotency_key": f"w3b-{uuid.uuid4().hex}"})
+    assert r.status_code == 201, r.text
+    user = (await db_session.execute(select(AppUser).where(AppUser.employee_no == emp))).scalar_one()
+    user.roles = []
+    await db_session.commit()
+    job_id = r.json()["id"]
+    for _ in range(5):
+        st = (await client.post(f"/api/v2/imports/{rec.id}/parse-jobs/{job_id}/tick", json={"limit": 4})).json()
+        if st["job"]["status"] in {"completed", "partial", "failed"}:
+            break
+    assert port.requests == [], "建立者已不是 analyst：不外送"
+
+
+async def test_excel_quantity_is_recorded_on_import_drafts(client, db_session):
+    ws, rs = await _seed_ws(db_session)
+    rec = await _bound_import(db_session, ws.id, [
+        {"_row": 1, "description": f"拿起零件{uuid.uuid4().hex[:4]}", "quantity": 2.5},
+    ])
+    await _tick_all(client, rec.id, rs.code)
+    drafts = await _drafts(client, ws.id)
+    assert drafts
+    q = drafts[0]["parse_snapshot"]["quantity"]
+    assert (q["rule"], q["applied"], q["reason"]) == ("4", False, "excel_quantity_invalid")
+    assert drafts[0]["content"]["frequency"] == 1
+
+
+async def test_a_failing_row_does_not_break_the_next_row_in_the_same_tick(client, db_session, monkeypatch):
+    """逐列交易：第一列例外（rollback 讓 session 內物件全部失效），同一次 tick 的第二列照樣成功。
+
+    測試的 session 是 savepoint 模式，rollback 不會讓所有物件失效；這裡在例外前 `expire_all()` 模擬正式環境。
+    """
+    from ddm_v2.models.v2.ai_ops import AiParseJobItem
+    from ddm_v2.services.v2 import wi_ai_service
+
+    ws, rs = await _seed_ws(db_session)
+    rec = await _bound_import(db_session, ws.id, [
+        {"_row": 1, "description": f"會失敗的列{uuid.uuid4().hex[:4]}"},
+        {"_row": 2, "description": f"放下零件{uuid.uuid4().hex[:4]}"},
+    ])
+    real = wi_ai_service.parse_interactive
+    calls = {"n": 0}
+
+    async def flaky(session, **kw):
+        calls["n"] += 1
+        if calls["n"] == 1:
+            session.expire_all()
+            raise RuntimeError("boom")
+        return await real(session, **kw)
+
+    monkeypatch.setattr(wi_ai_service, "parse_interactive", flaky)
+    r = await client.post(f"/api/v2/imports/{rec.id}/parse-jobs",
+                          json={"rule_set_code": rs.code, "idempotency_key": f"w3b-{uuid.uuid4().hex}"})
+    job_id = r.json()["id"]
+    out = (await client.post(f"/api/v2/imports/{rec.id}/parse-jobs/{job_id}/tick", json={"limit": 2})).json()
+    assert out["processed_now"] == 1, out
+    items = {i.import_row_id: i for i in (await db_session.execute(
+        select(AiParseJobItem).where(AiParseJobItem.job_id == uuid.UUID(job_id)))).scalars()}
+    statuses = sorted(i.status for i in items.values())
+    assert statuses[0] == "queued" and statuses[1] in {"ready", "review"}, statuses
+    assert len(await _drafts(client, ws.id)) >= 1
