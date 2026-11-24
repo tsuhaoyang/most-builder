@@ -67,7 +67,7 @@
      seed，不是就由測試自建。
    - **反向斷言（`toHaveCount(0)`／`not.toBeVisible`／`assert not …`）必須證明它會紅。**
      正向斷言用壞掉的定位器會**大聲失敗**；反向斷言用壞掉的定位器會**安靜變成恆真**。
-     實例：`ux-compliance.spec.ts` 的 E-04-4 用 `getByText('B2', {exact:true})` 斷言
+     實例（該測試已隨 ADR-038 W6 移除，原文保留說明教訓）：`ux-compliance.spec.ts` 的 E-04-4 用 `getByText('B2', {exact:true})` 斷言
      `toHaveCount(0)`，而色塊抬頭早已改成 `A · A1` 形式使該定位器永遠 0 命中——
      把 `B2`/`P` 塞回 `CM_ITEMS`（直接違反 GM→CM 清空規則）該測試**依然全綠**。
      （後記 2026-08-15：`A · A1` 本身是 b66829d 偏離規格的發明，已依 accepted
@@ -182,7 +182,7 @@
 | **NLP 同義詞 + nl-draft（impl-05）** | synonyms list(200)/create IE(201)/duplicate(409+SYNONYM_CONFLICT)/**同面撞 priority(409+SYNONYM_PRIORITY_COLLISION，D3-018 H1——一面多 code 需以不同 priority 顯式宣告偏好序)**/viewer(403)/delete(204)；**option_code 不存在→422 OPTION_CODE_NOT_FOUND（Fix-T1）**；**全形空白 normalize 後空→422 VALIDATION_ERROR（Fix-T3）**；nl-draft GM/CM 判型（**D3-017 起動詞字典參與判型**，衝突矩陣見 `nlp/rule_based.py` classify_seq——名詞觸發詞只是矩陣一象限：治具→GM／執行/進行/**機台（Fix-T2）**→CM 是**無動詞訊號時**的行為，動詞訊號可改判：生產詞典下「接觸治具拉至」→CM）；v3 名詞觸發單元（壓合站/壓合位置/治具；F-05 §4.1 治具防護＝同象限）；normalize OR 兜底消除（Fix-Low-T：測试机器→測試機器；機台機臺→機臺機臺） | `tests/unit/test_nlp.py`、`tests/integration/test_nlp_api.py` |
 | **WI gold set 擴充（harvest／draft／eval 守門）** | harvest 決定性（同 DB 兩次 byte-identical）＋`--force` 覆蓋守衛；草稿隔離（sibling 目錄、loader 不遞迴、mutation：塞進 wi_plans 筆數必動）；轉正空殼守門（P1-3）＋**seed 豁免釘 `SEED_GOLD_IDS` 3 筆白名單（R6：第 4 筆自標 seed 必紅——字串豁免曾可穿透空殼守門＋自我指涉排除，實測假指標 0.9841）**；草稿 schema 重放自洽（pending_ie 整份 plan 相等＋compile 重放）＋**provenance 來源一致（R5：換 `source_text` 不動 `source_provenance` 必紅——spec §19 要「真實案例」）**；動詞幽靈命中排除＋GM/CM 配對中性旗標與覆核表配對題**同一判定函式**（R1/R2）；引擎拒絕期望 `expected_engine_rejected` 重放驗「仍拒絕」不假綠（R3，stub 複現舊踩雷）；自我指涉排除＋橡皮圖章回歸（P0-1）＋`[SELF-REF]` 逐案標記＋dataset_note 頭條但書（R4）；`--recompile` 拒改正式 gold（`--relock-approved --reason` 留痕） | `tests/unit/test_gold_harvest_heuristics.py`、`tests/unit/test_gold_draft_schema.py`、`tests/unit/test_gold_draft_isolation.py`、`tests/unit/test_planner_eval.py`、`tests/unit/test_gold_harvest_recompile.py`、`tests/integration/test_gold_harvest.py`、`scripts/gold_harvest.py`、`scripts/wi_ai_eval.py` |
 | 前端（全分頁） | 載入/身分/分頁渲染/匯入精靈 | `src/frontend/e2e/smoke.spec.ts` |
-| **前端 UX 合規（v3 規格）** | §A-01/02/03 Sidebar 結構/背景色/折疊/角色可見性；§B-01/B-02/B-03 workbench-v3 NlDraft+Slot Strip；§C-01 MiCompositionTable gap 文件化；§E-04/05/06 WI Pool 三層 Tab；§G-01/G-02 分析案件+RBAC gating；§H-01 字典管理頁；§I-01 viewer RBAC；§L-03/04 退役確認（33 條，Type A mocked-API，無需 preview_server） | `src/frontend/e2e/ux-compliance.spec.ts` |
+| **前端 UX 合規（v3 規格）** | §A-01/02/03/04 Sidebar 結構/背景色/折疊/角色可見性；§C-01-2 工時表動作清單欄位；§G-01/G-02/G-03 分析案件+RBAC gating；§H-01 字典管理頁；§I-01 viewer RBAC；§L-03/04 退役確認（42 條；§B-01、C-01-1 MiCompositionTable、§E-04、G-03-2d／4／5 已隨 ADR-038 W6 移除，Type A mocked-API，無需 preview_server） | `src/frontend/e2e/ux-compliance.spec.ts` |
 | **字典治理：刪除／解除封存（ADR-023 D3b）** | DELETE 僅 draft（published／retired／certified_import／is_active 各自 409，**斷言 `detail.code` 不只狀態碼**）；**被引用的 draft 不可刪**（現為五個 RESTRICT 引用方：`most_cycles`／`most_worksheets`／`motion_module_versions`／`ai_parse_runs`／`ai_parse_jobs`）→ 409 `RULE_SET_IN_USE`＋筆數（回放鐵則的另一面）；刪除連帶 13 張子表歸零；audit 先寫後刪且自帶 `code`/`provenance`/`children_deleted`（實體消失後它是唯一紀錄）；unretire 後 `is_active` **仍為 false**；引用方清單以 `pg_catalog` 比對常數，比對粒度為 **(表, 欄) 對**（張數不寫死；只比表名的話「欄名寫錯→靜默數 0」與「同一表兩條 RESTRICT FK→dict 塌成一條」都測不出來），新增引用表／改錯欄名都會先紅；**引用情境由測試自建 Site→SKU→worksheet→WiRow→MostCycle（不撈既有 `most_cycles`）——CI 後端 job 不跑 `dev_seed_30rows.py`，依賴既有列＝本機綠／CI 紅** | `tests/integration/test_rule_set_delete_unretire.py` |
 | **前端字典管理（ADR-023 D4）** | L1 版本清單（狀態徽章＋啟用中＋血緣中文）→ L2 七參數分頁（A 三分量／M 四分量次級 tab）；**對認證版的任何寫入動作攔截跳 clone-on-write**；帶界違規顯示後端人話錯誤而非原始 JSON；**無硬編碼 rule-set code**（一律經 `useActiveRuleSet`） | `src/frontend/e2e/dictionary.spec.ts`（Type A mocked-API） |
 | **AI 批次解析 worker 硬化複驗（ADR-030）** | `fail_job` 終態必經 `_finalize_job_status` 計算：先推進 1 筆再結構性失敗→**partial**、`cancel_requested_at` 已設再結構性失敗→**cancelled**（直寫 `failed` 的旁路兩條皆紅；n_rows=1 首 tick 毒殺分不出直寫與計算）；**parse 段**（`RuleBasedParser.parse`）的 executor＋wait_for 獨立釘死（只拆 parse 段→TimeoutError 不發生、normalize 段測試不動＝靜默 wedge 現形）；done callback 在 **app 運行中（未進 shutdown）** 即出 worker 死亡 ERROR log（斷言全程在 lifespan context 內，finally 那句救不了場）；啟動訊息 **WARNING 級**（DEBUG 級捕捉＋斷言 `levelno`，降級即紅）；配額預設 `MAX_INFLIGHT_JOBS_PER_USER == 5` 防漂移（機制由 429 整合測試以 monkeypatch 常數驗證） | `tests/integration/test_parse_job_worker.py`、`tests/unit/test_wi_ai_cpu_guards.py`、`tests/unit/test_parse_job_worker.py`、`tests/unit/test_parse_job_service.py` |
@@ -427,7 +427,7 @@ nightly 的 `audit-latest` 會讓它通常在半夜先紅，而不是砸在隔�
     **整批中斷、一條測試都不算數**（守衛型測試因此可能長期沒真的跑過）。
 - **frontend**：`npm ci` → typecheck → typecheck:e2e → build → **ADR-032 R4 i18n 守衛**（`npx playwright test e2e/i18n-hardcoded-zh.spec.ts`——純 node 掃描，掛在這裡是為了讓硬編中文在最快的 job 就紅，不必等 e2e 起 DB）
 - **e2e（smoke）**：full stack（seed + build + preview_server :8099）→ `smoke.spec.ts`
-- **e2e（ux-compliance）**：Type A mocked-API；只需 Vite dev server 或 preview_server 提供靜態資源 → `ux-compliance.spec.ts`（33 條，E2E_BASE_URL=`http://localhost:5173`）
+- **e2e（ux-compliance）**：Type A mocked-API；只需 Vite dev server 或 preview_server 提供靜態資源 → `ux-compliance.spec.ts`（42 條，E2E_BASE_URL=`http://localhost:5173`）
 
 ## 本機快速重現 CI
 

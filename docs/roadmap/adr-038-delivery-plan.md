@@ -7,7 +7,7 @@
 
 ## 狀態
 
-🔄 執行中。W1（PR #16）、W2（PR #19）、W3（PR #20）已合併；W7a 已合併（PR #21）；W7b 已合併（PR #22）；W4 已合併（PR #23）；W3b 已合併（PR #27）；W5 已合併（PR #28）；標頭匯入按鈕依 Howard 裁決 A 改導工作區（PR 開立中，`feat/header-import-to-workspace`）；W8（區域與距離前端）實作完成，PR 開立中（`feat/w8-zones-distance-ui`）。W7 拆為 W7a／W7b（2026-11-24，W7a，依審查建議，Howard 授權）。與 ADR-038 衝突時以 ADR-038 為準。
+🔄 執行中。W1（PR #16）、W2（PR #19）、W3（PR #20）已合併；W7a 已合併（PR #21）；W7b 已合併（PR #22）；W4 已合併（PR #23）；W3b 已合併（PR #27）；W5 已合併（PR #28）；標頭匯入按鈕依 Howard 裁決 A 改導工作區（PR 開立中，`feat/header-import-to-workspace`）；W8（區域與距離前端）已合併（PR #30）；W6（移除舊畫面）實作完成，PR 開立中（`feat/w6-remove-legacy-screens`）。W7 拆為 W7a／W7b（2026-11-24，W7a，依審查建議，Howard 授權）。與 ADR-038 衝突時以 ADR-038 為準。
 
 ## 工作方式（Howard 2026-11-23）
 
@@ -167,6 +167,14 @@
 2. 後端路由與資料不動（資料已備份：`data/backups/adr038-legacy-library-20261123-211312/`）。
 3. 全套 e2e 過。
 
+**完成狀態（2026-11-24，W6，依審查建議，Howard 授權）**：實作完成，PR 開立中（`feat/w6-remove-legacy-screens`）。
+- 側欄移除「MOST 工作台」與「WI 專案」；刪除 `features/workbench-v3/` 與 `features/wi-project/WISetBuilderPage.tsx`；工時表編輯器移除「從 WI 庫插入」（ADR-022 E-4）。
+- DSX 元件（`DsxA3Suggestion`、`dsxA3Distance`、`DsxUiViewer`、`dsxUiUrl`）搬到 `features/wi-workbench/dsx/`，仍在使用。
+- 動作範本（`motion_templates`）管理入口保留在主數據管理的「動作模組範本」分頁（`features/dictionaries`）。
+- 後端 `/motion-modules`、`/wi-sets`、`rows/from-module`、`imports/{id}/submit` 與資料保留，沒有畫面入口。
+- e2e 刪除 `workbench-nl-*.spec.ts`、`support/workbenchNlMocks.ts`、`wi-set-add.spec.ts`、smoke 的工作台測試，以及 `ux-compliance.spec.ts` 的 §B-01、C-01-1、§E-04、G-03-2d、G-03-4、G-03-5（ux-compliance 現為 42 個 test）。
+- 只被已刪畫面使用的 i18n 鍵（`workbench.wiOutline`、`inspector`、`slot`、`nl`、`wiSet` 等）暫留，清理排 BL-ENG-22；`workbench.wiEditor` 的插入相關鍵已在本 PR 刪。
+
 ## 整體驗收（12 月底）
 
 在開發環境（`make up` 起的完整服務）以一份新 SKU 走完：
@@ -228,3 +236,4 @@
 | 2026-11-24 | W5 後 | 標頭「匯入 Excel」按鈕（Howard 裁決 A） | 打開工作區的整份上傳；舊的範本採用＋直接寫工時表沒有畫面入口（程式與端點保留），D10 e2e 移除；範本採用搬進工作區排入 BL-ENG-21 |
 | 2026-11-24 | W8 | 距離面板預設展開條件（2026-11-24，W8，依審查建議，Howard 授權） | 工時表 `distance_check_required=true` 時預設展開，否則收起；標頭顯示未標列數。理由：只有已開距離檢查的工時表才會被核准擋，其餘不打擾 |
 | 2026-11-24 | W8 | 前端送哪些列的 `distance_status`（2026-11-24，W8，依審查建議，Howard 授權） | 整份存檔只對使用者改過距離狀態的列帶（store `distanceStatusChanged`），其餘不帶。理由：每列都帶會讓後端視為「明確帶值」，繞過 W7b「改了距離輸入就退回未標示」 |
+| 2026-11-24 | W6 | 移除舊畫面的範圍與保留項（2026-11-24，W6，依審查建議，Howard 授權） | 刪 `workbench-v3`、`WISetBuilderPage`、「從 WI 庫插入」與對應 e2e；DSX 元件搬到 `wi-workbench/dsx/`；動作範本管理入口留在「動作模組範本」分頁；後端路由與資料不動；未用 i18n 鍵暫留、排 BL-ENG-22。理由：D4 只移畫面，`motion_templates` 仍供匯入比對與規則解析；i18n 清理與畫面移除分開，降低本 PR 風險 |

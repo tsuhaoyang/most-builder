@@ -96,7 +96,7 @@ ADR-031 §1.1 量過：正式 gold 的 35 條 cycle，A 格全是 `A0`；距離�
   > - **延後與已知限制**：批次的外部 AI（batch lane）與 ADR-037 D6 的 Excel 數量權威移到 W3b；超長與解析失敗的 Excel 列不產生草稿，畫面處理在 W5。見 [交付計畫](../roadmap/adr-038-delivery-plan.md)。
 - > **2026-11-24，W4，依審查建議，Howard 授權（W4 追記）**：W4（工作區畫面，純前端，無 migration）實作結果。原文與前面各次追記保留。
   > - **畫面**：工時表編輯器（`features/wi-workbench/WiWorkbench.tsx`）改為工作區。上方「輸入方式」切換手動／單句／整份上傳；編輯器的加入按鈕改為「加入編輯區」；編輯區列表（`drafts/DraftArea.tsx`）依 `group_key` 分組，顯示來源、狀態、過期、不完整、截斷與解析備註，支援單列與整組確認、編輯、刪除、「寫入工時表」。單句輸入（`drafts/SentenceInput.tsx`）呼叫 `from-sentence`，顯示 `GET /wi-ai/status` 的 AI 狀態與降級文案。
-  > - **移除「採用到編輯器」捷徑**：`AiDraftPanel`、`aiDraft.store`、`detectLanguage` 與 `workbench.aiDraft.*` 文案已刪除，滿足本節「不再提供『採用到編輯器』直接載入 cycle 的捷徑」。`workbench-v3` 的 `ActionModuleWorkspace` 還有同類 adopt 路徑，隨 W6 移除。
+  > - **移除「採用到編輯器」捷徑**：`AiDraftPanel`、`aiDraft.store`、`detectLanguage` 與 `workbench.aiDraft.*` 文案已刪除，滿足本節「不再提供『採用到編輯器』直接載入 cycle 的捷徑」。`workbench-v3` 的 `ActionModuleWorkspace` 還有同類 adopt 路徑，隨 W6 移除（W6 已完成，2026-11-24）。
   > - **編輯草稿**：把草稿載入編輯器，按「更新草稿」送 `PATCH`。**沒改格位就原封保留草稿的 cycle**，避免「打開再存」把 AI 內容改形狀，也避免繞過後端「cycle 沒被人改過」（`cycle_hash`）的 `DRAFT_INCOMPLETE` 判斷。改了任何格位，整個 cycle 換成編輯器的產出，敘述（narrative）清空。草稿含編輯器放不下的內容（多個 M 分量、超過兩個 P 附加）時顯示提示。換工時表時放棄正在進行的編輯。
   > - **寫入工時表**：帶 `base_revision`。表上（含 level、LB 標記）有未存檔修改時前端擋下，要先存檔。409 版本衝突：提示、重新載入，草稿維持 `confirmed`。409 `DRAFT_INCOMPLETE`／`DRAFT_STALE`：在列表上標出是哪幾列。
   > - **整份存檔不帶 `distance_status`**（沿用 W2：未帶＝保留既有值）；存檔後若有 `confirmed` 因 W7b 退回規則變空，畫面提示。
@@ -111,7 +111,7 @@ ADR-031 §1.1 量過：正式 gold 的 35 條 cycle，A 格全是 `A0`；距離�
   > - **新端點 `GET /api/v2/imports/{id}/parse-jobs/{job_id}/items`**（analyst）：逐列回 `source_row_no`、描述前 200 字、`status`、`has_drafts`、`reason`（`text_too_long`｜`parse_failed`｜`last_error.drafts` 的原因）、`ai_error_kind`。成功 item 帶 `last_error.drafts` 不當失敗顯示（W3 追記）。
   > - **新端點 `POST /api/v2/worksheets/{id}/drafts/blank-from-import`**（analyst）：只接受綁這份工時表的匯入列（否則 404）；已有草稿的列跳過（重按不重複建）。草稿 `source=imported`、帶 `import_row_id`；`parse_snapshot.complete=false`，所以補齊格位前確認與寫入都回 409 `DRAFT_INCOMPLETE`；帶 `import_input_hash`，納入過期判斷（`import_row_changed`）。
   > - **待 Howard 裁決：標頭的「匯入 Excel」按鈕**。W5 沒有動它，仍是舊流程（ADR-025 範本採用＋直接寫工時表），**這條路仍繞過編輯區與距離檢查開關（D6）**。選項：**A** 標頭按鈕改導到工作區上傳、舊流程從畫面移除，範本採用搬進工作區另開票（審查建議）；**B** 先把範本採用搬進工作區；**C** 維持到 W6。裁決前不得把本 ADR「整份上傳進編輯區」視為涵蓋所有匯入入口。
-  > - **2026-11-24，Howard 裁決 A**：標頭「匯入 Excel」改為打開工作區的整份上傳（沒有開啟中的工時表時先提示）；舊的「範本採用＋直接寫工時表」流程從畫面移除（`ImportModal` 的 `submit` 模式、`MatchPanel`、`POST /imports/{id}/submit` 保留程式與端點），D10 的 e2e 一併移除。範本採用搬進工作區排入 [BL-ENG-21](../BACKLOG.md)。自此所有**匯入**入口都經編輯區（非匯入的直接寫入路徑——工時表編輯器的「從 WI 庫插入」、workbench-v3 的實體化——由 W6 移除畫面，D4）。
+  > - **2026-11-24，Howard 裁決 A**：標頭「匯入 Excel」改為打開工作區的整份上傳（沒有開啟中的工時表時先提示）；舊的「範本採用＋直接寫工時表」流程從畫面移除（`ImportModal` 的 `submit` 模式、`MatchPanel`、`POST /imports/{id}/submit` 保留程式與端點），D10 的 e2e 一併移除。範本採用搬進工作區排入 [BL-ENG-21](../BACKLOG.md)。自此所有**匯入**入口都經編輯區（非匯入的直接寫入路徑——工時表編輯器的「從 WI 庫插入」、workbench-v3 的實體化——由 W6 移除畫面，D4；W6 已完成）。
   > - **已知限制**：(1) `has_drafts` 是「現在還有草稿」，使用者刪掉某列草稿後該列會再被列出（可再建空白草稿）；(2) items 端點沒有分頁，筆數受匯入列數上限約束；(3) `drafts` 模式的 `/map` 仍計算範本比對但不顯示。
 - **本 ADR 定義 ADR-037 D4 審核的落點**：ADR-037 規劃的「審核佇列」就是工作區的編輯區，不另做獨立頁面。
 - AI 草稿的處理（滿足 ADR-037 D3 澄清「預覽不是可接受依據」）：
@@ -131,6 +131,7 @@ ADR-031 §1.1 量過：正式 gold 的 35 條 cycle，A 格全是 `A0`；距離�
   - **`motion_templates` 保留且繼續使用**：它是 Excel 匯入範本比對（ADR-025）與規則式解析 L0 範本提示（`nlp/linking.py`）的資料來源，
     拔掉會讓情境 3 的匯入比對與 AI 降級時的規則解析品質下降。
 - 本條**取代 ADR-022 的 UI 部分**（工作台兩層 UI、WI 大綱、row inspector）。ADR-022 的資料模型說明（WI ⊃ motion 兩層）仍然成立，改以工作區呈現。
+- > **2026-11-24，W6，依審查建議，Howard 授權（W6 完成追記）**：畫面移除已完成。側欄移除工作台與 WI 專案，刪除 `features/workbench-v3/` 與 `WISetBuilderPage`，編輯器移除「從 WI 庫插入」。保留項：後端 `/motion-modules`、`/wi-sets`、`rows/from-module`、`imports/{id}/submit` 與資料（沒有畫面入口）；動作範本（`motion_templates`）管理入口留在主數據管理的「動作模組範本」分頁。DSX 元件搬到 `features/wi-workbench/dsx/`。
 
 ### D5 距離兩段式；MOST 是距離資料與計算的權威，DSX 是操作介面
 
