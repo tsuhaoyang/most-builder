@@ -157,7 +157,7 @@ DB 欄位不動；寫入端不再產生 `kind='llm'`，但**舊 `kind='llm'` 列
 
 下列各項是 PR-B 審查發現的，狀態以 2026-11-22 路由 PR 為準。路由 PR 合併後外部路徑已接上，**未完成項在打開 `DDM_AI_SERVICE_ENABLED` 前必須完成**。
 
-- **前端不得直接採用預覽 draft（❌ 未完成；打開開關的硬性前置）**：**2026-11-23，ADR-038 追記：由 ADR-038 D3 的編輯區取代（尚未實作）。**以下為原文：路由合併後開關預設關是唯一防線，前端修正與 `ai_error` 文案落地前，不得在任何環境開啟 `DDM_AI_SERVICE_ENABLED`。`AiDraftPanel.tsx`、`ActionModuleWorkspace.tsx` 的 adopt 只檢查 `draft.cycle` 是否存在，會把帶 `ai_candidate_preview` 的 cycle 載入編輯器（`source='ai'`）。需停用，或導向 S4 審核流程（ADR-037 D3 澄清）。
+- **前端不得直接採用預覽 draft（✅ 已完成：W4 移除 `AiDraftPanel`、W6 移除 `ActionModuleWorkspace`，前端只剩編輯區 `SentenceInput` 走 nl-draft 路徑；2026-11-24，W6，依審查建議，Howard 授權；原為打開開關的硬性前置）**：**2026-11-23，ADR-038 追記：由 ADR-038 D3 的編輯區取代（尚未實作）。**以下為原文：路由合併後開關預設關是唯一防線，前端修正與 `ai_error` 文案落地前，不得在任何環境開啟 `DDM_AI_SERVICE_ENABLED`。`AiDraftPanel.tsx`、`ActionModuleWorkspace.tsx` 的 adopt 只檢查 `draft.cycle` 是否存在，會把帶 `ai_candidate_preview` 的 cycle 載入編輯器（`source='ai'`）。需停用，或導向 S4 審核流程（ADR-037 D3 澄清）。
 - **稽核與角色（D7）（✅ 已完成；稽核改為 v1 過渡）**：稽核依 ADR-037 D7 修訂（2026-11-22）不做外送事件，v1 以 `ai_parse_runs` 代替，失敗外送的 `request_id` 寫進 run 的 `error`（涵蓋 ai_service 回 failed 與已回應但 MOST 端降級）。角色檢查在路由（analyst 以上才傳 `external`），有 `tests/integration/test_nl_draft_ai_route.py` 鎖定。
 - **`worksheet_id` 存取權驗證（已裁決不做）**：Howard 2026-11-22：權限由未來的統一平台重新設計，MOST 不發明站點權限模型；`scope` 只用於隔離合併。重播回 `cached`／`cached_run_id` 的探測風險記於 [BL-ENG-19](../BACKLOG.md#bl-eng-19--worksheet-路由沒有站點層級的存取控制延後)。
 - **`known_hand`／`scope` 的來源（✅ 已完成）**：`hand` 由請求欄位帶入，`scope` 取 worksheet 所屬站點，否則 `'none'`。`known_hand` 是整句一個值，逐 motion 比對會對左右手不同的句子誤報（保守方向）。無手別來源時不標，手別提示存在 `motion_labels`。
@@ -169,7 +169,7 @@ DB 欄位不動；寫入端不再產生 `kind='llm'`，但**舊 `kind='llm'` 列
 
 全部完成前，不得在任何環境開啟 `DDM_AI_SERVICE_ENABLED`。
 
-- [ ] 前端 adopt 停用，或導向 S4 審核流程（2026-11-23，ADR-038：由 D3 的編輯區取代，尚未實作）。2026-11-24 更新：工時表編輯器已由 W4 移除，`workbench-v3` 仍在，W6 移除；W6 前此項未完成。
+- [x] 前端 adopt 停用，或導向 S4 審核流程（2026-11-23，ADR-038：由 D3 的編輯區取代）。已完成（2026-11-24，W6，依審查建議，Howard 授權）：W4 移除 `AiDraftPanel`，W6 移除 `workbench-v3` 的 `ActionModuleWorkspace`。
 - [x] `ai_error`／`QUOTA_EXCEEDED` 的 zh-TW／en 文案：已完成（2026-11-24，真實量測後，Howard 核可；走 `ai.reason`，不走 ADR-034 信封碼）。
 - [x] legacy slots：已由 ADR-038 D3 關閉（2026-11-23；AI 結果不使用 legacy 相容欄位，原二選一不再需要）。
 - [x] 每日額度：已決定 10,000 次（Howard 2026-11-23，ADR-038 D7；原 ADR-037 D8 為 2000）。程式預設值另以小 PR 更新。
