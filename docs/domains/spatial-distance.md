@@ -25,11 +25,18 @@
 ## 不變量
 見 `docs/agent-team/domains.yaml` domain `spatial-distance` 的 `invariants`（單一權威，本索引不重抄）。
 
+## 前端（W8）
+- 位置：`src/frontend/src/features/wi-workbench/distance/{api.ts,DistancePanel.tsx}`，掛在 WiWorkbench；e2e 為 `src/frontend/e2e/workspace-distance.spec.ts`。核准失敗時 CasesPage 列出缺距離狀態的 #seq_no。
+- 面板在工時表 `distance_check_required=true` 時預設展開，否則收起；標頭顯示未標列數。
+- 只有整列每格都是 `suggested` 的列可勾選套用。逐列可標「此動作無距離」或「手動值」，按儲存才寫回；沒有「清除標示」按鈕。
+- 重新同步後 DSX `placement_revision` 變了，會提示「已確認的距離不會自動改，請重新算距離比對」；不逐列比對已確認值與新座標。
+- 前端不變量：整份存檔只對使用者在畫面上改過距離狀態的列帶 `distance_status`（store 的 `distanceStatusChanged`），其餘列不帶；每列都帶會繞過 W7b 的「改了距離輸入就退回」。（2026-11-24，W8，依審查建議，Howard 授權）
+
 ## 測試與已知缺口
 - 測試：`tests/integration/test_zones.py`、`tests/unit/test_dsx_client_w7.py`、`tests/integration/test_distance_suggestions.py`、`tests/unit/test_distance_suggest.py`。
 - 缺口：
-  - 畫面（W8）尚未實作。
+  - ~~畫面（W8）尚未實作。~~ 已實作（2026-11-24，W8，依審查建議，Howard 授權）；快照回復（交付計畫〈W8〉第 8 項）未做。
   - 距離設定沒有「指回舊版」的路徑、沒有獨立稽核表、既有工時表不能改用新版本。
-  - 重新同步 DSX 後，已 `confirmed` 的列不自動退回，也還沒有畫面提示「已確認的距離與新座標不同」。
+  - 重新同步 DSX 後，已 `confirmed` 的列不自動退回，畫面只提示「請重新算距離比對」，沒有逐列比對（W8 第 10 項部分完成）。
   - DSX 方需確認的事項見 [dsx-changes-for-adr-038.md](../architecture/dsx-changes-for-adr-038.md)（待 DSX 回覆，特別是 `anchor_cm` 是否已含旋轉與人端偏移）。
   - a6 的 DSX 實測風險（終點幾何中心造成全落 A24）改用區域中心後預期改善，但**未實測**。

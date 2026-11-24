@@ -118,6 +118,8 @@ export interface WsRead {
   default_rule_set: DefaultRuleSetInfo | null
   revision_no?: number
   content_hash?: string | null
+  /** ADR-038 D6：true＝核准需每列都有距離狀態 */
+  distance_check_required?: boolean
 }
 export const useWorksheet = (wsId: string) =>
   useQuery({ queryKey: ['worksheet', wsId], queryFn: () => apiGet<WsRead>(`/api/v2/worksheets/${wsId}`), refetchOnWindowFocus: false, enabled: !!wsId })

@@ -2,7 +2,7 @@ import { useEffect, useMemo, useRef, useState } from 'react'
 import { useQueryClient } from '@tanstack/react-query'
 import { useRuleSetOptions, useVocab, useCalculate, useSaveWorksheet, type DefaultRuleSetInfo } from './api'
 import { useWiStore, type Row } from './store'
-import { useMe, canEdit } from '../../shared/auth/useMe'
+import { useMe, canEdit, isAdmin } from '../../shared/auth/useMe'
 import { useWorkspace } from '../../shared/workspace'
 import { TMU_SEC } from '../../shared/config'
 import { useActiveRuleSet } from '../../shared/api/useActiveRuleSet'
@@ -18,6 +18,7 @@ import {
 import { DraftArea } from './drafts/DraftArea'
 import { SentenceInput } from './drafts/SentenceInput'
 import { UploadInput } from './drafts/UploadInput'
+import { DistancePanel } from './distance/DistancePanel'
 import { useCreateDrafts, usePatchDraft, type WiDraft, type WiDraftContent } from './drafts/api'
 import { contentOf, editorContent, editorWouldSimplify, resetDistanceRows } from './drafts/logic'
 import { resolveErrorMessage } from '../../shared/i18n/errorMessage'
@@ -667,6 +668,8 @@ export function WiWorkbench() {
     const d = derive(rows, lv.levelMap, lv.groupMeta, rowNarr)
     const baseRevision = useWiStore.getState().revisionNo
     const body = buildSaveBody(rows, d, baseRevision)
+    // 存檔進行中使用者又改了距離狀態的列，旗標要留著（下次存檔再送）
+    const distanceSent = new Set(rows.filter(r => r.distanceStatusChanged).map(r => r.id))
     try {
       const res = await save.mutateAsync(body)
       if (typeof res.revision_no === 'number') {
@@ -676,7 +679,7 @@ export function WiWorkbench() {
         })
       }
       // 存檔成功＝表與 level 都已存（讀回的資料若結構相同，hydrate 不會重跑，所以這裡明確清除）
-      useWiStore.getState().markClean()
+      useWiStore.getState().markClean(distanceSent)
       qc.invalidateQueries({ queryKey: ['wi-preview'] })
       qc.invalidateQueries({ queryKey: ['versions'] })
       qc.invalidateQueries({ queryKey: ['worksheet', activeWs] })
@@ -835,6 +838,10 @@ export function WiWorkbench() {
           onCommitted={() => { if (editingDraft) cancelEdit() }}
         />
       )}
+
+      {/* ═══ [ADR-038 D5] 區域與距離：設區域、同步、物件歸區、算距離、確認套用、逐列標示 ═══ */}
+      {activeWs && <DistancePanel key={activeWs} worksheetId={activeWs} editable={editable} admin={isAdmin(me)}
+        checkRequired={!!wsData?.distance_check_required} />}
 
       {/* ═══ Table section ═══ */}
       <div className="bg-white rounded-xl border p-4">

@@ -35,8 +35,10 @@ export interface Row {
   tmu: number
   seconds: number
   payload: unknown   // CycleIn
-  /** ADR-038 D6：每列距離狀態（讀回顯示用；存檔不帶，後端保留既有值，W4） */
+  /** ADR-038 D6：每列距離狀態。存檔只帶 distanceStatusChanged 的列；其餘不帶，後端保留既有值並套用「改了距離輸入就退回」（W7b） */
   distanceStatus?: 'confirmed' | 'manual' | 'not_applicable' | null
+  /** 使用者在畫面上改了距離狀態（W8）；只有這些列存檔時才帶 distance_status，其餘讓後端保留 */
+  distanceStatusChanged?: boolean
 }
 
 interface WiState {
@@ -54,7 +56,8 @@ interface WiState {
   /** 從後端讀回整份工時表（不算本地修改） */
   loadRows: (rows: Row[]) => void
   /** 讀回或存檔成功後：表與 level 都視為已存（記下 level 快照） */
-  markClean: () => void
+  /** distanceSent：這次存檔送出的距離狀態列；只清這些列的旗標（存檔進行中又改的列保留）。省略＝全部清（讀回時） */
+  markClean: (distanceSent?: ReadonlySet<string>) => void
   /** 表或 level 有沒有尚未存檔的修改 */
   hasUnsaved: () => boolean
   updateRows: (patch: (r: Row) => Row) => void
@@ -72,7 +75,14 @@ export const useWiStore = create<WiState>((set, get) => ({
   delRow: (id) => set((s) => ({ rows: s.rows.filter((x) => x.id !== id), dirty: true })),
   setRows: (rows) => set({ rows, dirty: true }),
   loadRows: (rows) => set({ rows, dirty: false }),
-  markClean: () => set({ dirty: false, levelBaseline: levelSnapshot() }),
+  markClean: (distanceSent) => set((s) => {
+    const clear = (r: Row) => r.distanceStatusChanged && (!distanceSent || distanceSent.has(r.id))
+    const left = s.rows.some((r) => r.distanceStatusChanged && !clear(r))
+    return {
+      dirty: left ? s.dirty : false, levelBaseline: levelSnapshot(),
+      rows: s.rows.some(clear) ? s.rows.map((r) => (clear(r) ? { ...r, distanceStatusChanged: false } : r)) : s.rows,
+    }
+  }),
   hasUnsaved: () => {
     const s = get()
     return s.dirty || (s.levelBaseline !== null && s.levelBaseline !== levelSnapshot())
