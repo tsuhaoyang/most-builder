@@ -200,6 +200,12 @@ Suggest(ai_service) → Map(mapper) → Validate(link/compile/engine_gate/routin
 
   每項結果都顯示套用依據（例「Excel 數量 2 → motion 2，依據：規則 1」），IE 可改。
 
+  > **2026-11-24，W3b，依審查建議，Howard 授權（D6 數量落地，ADR-038 W3b）**：
+  > - 落在草稿層 `apply_excel_quantity`：預填草稿的 `frequency`，`parse_snapshot.quantity` 記 `excel`（Excel 值）、`rule`（1–4）、`applied`、`reason`；草稿仍為 pending，畫面顯示依據，IE 可改。出處記在 `parse_snapshot`，不用 `quantity_source` 欄。
+  > - 規則判斷順序與細節：規則 3（同物件且同動作類型的 motion 剛好 N 個）排在規則 1 之前，否則展開成 N 個 motion 後再各乘 N 會變 N²。規則 1 的被修飾物件＝數量詞後 4 字內、遇標點停；「次」與「x N」是重複次數，不綁物件，走規則 4。句中有 `extract_counts` 認不得的「數字＋量詞」（例「三支」「12 pcs」）走規則 4。Excel＝1 但句中數字不是 1 走規則 4。Excel 非正整數或 > 10000 走規則 4。
+  > - **決定：持工具時暫不走 `repeat_count`（QuantityPolicyV2），一律預填 `frequency`**。TMU 中性；LB 投影的形狀差異（`repeat_count` 與 `frequency`）留待後續。上方「持工具→`repeat_count`」的路徑在草稿層暫未啟用。
+  > - 與 `import_service.submit` 對無效數量的處理不同：submit 把 ≤0 設 1、接受 2.5；草稿層一律標規則 4 交 IE。W5 讓整份上傳改走編輯區後，兩者自然統一。
+
 ### D7 RBAC、服務間認證與資料外送
 
 **角色**（以程式為準：`viewer < analyst < approver < admin`，`auth/deps.py`）
@@ -237,6 +243,8 @@ Suggest(ai_service) → Map(mapper) → Validate(link/compile/engine_gate/routin
 
 **背景 worker 與稽核**
 - worker 每次出站前從 DB 重新檢查提交者仍 active 且角色 ≥ analyst，否則該 job 標 cancelled 並記稽核。job 記 acting user id，不快取角色。
+  > **2026-11-24，W3b，依審查建議，Howard 授權（D7 批次執行時降權，ADR-038 W3b）**：實作為執行時降級。`tick_job` 判斷是否外送＝整合可用，且 job 建立者目前仍是 active、角色 ≥ analyst；建立者被降權（或停用）後，該 job 剩餘列以 `rule_based` 完成，不外送。建立 job 時角色不足仍是 403。只送 `description`，Excel 手別只用於 MOST 端比對（不外送）。降級原因記在 `item.last_error.ai`（維運類原因不帶 code）。
+  > 外部路徑一次只認領一列，所以每列都重新判斷；日後若改成一次認領多列，必須改為逐列判斷。
 - 每次外送由 MOST 產生 request id 並隨請求送出，與 ai_service 回傳的 `run_id` 一併記錄，供兩邊對帳。
 - **（最終型態；v1 過渡做法見下方「外送稽核的 v1 過渡做法」，2026-11-22 追記）** 稽核事件 append-only（無刪改 API，資料庫角色不授予 UPDATE／DELETE），actor 一律取自 `CurrentUser`：外送（誰、何時、bundle、筆數、request id、`run_id`，不記原文）、
   accept、commit、重設、整合啟用／停用、金鑰輪替。
@@ -259,6 +267,10 @@ Suggest(ai_service) → Map(mapper) → Validate(link/compile/engine_gate/routin
 - 單句用 ai_service 的 `lane=interactive`，批量用 `lane=batch`，兩者各有並行上限，批量不得卡住單句。
 - 呼叫 ai_service 期間不占用 DB session／連線。外部路徑（2026-11-22 追記，Howard 核可）在呼叫前 `session.commit()` 以釋放連線；呼叫端須無未提交寫入（起始時檢查，有就 `RuntimeError`）。已 flush 但未提交的寫入無法偵測，靠呼叫端遵守。
 - **持久快取鍵（2026-11-22 追記，Howard 核可）**：外部路徑的 `ai_parse_runs` 快取鍵由佔位 bundle、設定的 ai_service bundle code、`known_hand`、worksheet revision、正規化語句、context、rule-set 組成。命中時不呼叫 ai_service、不扣額度。呼叫後回應的 `bundle_code` 須與設定一致，不一致即降級。下方 single-flight 的在途請求合併語意不變。
+  > **2026-11-24，W3b，依審查建議，Howard 授權（D8 快取鍵與批次額度，ADR-038 W3b）**：
+  > - 快取鍵加入 `source_kind`：單句（`interactive`）與整份上傳（`import_row`）不共用快取。
+  > - 已知限制：批次與單句共用建立者的每分鐘額度（30）與全站每日額度；額度用完的列降級為 `rule_based`，不自動重試。guard 的額度是行程內記憶體，API 與 worker 行程各自計算。取消只在每列開頭檢查（外部呼叫中的那一列會做完）。
+  > - 整份上傳走路徑 A（`lane=batch`，逐句呼叫）。路徑 B（flow，批次端點）延後，需求見 [實作計畫](../roadmap/ai-service-integration-plan.md) 「路徑 B（延後）」。
 - 相同請求的併發合併為一次（single-flight）。語意（2026-11-20 追記，Howard 核可；實作 `ai_integration/guard.py`）：
   - key＝(bundle、scope、語言、lane、sha256(allow-list、context、語句))。這**不是** `ai_parse_runs.input_hash`；持久快取仍歸 S3 的 `ai_parse_runs`。
   - 只合併在途請求，完成後不快取。

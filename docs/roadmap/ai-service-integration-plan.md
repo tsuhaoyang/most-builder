@@ -18,6 +18,8 @@
 
 **2026-11-24，W3，依審查建議，Howard 授權（W3 進度）**：上段 W3 待辦（engine_gate 檢查、stale 條件）已在 W3 實作，單句與整份上傳寫進編輯區；批次外部 AI（S5 的 batch lane）與 Excel 數量權威拆到 W3b。狀態與驗收見 [adr-038-delivery-plan.md](adr-038-delivery-plan.md)。
 
+**2026-11-24，W3b，依審查建議，Howard 授權（S5 狀態）**：批次外部 AI 已由 ADR-038 W3b 以**路徑 A**實作（整份上傳的 parse job 逐句走 `lane=batch`，不做路徑 B／flow），Excel 數量權威（ADR-037 D6）同在 W3b 落地。理由：重用 guard、mapper、plan adapter、快取與 `ai_parse_runs`；MOST 的 interactive 1＋batch 1，對 ai_service 並行 2，429 很少。路徑 B 延後，需求見下方〈路徑 B（延後）〉。其餘 S5 待辦（`ai_adoptions`、column_map stale、formula injection 轉義等）依 ADR-038 重新規劃，不在 W3b。狀態與驗收見 [adr-038-delivery-plan.md](adr-038-delivery-plan.md)。
+
 > 來源：MOST 與 ai_service 兩邊的唯讀盤點、架構規劃，以及兩輪審查（架構、資安、code、nlp-compiler、wi-workbench、excel-import、auth-rbac）。
 > 本文件中「ADR-033 P3」指 ADR-033 遷移路徑的第 3 階段；本計畫自己的階段寫作 S0–S5，避免撞名。
 
@@ -219,6 +221,18 @@ DB 欄位不動；寫入端不再產生 `kind='llm'`，但**舊 `kind='llm'` 列
 3. 所有 AI 預覽 draft 的 `complete=True`（40／40）：寫進編輯區後 `parse_snapshot.complete` 為 True，人按確認即可寫入（ADR-038 D3 W3 追記的決定；寫入時引擎重算把關）。
 4. 429 在互動路徑上實際等於降級：`Retry-After` 約 42–46 s，加上一次呼叫約 22 s，超過 60 s 總時限，所以不會重試。
 5. 冷啟動：閒置後第一次呼叫可能超過 60 s（本次 1 次）。
+
+### 路徑 B（延後）（2026-11-24，W3b，依審查建議，Howard 授權）
+
+整份上傳改走 ai_service 的批次端點（flow）時的需求清單。W3b 不做；做之前需 ai_service 先滿足或確認：
+
+- 提交為 202，MOST 以 3–5 秒輪詢取結果。
+- 需要 `idempotency_key`，重送不重複計費、不重複產生結果。
+- 每批 ≤ 100 句。
+- job 失敗時沒有原因欄位：MOST 看不出是整批失敗還是哪一句失敗，降級原因只能自己猜。
+- context 白名單（ADR-037 D7：只送 WI 語句與白名單 context）要在批次端點同樣成立。
+- 404／409 要能分類（bundle 不存在、job 狀態衝突），對應 MOST 的降級與重試規則。
+- 總等待時間約為句數 × 35 秒（依真實量測的單句延遲）；lease、取消與逾時設計要以此為準。
 
 ## 5. S4：審核佇列、逐項審核、最小編輯
 

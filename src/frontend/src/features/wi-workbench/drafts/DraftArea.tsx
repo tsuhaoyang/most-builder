@@ -11,7 +11,7 @@ import {
   useCommitDrafts, useConfirmDrafts, useDeleteDraft, useDrafts, type WiDraft,
 } from './api'
 import {
-  countDrafts, draftAsRow, groupDrafts, parseIssues, parsedIncomplete, wiGroupTruncated,
+  countDrafts, draftAsRow, groupDrafts, parseIssues, parsedIncomplete, quantityNote, wiGroupTruncated,
 } from './logic'
 
 /** 409 回應指到的草稿 id（DRAFT_INCOMPLETE 的 draft_ids、DRAFT_STALE 的 drafts[].draft_id）。 */
@@ -152,6 +152,7 @@ export function DraftArea({
           <ul className="divide-y">
             {g.drafts.map(d => {
               const issues = parseIssues(d)
+              const qty = quantityNote(d)
               return (
                 <li key={d.id} data-testid="draft-row" data-status={d.status} data-source={d.source}
                   data-flagged={flagged.has(d.id) ? 'true' : undefined}
@@ -178,7 +179,7 @@ export function DraftArea({
                       </>
                     )}
                   </div>
-                  {(parsedIncomplete(d) || d.stale_reason || wiGroupTruncated(d) || issues.length > 0) && (
+                  {(parsedIncomplete(d) || d.stale_reason || wiGroupTruncated(d) || issues.length > 0 || qty) && (
                     <div className="mt-1 space-y-0.5 text-xs">
                       {d.stale_reason && (
                         <div className="text-amber-700" data-testid="draft-stale">
@@ -187,6 +188,17 @@ export function DraftArea({
                       )}
                       {parsedIncomplete(d) && <div className="text-red-600" data-testid="draft-incomplete">{t('workbench.drafts.incomplete')}</div>}
                       {wiGroupTruncated(d) && <div className="text-slate-500">{t('workbench.drafts.wiGroupTruncated')}</div>}
+                      {qty && (
+                        <div className={qty.applied ? 'text-sky-700' : 'text-amber-700'} data-testid="draft-quantity">
+                          {qty.applied
+                            ? t('workbench.drafts.quantity.applied', { n: String(qty.excel), rule: qty.rule })
+                            : t('workbench.drafts.quantity.notApplied', {
+                              n: String(qty.excel), rule: qty.rule,
+                              reason: i18n.exists(`workbench.drafts.quantity.reason.${qty.reason}`)
+                                ? t(`workbench.drafts.quantity.reason.${qty.reason}`) : (qty.reason ?? ''),
+                            })}
+                        </div>
+                      )}
                       {issues.length > 0 && (
                         <div className="text-slate-500" data-testid="draft-issues">
                           {t('workbench.drafts.issues', { list: issues.join(', ') })}

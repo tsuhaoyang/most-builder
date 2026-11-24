@@ -7,6 +7,7 @@ POST   /api/v2/imports/{import_id}/parse-jobs/{job_id}/cancel
 """
 from __future__ import annotations
 
+import uuid
 from uuid import UUID
 
 from fastapi import APIRouter, Depends
@@ -123,7 +124,8 @@ async def tick_parse_job(
             import_id=import_id,
             job_id=job_id,
             limit=body.limit,
-            worker_id=body.worker_id or f"api:{actor.employee_no}",
+            # 每次 tick 一個獨立的 lease owner：同一人同時 tick 兩次，也分得出誰持有哪一列（W3b 逐列交易）
+            worker_id=body.worker_id or f"api:{actor.employee_no}:{uuid.uuid4().hex[:8]}",
         )
     except svc.JobNotFound:
         raise NotFoundError(

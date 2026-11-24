@@ -239,6 +239,20 @@ const en: Widen<typeof zhTW> = {
       noNarr: '(No description)',
       incomplete: 'Parsed incompletely: press "Edit", fill in the slots, then confirm.',
       wiGroupTruncated: 'The job name was longer than 200 characters and was cut.',
+      quantity: {
+        applied: 'Excel quantity {{n}}: prefilled (rule {{rule}}). Please check.',
+        notApplied: 'Excel quantity {{n}}: not prefilled (rule {{rule}}, {{reason}}). An IE needs to set it.',
+        reason: {
+          not_the_counted_object: 'the quantity refers to another object',
+          other_motion_not_applied: 'applied only to process and place motions',
+          ai_expanded: 'AI already expanded it into several motions on the same object; keep them or merge them',
+          sentence_quantity_differs: 'the number in the sentence differs from Excel',
+          quantity_target_unclear: 'it is unclear which object the quantity refers to',
+          no_process_or_move_place: 'there is no process or place motion to apply it to',
+          excel_quantity_invalid: 'the Excel quantity is not a positive whole number',
+          no_motion: 'no motion was parsed',
+        },
+      },
       issues: 'Parser notes: {{list}}',
       stale: {
         rule_set_changed: 'The worksheet\'s rule set changed, so this draft went back to pending. Check it and confirm again.',
