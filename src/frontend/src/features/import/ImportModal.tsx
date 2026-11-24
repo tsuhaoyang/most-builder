@@ -3,7 +3,7 @@ import { Trans, useTranslation } from 'react-i18next'
 import { resolveErrorMessage } from '../../shared/i18n/errorMessage'
 import type { TFunction } from 'i18next'
 import { useQueryClient } from '@tanstack/react-query'
-import { useUploadImport, useMapColumns, useCreateProfile, useSubmitImport, type UploadOut, type PreviewOut, type PreviewRow, type ProfileOut, type SubmitOut, type MatchOption, type RowMatch } from './api'
+import { useUploadImport, useMapColumns, useCreateProfile, useSubmitImport, useCreateParseJob, type UploadOut, type PreviewOut, type PreviewRow, type ProfileOut, type SubmitOut, type MatchOption, type RowMatch } from './api'
 import { useWorkspace } from '../../shared/workspace'
 import { useWiStore } from '../wi-workbench/store'
 import { ApiError } from '../../shared/api/client'
@@ -26,10 +26,23 @@ const txt = (v: unknown) => (v === null || v === undefined ? '' : String(v))
 
 const STEP_KEYS = ['upload', 'map', 'preview', 'done'] as const
 
-export function ImportModal({ onClose }: { onClose: () => void }) {
+/**
+ * `drafts`（ADR-038 W5）：從工作區開啟。上傳時綁定工時表，欄位對應後建 parse job；每列解析完寫進編輯區，
+ * 確認後才寫入工時表。沒有範本採用面板（解析器本身會參考範本）。
+ * `submit`（舊流程）：範本採用後直接寫進工時表。
+ */
+export function ImportModal({ onClose, mode = 'submit', worksheetId, ruleSetCode, onJobCreated }: {
+  onClose: () => void
+  mode?: 'submit' | 'drafts'
+  worksheetId?: string
+  ruleSetCode?: string
+  onJobCreated?: (job: { importId: string; jobId: string; total: number }) => void
+}) {
   const { t } = useTranslation()
   const qc = useQueryClient()
-  const upload = useUploadImport()
+  const drafts = mode === 'drafts'
+  const upload = useUploadImport(drafts ? worksheetId : null)
+  const createJob = useCreateParseJob()
   const mapCols = useMapColumns()
   const createProfile = useCreateProfile()
   const submit = useSubmitImport()
@@ -119,6 +132,19 @@ export function ImportModal({ onClose }: { onClose: () => void }) {
     })
     setAdopted(next)
   }
+  function startParse() {
+    if (!up || !preview || !ruleSetCode) return
+    setMsg('')
+    createJob.mutate(
+      // idempotency：同一次上傳只建一個 job（重按不重複解析）
+      { importId: up.import_id, body: { rule_set_code: ruleSetCode, idempotency_key: `workspace:${up.import_id}` } },
+      {
+        onSuccess: (job) => { onJobCreated?.({ importId: up.import_id, jobId: job.id, total: job.total }); onClose() },
+        onError: fail,
+      },
+    )
+  }
+
   function doSubmit() {
     if (!up || !preview) return
     const wsId = activeWs
@@ -247,7 +273,24 @@ export function ImportModal({ onClose }: { onClose: () => void }) {
             </>
           )}
 
-          {step === 'preview' && preview && (
+          {step === 'preview' && preview && drafts && (
+            <div className="space-y-3 text-sm" data-testid="import-drafts-confirm">
+              <Trans i18nKey="importWizard.normalized" values={{ count: preview.n }} components={{ n: <b /> }} />
+              <p className="text-slate-600">{t('importWizard.draftsHint')}</p>
+              <div className="flex items-center gap-2">
+                <button type="button" data-testid="import-start-parse"
+                  disabled={createJob.isPending || !up || !ruleSetCode}
+                  onClick={startParse}
+                  className="px-4 py-2 bg-sky-600 text-white rounded-lg disabled:opacity-50">
+                  {createJob.isPending ? t('importWizard.submitting') : t('importWizard.startParse', { count: preview.n })}
+                </button>
+                <button onClick={() => setPreview(null)} className="px-3 py-1.5 border rounded">{t('importWizard.backToMap')}</button>
+                <span className="text-xs text-red-600">{msg}</span>
+              </div>
+            </div>
+          )}
+
+          {step === 'preview' && preview && !drafts && (
             <>
               <div className="text-sm">
                 <Trans i18nKey="importWizard.normalized" values={{ count: preview.n }} components={{ n: <b /> }} />

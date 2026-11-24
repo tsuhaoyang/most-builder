@@ -2,6 +2,7 @@
 
 **狀態：** accepted（2026-07-22，User 核可信任邊界）
 **日期：** 2026-07-22
+> **2026-11-24，W5，依審查建議，Howard 授權（狀態註記）**：ADR-038 W5 的工作區整份上傳（解析結果進編輯區）**沒有**本 ADR 的範本採用面板；標頭「匯入 Excel」的舊流程（範本採用＋直接寫工時表）仍在，其去留待 Howard 裁決（見 ADR-038 D3 W5 追記）。本 ADR 決策內容不變。
 **關聯：** [ADR-024](ADR-024-master-data-vs-dictionary-boundary.md)（範本庫定位）、
 [ADR-023](ADR-023-dictionary-governance-unification.md)（§3.4 回放鐵則、§3.5 讀 active）、
 [ADR-014](ADR-014-v3-dictionary-as-value-authority.md)（值權威）、

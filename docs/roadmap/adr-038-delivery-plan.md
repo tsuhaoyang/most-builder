@@ -7,7 +7,7 @@
 
 ## 狀態
 
-🔄 執行中。W1（PR #16）、W2（PR #19）、W3（PR #20）已合併；W7a 已合併（PR #21）；W7b 已合併（PR #22）；W4 實作完成、PR 開立中（`feat/w4-workspace-ui`，2026-11-24，W4，依審查建議，Howard 授權）；W3b 實作完成、PR 開立中（`feat/w3b-batch-ai`，2026-11-24，W3b，依審查建議，Howard 授權）。W7 拆為 W7a／W7b（2026-11-24，W7a，依審查建議，Howard 授權）。與 ADR-038 衝突時以 ADR-038 為準。
+🔄 執行中。W1（PR #16）、W2（PR #19）、W3（PR #20）已合併；W7a 已合併（PR #21）；W7b 已合併（PR #22）；W4 實作完成、PR 開立中（`feat/w4-workspace-ui`，2026-11-24，W4，依審查建議，Howard 授權）；W3b 已合併（PR #27）；W5 實作完成、PR 開立中（`feat/w5-import-into-workspace`，2026-11-24，W5，依審查建議，Howard 授權）。**待 Howard 裁決：標頭「匯入 Excel」按鈕**（見〈決策紀錄〉）。W7 拆為 W7a／W7b（2026-11-24，W7a，依審查建議，Howard 授權）。與 ADR-038 衝突時以 ADR-038 為準。
 
 ## 工作方式（Howard 2026-11-23）
 
@@ -131,6 +131,16 @@
 5. 成功的 item 可能帶 `last_error.drafts`（原因：`rule_set_mismatch`、`NotEditable`、`WorksheetNotFound`、`TooManyDrafts`、`already_reviewed`），前端不得當失敗顯示。
 6. 建 job 時先驗證目標工時表（存在、draft、編輯區有空位）。
 
+**W5 完成對應**（2026-11-24，W5，依審查建議，Howard 授權；後端加 2 個端點，無 migration）：
+- 第 1 項 ✅：`drafts/UploadInput.tsx`＋`ImportModal` 的 `drafts` 模式：上傳綁工時表→欄位對應→建 job→每 3 秒輪詢、每處理一列重讀編輯區。進行中的 job id 記在 `sessionStorage`，job 不存在時自動清除。
+- 第 2 項 ✅：`GET /imports/{id}/parse-jobs/{job_id}/items` 列出每列結果，畫面標示沒產生草稿的列。
+- 第 3 項 ✅：`workspace-drafts.spec.ts` 加上傳流程（mock API）。
+- 第 4 項 ✅：超長、解析失敗、寫不進去的列列出，「建空白草稿」＝`POST /worksheets/{id}/drafts/blank-from-import`（`complete=false`，補齊前 `DRAFT_INCOMPLETE`）。
+- 第 5 項 ✅：`last_error.drafts` 不當失敗顯示，原因列出。
+- 第 6 項 ✅：建 job 前驗證：工時表不存在 404、不可編輯 409、編輯區滿 422、規則版本不同 409（`field=rule_set_code`）。
+- 未完成：標頭「匯入 Excel」按鈕維持舊流程（ADR-025 範本採用＋直接寫工時表），仍繞過編輯區與距離檢查開關；待 Howard 裁決 A／B／C。
+- 已知限制：`has_drafts` 是「現在還有草稿」，刪掉草稿後該列會再列出；items 無分頁；`drafts` 模式的 `/map` 仍算範本比對但不顯示。
+
 ### W8：區域與距離畫面（前端）
 1. SKU 的區域設定（類別、名稱、從 DSX 下拉選物件）與「從 DSX 同步座標」（顯示目標 SKU 與 DSX 版本）。
 2. 「本份 WI 用到的物件」清單逐一歸區；按「算距離」後各列出現建議值與來源，可逐列或整組確認。
@@ -202,3 +212,9 @@
 | 2026-11-24 | W4 | W4～W5 間整份上傳（審查） | 仍直接寫工時表、不經編輯區、不開距離檢查開關；入口文案明講並先確認。W5 改進編輯區 |
 | 2026-11-24 | W4 | 編輯草稿不改格位（審查） | 原封保留草稿 cycle，不重新產生；避免改動 AI 內容形狀，也避免繞過後端 `DRAFT_INCOMPLETE` 的「沒人補過」判斷 |
 | 2026-11-24 | W4 | 已知限制（審查，接受） | 即時試算用 active 規則版本、寫入以工時表規則版本重算；PATCH 無版本欄後者覆蓋；`DRAFT_INCOMPLETE` 乾算以編輯器試算代替；parse issues 顯示原始代碼。e2e 並行順序依賴為既有問題，以 `workers=1` 驗證 |
+| 2026-11-24 | W3b | W3b 合併 | PR #27 已合併 |
+| 2026-11-24 | W5 | 工作區上傳沒有範本採用面板（審查） | 不做。解析器本身仍參考範本；範本採用留在舊流程，去留見下列「標頭匯入按鈕」 |
+| 2026-11-24 | W5 | 建 job 前驗目標工時表（審查） | 不存在 404、不可編輯 409、編輯區滿 422、規則版本不同 409；理由：不讓整批跑完才發現寫不進去。建立後才變的仍走 `last_error.drafts` |
+| 2026-11-24 | W5 | 沒產生草稿的列（審查） | 新增 items 端點與 `blank-from-import`；空白草稿 `complete=false`，補齊前 `DRAFT_INCOMPLETE`，納入過期判斷。理由：W3 已定「超長與失敗列畫面必須列出並可建空白草稿」 |
+| 2026-11-24 | W5 | **標頭「匯入 Excel」按鈕：待 Howard 裁決** | 審查建議 **A**：標頭按鈕改導到工作區上傳、舊流程從畫面移除、範本採用搬進工作區另開票。**B** 先把範本採用搬進工作區；**C** 維持到 W6。裁決前這條路仍繞過編輯區與距離檢查開關（ADR-038 D6） |
+| 2026-11-24 | W5 | 已知限制（審查，接受） | `has_drafts` 是「現在還有草稿」；items 無分頁（受匯入列數上限）；`drafts` 模式 `/map` 仍算範本比對但不顯示 |

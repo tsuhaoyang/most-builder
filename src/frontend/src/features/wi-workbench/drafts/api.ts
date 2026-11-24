@@ -48,6 +48,10 @@ export const useCommitDrafts = (wsId: string) =>
   useDraftMutation(wsId, (baseRevision: number) =>
     apiPost<WiDraftCommitOut>(`/api/v2/worksheets/${wsId}/drafts/commit`, { base_revision: baseRevision }))
 
+export const useBlankFromImport = (wsId: string) =>
+  useDraftMutation(wsId, (importRowIds: string[]) =>
+    apiPost<WiDraftList>(`/api/v2/worksheets/${wsId}/drafts/blank-from-import`, { import_row_ids: importRowIds }))
+
 export const useFromSentence = (wsId: string) =>
   useDraftMutation(wsId, (body: { text: string; hand?: string | null; wi_group?: string | null }) =>
     apiPost<FromSentenceOut>(`/api/v2/worksheets/${wsId}/drafts/from-sentence`, body))

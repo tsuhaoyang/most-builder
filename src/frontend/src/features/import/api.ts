@@ -1,5 +1,5 @@
-import { useMutation } from '@tanstack/react-query'
-import { apiPost, apiUpload } from '../../shared/api/client'
+import { useMutation, useQuery } from '@tanstack/react-query'
+import { apiGet, apiPost, apiUpload } from '../../shared/api/client'
 
 export interface SheetPreview { name: string; grid: unknown[][]; n_rows: number; n_cols: number }
 export interface ProfileOut {
@@ -35,8 +35,15 @@ export type PreviewRow = Record<string, unknown> & { match?: RowMatch | null }
 export interface PreviewOut { import_id: string; fields: string[]; rows: PreviewRow[]; n: number; warnings: string[] }
 export interface ProfileIn { name: string; sheet_hint?: string | null; header_row?: number | null; column_map: Record<string, number>; time_unit: string }
 
-export const useUploadImport = () =>
-  useMutation({ mutationFn: (file: File) => { const f = new FormData(); f.append('file', file); return apiUpload<UploadOut>('/api/v2/imports/upload', f) } })
+// worksheetId：ADR-038 W5 工作區上傳（綁工時表，解析結果寫進它的編輯區）；不帶＝舊的直接寫入流程
+export const useUploadImport = (worksheetId?: string | null) =>
+  useMutation({
+    mutationFn: (file: File) => {
+      const f = new FormData(); f.append('file', file)
+      const q = worksheetId ? `?worksheet_id=${encodeURIComponent(worksheetId)}` : ''
+      return apiUpload<UploadOut>(`/api/v2/imports/upload${q}`, f)
+    },
+  })
 
 export const useMapColumns = () =>
   useMutation({ mutationFn: ({ importId, body }: { importId: string; body: MapIn }) => apiPost<PreviewOut>(`/api/v2/imports/${importId}/map`, body) })
@@ -67,4 +74,37 @@ export const useSubmitImport = () =>
   useMutation({
     mutationFn: ({ importId, body }: { importId: string; body: SubmitIn }) =>
       apiPost<SubmitOut>(`/api/v2/imports/${importId}/submit`, body),
+  })
+
+// ── ADR-038 W5：工作區上傳＝parse job（每列解析完寫進編輯區）────────────────────
+export interface ParseJob {
+  id: string; import_id: string; status: string
+  total: number; processed: number; succeeded: number; review: number; failed: number
+}
+export interface ParseJobItem {
+  item_id: string; import_row_id: string; source_row_no: number; description: string
+  status: string; has_drafts: boolean; reason: string | null; ai_error_kind: string | null
+}
+export const TERMINAL_JOB = new Set(['completed', 'partial', 'failed', 'cancelled'])
+
+export const useCreateParseJob = () =>
+  useMutation({
+    mutationFn: ({ importId, body }: { importId: string; body: { rule_set_code: string; idempotency_key?: string } }) =>
+      apiPost<ParseJob>(`/api/v2/imports/${importId}/parse-jobs`, body),
+  })
+
+/** 進度：每 3 秒輪詢，到終態就停（後端 worker 自己推進，不需要前端 tick）。 */
+export const useParseJob = (importId: string | null, jobId: string | null) =>
+  useQuery({
+    queryKey: ['parse-job', importId, jobId],
+    queryFn: () => apiGet<ParseJob>(`/api/v2/imports/${importId}/parse-jobs/${jobId}`),
+    enabled: !!importId && !!jobId,
+    refetchInterval: q => (q.state.data && TERMINAL_JOB.has(q.state.data.status) ? false : 3000),
+  })
+
+export const useParseJobItems = (importId: string | null, jobId: string | null, version: number) =>
+  useQuery({
+    queryKey: ['parse-job-items', importId, jobId, version],
+    queryFn: () => apiGet<{ job_id: string; items: ParseJobItem[] }>(`/api/v2/imports/${importId}/parse-jobs/${jobId}/items`),
+    enabled: !!importId && !!jobId,
   })

@@ -212,7 +212,8 @@ domains:
       - 編輯草稿（載入編輯器→「更新草稿」→PATCH）時，沒改格位就原封保留草稿的 cycle，不得重新產生；改了格位才整個換成編輯器產出並清空敘述（否則「打開再存」會改動 AI 內容形狀，並繞過後端以 `cycle_hash` 判斷的 `DRAFT_INCOMPLETE`）（ADR-038 D3，2026-11-24 W4）
       - 寫入工時表前，表上（含 level、LB 標記）有未存檔修改就擋；寫入帶 `base_revision`，409 版本衝突時草稿維持 `confirmed`、重新載入；整份存檔不帶 `distance_status`（ADR-038 D3，2026-11-24 W4）
       - 工時表既有列仍可在表上直接改、排序、刪除後整份存檔；編輯區只管新產生的內容（ADR-038 D3，2026-11-24 W4）
-      - 整份上傳在 W5 前仍直接寫工時表、不經編輯區、不開距離檢查開關；入口文案須明講並先確認，W5 改為進編輯區（ADR-038 D3，2026-11-24 W4）
+      - 整份上傳：工作區上傳（`UploadInput`）進編輯區，不直接寫工時表；標頭「匯入 Excel」按鈕的舊流程（ADR-025 範本採用＋直接寫工時表）仍直接寫、繞過編輯區與距離檢查開關，**待 Howard 裁決**（A 改導工作區並移除舊流程／B 先搬範本採用／C 維持到 W6；ADR-038 D3 W5 追記，2026-11-24 W5）
+      - 沒有產生草稿的 Excel 列（超長、解析失敗、寫不進去）可建空白草稿（`drafts/blank-from-import`）：只接受綁這份工時表的匯入列、已有草稿的列跳過、`source=imported` 帶 `import_row_id`、`parse_snapshot.complete=false`（補齊格位前 `DRAFT_INCOMPLETE`）、納入過期判斷；建 job 前先驗目標工時表（404／409／422，規則版本不同 409 `field=rule_set_code`）（ADR-038 D3，2026-11-24 W5）
       - 整份存檔（save_worksheet）不得抹除既有列（沿用 id）的 provenance／source_import_id／source_module_*；新 id 才是 manual（ADR-037 D5，2026-11-23 W1）
       - 編輯區草稿不得出現在工時表讀取、匯出、LB 投影或核准流程（ADR-038 I2）
       - 距離完成檢查以每列明確的 `distance_status` 判斷，不看距離數值（A0 是合法值）；`distance_check_required` 只在 `drafts/commit` 打開、之後不關，未開啟的既有工時表不檢查（ADR-038 D6，2026-11-23 W2）。`distance_status` 不入 content_hash
@@ -456,6 +457,7 @@ domains:
       - 批量 AI 只送 description（Excel 手別只用於 MOST 端比對）；Excel 數量為權威，歸屬依 ADR-037 D6 四條規則預填到草稿 `frequency`（持工具時暫不走 `repeat_count`；依據記在 `parse_snapshot.quantity`），草稿仍 pending、逐項審核（ADR-037 D6、ADR-038 W3b，2026-11-24）
       - parse job 的 `tick_job` 是逐列交易：認領後 commit，每列各自 commit，計數逐列原子遞增；外部 AI 呼叫期間不持有 job 列鎖或工時表列鎖；AI 回來後須鎖 item 並確認仍是本 worker 的才寫回（ADR-038 W3b，2026-11-24）
       - 匯入綁了 `worksheet_id` 時，parse job 每列解析後寫進該工時表的編輯區（savepoint），不直接寫工時表；手別與作業名稱取 Excel 欄；job 規則版本與工時表不同、工時表不可寫、編輯區滿 → 不寫，原因記在 `item.last_error.drafts`；重新解析同一列只取代沒人動過的 pending 草稿（ADR-038 D3，2026-11-24 W3）。既有 submit 保留
+      - 工作區上傳：`upload?worksheet_id` 綁工時表、建 job 的 `idempotency_key=workspace:<import_id>`、規則版本用工時表的；工作區沒有範本採用面板；標頭匯入按鈕的舊 submit 流程仍直接寫工時表（待裁決）。`GET /imports/{id}/parse-jobs/{job_id}/items` 與 `drafts/blank-from-import` 為 analyst；空白草稿規則見 wi-workbench（ADR-038 D3，2026-11-24 W5）
 
   - id: auth-rbac
     title: 認證與 RBAC（角色階層、稽核、搜尋）

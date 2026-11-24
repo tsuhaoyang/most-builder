@@ -72,6 +72,7 @@ ADR-031 §1.1 量過：正式 gold 的 35 條 cycle，A 格全是 `A0`；距離�
 - 情境 2 就是只有一組的情境 3：**單句與整份走同一套審核畫面**（ADR-037 D4「單一管線」）。
 - 手動建的列也進同一個編輯區（來源 `manual`），不需要另外的審核步驟，但一樣經「寫入工時表」才落盤。
   - > **2026-11-24，W4，依審查建議，Howard 授權（W4 追記）**：澄清「不需要另外的審核步驟」。手動列進編輯區後仍要先「確認」才能寫入工時表，與 AI、匯入的草稿一致；這個「確認」就是使用者自己的那一個點擊，沒有另外的審核者，也沒有第二道審核畫面。前端「加入」按鈕改為「加入編輯區」（`POST /worksheets/{id}/drafts`），不再直接加進工時表列。
+  - > **2026-11-24，W5，依審查建議，Howard 授權（W5 追記）**：整份上傳進編輯區後，「沒有產生草稿」的 Excel 列（超長、解析失敗、草稿寫不進去）可由使用者按「建空白草稿」補建：後端 `POST /api/v2/worksheets/{id}/drafts/blank-from-import` 建 `source=imported`、帶 `import_row_id` 的列，手別與作業名稱取 Excel 欄、`narrative` 取描述前 2000 字、cycle 是佔位。仍是一般草稿：要補齊格位並確認，才能寫入。
 
 ### D3 確認是標記；「寫入工時表」才一次落盤
 
@@ -104,6 +105,13 @@ ADR-031 §1.1 量過：正式 gold 的 35 條 cycle，A 格全是 `A0`；距離�
   > - **學習迴圈暫停**：工作區不再送 `nl-draft` 的 review 事件（原 `AiDraftPanel` 採用時送）。後續由後端在 `commit_drafts` 以 `ai_parse_run_id` 與最終 content 產生 review 事件，前端不補送；追蹤見 BL-ENG-20（docs/BACKLOG.md）。
   > - **已知限制**：(1) 編輯草稿時的即時試算用目前 active 的規則版本，寫入時以工時表的規則版本重算，兩者不同時試算可能不準；(2) `PATCH` 沒有版本欄，兩人同時改同一列草稿，後者覆蓋（共用編輯區已接受，見 W1 追記）；(3) `DRAFT_INCOMPLETE` 原本要求「確認前先乾算引擎」，前端以編輯器的即時試算代替；(4) 解析 issues 以原始代碼顯示（診斷資訊，未翻成文案）。
   > - **驗證**：`src/frontend/e2e/workspace-drafts.spec.ts`（9 個，mock API）。e2e 全套在並行時有既有的順序依賴（共用 DB），`workers=1` 時 204 passed、13 skipped。
+- > **2026-11-24，W5，依審查建議，Howard 授權（W5 追記）**：W5（工作區整份上傳進編輯區，純前端加兩個後端端點，無 migration）實作結果。取代 W4 追記「整份上傳入口」中「W5 改成進編輯區」的過渡說明；原文保留。
+  > - **工作區上傳流程**：上傳時綁工時表（`upload?worksheet_id`）→ 欄位對應 → 建 parse job（規則版本取工時表的，`idempotency_key=workspace:<import_id>`，同一次上傳只建一個）→ 每 3 秒輪詢進度（解析由後端 worker 推進）、每處理一列重讀編輯區 → 結束後列出「沒產生草稿」的列，可建空白草稿。進行中的 job 只把 id 記在 `sessionStorage`，job 不存在（404）時自動清除。工作區上傳**沒有** ADR-025 的範本採用面板（解析器本身仍會參考範本）。
+  > - **建 job 先驗目標工時表**：匯入綁了工時表時，`POST /imports/{id}/parse-jobs` 先驗：工時表不存在 404、不可編輯 409、編輯區滿 422、job 規則版本與工時表不同 409（`field=rule_set_code`，`detail.expected` 給工時表的版本）。建立之後狀態才變的，仍走 `item.last_error.drafts`（W3 追記）。
+  > - **新端點 `GET /api/v2/imports/{id}/parse-jobs/{job_id}/items`**（analyst）：逐列回 `source_row_no`、描述前 200 字、`status`、`has_drafts`、`reason`（`text_too_long`｜`parse_failed`｜`last_error.drafts` 的原因）、`ai_error_kind`。成功 item 帶 `last_error.drafts` 不當失敗顯示（W3 追記）。
+  > - **新端點 `POST /api/v2/worksheets/{id}/drafts/blank-from-import`**（analyst）：只接受綁這份工時表的匯入列（否則 404）；已有草稿的列跳過（重按不重複建）。草稿 `source=imported`、帶 `import_row_id`；`parse_snapshot.complete=false`，所以補齊格位前確認與寫入都回 409 `DRAFT_INCOMPLETE`；帶 `import_input_hash`，納入過期判斷（`import_row_changed`）。
+  > - **待 Howard 裁決：標頭的「匯入 Excel」按鈕**。W5 沒有動它，仍是舊流程（ADR-025 範本採用＋直接寫工時表），**這條路仍繞過編輯區與距離檢查開關（D6）**。選項：**A** 標頭按鈕改導到工作區上傳、舊流程從畫面移除，範本採用搬進工作區另開票（審查建議）；**B** 先把範本採用搬進工作區；**C** 維持到 W6。裁決前不得把本 ADR「整份上傳進編輯區」視為涵蓋所有匯入入口。
+  > - **已知限制**：(1) `has_drafts` 是「現在還有草稿」，使用者刪掉某列草稿後該列會再被列出（可再建空白草稿）；(2) items 端點沒有分頁，筆數受匯入列數上限約束；(3) `drafts` 模式的 `/map` 仍計算範本比對但不顯示。
 - **本 ADR 定義 ADR-037 D4 審核的落點**：ADR-037 規劃的「審核佇列」就是工作區的編輯區，不另做獨立頁面。
 - AI 草稿的處理（滿足 ADR-037 D3 澄清「預覽不是可接受依據」）：
   - AI 的格位代碼在編輯區是**候選**（`chosen` 為空），畫面上可直接看到預填的值，但列狀態為 `pending`。

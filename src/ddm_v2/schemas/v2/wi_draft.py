@@ -201,3 +201,11 @@ class WiDraftFromSentenceOut(BaseModel):
     group_key: str
     items: list[WiDraftOut]
     ai: WiDraftParseInfo
+
+
+class WiDraftBlankFromImportIn(BaseModel):
+    """沒有產生草稿的 Excel 列 → 空白草稿（ADR-038 W5）。"""
+
+    model_config = ConfigDict(extra="forbid")
+
+    import_row_ids: list[uuid.UUID] = Field(min_length=1, max_length=MAX_DRAFTS_PER_REQUEST)
