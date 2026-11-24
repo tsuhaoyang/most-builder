@@ -7,7 +7,7 @@
 
 ## 狀態
 
-🔄 執行中。W1（PR #16）、W2（PR #19）、W3（PR #20）已合併；W7a 已合併（PR #21）；W7b 已合併（PR #22）；W4 已合併（PR #23）；W3b 已合併（PR #27）；W5 已合併（PR #28）；標頭匯入按鈕依 Howard 裁決 A 改導工作區（PR 開立中，`feat/header-import-to-workspace`）。W7 拆為 W7a／W7b（2026-11-24，W7a，依審查建議，Howard 授權）。與 ADR-038 衝突時以 ADR-038 為準。
+🔄 執行中。W1（PR #16）、W2（PR #19）、W3（PR #20）已合併；W7a 已合併（PR #21）；W7b 已合併（PR #22）；W4 已合併（PR #23）；W3b 已合併（PR #27）；W5 已合併（PR #28）；標頭匯入按鈕依 Howard 裁決 A 改導工作區（PR 開立中，`feat/header-import-to-workspace`）；W8（區域與距離前端）實作完成，PR 開立中（`feat/w8-zones-distance-ui`）。W7 拆為 W7a／W7b（2026-11-24，W7a，依審查建議，Howard 授權）。與 ADR-038 衝突時以 ADR-038 為準。
 
 ## 工作方式（Howard 2026-11-23）
 
@@ -155,6 +155,13 @@
 10. （同上，後續）重新同步 DSX 後，提示「已確認的距離與新座標不同」（已 `confirmed` 的列不自動退回）。
 11. （同上）顯示與修改距離設定（admin）；說明只影響之後新建的工時表。
 
+**完成狀態（2026-11-24，W8，依審查建議，Howard 授權）**：實作在 `src/frontend/src/features/wi-workbench/distance/{api.ts,DistancePanel.tsx}`，掛在 WiWorkbench；核准失敗時 CasesPage 列出缺距離狀態的 #seq_no；e2e 為 `src/frontend/e2e/workspace-distance.spec.ts`（5 例）。
+- 第 1–7、9、11 項 ✅。
+- 第 10 項 ⚠️ 部分完成：重新同步後 DSX `placement_revision` 變了會提示「已確認的距離不會自動改，請重新算距離比對」，但沒有逐列比對已確認值與新座標。
+- 第 8 項（快照回復）未做，仍屬後續。
+- 行為：面板在工時表 `distance_check_required=true` 時預設展開、否則收起，標頭顯示未標列數；只有整列每格都是 `suggested` 的列可勾選套用；逐列可標「此動作無距離」或「手動值」，按儲存才寫回；沒有「清除標示」按鈕（後端也沒有此語意需求）。
+- 前端不變量：整份存檔只對使用者在畫面上改過距離狀態的列帶 `distance_status`（store 的 `distanceStatusChanged`），其餘列不帶；每列都帶會繞過 W7b 的「改了距離輸入就退回」。
+
 ### W6：移除舊畫面（前端）
 1. 側欄移除 MOST 工作台與 WI 專案；工時表編輯器移除「從 WI 庫插入」；對應 e2e 移除或改寫。
 2. 後端路由與資料不動（資料已備份：`data/backups/adr038-legacy-library-20261123-211312/`）。
@@ -219,3 +226,5 @@
 | 2026-11-24 | W5 | **標頭「匯入 Excel」按鈕：待 Howard 裁決** | 審查建議 **A**：標頭按鈕改導到工作區上傳、舊流程從畫面移除、範本採用搬進工作區另開票。**B** 先把範本採用搬進工作區；**C** 維持到 W6。裁決前這條路仍繞過編輯區與距離檢查開關（ADR-038 D6） |
 | 2026-11-24 | W5 | 已知限制（審查，接受） | `has_drafts` 是「現在還有草稿」；items 無分頁（受匯入列數上限）；`drafts` 模式 `/map` 仍算範本比對但不顯示 |
 | 2026-11-24 | W5 後 | 標頭「匯入 Excel」按鈕（Howard 裁決 A） | 打開工作區的整份上傳；舊的範本採用＋直接寫工時表沒有畫面入口（程式與端點保留），D10 e2e 移除；範本採用搬進工作區排入 BL-ENG-21 |
+| 2026-11-24 | W8 | 距離面板預設展開條件（2026-11-24，W8，依審查建議，Howard 授權） | 工時表 `distance_check_required=true` 時預設展開，否則收起；標頭顯示未標列數。理由：只有已開距離檢查的工時表才會被核准擋，其餘不打擾 |
+| 2026-11-24 | W8 | 前端送哪些列的 `distance_status`（2026-11-24，W8，依審查建議，Howard 授權） | 整份存檔只對使用者改過距離狀態的列帶（store `distanceStatusChanged`），其餘不帶。理由：每列都帶會讓後端視為「明確帶值」，繞過 W7b「改了距離輸入就退回未標示」 |

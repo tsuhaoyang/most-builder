@@ -218,6 +218,7 @@ domains:
       - 編輯區草稿不得出現在工時表讀取、匯出、LB 投影或核准流程（ADR-038 I2）
       - 距離完成檢查以每列明確的 `distance_status` 判斷，不看距離數值（A0 是合法值）；`distance_check_required` 只在 `drafts/commit` 打開、之後不關，未開啟的既有工時表不檢查（ADR-038 D6，2026-11-23 W2）。`distance_status` 不入 content_hash
       - 整份存檔（save_worksheet）列沒帶 `distance_status`＝保留同 id 既有值，帶 null 才清除；**例外（W7b）**：舊值是 `confirmed` 且 `distance_inputs`（GM／CM、object／from／to、a0／a3／a6 的 reach／foot、m3 各分量的動詞與距離）有任何不同 → 退回未標示；`manual`／`not_applicable` 不動，明確帶值以帶的為準；核准先鎖工時表列再依序做 level gate、距離檢查，存檔與編輯區寫入拿到列鎖後須再確認版本仍是 draft（ADR-038 D6，2026-11-23 W2；退回例外 2026-11-24 W7b，取代 W2 的「決定 B：暫不退回」）
+      - 前端整份存檔只對使用者在畫面上改過距離狀態的列帶 `distance_status`（store 的 `distanceStatusChanged`），其餘列不帶；每列都帶會繞過 W7b「改了距離輸入就退回」（ADR-038 D6，2026-11-24 W8）
       - 解析產生的草稿（單句 AI、整份上傳）的可接受性＝人按確認＋寫入時 `compute_rows_for_save` 以工時表規則版本重算（等價 engine_gate）；解析不完整（`parse_snapshot.complete=false`）且 cycle 未被人改過 → 確認與寫入 409 `DRAFT_INCOMPLETE`。`rule_based` 草稿同規則；W1 的外部 AI 草稿 Fail-Fast 已移除（ADR-038 D3、ADR-037 D3／D5，2026-11-24 W3）
       - 草稿一律追加表尾、不引用既有列，所以 stale 只看兩個條件：`source_rule_set_id` ≠ 工時表 `default_rule_set_id`（`rule_set_changed`）、Excel 列 `input_hash` 變了或被刪（`import_row_changed`）→ 409 `DRAFT_STALE`，整筆寫入作廢、另開交易把草稿退回 pending 並記 `stale_reason`；一般存檔不算過期（ADR-038 D3，2026-11-24 W3）
       - 草稿寫入後 provenance：`ai_service`→`ai_external`；來自 Excel 列→`imported`（帶 `source_import_id`）；其餘→`manual`。外部 AI 與 `nl-draft` 同一套分流（`wi_ai_service.external_for`），單句端點先確認工時表可編輯、編輯區有空位才呼叫 AI（2026-11-24 W3）
@@ -412,6 +413,8 @@ domains:
       - "migrations/versions_v2/v2_0055_distance_suggestions.py"
       - "tests/integration/test_distance_suggestions.py"
       - "tests/unit/test_distance_suggest.py"
+      - "src/frontend/src/features/wi-workbench/distance/**"
+      - "src/frontend/e2e/workspace-distance.spec.ts"
     docs:
       - docs/decisions/ADR-038-unified-wi-workspace-and-two-stage-distance.md
       - docs/decisions/ADR-031-spatial-layout-and-distance-acquisition.md
@@ -427,6 +430,7 @@ domains:
       - 物件歸區的區域必須屬於同一 SKU（複合 FK）；區域還有物件歸區時不能刪（ZONE_IN_USE）
       - 算出的距離只是建議（帶出處），不直接寫入 TMU 路徑；MOST 只算公分，TMU 一律由引擎算（ADR-031 I1、I4、I5）
       - 套用距離建議是列級：該列每一格都是 `suggested` 才套用，且請求要帶 `computed_at`（使用者看到的那次計算）與 `base_revision`；否則 409 `DISTANCE_NOT_APPLICABLE`／`DISTANCE_SUGGESTION_CHANGED`，不做格位級部分套用。成功走整份存檔，目標列 `distance_status=confirmed`（ADR-038 D5.6，2026-11-24 W7b）
+      - 前端整份存檔只對使用者在畫面上改過距離狀態的列帶 `distance_status`（store 的 `distanceStatusChanged`），其餘列不帶；每列都帶會繞過 W7b「改了距離輸入就退回」（ADR-038 D6，2026-11-24 W8）
       - 距離建議 `needs_ie`（a6 > 門檻、m3 > 75 cm 或沒有／多個 ladder 分量）與 `unavailable` 不寫入任何值、不截斷、不歸零；判定用未取整的距離（ADR-031 I5，ADR-038 D5.6 (c)）
       - 距離設定（門檻、人端偏移）在建模政策 `policy_json["distance"]`；新發布的設定只影響之後新建的工時表，既有工時表（含 clone）沿用自己的版本。版本沒有 `distance` 段時用 `DEFAULT_DISTANCE_SETTINGS`（70 cm、`[0,0,140]`），這組常數凍結不得修改，要換值發布新版本。新建工時表的政策版本由 `modeling_policy_defaults` 明確指定，不以 MAX 隱式選版（R2a；2026-11-24 W7b）
 
