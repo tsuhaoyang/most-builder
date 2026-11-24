@@ -152,6 +152,7 @@ export function DraftArea({
           <ul className="divide-y">
             {g.drafts.map(d => {
               const issues = parseIssues(d)
+              const otherIssues = issues.filter(i => i !== 'ai_unknown_code')  // 這個有專屬提示，不再列原始碼
               const qty = quantityNote(d)
               return (
                 <li key={d.id} data-testid="draft-row" data-status={d.status} data-source={d.source}
@@ -187,6 +188,9 @@ export function DraftArea({
                         </div>
                       )}
                       {parsedIncomplete(d) && <div className="text-red-600" data-testid="draft-incomplete">{t('workbench.drafts.incomplete')}</div>}
+                      {issues.includes('ai_unknown_code') && (
+                        <div className="text-amber-700" data-testid="draft-unknown-code">{t('workbench.drafts.unknownCode')}</div>
+                      )}
                       {wiGroupTruncated(d) && <div className="text-slate-500">{t('workbench.drafts.wiGroupTruncated')}</div>}
                       {qty && (
                         <div className={qty.applied ? 'text-sky-700' : 'text-amber-700'} data-testid="draft-quantity">
@@ -199,9 +203,9 @@ export function DraftArea({
                             })}
                         </div>
                       )}
-                      {issues.length > 0 && (
+                      {otherIssues.length > 0 && (
                         <div className="text-slate-500" data-testid="draft-issues">
-                          {t('workbench.drafts.issues', { list: issues.join(', ') })}
+                          {t('workbench.drafts.issues', { list: otherIssues.join(', ') })}
                         </div>
                       )}
                     </div>

@@ -122,6 +122,8 @@ ADR-031 §1.1 量過：正式 gold 的 35 條 cycle，A 格全是 `A0`；距離�
   它們永遠來自 rule_based，且首次與重播內容不一致（實作計畫「路由開放前置條件」的 legacy slots 待決事項，以此關閉）。
 - AI 降級或失敗的列照樣進編輯區，來源標 `rule_based`，讓使用者知道要特別檢查。
 
+- > **2026-11-24，ai_service A3 回覆後，依審查建議，Howard 授權（`ai_unknown_code` 追記）**：解析的 `routing_reasons` 含 `ai_unknown_code` 時，`drafts_from_parse` 把它放進同句每列草稿 `parse_snapshot.issues` 的第一個，編輯區顯示「AI 回了不認得的代碼，那些格位沒有採用 AI 的值。請逐格核對後再確認。」。**不改 `complete`**，W3 追記的決定與理由不變：不認得的代碼已被丟、不進計算，cycle 仍經引擎驗證；`complete=false` 會逼人為了過檢查而改資料；該旗標是整句層級。根因在 ai_service 的 schema 驗證不完整（S-085／S-086／S-087），見 [ai-service-integration-plan](../roadmap/ai-service-integration-plan.md)〈真實量測〉。S-085／`poc004` 上線並重測前不得自動或批次採用；回收條件同上。
+
 ### D4 移除 MOST 工作台與 WI 專案頁的畫面；不提供跨 SKU 重用
 
 - **從畫面移除**：側欄的「MOST 工作台」（`workbench-v3`）與「WI 專案」（`wi-project`），以及工時表編輯器的「從 WI 庫插入」（ADR-022 E-4）。

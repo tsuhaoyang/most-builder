@@ -471,3 +471,17 @@ test('沒有開啟工時表時按標頭「匯入 Excel」：之後開工時表�
   await expect(page.getByTestId('draft-area')).toBeVisible()
   await expect(page.getByTestId('input-mode-manual')).toHaveAttribute('aria-selected', 'true')
 })
+
+test('AI 回了不認得的代碼：草稿列顯示要逐格核對的提示', async ({ page }) => {
+  const fake = new FakeDrafts()
+  fake.add({ cycle: GM, narrative: '按壓卡扣' }, { source: 'ai_service',
+    parse_snapshot: { complete: true, issues: ['ai_unknown_code', 'ai_candidate_preview'] } } as never)
+  fake.add({ cycle: GM, narrative: '拿起螺絲' }, { source: 'manual' })
+  await install(page, fake)
+  await enterWorkspace(page)
+  const rows = page.getByTestId('draft-row')
+  await expect(rows.nth(0).getByTestId('draft-unknown-code')).toContainText('不認得的代碼')
+  await expect(rows.nth(1).getByTestId('draft-unknown-code')).toHaveCount(0)
+  await expect(rows.nth(0).getByTestId('draft-issues')).toHaveText(/ai_candidate_preview/)
+  await expect(rows.nth(0).getByTestId('draft-issues')).not.toContainText('ai_unknown_code')
+})

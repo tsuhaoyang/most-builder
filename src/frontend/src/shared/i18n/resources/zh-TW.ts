@@ -217,6 +217,7 @@ const zhTW = {
           no_motion: '沒有解析出動作',
         },
       },
+      unknownCode: 'AI 回了不認得的代碼，那些格位沒有採用 AI 的值。請逐格核對後再確認。',
       issues: '解析備註：{{list}}',
       stale: {
         rule_set_changed: '工時表的規則版本已改變，已退回待確認。請檢查後重新確認。',

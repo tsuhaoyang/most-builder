@@ -587,8 +587,13 @@ def drafts_from_parse(
     out: list[ParsedDraft] = []
     if not drafts:
         drafts = [CycleDraft(action_id="none", cycle=None, complete=False, issues=["no_motion_parsed"])]
+    # ai_service 回了不在允許清單的代碼（mapper 已丟掉、不進計算）：ai_service 端的 schema 驗證不完整
+    # （2026-11-24 ai_service 查明，修正為 S-085／poc004），在那之前每一列都要讓審核的人看得到（放最前面，不被截斷）。
+    unknown_code = "ai_unknown_code" in result.routing_reasons
     for idx, d in enumerate(drafts):
         issues = list(d.issues)
+        if unknown_code and "ai_unknown_code" not in issues:
+            issues.insert(0, "ai_unknown_code")
         complete = bool(d.complete and d.cycle and _engine_ok(d))
         narrative = (d.narrative or None) and d.narrative[:2000]
         try:
