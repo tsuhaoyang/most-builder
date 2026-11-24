@@ -176,9 +176,22 @@ class WiDraftFromSentenceIn(BaseModel):
     wi_group: str | None = Field(default=None, max_length=200)
 
 
+class WiDraftDegradeReason(BaseModel):
+    """AI 為什麼沒有結果（`status=degraded` 時）。只含 MOST 的分類代碼；維運細節（設定、金鑰）只在 run 與 log。
+
+    `error_kind` 是 `AiServiceErrorKind` 的值，或 MOST 端的 `misconfigured`／`internal_error`／`empty_result`／
+    `unknown`；前端依它顯示 zh-TW／en 文案，不認得的顯示通用說明。這不是錯誤回應（請求本身成功），所以不走
+    ADR-034 錯誤信封碼。
+    """
+
+    error_kind: str
+    upstream_code: str | None = None
+
+
 class WiDraftParseInfo(BaseModel):
     run_id: uuid.UUID | None = None
     status: Literal["ai_service", "degraded", "rule_based"]
+    reason: WiDraftDegradeReason | None = None
     routing_status: str
     routing_reasons: list[str]
 

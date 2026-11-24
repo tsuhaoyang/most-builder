@@ -56,7 +56,7 @@ class FakeDrafts {
   commits: Array<Record<string, unknown>> = []
   saves: Array<Record<string, unknown>> = []
   patches: Array<Record<string, unknown>> = []
-  sentence: { status: 'ai_service' | 'degraded' | 'rule_based' } = { status: 'rule_based' }
+  sentence: { status: 'ai_service' | 'degraded' | 'rule_based'; reason?: { error_kind: string } } = { status: 'rule_based' }
   commitFails: Array<{ status: number; code: string }> = []
   private n = 0
 
@@ -151,7 +151,8 @@ function install(page: Page, fake: FakeDrafts) {
         fake.add({ cycle: GM, wi_group: b.text, hand: b.hand, narrative: '放到治具' }, { group_key: key, order_in_group: 1, source, parse_snapshot: snap(true) }),
       ]
       return json(route, { worksheet_id: WS, group_key: key, items,
-        ai: { run_id: null, status: fake.sentence.status, routing_status: 'review', routing_reasons: [] } }, 201)
+        ai: { run_id: null, status: fake.sentence.status, reason: fake.sentence.reason ?? null,
+          routing_status: 'review', routing_reasons: [] } }, 201)
     }
     if (path === '/api/v2/wi-ai/status') return json(route, { enabled: false, available: false })
     if (path === `/api/v2/worksheets/${WS}` && method === 'PUT') {
@@ -219,13 +220,14 @@ test('手動新增進編輯區（不直接進工時表）→ 確認 → 寫入�
 test('單句 → 一組草稿 → 整組確認 → 寫入；AI 降級時提示', async ({ page }) => {
   const fake = new FakeDrafts()
   fake.sentence.status = 'degraded'
+  fake.sentence.reason = { error_kind: 'no_motion' }
   await install(page, fake)
   await enterWorkspace(page)
   await page.getByTestId('input-mode-sentence').click()
   await expect(page.getByTestId('ai-status')).toContainText('AI 解析未開啟')
   await page.getByTestId('sentence-text').fill('左手拿起螺絲放到治具')
   await page.getByTestId('sentence-submit').click()
-  await expect(page.getByTestId('sentence-result')).toContainText('AI 暫時無法使用')
+  await expect(page.getByTestId('sentence-result')).toContainText('AI 判定這句沒有可建模的動作，已改用規則解析')
   await expect(page.getByTestId('draft-group')).toHaveCount(1)
   await expect(page.getByTestId('draft-row')).toHaveCount(2)
   await expect(page.getByTestId('draft-row').first()).toHaveAttribute('data-source', 'rule_based')
@@ -354,4 +356,16 @@ test('確認被 409 DRAFT_INCOMPLETE 擋下時，標出是哪一列', async ({ p
   await expect(page.locator(`[data-testid=draft-row][data-flagged=true]`)).toHaveCount(1)
   await expect(page.locator(`[data-testid=draft-row][data-flagged=true]`)).toContainText('缺的')
   expect(bad.status).toBe('pending')
+})
+
+test('降級原因不認得或沒給時，顯示通用說明', async ({ page }) => {
+  const fake = new FakeDrafts()
+  fake.sentence.status = 'degraded'
+  fake.sentence.reason = { error_kind: 'contract_mismatch' }
+  await install(page, fake)
+  await enterWorkspace(page)
+  await page.getByTestId('input-mode-sentence').click()
+  await page.getByTestId('sentence-text').fill('右手拿起螺絲')
+  await page.getByTestId('sentence-submit').click()
+  await expect(page.getByTestId('sentence-result')).toContainText('AI 服務暫時無法使用，已改用規則解析')
 })

@@ -23,6 +23,7 @@ import re
 import time
 import uuid
 from dataclasses import dataclass
+from datetime import datetime, timezone
 from typing import Any
 from uuid import UUID
 
@@ -763,14 +764,14 @@ async def _parse_external(
     # - 換 bundle／prompt 自然 miss；命中時不呼叫 ai_service、不扣額度。所有外部 run 共用同一個佔位
     #   bundle，所以這是唯一的區分。
     # - known_hand 決定 `ai_hand_hint_mismatch`，不同手別的請求不該共用同一份旗標。
-    input_hash = _sha256(
-        "|".join(
-            [
-                "external", norm, context_hash, bundle.code, external.service_bundle_code,
-                external.known_hand or "", rule_set_code, "interactive", worksheet_key,
-            ]
-        )
-    )
+    # - 另含 ai_service 最近一次回報的 prompt_version／model_served（呼叫前不知道這次會是什麼，用最近一次的）：
+    #   ai_service 在同一個 bundle code 底下換模型或 prompt 時，舊快取自然 miss（2026-11-24，快取規則）。
+    base_parts = [
+        "external", norm, context_hash, bundle.code, external.service_bundle_code,
+        external.known_hand or "", rule_set_code, "interactive", worksheet_key,
+    ]
+    latest_identity = await _latest_external_identity(session, bundle.id)
+    input_hash = _external_input_hash(base_parts, latest_identity)
     existing = await _find_cached_run(session, input_hash=input_hash, bundle_id=bundle.id)
     if existing is not None:
         return _replay_external(existing, bundle_code=bundle.code, text=text)
@@ -876,6 +877,10 @@ async def _parse_external(
         # 鍵名是 adapter／guard 固定的，不是外部字串；ai_service 新增欄位時維運才看得到
         logger.warning("external ai_service provenance keys dropped by the allow-list: %s", sorted(dropped_keys))
     upstream = prov.get("run_id")
+    # 這次實際的模型／prompt 與「最近一次」不同（剛換版）：以實際值記這筆，下一次查的就是新版本
+    actual_identity = _identity_of(prov)
+    if actual_identity != latest_identity:
+        input_hash = _external_input_hash(base_parts, actual_identity)
     latency = {
         "normalize": round((t_norm - t0) * 1000, 2),
         "ai_call": round((t_ai - t_norm) * 1000, 2),
@@ -949,6 +954,8 @@ async def _parse_external(
         source_revision=source_revision,
         provenance=prov,
         upstream_run_id=upstream if isinstance(upstream, str) else None,
+        # 用實際時鐘（不是交易開始時間 NOW()）：「最近一次外送」靠它排序（快取的版本判斷）
+        created_at=datetime.now(timezone.utc),
     )
     try:
         async with session.begin_nested():
@@ -965,6 +972,28 @@ async def _parse_external(
         legacy = legacy_from_run_snapshot(raw_text=text, result=result, provenance_extra={"cached_run_id": result.run_id})
         legacy["provenance"]["slots_parser"] = "ai_candidates"
     return result, legacy
+
+
+def _identity_of(prov: dict[str, Any] | None) -> tuple[str, str]:
+    p = prov or {}
+    return (str(p.get("prompt_version") or ""), str(p.get("model_served") or ""))
+
+
+def _external_input_hash(base_parts: list[str], identity: tuple[str, str]) -> str:
+    return _sha256("|".join([*base_parts, "pv=" + identity[0], "model=" + identity[1]]))
+
+
+async def _latest_external_identity(session: AsyncSession, bundle_id: UUID) -> tuple[str, str]:
+    """最近一次真的外送成功的 run 所記的 (prompt_version, model_served)；沒有就是空字串。"""
+    prov = (
+        await session.execute(
+            select(AiParseRun.provenance)
+            .where(AiParseRun.bundle_id == bundle_id, AiParseRun.upstream_run_id.is_not(None))
+            .order_by(AiParseRun.created_at.desc(), AiParseRun.id.desc())
+            .limit(1)
+        )
+    ).scalar_one_or_none()
+    return _identity_of(prov if isinstance(prov, dict) else None)
 
 
 def _replay_external(

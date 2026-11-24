@@ -252,7 +252,21 @@ const zhTW = {
         aiUnavailable: 'AI 設定不完整，使用規則解析',
         doneAi: '已用 AI 解析成 {{count}} 個動作，放進編輯區。',
         doneRule: '已用規則解析成 {{count}} 個動作，放進編輯區。',
-        degraded: 'AI 暫時無法使用，已改用規則解析成 {{count}} 個動作。請特別檢查這些草稿。',
+        degraded: '{{reason}}，已改用規則解析成 {{count}} 個動作。請特別檢查這些草稿。',
+        // 降級原因（後端 ai.reason.error_kind）。維運類分類（auth、deployment、request_rejected、
+        // contract_mismatch、misconfigured…）刻意不列，走 other。文案接在 degraded 句首：不加句點
+        reason: {
+          no_motion: 'AI 判定這句沒有可建模的動作',
+          timeout: 'AI 回應逾時',
+          rate_limited: 'AI 目前忙碌中',
+          quota_exceeded: '已達 AI 使用上限',
+          circuit_open: 'AI 服務暫時停用中（連續失敗後自動暫停）',
+          unreachable: '連不到 AI 服務',
+          upstream: 'AI 服務暫時出錯',
+          model_output_invalid: 'AI 的回應格式不正確',
+          disabled: 'AI 解析未開啟',
+          other: 'AI 服務暫時無法使用',
+        },
       },
     },
     wiEditor: {
