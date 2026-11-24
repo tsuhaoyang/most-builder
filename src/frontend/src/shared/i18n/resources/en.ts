@@ -249,6 +249,7 @@ const en: Widen<typeof zhTW> = {
           no_motion: 'no motion was parsed',
         },
       },
+      unknownCode: 'The AI returned codes we do not recognise; those slots do not use the AI value. Check each slot before confirming.',
       issues: 'Parser notes: {{list}}',
       stale: {
         rule_set_changed: 'The worksheet\'s rule set changed, so this draft went back to pending. Check it and confirm again.',

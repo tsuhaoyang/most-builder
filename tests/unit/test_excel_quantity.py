@@ -127,3 +127,22 @@ def test_excel_quantity_above_the_frequency_cap_is_invalid():
     r = _result("拿起螺絲", [("process", "螺絲")])
     ((f, q),) = _apply(r, 50_000)
     assert (f, q["reason"]) == (1, "excel_quantity_invalid")
+
+
+def test_unknown_code_from_ai_is_listed_first_on_every_draft():
+    """ai_service 回了允許清單外的代碼：每一列草稿的 issues 都標 ai_unknown_code（放第一個），complete 不變。"""
+    r = _result("雙手按壓卡扣並確認", [("process", "卡扣"), ("inspect", "卡扣")])
+    r.routing_reasons = ["ai_source_no_evidence", "ai_unknown_code"]
+    parsed = drafts_from_parse(r, text="x", hand=None, wi_group=None, ai_status="ai_service")
+    assert [p.snapshot["issues"][0] for p in parsed] == ["ai_unknown_code", "ai_unknown_code"]
+    assert [p.snapshot["complete"] for p in parsed] == [True, True]
+    r2 = _result("拿起螺絲", [("acquire", "螺絲")])
+    assert "ai_unknown_code" not in drafts_from_parse(r2, text="x", hand=None, wi_group=None, ai_status="rule_based")[0].snapshot["issues"]
+
+
+def test_unknown_code_is_not_duplicated():
+    r = _result("按壓卡扣", [("process", "卡扣")])
+    r.routing_reasons = ["ai_unknown_code"]
+    r.drafts[0].issues = ["ai_unknown_code", "ai_candidate_preview"]
+    issues = drafts_from_parse(r, text="x", hand=None, wi_group=None, ai_status="ai_service")[0].snapshot["issues"]
+    assert issues.count("ai_unknown_code") == 1
