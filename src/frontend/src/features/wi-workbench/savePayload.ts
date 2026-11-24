@@ -31,6 +31,8 @@ export function buildSaveBody(
         narrative: r.narr || null,
         wi_group: r.wiGroup ?? null,   // ADR-035 D10：作業名稱
         cycle: r.payload,
+        // ADR-038 D6：只帶使用者在畫面上改過的距離狀態；沒改的不帶，後端保留既有值（也讓 confirmed 的退回規則生效）
+        ...(r.distanceStatusChanged ? { distance_status: r.distanceStatus ?? null } : {}),
         level: {
           // derive() 對非鏈首成員明確回 level=null／ascription=null（＝繼承所屬 chain）。
           // 過去這裡用 `?? String(i+1)`／`?? 'main'` 會把 null 竄改成各自不同的層號，

@@ -4,7 +4,7 @@ import { useEffect, useRef, useState } from 'react'
 import { Trans, useTranslation } from 'react-i18next'
 import { useMe, canPublish, canEdit, isAdmin } from '../../shared/auth/useMe'
 import { useWorkspace, type ActiveCaseMeta } from '../../shared/workspace'
-import { apiGet } from '../../shared/api/client'
+import { ApiError, apiGet } from '../../shared/api/client'
 import { TMU_SEC } from '../../shared/config'
 import { downloadExcel, downloadCsv, useLbApi, type WiPreview } from '../export/api'
 import { StatusBadge, useStatusLabel } from './status'
@@ -289,6 +289,16 @@ interface DetailPanelProps {
  * 可用性仍沿用既有 status 規則（歷史版通常非 draft/approved 代表版狀態，自然不可操作），
  * 不自創權限。
  */
+/** 核准被 DISTANCE_STATUS_MISSING 擋下：取出缺狀態的列號（後端只列前幾列，總數看 missing_count）。 */
+function missingDistanceRows(e: unknown): { list: string; count: number } | null {
+  if (!(e instanceof ApiError) || e.code !== 'DISTANCE_STATUS_MISSING') return null
+  const d = (e.detail as { detail?: { rows?: Array<{ seq_no: number }>; missing_count?: number } } | null)?.detail
+  if (!d?.rows?.length) return null
+  const seqs = d.rows.map(r => r.seq_no).filter(n => Number.isInteger(n))
+  if (!seqs.length) return null
+  return { list: seqs.map(n => `#${n}`).join(', '), count: Number.isInteger(d.missing_count) ? d.missing_count! : seqs.length }
+}
+
 function DetailPanel({ item, view, onOpenWorkbench }: DetailPanelProps) {
   const { t, i18n } = useTranslation()
   const statusLabel = useStatusLabel()
@@ -304,6 +314,7 @@ function DetailPanel({ item, view, onOpenWorkbench }: DetailPanelProps) {
   const isLatest = view.process_version_id === item.process_version_id
   // 守則 §1「案件＝單一當前狀態」：狀態流轉只允許在**代表版（最新版）**上進行。
   // 否則核准一個歷史 draft 會讓同一條版本鏈出現兩個 approved（案件當前狀態不再唯一）。
+  const missingRows = approve.isError ? missingDistanceRows(approve.error) : null
   const canApprove = view.status === 'draft' && userCanPublish && isLatest
   const canRetire = view.status === 'approved' && isAdmin(me) && isLatest
 
@@ -393,7 +404,10 @@ function DetailPanel({ item, view, onOpenWorkbench }: DetailPanelProps) {
 
       {/* Mutation error feedback */}
       {approve.isError && (
-        <p className="text-sm text-red-600">{t('cases.detail.approveFailed', { message: (approve.error as Error).message })}</p>
+        <p className="text-sm text-red-600" data-testid="approve-error">
+          {t('cases.detail.approveFailed', { message: (approve.error as Error).message })}
+          {missingRows && <span className="block">{t('cases.detail.distanceMissingRows', missingRows)}</span>}
+        </p>
       )}
       {retire.isError && (
         <p className="text-sm text-red-600">{t('cases.detail.retireFailed', { message: (retire.error as Error).message })}</p>
