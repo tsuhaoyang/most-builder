@@ -174,7 +174,7 @@ DB 欄位不動；寫入端不再產生 `kind='llm'`，但**舊 `kind='llm'` 列
 - [x] legacy slots：已由 ADR-038 D3 關閉（2026-11-23；AI 結果不使用 legacy 相容欄位，原二選一不再需要）。
 - [x] 每日額度：已決定 10,000 次（Howard 2026-11-23，ADR-038 D7；原 ADR-037 D8 為 2000）。程式預設值另以小 PR 更新。
 - [x] 快取 TTL 決定：不設 TTL，快取鍵加版本（2026-11-24，真實量測後，Howard 核可；ADR-037 D8）。
-- [ ] ai_service S-085 完整 schema 驗證／`poc004` 上線，MOST 換 bundle code、schema 複本與 sha256，重測（2026-11-24，ai_service A3 回覆後，依審查建議，Howard 授權）。
+- [ ] ai_service S-085／S-086 一起上線（S-085 已實作未上線，單獨上線會使最壞延遲約加倍；`poc004` 轉 shadow 後 ai_service 通知）：MOST 換 `DDM_AI_SERVICE_BUNDLE_CODE`＝`most-wi-motion-parse-poc004`、送約束版 schema 並同步複本、`SCHEMA_SHA256`、`SCHEMA_SOURCE_COMMIT`，確認 `motions[].slots` 形狀未變，重測後再定總時限（2026-11-24，ai_service A3 回覆後，依審查建議，Howard 授權；2026-11-25 ai_service A3 補充回覆，Howard 授權）。
 - [ ] 進入條件：30 句延遲量測；`most` 金鑰最小權限已確認。
 - [ ] 部署：verify 模式（見 [lb-most-auth](../architecture/lb-most-auth.md)）；金鑰用檔案。
 
@@ -228,6 +228,13 @@ DB 欄位不動；寫入端不再產生 `kind='llm'`，但**舊 `kind='llm'` 列
    - MOST 暫行處理（本分支 `fix/ai-unknown-code-visible`）：`drafts_from_parse` 在解析的 `routing_reasons` 含 `ai_unknown_code` 時，把它放進同句每列草稿 `parse_snapshot.issues` 的第一個；編輯區顯示「AI 回了不認得的代碼，那些格位沒有採用 AI 的值。請逐格核對後再確認。」。**不改 `complete`**：不認得的代碼已被丟、不進計算，cycle 仍經引擎驗證；`complete=false` 會逼人為了過檢查而改資料；該旗標是整句層級。
    - 「不自動採用」的依據：`wi_ai_auto_enabled` 硬關、`compute_routing(auto_enabled=False)`、編輯區只有人按確認（逐列或整組，整組確認也是人的動作且提示可見）、寫入時引擎重算。ai_service 要求 MOST 在 S-085／`poc004` 前維持 `ai_unknown_code` 的人工審核。
    - 回收條件：S-085／`poc004` 上線並重測後重新評估。
+7. **ai_service 補充回覆（2026-11-25，ai_service A3 補充回覆，Howard 授權）**：補充第 6 項。
+   - 驗證器現況：只支援 `type`／`required`／`properties`／`items`／`enum`；設計上驗證失敗重試一次（附前次錯誤），仍失敗回 422 `SCHEMA_VALIDATION_FAILED`。12 筆以完整 JSON Schema 2020-12 重驗全數違反（自創或放錯格位；`x_slot_latch`、addon `a_stick` 各 2 筆；run `c14cc56c`、`29cd28b9` 為 GM／CM 骨架混用）。
+   - S-085（完整 schema 驗證）已實作、未上線。上線後不合規輸出先重試一次，最壞延遲約加倍（p95 約 42 s，可能超過 MOST 總時限 60 s），所以要與 S-086 一起上線。MOST 端：上線前不要只套 S-085；重測後再定時限。
+   - S-086 已實作、未上線：新 bundle `most-wi-motion-parse-poc004`，`response_format` 用 `json_schema` 約束解碼。21 句樣本：完整 schema 通過率 57% → 100%；對 gold 的 slot 一致率持平約 70%。通過 schema 不等於解析正確，維持人工採用。
+   - 約束解碼用呼叫端送的 schema。MOST 換 `poc004` 時必須送新的約束版 schema（ai_service `packs/most/schemas/wi-motion-parse.constrained.schema.json`，motion 改 `oneOf`），並同步 MOST 的 schema 複本、`SCHEMA_SHA256`、`SCHEMA_SOURCE_COMMIT`（`src/ddm_v2/ai_integration/schema.py`）與 `DDM_AI_SERVICE_BUNDLE_CODE`；送舊 schema 到 `poc004` 會被拒。`poc004` 轉 shadow 後 ai_service 會通知，在此之前 MOST 不改。
+   - ai_service 要求 MOST 端維持完整驗證。MOST 現況：沒有跑 JSON Schema 驗證器，而是 mapper（`src/ddm_v2/ai_integration/mapper.py`）逐欄防禦解讀：未知欄位丟棄並記 issue；`seq_kind` 無效則中段留空；每格代碼依該 `seq_kind` 的位置對目標規則版本允許清單檢查，不在清單就丟並標 `ai_unknown_code`；中段 GM／CM 同時有值判 `composite_unknown`。之後再經 compile、engine_gate、人工確認與寫入重算。「代碼在不在清單、放對格位沒有」這道防線不依賴 ai_service 的驗證。換約束版 schema 時要確認輸出形狀（`motions[].slots` 的 `s0_A`…`s6_A`）未變，否則 mapper 要跟著改。
+   - S-087：契約 §3.5.2 更正為「ok ≠ 通過 schema」，合併後生效。
 
 ### 路徑 B（延後）（2026-11-24，W3b，依審查建議，Howard 授權）
 
