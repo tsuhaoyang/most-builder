@@ -37,6 +37,7 @@ const MOCK_OPTS = {
   x: [{ code: 'x_none', label: '無機器時間', mode: 'none' }],
   i: [{ code: 'i_none', label: '無', label_en: 'None' }],
 }
+const IMPORT = 'imp-w5'
 const GM = { seq: 'GM', rule_set_code: 'MINIMOST_FACTORY_V2', a0: { reach_cm: 5 }, g2: { g_code: 'g_simple' } }
 
 interface Draft {
@@ -56,6 +57,10 @@ class FakeDrafts {
   commits: Array<Record<string, unknown>> = []
   saves: Array<Record<string, unknown>> = []
   patches: Array<Record<string, unknown>> = []
+  uploadQuery: string | null = null
+  jobBody: Record<string, unknown> | null = null
+  jobPolls = 0
+  blankRequests: string[][] = []
   sentence: { status: 'ai_service' | 'degraded' | 'rule_based'; reason?: { error_kind: string } } = { status: 'rule_based' }
   commitFails: Array<{ status: number; code: string }> = []
   private n = 0
@@ -153,6 +158,43 @@ function install(page: Page, fake: FakeDrafts) {
       return json(route, { worksheet_id: WS, group_key: key, items,
         ai: { run_id: null, status: fake.sentence.status, reason: fake.sentence.reason ?? null,
           routing_status: 'review', routing_reasons: [] } }, 201)
+    }
+    if (path === '/api/v2/imports/upload' && method === 'POST') {
+      fake.uploadQuery = url.search.replace(/^\?/, '')
+      return json(route, { import_id: IMPORT, source_name: 'w5.xlsx', target_fields: ['description'],
+        required_fields: ['description'], suggested_sheet: 'S1', suggested_header_row: 0, profiles: [],
+        sheets: [{ name: 'S1', n_rows: 3, n_cols: 1, grid: [['描述'], ['拿起螺絲'], ['長'.repeat(30)]] }] })
+    }
+    if (path === `/api/v2/imports/${IMPORT}/map` && method === 'POST')
+      return json(route, { import_id: IMPORT, fields: ['description'], n: 2, warnings: [],
+        rows: [{ description: '拿起螺絲' }, { description: '長'.repeat(30) }] })
+    if (path === `/api/v2/imports/${IMPORT}/parse-jobs` && method === 'POST') {
+      fake.jobBody = body()
+      return json(route, { id: 'job-w5', import_id: IMPORT, status: 'queued', total: 2, processed: 0,
+        succeeded: 0, review: 0, failed: 0 }, 201)
+    }
+    if (path === `/api/v2/imports/${IMPORT}/parse-jobs/job-w5` && method === 'GET') {
+      fake.jobPolls += 1
+      if (fake.jobPolls === 2) fake.add({ cycle: GM, narrative: '拿起螺絲' }, { source: 'rule_based', import_row_id: 'ir1' } as never)
+      const done = fake.jobPolls >= 2
+      return json(route, { id: 'job-w5', import_id: IMPORT, status: done ? 'completed' : 'running', total: 2,
+        processed: done ? 2 : 0, succeeded: 0, review: done ? 2 : 0, failed: 0 })
+    }
+    if (path === `/api/v2/worksheets/${WS}/drafts/blank-from-import` && method === 'POST') {
+      const ids = body().import_row_ids as string[]
+      fake.blankRequests.push(ids)
+      const made = ids.filter(id => !fake.drafts.some(d => d.import_row_id === id)).map(id =>
+        fake.add({ cycle: { seq: 'GM' }, narrative: '長'.repeat(30) }, { source: 'imported', import_row_id: id,
+          parse_snapshot: { complete: false, issues: ['blank_from_import'] } } as never))
+      return json(route, { worksheet_id: WS, items: made }, 201)
+    }
+    if (path === `/api/v2/imports/${IMPORT}/parse-jobs/job-w5/items`) {
+      const done = fake.jobPolls >= 2
+      const has = (id: string) => fake.drafts.some(d => d.import_row_id === id)
+      return json(route, { job_id: 'job-w5', items: done ? [
+        { item_id: 'i1', import_row_id: 'ir1', source_row_no: 1, description: '拿起螺絲', status: 'review', has_drafts: has('ir1'), reason: null, ai_error_kind: null },
+        { item_id: 'i2', import_row_id: 'ir2', source_row_no: 2, description: '長'.repeat(30), status: 'review', has_drafts: has('ir2'), reason: 'text_too_long', ai_error_kind: null },
+      ] : [] })
     }
     if (path === '/api/v2/wi-ai/status') return json(route, { enabled: false, available: false })
     if (path === `/api/v2/worksheets/${WS}` && method === 'PUT') {
@@ -330,18 +372,37 @@ test('編輯草稿不改格位就存：原 cycle 原封保留（含編輯器放�
   expect(fake.patches[0].content).toMatchObject({ cycle: cm, narrative: 'AI 兩段推' })
 })
 
-test('整份上傳入口：先提示會直接寫入工時表，取消就不開匯入精靈', async ({ page }) => {
+test('整份上傳：上傳（綁工時表）→ 欄位對應 → 開始解析 → 進度 → 草稿出現 → 沒草稿的列建空白草稿 → 確認 → 寫入', async ({ page }) => {
   const fake = new FakeDrafts()
   await install(page, fake)
   await enterWorkspace(page)
   await page.getByTestId('input-mode-upload').click()
-  await expect(page.getByTestId('upload-entry')).toContainText('直接寫進工時表')
-  page.once('dialog', d => d.dismiss())
-  await page.getByTestId('upload-open').click()
-  await expect(page.getByRole('heading', { name: /匯入 Excel/ })).toHaveCount(0)
-  page.once('dialog', d => d.accept())
   await page.getByTestId('upload-open').click()
   await expect(page.getByRole('heading', { name: /匯入 Excel/ })).toBeVisible()
+  await page.setInputFiles('input[type=file]',
+    { name: 'w5.xlsx', mimeType: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet', buffer: Buffer.from('x') })
+  await page.locator('label', { hasText: '描述（必）' }).locator('select').selectOption('0')
+  await page.getByRole('button', { name: '預覽' }).click()
+  await expect(page.getByTestId('import-drafts-confirm')).toBeVisible()
+  await page.getByTestId('import-start-parse').click()
+  expect(fake.uploadQuery).toBe(`worksheet_id=${WS}`)
+  expect(fake.jobBody).toEqual({ rule_set_code: 'MINIMOST_FACTORY_V2', idempotency_key: `workspace:${IMPORT}` })
+  await expect(page.getByRole('heading', { name: /匯入 Excel/ })).toHaveCount(0)
+
+  await expect(page.getByTestId('upload-counts')).toContainText('已處理 2／2 列', { timeout: 15_000 })
+  await expect(page.getByTestId('draft-row')).toHaveCount(1)
+  await expect(page.getByTestId('upload-missing-row')).toHaveCount(1)
+  await expect(page.getByTestId('upload-missing-row')).toContainText('描述超過 2000 字')
+  await page.getByTestId('upload-blank-all').click()
+  await expect(page.getByTestId('upload-msg')).toContainText('已建立 1 列空白草稿')
+  await expect(page.getByTestId('draft-row')).toHaveCount(2)
+  expect(fake.blankRequests).toEqual([['ir2']])
+  await expect(page.getByTestId('upload-missing-row')).toHaveCount(0)  // 有草稿了：不再列出，也就不會重複建
+  await expect(page.getByTestId('draft-row').nth(1).getByTestId('draft-incomplete')).toBeVisible()
+
+  await page.getByTestId('draft-row').first().getByTestId('draft-confirm').click()
+  await page.getByTestId('draft-commit').click()
+  await expect(page.getByTestId('draft-msg')).toContainText('已寫入 1 列')
 })
 
 test('確認被 409 DRAFT_INCOMPLETE 擋下時，標出是哪一列', async ({ page }) => {

@@ -2,6 +2,7 @@
 
 POST   /api/v2/imports/{import_id}/parse-jobs
 GET    /api/v2/imports/{import_id}/parse-jobs/{job_id}
+GET    /api/v2/imports/{import_id}/parse-jobs/{job_id}/items   逐列結果（ADR-038 W5）
 POST   /api/v2/imports/{import_id}/parse-jobs/{job_id}/tick
 POST   /api/v2/imports/{import_id}/parse-jobs/{job_id}/cancel
 """
@@ -18,6 +19,7 @@ from ddm_v2.auth.deps import CurrentUser, current_user, require_role
 from ddm_v2.database import get_db_session
 from ddm_v2.errors.registry import ErrorCode
 from ddm_v2.exceptions import (
+    ConflictError,
     NotFoundError,
     RateLimitedError,
     ServiceUnavailableError,
@@ -25,6 +27,8 @@ from ddm_v2.exceptions import (
 )
 from ddm_v2.services.v2 import parse_job_service as svc
 from ddm_v2.services.v2 import synonym_service as syn_svc
+from ddm_v2.services.v2 import wi_draft_service as drafts_svc
+from ddm_v2.services.v2.worksheet_service import NotEditable, WorksheetNotFound
 
 router = APIRouter(prefix="/api/v2/imports", tags=["v2-parse-jobs"])
 
@@ -67,6 +71,18 @@ async def create_parse_job(
             msg,
             detail={"code": ErrorCode.RATE_LIMITED},
         ) from None
+    except svc.TargetRuleSetMismatch as exc:
+        raise ConflictError(
+            str(exc), detail={"code": ErrorCode.CONFLICT, "field": "rule_set_code", "expected": exc.expected}
+        ) from None
+    except WorksheetNotFound:
+        raise NotFoundError("目標工時表不存在", detail={"code": ErrorCode.NOT_FOUND, "resource": "worksheet"}) from None
+    except NotEditable as exc:
+        raise ConflictError(str(exc), detail={"code": ErrorCode.CONFLICT}) from None
+    except drafts_svc.TooManyDrafts as exc:
+        raise ValidationError(
+            str(exc), detail={"code": ErrorCode.VALIDATION_ERROR, "field": "items", "max": drafts_svc.MAX_DRAFTS_PER_WORKSHEET}
+        ) from None
     except svc.NoStagedRows:
         raise ValidationError(
             "無可用暫存列（需先 map 且含 description）",
@@ -106,6 +122,24 @@ async def get_parse_job(
             "parse job 不存在",
             detail={"code": ErrorCode.NOT_FOUND, "resource": "parse_job", "job_id": str(job_id)},
         ) from None
+
+
+@router.get("/{import_id}/parse-jobs/{job_id}/items")
+async def list_parse_job_items(
+    import_id: UUID,
+    job_id: UUID,
+    session: AsyncSession = Depends(get_db_session, scope="function"),
+    _: CurrentUser = Depends(require_role("analyst")),
+) -> dict:
+    """逐列結果（ADR-038 W5；含匯入描述，analyst 以上）：`has_drafts=false` 的列要在畫面上列出並可「建空白草稿」。"""
+    try:
+        items = await svc.list_items(session, import_id=import_id, job_id=job_id)
+    except svc.JobNotFound:
+        raise NotFoundError(
+            "parse job 不存在",
+            detail={"code": ErrorCode.NOT_FOUND, "resource": "parse_job", "job_id": str(job_id)},
+        ) from None
+    return {"job_id": str(job_id), "items": items}
 
 
 @router.post("/{import_id}/parse-jobs/{job_id}/tick")

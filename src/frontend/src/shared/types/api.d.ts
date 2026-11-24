@@ -1468,6 +1468,26 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v2/imports/{import_id}/parse-jobs/{job_id}/items": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Parse Job Items
+         * @description 逐列結果（ADR-038 W5；含匯入描述，analyst 以上）：`has_drafts=false` 的列要在畫面上列出並可「建空白草稿」。
+         */
+        get: operations["list_parse_job_items_api_v2_imports__import_id__parse_jobs__job_id__items_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v2/imports/{import_id}/parse-jobs/{job_id}/tick": {
         parameters: {
             query?: never;
@@ -1781,6 +1801,26 @@ export interface paths {
          *     來源標 rule_based。外部路徑會在呼叫前 commit（ADR-037 D8），所以這裡在那之前只讀不寫。
          */
         post: operations["drafts_from_sentence_api_v2_worksheets__worksheet_id__drafts_from_sentence_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v2/worksheets/{worksheet_id}/drafts/blank-from-import": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Blank Drafts From Import
+         * @description 沒有產生草稿的 Excel 列建空白草稿（ADR-038 W5）：帶出處、佔位 cycle、要人補齊才能確認；已有草稿的列跳過。
+         */
+        post: operations["blank_drafts_from_import_api_v2_worksheets__worksheet_id__drafts_blank_from_import_post"];
         delete?: never;
         options?: never;
         head?: never;
@@ -4081,6 +4121,14 @@ export interface components {
              * @enum {string}
              */
             source: "manual" | "imported" | "ai_assisted" | "system";
+        };
+        /**
+         * WiDraftBlankFromImportIn
+         * @description 沒有產生草稿的 Excel 列 → 空白草稿（ADR-038 W5）。
+         */
+        WiDraftBlankFromImportIn: {
+            /** Import Row Ids */
+            import_row_ids: string[];
         };
         /**
          * WiDraftCommitIn
@@ -7917,6 +7965,40 @@ export interface operations {
             };
         };
     };
+    list_parse_job_items_api_v2_imports__import_id__parse_jobs__job_id__items_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                import_id: string;
+                job_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     tick_parse_job_api_v2_imports__import_id__parse_jobs__job_id__tick_post: {
         parameters: {
             query?: never;
@@ -8715,6 +8797,41 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["WiDraftFromSentenceOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    blank_drafts_from_import_api_v2_worksheets__worksheet_id__drafts_blank_from_import_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                worksheet_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["WiDraftBlankFromImportIn"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["WiDraftListOut"];
                 };
             };
             /** @description Validation Error */

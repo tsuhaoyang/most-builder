@@ -7,6 +7,7 @@ DELETE /api/v2/worksheet-drafts/{draft_id}               刪除一列（已寫�
 POST   /api/v2/worksheets/{worksheet_id}/drafts/confirm  確認一些列或一整組
 POST   /api/v2/worksheets/{worksheet_id}/drafts/commit   寫入工時表（已確認的列追加到表尾）
 POST   /api/v2/worksheets/{worksheet_id}/drafts/from-sentence  單句解析（AI 或規則）→ 同一組草稿（W3）
+POST   /api/v2/worksheets/{worksheet_id}/drafts/blank-from-import  沒有草稿的 Excel 列 → 空白草稿（W5）
 
 寫入檢查（W3，ADR-037 D3）：解析出的草稿不完整、而且 cycle 沒被人補過 → 確認與寫入都回 409 `DRAFT_INCOMPLETE`。
 過期（ADR-037 D5）：寫入時已確認的草稿若工時表改綁規則版本、或來源 Excel 列變了 → 409 `DRAFT_STALE`，
@@ -27,6 +28,7 @@ from ddm_v2.exceptions import ConflictError, NotFoundError, ServiceUnavailableEr
 from ddm_v2.most_engine import SequenceError
 from ddm_v2.most_engine.rule_set_data import RuleSetIncomplete
 from ddm_v2.schemas.v2.wi_draft import (
+    WiDraftBlankFromImportIn,
     WiDraftCommitIn,
     WiDraftCommitOut,
     WiDraftConfirmIn,
@@ -323,3 +325,28 @@ async def drafts_from_sentence(
             routing_reasons=list(result.routing_reasons),
         ),
     )
+
+
+@router.post("/worksheets/{worksheet_id}/drafts/blank-from-import", response_model=WiDraftListOut, status_code=201)
+async def blank_drafts_from_import(
+    worksheet_id: uuid.UUID,
+    payload: WiDraftBlankFromImportIn,
+    session: AsyncSession = Depends(get_db_session, scope="function"),
+    user: CurrentUser = Depends(require_role("analyst")),
+) -> WiDraftListOut:
+    """沒有產生草稿的 Excel 列建空白草稿（ADR-038 W5）：帶出處、佔位 cycle、要人補齊才能確認；已有草稿的列跳過。"""
+    try:
+        await svc.get_editable_worksheet(session, worksheet_id)
+        drafts = await svc.add_blank_import_drafts(session, worksheet_id, payload.import_row_ids, actor=user.employee_no)
+    except (WorksheetNotFound, NotEditable) as exc:
+        raise _map_common(exc, worksheet_id) from None
+    except svc.ImportRowsNotFound as exc:
+        raise NotFoundError(
+            "匯入列不存在或不屬於這份工時表",
+            detail={"code": ErrorCode.NOT_FOUND, "resource": "import_row", "import_row_ids": [str(i) for i in exc.ids[:200]]},
+        ) from None
+    except svc.TooManyDrafts as exc:
+        raise ValidationError(
+            str(exc), detail={"code": ErrorCode.VALIDATION_ERROR, "field": "items", "max": svc.MAX_DRAFTS_PER_WORKSHEET}
+        ) from None
+    return WiDraftListOut(worksheet_id=worksheet_id, items=[WiDraftOut.model_validate(d, from_attributes=True) for d in drafts])

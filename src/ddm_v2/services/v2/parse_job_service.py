@@ -176,6 +176,76 @@ def job_to_dict(job: AiParseJob) -> dict[str, Any]:
     }
 
 
+class TargetRuleSetMismatch(Exception):
+    """綁了工時表的匯入，job 的規則版本必須等於工時表的（否則解析出的草稿寫不進去，ADR-038 W5）。"""
+
+    def __init__(self, expected: str | None) -> None:
+        super().__init__(f"job 的規則版本必須是工時表的規則版本：{expected}")
+        self.expected = expected
+
+
+async def _assert_target_worksheet(session: AsyncSession, worksheet_id: UUID, rs: RuleSet) -> None:
+    """建 job 前先驗目標工時表：存在、草稿版本、編輯區還有空位、規則版本相同（W5：不讓整批跑完才發現寫不進去）。"""
+    from ddm_v2.services.v2 import wi_draft_service as drafts_svc
+
+    ws = await drafts_svc.get_editable_worksheet(session, worksheet_id)  # WorksheetNotFound／NotEditable
+    if ws.default_rule_set_id is not None and ws.default_rule_set_id != rs.id:
+        expected = (await session.get(RuleSet, ws.default_rule_set_id))
+        raise TargetRuleSetMismatch(expected.code if expected else None)
+    await drafts_svc.assert_room_for(session, worksheet_id)  # TooManyDrafts
+
+
+async def list_items(session: AsyncSession, *, import_id: UUID, job_id: UUID) -> list[dict[str, Any]]:
+    """job 的逐列結果（W5）：列號、描述摘要、狀態、有沒有草稿、原因。給畫面列出「沒有產生草稿」的列。"""
+    from ddm_v2.models.v2.wi_draft import WiDraftRow
+
+    job = await session.get(AiParseJob, job_id)
+    if job is None or job.import_id != import_id:
+        raise JobNotFound(str(job_id))
+    rec = await session.get(ExcelImport, import_id)
+    rows = (
+        await session.execute(
+            select(AiParseJobItem, ImportRow)
+            .join(ImportRow, ImportRow.id == AiParseJobItem.import_row_id)
+            .where(AiParseJobItem.job_id == job_id)
+            .order_by(ImportRow.source_row_no)
+        )
+    ).all()
+    with_drafts: set[UUID] = set()
+    if rec is not None and rec.worksheet_id is not None and rows:
+        with_drafts = set(
+            (
+                await session.execute(
+                    select(WiDraftRow.import_row_id).where(
+                        WiDraftRow.worksheet_id == rec.worksheet_id,
+                        WiDraftRow.import_row_id.in_([r.id for _i, r in rows]),
+                    )
+                )
+            ).scalars()
+        )
+    out = []
+    for item, row in rows:
+        err = item.last_error or {}
+        reason = None
+        if err.get("error_type") == "TextTooLong":
+            reason = "text_too_long"
+        elif item.status == "failed":
+            reason = "parse_failed"
+        elif isinstance(err.get("drafts"), dict):
+            reason = str(err["drafts"].get("reason") or "drafts_not_written")
+        out.append({
+            "item_id": str(item.id),
+            "import_row_id": str(row.id),
+            "source_row_no": row.source_row_no,
+            "description": _row_text(row.normalized_data)[:200],
+            "status": item.status,
+            "has_drafts": row.id in with_drafts,
+            "reason": reason,
+            "ai_error_kind": (err.get("ai") or {}).get("error_kind") if isinstance(err.get("ai"), dict) else None,
+        })
+    return out
+
+
 async def create_parse_job(
     session: AsyncSession,
     *,
@@ -231,6 +301,8 @@ async def create_parse_job(
     ).scalar_one_or_none()
     if rs is None:
         raise syn_svc.RuleSetNotFound(rule_set_code)
+    if rec.worksheet_id is not None:
+        await _assert_target_worksheet(session, rec.worksheet_id, rs)
 
     code = bundle_code or get_settings().wi_ai_bundle_code or wi_ai_service.DEFAULT_BUNDLE_CODE
     bundle = (

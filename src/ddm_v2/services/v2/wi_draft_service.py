@@ -802,3 +802,74 @@ def apply_excel_quantity(parsed: list[ParsedDraft], result: ParseRunResult, raw_
     if not applied:
         return note("4", set(), "no_process_or_move_place")
     return note("2", applied, "other_motion_not_applied")
+
+
+class ImportRowsNotFound(Exception):
+    """要建空白草稿的匯入列不存在，或不屬於綁定這份工時表的匯入。"""
+
+    def __init__(self, ids: Sequence[uuid.UUID]) -> None:
+        super().__init__(", ".join(sorted(str(i) for i in ids)))
+        self.ids = list(ids)
+
+
+async def add_blank_import_drafts(
+    session: AsyncSession, worksheet_id: uuid.UUID, import_row_ids: Sequence[uuid.UUID], *, actor: str
+) -> list[WiDraftRow]:
+    """為沒有產生草稿的 Excel 列建空白草稿（ADR-038 W5）。由後端建：帶 import_row_id 與出處，cycle 是佔位，
+    `parse_snapshot.complete=False`——人沒補齊格位前不能確認或寫入（DRAFT_INCOMPLETE），也納入過期判斷。
+
+    已經有草稿的列跳過（重按不會重複建）。只接受綁定這份工時表的匯入的列。
+    """
+    from ddm_v2.models.v2.import_staging import ExcelImport
+
+    wanted = list(dict.fromkeys(import_row_ids))
+    rows = list(
+        (
+            await session.execute(
+                select(ImportRow)
+                .join(ExcelImport, ExcelImport.id == ImportRow.import_id)
+                .where(ImportRow.id.in_(wanted), ExcelImport.worksheet_id == worksheet_id)
+            )
+        ).scalars()
+    )
+    found = {r.id for r in rows}
+    if missing := [i for i in wanted if i not in found]:
+        raise ImportRowsNotFound(missing)
+    await session.execute(select(MostWorksheet.id).where(MostWorksheet.id == worksheet_id).with_for_update())
+    have = set(
+        (
+            await session.execute(
+                select(WiDraftRow.import_row_id).where(
+                    WiDraftRow.worksheet_id == worksheet_id, WiDraftRow.import_row_id.in_(wanted)
+                )
+            )
+        ).scalars()
+    )
+    todo = sorted((r for r in rows if r.id not in have), key=lambda r: r.source_row_no)
+    if not todo:
+        return []
+    items: list[WiDraftCreateItem] = []
+    snapshots: list[dict[str, Any]] = []
+    for r in todo:
+        nd = r.normalized_data or {}
+        desc = str(nd.get("description") or "").strip()
+        group = str(nd.get("wi_group") or "").strip() or desc
+        hand = nd.get("hand") if nd.get("hand") in ("LH", "RH", "BH") else None
+        content = WiDraftContent(
+            hand=hand, wi_group=group[:WI_GROUP_MAX] or None, narrative=desc[:2000] or None, cycle=PLACEHOLDER_CYCLE
+        )
+        items.append(WiDraftCreateItem(content=content, group_key=str(uuid.uuid4())))
+        snapshots.append({
+            "complete": False,
+            "issues": ["blank_from_import"],
+            "cycle_hash": cycle_hash(content.model_dump(mode="json")["cycle"]),
+            "ai_status": "none",
+            "action_id": None,
+            "routing_status": None,
+            "wi_group_truncated": len(group) > WI_GROUP_MAX,
+            "import_input_hash": r.input_hash,
+        })
+    return await add_drafts(
+        session, worksheet_id, items, source="imported", actor=actor,
+        import_row_ids=[r.id for r in todo], parse_snapshots=snapshots,
+    )

@@ -448,22 +448,68 @@ async def test_reparse_replaces_untouched_drafts_and_keeps_touched_ones(client, 
 
 
 async def test_parse_job_into_approved_worksheet_notes_it_and_still_finishes(client, db_session):
+    """W5 起建 job 時就擋（409）；建立後工時表才被核准的情況，job 照跑完、草稿不寫並記原因。"""
     from ddm_v2.models.v2.ai_ops import AiParseJobItem
-    from ddm_v2.models.v2.import_staging import ExcelImport
+    from ddm_v2.models.v2.worksheet import ProcessVersion
 
-    ws, rs = await _seed_ws(db_session, status="approved")
-    rec = ExcelImport(id=uuid.uuid4(), worksheet_id=ws.id, source_name="w3.xlsx", status="mapped",
-                      raw_payload={"sheets": []}, sheet="Sheet1", header_row=0, column_map={"description": 0},
-                      time_unit="sec", imported_by="TEST",
-                      staged_rows=[{"_row": 1, "description": f"拿起零件{uuid.uuid4().hex[:4]}"}])
-    db_session.add(rec)
+    ws, rs = await _seed_ws(db_session)
+    rec = await _bound_import(db_session, ws.id, [{"_row": 1, "description": f"拿起零件{uuid.uuid4().hex[:4]}"}])
+    r = await client.post(f"/api/v2/imports/{rec.id}/parse-jobs",
+                          json={"rule_set_code": rs.code, "idempotency_key": f"w5-{uuid.uuid4().hex}"})
+    assert r.status_code == 201, r.text
+    job_id = r.json()["id"]
+    pv = await db_session.get(ProcessVersion, ws.process_version_id)
+    pv.status = "approved"
     await db_session.commit()
-    body = await _tick_all(client, rec.id, rs.code)
+    for _ in range(5):
+        body = (await client.post(f"/api/v2/imports/{rec.id}/parse-jobs/{job_id}/tick", json={"limit": 4})).json()
+        if body["job"]["status"] in {"completed", "partial", "failed"}:
+            break
     assert body["job"]["processed"] == 1 and body["job"]["failed"] == 0, body
     assert (await db_session.execute(select(WiDraftRow).where(WiDraftRow.worksheet_id == ws.id))).scalars().all() == []
     items = (await db_session.execute(
-        select(AiParseJobItem).where(AiParseJobItem.job_id == uuid.UUID(body["job"]["id"])))).scalars().all()
+        select(AiParseJobItem).where(AiParseJobItem.job_id == uuid.UUID(job_id)))).scalars().all()
     assert items[0].last_error["drafts"] == {"written": 0, "reason": "NotEditable"}
+
+
+async def test_creating_a_job_validates_the_bound_worksheet(client, db_session, monkeypatch):
+    """W5：目標工時表已核准 → 409；規則版本不同 → 409 帶 expected；編輯區滿了 → 422。不讓整批跑完才發現寫不進去。"""
+    from ddm_v2.models.v2.rule_set import RuleSet
+    from ddm_v2.services.v2 import wi_draft_service as drafts_svc
+
+    approved, rs = await _seed_ws(db_session, status="approved")
+    rec = await _bound_import(db_session, approved.id, [{"_row": 1, "description": "拿起零件"}])
+    r = await client.post(f"/api/v2/imports/{rec.id}/parse-jobs", json={"rule_set_code": rs.code})
+    assert r.status_code == 409, r.text
+
+    ws, rs = await _seed_ws(db_session)
+    rec = await _bound_import(db_session, ws.id, [{"_row": 1, "description": "拿起零件"}])
+    monkeypatch.setattr(drafts_svc, "MAX_DRAFTS_PER_WORKSHEET", 0)
+    r = await client.post(f"/api/v2/imports/{rec.id}/parse-jobs", json={"rule_set_code": rs.code})
+    assert r.status_code == 422, r.text
+    monkeypatch.undo()
+
+    other = (await db_session.execute(select(RuleSet).where(RuleSet.id != rs.id).limit(1))).scalar_one_or_none()
+    if other is None:
+        pytest.skip("DB 只有一個 rule_set：規則版本不同的情境無法測")
+    r = await client.post(f"/api/v2/imports/{rec.id}/parse-jobs", json={"rule_set_code": other.code})
+    assert r.status_code == 409 and r.json()["error"]["detail"]["expected"] == rs.code, r.text
+
+
+async def test_job_items_list_rows_without_drafts(client, db_session):
+    ws, rs = await _seed_ws(db_session)
+    rec = await _bound_import(db_session, ws.id, [
+        {"_row": 1, "description": f"拿起零件{uuid.uuid4().hex[:4]}"},
+        {"_row": 2, "description": "長" * 2001},
+    ])
+    body = await _tick_all(client, rec.id, rs.code)
+    r = await client.get(f"/api/v2/imports/{rec.id}/parse-jobs/{body['job']['id']}/items")
+    assert r.status_code == 200, r.text
+    items = r.json()["items"]
+    assert [i["source_row_no"] for i in items] == [1, 2]
+    assert items[0]["has_drafts"] is True and items[0]["reason"] is None
+    assert items[1]["has_drafts"] is False and items[1]["reason"] == "text_too_long"
+    assert len(items[1]["description"]) == 200
 
 
 # ═════════ migration ═════════
@@ -487,30 +533,6 @@ async def test_full_workspace_is_refused_before_spending_ai_quota(client, db_ses
     r = await _from_sentence(client, ws.id)
     assert r.status_code == 422, r.text
     assert port.requests == [], "編輯區滿了先擋，不花 AI 額度"
-
-
-async def test_parse_job_with_another_rule_set_does_not_write_drafts(client, db_session):
-    from ddm_v2.models.v2.ai_ops import AiParseJobItem
-    from ddm_v2.models.v2.import_staging import ExcelImport
-    from ddm_v2.models.v2.rule_set import RuleSet
-
-    ws, rs = await _seed_ws(db_session)
-    other = (await db_session.execute(select(RuleSet).where(RuleSet.id != rs.id).limit(1))).scalar_one_or_none()
-    if other is None:
-        pytest.skip("DB 只有一個 rule_set")
-    rec = ExcelImport(id=uuid.uuid4(), worksheet_id=ws.id, source_name="w3.xlsx", status="mapped",
-                      raw_payload={"sheets": []}, sheet="Sheet1", header_row=0, column_map={"description": 0},
-                      time_unit="sec", imported_by="TEST",
-                      staged_rows=[{"_row": 1, "description": f"拿起零件{uuid.uuid4().hex[:4]}"}])
-    db_session.add(rec)
-    await db_session.commit()
-    body = await _tick_all(client, rec.id, other.code)
-    if body.get("job") is None:
-        pytest.skip(f"另一個 rule_set 不能建 job：{body}")
-    assert (await db_session.execute(select(WiDraftRow).where(WiDraftRow.worksheet_id == ws.id))).scalars().all() == []
-    items = (await db_session.execute(
-        select(AiParseJobItem).where(AiParseJobItem.job_id == uuid.UUID(body["job"]["id"])))).scalars().all()
-    assert items[0].last_error["drafts"]["reason"] == "rule_set_mismatch"
 
 
 # ═════════ 降級原因與快取規則（2026-11-24 真實量測後） ═════════
@@ -731,3 +753,55 @@ async def test_a_failing_row_does_not_break_the_next_row_in_the_same_tick(client
     statuses = sorted(i.status for i in items.values())
     assert statuses[0] == "queued" and statuses[1] in {"ready", "review"}, statuses
     assert len(await _drafts(client, ws.id)) >= 1
+
+
+
+async def test_blank_drafts_from_import_rows(client, db_session):
+    """沒有草稿的 Excel 列 → 後端建空白草稿：帶出處、佔位 cycle、補齊前不能確認、重按不重複、別的工時表的列 404。"""
+    ws, rs = await _seed_ws(db_session)
+    long_text = "長" * 2001
+    rec = await _bound_import(db_session, ws.id, [
+        {"_row": 1, "description": long_text, "hand": "LH", "wi_group": "上料"},
+    ])
+    body = await _tick_all(client, rec.id, rs.code)
+    items = (await client.get(f"/api/v2/imports/{rec.id}/parse-jobs/{body['job']['id']}/items")).json()["items"]
+    (row,) = items
+    assert row["has_drafts"] is False
+    url = f"/api/v2/worksheets/{ws.id}/drafts/blank-from-import"
+    r = await client.post(url, json={"import_row_ids": [row["import_row_id"]]})
+    assert r.status_code == 201, r.text
+    (d,) = r.json()["items"]
+    assert d["source"] == "imported" and d["import_row_id"] == row["import_row_id"]
+    assert d["content"]["hand"] == "LH" and d["content"]["wi_group"] == "上料"
+    assert len(d["content"]["narrative"]) == 2000
+    assert d["parse_snapshot"]["complete"] is False
+    r = await client.post(f"/api/v2/worksheets/{ws.id}/drafts/confirm", json={"draft_ids": [d["id"]]})
+    assert r.status_code == 409 and _error(r)["code"] == "DRAFT_INCOMPLETE", "補齊格位前不能確認"
+    again = await client.post(url, json={"import_row_ids": [row["import_row_id"]]})
+    assert again.status_code == 201 and again.json()["items"] == [], "已有草稿：不重複建"
+    items = (await client.get(f"/api/v2/imports/{rec.id}/parse-jobs/{body['job']['id']}/items")).json()["items"]
+    assert items[0]["has_drafts"] is True
+
+    other_ws, _ = await _seed_ws(db_session)
+    r = await client.post(f"/api/v2/worksheets/{other_ws.id}/drafts/blank-from-import",
+                          json={"import_row_ids": [row["import_row_id"]]})
+    assert r.status_code == 404, "別的工時表的匯入列不能拿來建"
+
+    # 補齊後確認、寫入：來源是 imported、帶匯入出處
+    content = dict(d["content"], cycle=dict(GM_CYCLE))
+    assert (await client.patch(f"/api/v2/worksheet-drafts/{d['id']}", json={"content": content})).status_code == 200
+    assert (await client.post(f"/api/v2/worksheets/{ws.id}/drafts/confirm", json={"draft_ids": [d["id"]]})).status_code == 200
+    assert (await _commit(client, ws.id)).status_code == 200
+    wr = (await db_session.execute(select(WiRow).where(WiRow.worksheet_id == ws.id))).scalar_one()
+    assert wr.provenance == "imported" and wr.source_import_id == rec.id
+
+
+async def test_job_items_need_analyst_and_the_right_import(client, db_session):
+    ws, rs = await _seed_ws(db_session)
+    rec = await _bound_import(db_session, ws.id, [{"_row": 1, "description": f"拿起零件{uuid.uuid4().hex[:4]}"}])
+    body = await _tick_all(client, rec.id, rs.code)
+    viewer = await _user(client, None)
+    url = f"/api/v2/imports/{rec.id}/parse-jobs/{body['job']['id']}/items"
+    assert (await client.get(url, headers=viewer)).status_code == 403
+    other = await _bound_import(db_session, ws.id, [{"_row": 1, "description": "x"}])
+    assert (await client.get(f"/api/v2/imports/{other.id}/parse-jobs/{body['job']['id']}/items")).status_code == 404

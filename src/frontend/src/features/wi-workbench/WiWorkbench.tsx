@@ -17,6 +17,7 @@ import {
 } from './cycle'
 import { DraftArea } from './drafts/DraftArea'
 import { SentenceInput } from './drafts/SentenceInput'
+import { UploadInput } from './drafts/UploadInput'
 import { useCreateDrafts, usePatchDraft, type WiDraft, type WiDraftContent } from './drafts/api'
 import { contentOf, editorContent, editorWouldSimplify, resetDistanceRows } from './drafts/logic'
 import { resolveErrorMessage } from '../../shared/i18n/errorMessage'
@@ -722,14 +723,9 @@ export function WiWorkbench() {
         {editable && inputMode === 'sentence' && activeWs && (
           <SentenceInput worksheetId={activeWs} handCode={cur.handCode} wiGroup={curWiGroup} />
         )}
-        {editable && inputMode === 'upload' && (
-          <div className="text-sm space-y-2" data-testid="upload-entry">
-            <p className="text-slate-600">{t('workbench.drafts.upload.hint')}</p>
-            <button type="button" className="px-3 py-1.5 border rounded" data-testid="upload-open"
-              onClick={() => { if (window.confirm(t('workbench.drafts.upload.confirm'))) window.dispatchEvent(new CustomEvent('ddm:open-import')) }}>
-              {t('workbench.drafts.upload.open')}
-            </button>
-          </div>
+        {editable && inputMode === 'upload' && activeWs && (
+          // 解析與寫入都用這份工時表的規則版本（建 job 時後端也會驗）
+          <UploadInput worksheetId={activeWs} ruleSetCode={wsData?.default_rule_set?.code ?? opts.code} />
         )}
         {editingDraft && (
           <div className="text-sm bg-blue-50 border border-blue-200 rounded px-2 py-1 flex items-center gap-2" data-testid="editing-draft">
