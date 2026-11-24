@@ -90,7 +90,11 @@ UNKNOWN_UPSTREAM_CODE = "UNKNOWN"
 RUNNABLE_BUNDLE_STATUSES = frozenset({"shadow", "active"})
 MAX_PROVENANCE_FIELD_LEN = 128
 _SAFE_TEXT_RE = re.compile(r"^[A-Za-z0-9._:/@+\-]{1,128}$")
-MAX_RETRY_AFTER_S = 30.0
+# 429 最多願意等多久再重送（ai_service 契約 §5.2／§5.3：實測 Retry-After 約 46 秒，要等滿再送）。
+# Retry-After 超過這個值、或超過剩餘總時限，就不重試、直接降級——不提早重送（提早送只會再收到 429）。
+MAX_RETRY_AFTER_S = 60.0
+# 解析 Retry-After 的防呆上限（擋荒謬值；不是等待上限）
+_RETRY_AFTER_PARSE_CAP_S = 3600.0
 
 
 @dataclass(frozen=True)
@@ -163,7 +167,7 @@ def _parse_retry_after(raw: str | None) -> float | None:
         return None
     if value is None or not math.isfinite(value):
         return None
-    return min(max(0.0, value), MAX_RETRY_AFTER_S)
+    return min(max(0.0, value), _RETRY_AFTER_PARSE_CAP_S)
 
 
 def _safe_code(raw: object) -> str | None:
@@ -374,6 +378,8 @@ class AiServiceClient:
             except AiServiceError as err:
                 retry = err.kind in RETRYABLE_KINDS and attempt <= cfg.max_retries
                 delay = 0.0
+                if retry and err.retry_after_s is not None and err.retry_after_s > MAX_RETRY_AFTER_S:
+                    retry = False  # 服務要我們等更久：不提早重送，降級
                 if retry:
                     base = err.retry_after_s if err.retry_after_s is not None else 0.5 * (2 ** (attempt - 1))
                     delay = base + self._jitter() * 0.25

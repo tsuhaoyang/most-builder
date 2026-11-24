@@ -277,10 +277,33 @@ async def test_total_budget_covers_retries():
 
 @pytest.mark.parametrize("raw", ["nan", "inf", "-5", "garbage"])
 def test_retry_after_parsing_is_bounded(raw: str):
-    from ddm_v2.ai_integration.client import MAX_RETRY_AFTER_S, _parse_retry_after
+    from ddm_v2.ai_integration.client import _RETRY_AFTER_PARSE_CAP_S, _parse_retry_after
 
     value = _parse_retry_after(raw)
-    assert value is None or 0.0 <= value <= MAX_RETRY_AFTER_S
+    assert value is None or 0.0 <= value <= _RETRY_AFTER_PARSE_CAP_S
+
+
+async def test_retry_waits_the_full_retry_after_of_46s():
+    """契約 §5.2 實測 Retry-After=46：要等滿 46 秒（不截短成更早重送），預算 60 秒內可重試成功。"""
+    fake = FakeAiService(script=[Reply(429, error_body("ADMISSION_REJECTED"), {"Retry-After": "46"}), "ok:fewshot-zh-0"])
+    slept: list[float] = []
+
+    async def record(s: float) -> None:
+        slept.append(s)
+
+    client = AiServiceClient(_cfg(DDM_AI_SERVICE_TIMEOUT_S="60"), transport=httpx.ASGITransport(app=fake.app()),
+                             resolver=_private, sleep=record, jitter=lambda: 0.0)
+    await _call(client)
+    assert len(fake.received) == 2
+    assert slept and slept[0] >= 46.0
+
+
+async def test_retry_after_beyond_cap_degrades_without_early_retry():
+    fake = FakeAiService(script=[Reply(429, error_body("ADMISSION_REJECTED"), {"Retry-After": "90"}), "ok:fewshot-zh-0"])
+    with pytest.raises(AiServiceError) as exc:
+        await _call(_client(fake, cfg=_cfg(DDM_AI_SERVICE_TIMEOUT_S="120")))
+    assert exc.value.kind is AiServiceErrorKind.RATE_LIMITED
+    assert len(fake.received) == 1, "不在服務要求的時間之前重送"
 
 
 def test_half_open_lets_only_one_probe_through():
@@ -394,3 +417,9 @@ async def test_caller_errors_do_not_trip_the_circuit():
 async def test_unknown_lane_is_a_programming_error():
     with pytest.raises(ValueError):
         await _call(_client(FakeAiService()), lane="bulk")
+
+
+async def test_retry_after_exactly_60_is_still_retried():
+    fake = FakeAiService(script=[Reply(429, error_body("ADMISSION_REJECTED"), {"Retry-After": "60"}), "ok:fewshot-zh-0"])
+    await _call(_client(fake, cfg=_cfg(DDM_AI_SERVICE_TIMEOUT_S="120")))
+    assert len(fake.received) == 2
