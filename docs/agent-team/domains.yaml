@@ -192,6 +192,8 @@ domains:
       - "tests/integration/test_wi_drafts.py"
       # tests：每列距離狀態與完成檢查（W2）
       - "tests/integration/test_distance_status.py"
+      # tests：Excel 數量權威（W3b）
+      - "tests/unit/test_excel_quantity.py"
       # tests：解析結果寫進編輯區（W3）
       - "tests/integration/test_wi_drafts_parsed.py"
     docs:
@@ -298,7 +300,7 @@ domains:
       - 外部 AI 路徑（`parse_interactive(external=...)`）一律 `compute_routing(auto_enabled=False)`，不受 `wi_ai_auto_enabled` 影響（ADR-037 D4；2026-11-22 PR-B 落地）。上一條「須改為不可開」仍未完成：rule 路徑仍讀該旗標。路由已接線（2026-11-22，`nl_draft` 在 analyst 以上且整合可用時傳 `external`；預設關）
       - 可接受的 motion（ADR-037 D3）在工作區的落實：人按「確認」＝人工採用（取代「人寫入 `chosen`」；`ai_candidates` 的 `chosen` 仍為 null、只供顯示），寫入時 `compute_rows_for_save` 重算（等價 engine_gate：唯一拒絕條件是 `compute_cycle` 丟 `SequenceError`）；`parse_snapshot.complete` 只是「要人先補」的提示（→ 409 `DRAFT_INCOMPLETE`），不是依據（ADR-038 D3，2026-11-24 W3）。舊前端 adopt 捷徑：`AiDraftPanel.tsx` 已於 W4 移除（2026-11-24）；`ActionModuleWorkspace.tsx`（workbench-v3，只檢查 `draft.cycle`）在 W6 移除前仍在：`DDM_AI_SERVICE_ENABLED` 開啟時仍違反本條
       - nl-draft review 事件（學習迴圈）現況暫停：工作區不再送（`AiDraftPanel` 移除）。後續由後端在 `commit_drafts` 以 `ai_parse_run_id` 與最終 content 產生 review 事件，前端不補送（ADR-038 D3 W4 追記，BL-ENG-20，2026-11-24 W4）
-      - ai_service 候選的預覽 draft（`chosen` 恆為 None，`preview_drafts`）其 complete／引擎結果不得作為「可接受 motion」的依據（ADR-037 D3 澄清，2026-11-22）。編輯區草稿以預覽值預填但狀態為 pending，須經人確認、寫入時重算才算數（ADR-038 D3，2026-11-24 W3）；批次外部 AI 延後到 W3b（`parse_interactive` 外部路徑只支援單句）
+      - ai_service 候選的預覽 draft（`chosen` 恆為 None，`preview_drafts`）其 complete／引擎結果不得作為「可接受 motion」的依據（ADR-037 D3 澄清，2026-11-22）。編輯區草稿以預覽值預填但狀態為 pending，須經人確認、寫入時重算才算數（ADR-038 D3，2026-11-24 W3）；整份上傳的 parse job 以路徑 A 走外部 AI（`lane=batch`，只送 description）：建立者執行時被降權則以 rule_based 完成，額度用完的列降級、不自動重試（ADR-037 D7／D8、ADR-038 W3b，2026-11-24）
       - 凍結列舉不得收窄，舊 ai_parse_runs 列須讀得回（ADR-037 D1）
       - 【規劃中，ADR-037 實作後生效】外送只含 WI 語句與白名單 context（ADR-037 D6／D7）
 
@@ -451,7 +453,8 @@ domains:
       - 匯入為兩階段（staging→submit）；column_map 缺 description 擋提交（ADR-013）
       - 匯入建列填 wi_group（TARGET_FIELDS 含 wi_group）
       - 超過 MAX_PARSE_TEXT_CHARS 的列不外送（現況已生效：import_service 標 review、parse_job 跳過）
-      - 【規劃中，ADR-037 實作後生效】批量 AI 只送 description；Excel 數量為權威，歸屬依 ADR-037 D6 四條規則預填且逐項審核
+      - 批量 AI 只送 description（Excel 手別只用於 MOST 端比對）；Excel 數量為權威，歸屬依 ADR-037 D6 四條規則預填到草稿 `frequency`（持工具時暫不走 `repeat_count`；依據記在 `parse_snapshot.quantity`），草稿仍 pending、逐項審核（ADR-037 D6、ADR-038 W3b，2026-11-24）
+      - parse job 的 `tick_job` 是逐列交易：認領後 commit，每列各自 commit，計數逐列原子遞增；外部 AI 呼叫期間不持有 job 列鎖或工時表列鎖；AI 回來後須鎖 item 並確認仍是本 worker 的才寫回（ADR-038 W3b，2026-11-24）
       - 匯入綁了 `worksheet_id` 時，parse job 每列解析後寫進該工時表的編輯區（savepoint），不直接寫工時表；手別與作業名稱取 Excel 欄；job 規則版本與工時表不同、工時表不可寫、編輯區滿 → 不寫，原因記在 `item.last_error.drafts`；重新解析同一列只取代沒人動過的 pending 草稿（ADR-038 D3，2026-11-24 W3）。既有 submit 保留
 
   - id: auth-rbac

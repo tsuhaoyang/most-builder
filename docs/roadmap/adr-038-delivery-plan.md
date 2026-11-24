@@ -7,7 +7,7 @@
 
 ## 狀態
 
-🔄 執行中。W1（PR #16）、W2（PR #19）、W3（PR #20）已合併；W7a 已合併（PR #21）；W7b 已合併（PR #22）；W4 實作完成、PR 開立中（`feat/w4-workspace-ui`，2026-11-24，W4，依審查建議，Howard 授權）。W7 拆為 W7a／W7b（2026-11-24，W7a，依審查建議，Howard 授權）。與 ADR-038 衝突時以 ADR-038 為準。
+🔄 執行中。W1（PR #16）、W2（PR #19）、W3（PR #20）已合併；W7a 已合併（PR #21）；W7b 已合併（PR #22）；W4 實作完成、PR 開立中（`feat/w4-workspace-ui`，2026-11-24，W4，依審查建議，Howard 授權）；W3b 實作完成、PR 開立中（`feat/w3b-batch-ai`，2026-11-24，W3b，依審查建議，Howard 授權）。W7 拆為 W7a／W7b（2026-11-24，W7a，依審查建議，Howard 授權）。與 ADR-038 衝突時以 ADR-038 為準。
 
 ## 工作方式（Howard 2026-11-23）
 
@@ -52,6 +52,14 @@
 3. 同時做 ADR-037 D6：批量只送 description，Excel 數量為權威，歸屬規則預填並逐項審核。
 4. tick 內寫草稿目前會持有工時表列鎖到 tick 結束（limit ≤4），改逐列交易後解除。
 5. 用假 port 與假 ai_service 測；不需要真 ai_service。順序：W3 之後、W5 之前。
+
+**W3b 驗收對應與已知限制（2026-11-24，W3b，依審查建議，Howard 授權）**：
+- 第 1 項：`tick_job` 改為逐列交易。認領後先 commit，每列各自 commit，計數逐列原子遞增。外部時一次只認領 1 列，lease＝`LEASE_SECONDS`＋AI 總時限；AI 回來後鎖住 item 並確認仍是本 worker 的才寫回，被重認領就放棄。API tick 的 `worker_id` 每次加隨機尾碼。
+- 第 2 項：批次走外部 AI（路徑 A，`lane=batch`），失敗或額度用完降級 `rule_based`，草稿照寫；降級原因在 `item.last_error.ai`。建立者執行時被降權則以 `rule_based` 完成（建立時仍是 403）。
+- 第 3 項：只送 `description`；Excel 數量由 `apply_excel_quantity` 預填 `frequency`，依據在 `parse_snapshot.quantity`，草稿仍 pending（ADR-037 D6 追記）。
+- 第 4 項：外部呼叫期間不持有 job 列鎖或工時表列鎖，W3 的已知限制解除。
+- 已知限制：批次占用建立者每分鐘額度（30）與全站每日額度，額度用完的列降級、不自動重試；guard 額度是行程內記憶體，API 與 worker 行程各自計；取消只在每列開頭檢查。
+- 第 5 項：以假 port 與假 ai_service 測。
 
 ### W7a：區域、DSX 座標快照、物件歸區（後端；2026-11-24，W7a，依審查建議，Howard 授權）
 1. migration `v2_0054`（加法）：`zone_categories`（6 個內建，admin 可新增）、`sku_zones`、`sku_placement_snapshots`（每 SKU 保留最近 20 份）、`sku_object_zones`（複合 FK 保證同 SKU，RESTRICT；物件座標欄預留）。downgrade 有使用者資料就拒絕。
@@ -168,6 +176,11 @@
 | 2026-11-24 | W3 | 超長與解析失敗的 Excel 列 | 不產生草稿；W5 畫面必須列出並提供「建空白草稿」。理由：超長列不外送（`MAX_PARSE_TEXT_CHARS`），失敗列沒有可放的 cycle |
 | 2026-11-24 | W3 | job 規則版本與工時表不同 | 不寫草稿，原因記在 `item.last_error.drafts`，job 照跑。理由：用別的規則版本算的 cycle 進編輯區，寫入時才重算失敗，也判斷不出過期 |
 | 2026-11-24 | W3 | 已知限制：列鎖時間 | tick 內寫草稿會持有工時表列鎖到 tick 結束（limit ≤4）；W3b 改逐列交易時一併解決 |
+| 2026-11-24 | W3b | 批次外部 AI 走路徑 A，不做路徑 B（flow）（2026-11-24，W3b，依審查建議，Howard 授權） | 整份上傳逐句走 `lane=batch`；路徑 B 延後，需求清單記在 ai-service-integration-plan〈路徑 B（延後）〉。理由：重用 guard／mapper／plan adapter／快取／run 紀錄；MOST interactive 1＋batch 1＝ai_service 並行 2，429 很少 |
+| 2026-11-24 | W3b | 持工具時數量預填 `frequency`，不走 `repeat_count` | 暫不走 QuantityPolicyV2 的 `repeat_count`，一律預填 `frequency`；出處記在 `parse_snapshot.quantity`，不用 `quantity_source` 欄。理由：TMU 中性；LB 投影形狀差異留待後續 |
+| 2026-11-24 | W3b | Excel 數量規則順序與無效值 | 規則 3（同物件同動作類型剛好 N 個）排在規則 1 之前，避免 N²；被修飾物件＝數量詞後 4 字內、遇標點停；「次」與 x N 不綁物件；認不得的「數字＋量詞」、Excel＝1 但句中非 1、Excel 非正整數或 >10000 都走規則 4。與 `import_service.submit`（≤0 設 1、接受 2.5）不同，W5 改走編輯區後統一 |
+| 2026-11-24 | W3b | 批次額度限制 | 批次與單句共用建立者每分鐘 30 與全站每日額度；用完的列降級 `rule_based`，不自動重試；guard 額度為行程內記憶體，API 與 worker 各自計；取消只在每列開頭檢查。理由：先讓功能打通（同 BL-ENG-15／16） |
+| 2026-11-24 | W3b | W3 已知限制：列鎖時間 已解除 | 逐列交易後外部呼叫與草稿寫入不再持有 job 列鎖或工時表列鎖 |
 | 2026-11-24 | W7 | 拆成 W7a／W7b（2026-11-24，W7a，依審查建議，Howard 授權） | W7a：區域類別、區域、DSX 物件清單代理、同步快照、物件歸區、這份 WI 用到的物件。W7b：建模政策、算距離與建議、`distance_status=confirmed`、DSX 配合文件。理由：資料與同步可先獨立審查，算距離依賴其結果；驗收條件隨之拆開 |
 | 2026-11-24 | W7a | 區域中心取哪個點 | 取 DSX `anchor_cm`（取放錨點後的量測點），沒有才退回 `station_local_cm`，每筆記 `point_source`。理由：距離要量到手會去的地方；`anchor_cm` 是否已含旋轉與人端偏移需 DSX 確認（W7b 文件列出） |
 | 2026-11-24 | W7a | DSX 回應超過筆數上限 | 整份拒絕、不截斷（2000 筆、本文 2 MB）。理由：截斷會讓快照靜默缺物件，距離算錯而看不出來 |
