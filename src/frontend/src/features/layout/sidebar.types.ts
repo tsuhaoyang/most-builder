@@ -7,8 +7,6 @@
  */
 export type TabId =
   | 'dashboard'
-  | 'workbench-v3'
-  | 'wi-project'
   | 'level'
   | 'case'
   | 'dictionaries'

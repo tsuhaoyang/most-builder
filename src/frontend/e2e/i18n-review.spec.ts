@@ -249,9 +249,9 @@ test.describe('§I18N-01 入口角色 gating', () => {
     await page.goto('/')
     await page.waitForLoadState('networkidle')
 
-    // 正向錨點：先確認側欄真的渲染完成（viewer 看得到不需要 minRole 的「MOST 工作台」，
+    // 正向錨點：先確認側欄真的渲染完成（viewer 看得到不需要 minRole 的「分析案件」，
     // 見 Sidebar.tsx PRIMARY_NAV），下面的消極斷言才不會對著還沒渲染出來的畫面恆真通過。
-    await expect(page.getByRole('button', { name: /MOST 工作台/ })).toBeVisible()
+    await expect(page.getByRole('button', { name: /分析案件/ }).first()).toBeVisible()
 
     await expect(page.getByRole('button', { name: /主數據管理/ })).not.toBeVisible()
   })

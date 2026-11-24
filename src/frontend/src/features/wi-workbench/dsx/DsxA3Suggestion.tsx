@@ -14,10 +14,10 @@
 // （ADR-031 P1 尚未定案這種拆分規則），文案上要講清楚。
 import { useEffect, useState } from 'react'
 import { useTranslation } from 'react-i18next'
-import type { ABand } from '../wi-workbench/cycle'
-import { cmToBandValue } from '../wi-workbench/cycle'
+import type { ABand } from '../cycle'
+import { cmToBandValue } from '../cycle'
 import { useDsxA3Distance, type DsxA3DistanceResponse } from './dsxA3Distance'
-import { ApiError } from '../../shared/api/client'
+import { ApiError } from '../../../shared/api/client'
 
 export interface DsxA3SuggestionProps {
   /** 已存檔的 WiRow 主鍵；選填——只有已經存進 `wi_rows` 的列才有。有帶，後端會

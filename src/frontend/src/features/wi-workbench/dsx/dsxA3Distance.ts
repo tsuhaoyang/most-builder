@@ -14,8 +14,8 @@
 // `wi_row_id` 選填（契約草案 §3.1 掛載點更正）：掛載點在 `WiWorkbench.tsx` 的建立器
 // 面板，多數查詢發生在列還沒存檔、沒有真實 wi_row_id 時；有帶才會補寫出處快照。
 import { useMutation } from '@tanstack/react-query'
-import { apiPost } from '../../shared/api/client'
-import type { components } from '../../shared/types/api'
+import { apiPost } from '../../../shared/api/client'
+import type { components } from '../../../shared/types/api'
 
 export type DsxA3DistanceRequest = components['schemas']['A3DistanceIn']
 export type DsxA3DistanceResponse = components['schemas']['A3DistanceOut']

@@ -50,8 +50,6 @@ UX 權威＝`docs/architecture/frontend-ux-spec.md`＋ADR-021/022；`docs/html_c
 | 功能 | 實作位置 |
 |------|----------|
 | 儀表板 | `features/dashboard/` |
-| MOST 工作台（動作→WI 大綱） | `features/workbench-v3/` |
-| WI 專案建立 | `features/wi-project/` |
 | Level System | `features/level-system/` |
 | 分析案件＋工時表編輯＋匯出 | `features/cases/`、`features/wi-workbench/`、`features/export/` |
 | 主數據／MOST 字典 | `features/dictionaries/`、`features/dictionary/` |
