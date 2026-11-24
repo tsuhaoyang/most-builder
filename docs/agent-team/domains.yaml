@@ -186,6 +186,8 @@ domains:
       - "src/frontend/e2e/support/workbenchNlMocks.ts"
       - "src/frontend/e2e/wi-set-add.spec.ts"
       - "src/frontend/e2e/smoke.spec.ts"
+      # e2e：工作區畫面（W4，mock API）
+      - "src/frontend/e2e/workspace-drafts.spec.ts"
       # tests：編輯區（W1）整合測試
       - "tests/integration/test_wi_drafts.py"
       # tests：每列距離狀態與完成檢查（W2）
@@ -204,7 +206,11 @@ domains:
       - 前端不算 TMU；儲存 body 由 buildSaveBody 產出，derive() 的 null（非鏈首層級）須忠實保留
       - 【規劃中，ADR-037 實作後生效】AI 來源列的 provenance 由伺服器依 review_item_id 設定，前端不得傳值；mapper 一律輸出 simo_group_id／simo_with_row_id 為 null（ADR-037 D3、ADR-020）
       - 【規劃中，ADR-037 實作後生效】AI 採用落盤只走既有 save_worksheet，帶 base_revision，不得另開寫 wi_rows／most_cycles 的路徑（ADR-037 D5）
-      - 新產生內容先進編輯區、經「寫入工時表」才落盤（ADR-038）。W1 已落地後端（`wi_draft_rows` 資料表與 6 個 API，2026-11-23）；前端編輯區仍規劃中
+      - 新產生內容先進編輯區、經「寫入工時表」才落盤（ADR-038）。W1 已落地後端（`wi_draft_rows` 資料表與 6 個 API，2026-11-23）；W4 前端編輯區已落地（2026-11-24）：工時表編輯器的「加入」改為加入編輯區（手動列也要先確認再寫入，ADR-038 D2 W4 追記），舊的直接加列路徑不得復活
+      - 編輯草稿（載入編輯器→「更新草稿」→PATCH）時，沒改格位就原封保留草稿的 cycle，不得重新產生；改了格位才整個換成編輯器產出並清空敘述（否則「打開再存」會改動 AI 內容形狀，並繞過後端以 `cycle_hash` 判斷的 `DRAFT_INCOMPLETE`）（ADR-038 D3，2026-11-24 W4）
+      - 寫入工時表前，表上（含 level、LB 標記）有未存檔修改就擋；寫入帶 `base_revision`，409 版本衝突時草稿維持 `confirmed`、重新載入；整份存檔不帶 `distance_status`（ADR-038 D3，2026-11-24 W4）
+      - 工時表既有列仍可在表上直接改、排序、刪除後整份存檔；編輯區只管新產生的內容（ADR-038 D3，2026-11-24 W4）
+      - 整份上傳在 W5 前仍直接寫工時表、不經編輯區、不開距離檢查開關；入口文案須明講並先確認，W5 改為進編輯區（ADR-038 D3，2026-11-24 W4）
       - 整份存檔（save_worksheet）不得抹除既有列（沿用 id）的 provenance／source_import_id／source_module_*；新 id 才是 manual（ADR-037 D5，2026-11-23 W1）
       - 編輯區草稿不得出現在工時表讀取、匯出、LB 投影或核准流程（ADR-038 I2）
       - 距離完成檢查以每列明確的 `distance_status` 判斷，不看距離數值（A0 是合法值）；`distance_check_required` 只在 `drafts/commit` 打開、之後不關，未開啟的既有工時表不檢查（ADR-038 D6，2026-11-23 W2）。`distance_status` 不入 content_hash
@@ -290,7 +296,8 @@ domains:
       - ADR-033 D1（LLM 不產數值）、D6（逐項降級）、D7（距離單一來源）對外部 AI 回應維持為入站不變量（ADR-037 D3）
       - AI 建議一律逐項人工採用，不設批次或自動接受（ADR-037 D4、ADR-026 §3）；wi_ai_auto_enabled 現況為預設關、可由 env 開啟，ADR-037 落地時須改為不可開
       - 外部 AI 路徑（`parse_interactive(external=...)`）一律 `compute_routing(auto_enabled=False)`，不受 `wi_ai_auto_enabled` 影響（ADR-037 D4；2026-11-22 PR-B 落地）。上一條「須改為不可開」仍未完成：rule 路徑仍讀該旗標。路由已接線（2026-11-22，`nl_draft` 在 analyst 以上且整合可用時傳 `external`；預設關）
-      - 可接受的 motion（ADR-037 D3）在工作區的落實：人按「確認」＝人工採用（取代「人寫入 `chosen`」；`ai_candidates` 的 `chosen` 仍為 null、只供顯示），寫入時 `compute_rows_for_save` 重算（等價 engine_gate：唯一拒絕條件是 `compute_cycle` 丟 `SequenceError`）；`parse_snapshot.complete` 只是「要人先補」的提示（→ 409 `DRAFT_INCOMPLETE`），不是依據（ADR-038 D3，2026-11-24 W3）。舊前端 adopt 捷徑（`AiDraftPanel.tsx`、`ActionModuleWorkspace.tsx`，只檢查 `draft.cycle`）在 W4／W6 移除前仍在：`DDM_AI_SERVICE_ENABLED` 開啟時仍違反本條
+      - 可接受的 motion（ADR-037 D3）在工作區的落實：人按「確認」＝人工採用（取代「人寫入 `chosen`」；`ai_candidates` 的 `chosen` 仍為 null、只供顯示），寫入時 `compute_rows_for_save` 重算（等價 engine_gate：唯一拒絕條件是 `compute_cycle` 丟 `SequenceError`）；`parse_snapshot.complete` 只是「要人先補」的提示（→ 409 `DRAFT_INCOMPLETE`），不是依據（ADR-038 D3，2026-11-24 W3）。舊前端 adopt 捷徑：`AiDraftPanel.tsx` 已於 W4 移除（2026-11-24）；`ActionModuleWorkspace.tsx`（workbench-v3，只檢查 `draft.cycle`）在 W6 移除前仍在：`DDM_AI_SERVICE_ENABLED` 開啟時仍違反本條
+      - nl-draft review 事件（學習迴圈）現況暫停：工作區不再送（`AiDraftPanel` 移除）。後續由後端在 `commit_drafts` 以 `ai_parse_run_id` 與最終 content 產生 review 事件，前端不補送（ADR-038 D3 W4 追記，BL-ENG-20，2026-11-24 W4）
       - ai_service 候選的預覽 draft（`chosen` 恆為 None，`preview_drafts`）其 complete／引擎結果不得作為「可接受 motion」的依據（ADR-037 D3 澄清，2026-11-22）。編輯區草稿以預覽值預填但狀態為 pending，須經人確認、寫入時重算才算數（ADR-038 D3，2026-11-24 W3）；批次外部 AI 延後到 W3b（`parse_interactive` 外部路徑只支援單句）
       - 凍結列舉不得收窄，舊 ai_parse_runs 列須讀得回（ADR-037 D1）
       - 【規劃中，ADR-037 實作後生效】外送只含 WI 語句與白名單 context（ADR-037 D6／D7）

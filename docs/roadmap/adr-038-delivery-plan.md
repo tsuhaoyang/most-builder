@@ -7,7 +7,7 @@
 
 ## 狀態
 
-🔄 執行中。W1（PR #16）、W2（PR #19）、W3（PR #20）已合併；W7a 已合併（PR #21）；W7b 實作完成、PR 開立中（`feat/w7b-distance-compute`，2026-11-24，W7b，依審查建議，Howard 授權）。W7 拆為 W7a／W7b（2026-11-24，W7a，依審查建議，Howard 授權）。與 ADR-038 衝突時以 ADR-038 為準。
+🔄 執行中。W1（PR #16）、W2（PR #19）、W3（PR #20）已合併；W7a 已合併（PR #21）；W7b 已合併（PR #22）；W4 實作完成、PR 開立中（`feat/w4-workspace-ui`，2026-11-24，W4，依審查建議，Howard 授權）。W7 拆為 W7a／W7b（2026-11-24，W7a，依審查建議，Howard 授權）。與 ADR-038 衝突時以 ADR-038 為準。
 
 ## 工作方式（Howard 2026-11-23）
 
@@ -106,6 +106,15 @@
 
 8. （2026-11-24，W7b，依審查建議，Howard 授權）整份存檔開始帶 `distance_status` 時，要「讀回什麼就帶回什麼」，且不得讓 `confirmed` 的退回規則失效（ADR-038 D6 W7b 追記）；建議未改動的列不帶此欄。存檔後某列的 `distance_status` 被退回為空時，畫面要提示。
 
+**W4 完成對應**（2026-11-24，W4，依審查建議，Howard 授權；純前端，無 migration）：
+- 第 1 項 ✅：`drafts/DraftArea.tsx`（分組、來源與狀態標示、單列與整組確認、編輯、刪除、寫入工時表）。
+- 第 2 項 ✅（W5 部分待辦）：手動、單句（`drafts/SentenceInput.tsx`）已接；整份上傳入口開既有匯入精靈並先確認，目前直接寫進工時表，W5 改為進編輯區。
+- 第 3 項 ✅：`AiDraftPanel`、`aiDraft.store`、`detectLanguage`、`workbench.aiDraft.*` 已刪；`workbench-v3` 的 `ActionModuleWorkspace` 同類路徑由 W6 移除。
+- 第 4 項 ✅：AI 狀態與降級文案；zh-TW／en 對稱。
+- 第 5 項 ✅：409 版本衝突提示並重新載入、草稿維持已確認；`DRAFT_INCOMPLETE`／`DRAFT_STALE` 標出列。
+- 第 6 項 ✅：`src/frontend/e2e/workspace-drafts.spec.ts` 9 個（mock API）。全套 e2e 在 `workers=1` 時 204 passed、13 skipped；並行時有既有的順序依賴（共用 DB）。
+- 已知限制：見 ADR-038 D3 W4 追記（即時試算用 active 規則版本、PATCH 無版本欄後者覆蓋、乾算引擎以編輯器試算代替、解析 issues 顯示原始代碼）。
+
 ### W5：整份上傳整合進工作區（前端）
 1. 匯入改為工作區內的一種輸入；上傳、欄位對應後建 parse job，顯示進度，解析完的列先出現在編輯區。
 2. 失敗與需人工檢查的列有標示。
@@ -174,3 +183,9 @@
 | 2026-11-24 | W7b | 已知限制（不處理） | 沒有指回舊版的路徑、沒有獨立稽核表（版本列與指標有 created_by／published_by／set_by／set_at）、既有工時表不能改用新版本 |
 | 2026-11-24 | W7b | `wi_row_id` 不設 FK | 整份存檔會刪除重建 `wi_rows`，有 FK 會連帶刪掉建議；讀取時過濾、計算時清除孤兒 |
 | 2026-11-24 | W7b | DSX 配合文件 | 寫成 `docs/architecture/dsx-changes-for-adr-038.md`，由 Howard 轉交 DSX repo；ADR-038 D5.4 的「路徑待定」改指向它 |
+| 2026-11-24 | W4 | 手動列要不要確認（審查） | 要：手動列進編輯區後也要確認再寫入，與 AI、匯入一致。ADR-038 D2 追記澄清「確認」就是使用者那一個點擊，沒有另外的審核者 |
+| 2026-11-24 | W4 | 既有工時表列怎麼改（審查） | 仍可在表上直接修改、排序、刪除後整份存檔。D3 的範圍是新產生的內容 |
+| 2026-11-24 | W4 | 學習迴圈（nl-draft review 事件）（審查） | 暫停：工作區不再送。後續由後端在 `commit_drafts` 以 `ai_parse_run_id` 與最終 content 產生，前端不補送；開 BL-ENG-20（docs/BACKLOG.md） |
+| 2026-11-24 | W4 | W4～W5 間整份上傳（審查） | 仍直接寫工時表、不經編輯區、不開距離檢查開關；入口文案明講並先確認。W5 改進編輯區 |
+| 2026-11-24 | W4 | 編輯草稿不改格位（審查） | 原封保留草稿 cycle，不重新產生；避免改動 AI 內容形狀，也避免繞過後端 `DRAFT_INCOMPLETE` 的「沒人補過」判斷 |
+| 2026-11-24 | W4 | 已知限制（審查，接受） | 即時試算用 active 規則版本、寫入以工時表規則版本重算；PATCH 無版本欄後者覆蓋；`DRAFT_INCOMPLETE` 乾算以編輯器試算代替；parse issues 顯示原始代碼。e2e 並行順序依賴為既有問題，以 `workers=1` 驗證 |

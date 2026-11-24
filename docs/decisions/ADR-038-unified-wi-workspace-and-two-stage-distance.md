@@ -71,6 +71,7 @@ ADR-031 §1.1 量過：正式 gold 的 35 條 cycle，A 格全是 `A0`；距離�
   一句 WI 通常拆成多個 motion，所以 Excel 的一列進到工時表會變成好幾列。
 - 情境 2 就是只有一組的情境 3：**單句與整份走同一套審核畫面**（ADR-037 D4「單一管線」）。
 - 手動建的列也進同一個編輯區（來源 `manual`），不需要另外的審核步驟，但一樣經「寫入工時表」才落盤。
+  - > **2026-11-24，W4，依審查建議，Howard 授權（W4 追記）**：澄清「不需要另外的審核步驟」。手動列進編輯區後仍要先「確認」才能寫入工時表，與 AI、匯入的草稿一致；這個「確認」就是使用者自己的那一個點擊，沒有另外的審核者，也沒有第二道審核畫面。前端「加入」按鈕改為「加入編輯區」（`POST /worksheets/{id}/drafts`），不再直接加進工時表列。
 
 ### D3 確認是標記；「寫入工時表」才一次落盤
 
@@ -92,6 +93,17 @@ ADR-031 §1.1 量過：正式 gold 的 35 條 cycle，A 格全是 `A0`；距離�
   > - **欄位**（migration `v2_0053`，加法）：`wi_draft_rows.source_rule_set_id`、`parse_snapshot`（JSONB）、`stale_reason`。見 [data-model-and-storage-spec](../architecture/data-model-and-storage-spec.md) §2.6b。
   > - **錯誤碼**：`DRAFT_INCOMPLETE`（detail：`incomplete_count`、`draft_ids` ≤200）、`DRAFT_STALE`（detail：`stale_count`、`drafts[{draft_id, reason}]` ≤200）。
   > - **延後與已知限制**：批次的外部 AI（batch lane）與 ADR-037 D6 的 Excel 數量權威移到 W3b；超長與解析失敗的 Excel 列不產生草稿，畫面處理在 W5。見 [交付計畫](../roadmap/adr-038-delivery-plan.md)。
+- > **2026-11-24，W4，依審查建議，Howard 授權（W4 追記）**：W4（工作區畫面，純前端，無 migration）實作結果。原文與前面各次追記保留。
+  > - **畫面**：工時表編輯器（`features/wi-workbench/WiWorkbench.tsx`）改為工作區。上方「輸入方式」切換手動／單句／整份上傳；編輯器的加入按鈕改為「加入編輯區」；編輯區列表（`drafts/DraftArea.tsx`）依 `group_key` 分組，顯示來源、狀態、過期、不完整、截斷與解析備註，支援單列與整組確認、編輯、刪除、「寫入工時表」。單句輸入（`drafts/SentenceInput.tsx`）呼叫 `from-sentence`，顯示 `GET /wi-ai/status` 的 AI 狀態與降級文案。
+  > - **移除「採用到編輯器」捷徑**：`AiDraftPanel`、`aiDraft.store`、`detectLanguage` 與 `workbench.aiDraft.*` 文案已刪除，滿足本節「不再提供『採用到編輯器』直接載入 cycle 的捷徑」。`workbench-v3` 的 `ActionModuleWorkspace` 還有同類 adopt 路徑，隨 W6 移除。
+  > - **編輯草稿**：把草稿載入編輯器，按「更新草稿」送 `PATCH`。**沒改格位就原封保留草稿的 cycle**，避免「打開再存」把 AI 內容改形狀，也避免繞過後端「cycle 沒被人改過」（`cycle_hash`）的 `DRAFT_INCOMPLETE` 判斷。改了任何格位，整個 cycle 換成編輯器的產出，敘述（narrative）清空。草稿含編輯器放不下的內容（多個 M 分量、超過兩個 P 附加）時顯示提示。換工時表時放棄正在進行的編輯。
+  > - **寫入工時表**：帶 `base_revision`。表上（含 level、LB 標記）有未存檔修改時前端擋下，要先存檔。409 版本衝突：提示、重新載入，草稿維持 `confirmed`。409 `DRAFT_INCOMPLETE`／`DRAFT_STALE`：在列表上標出是哪幾列。
+  > - **整份存檔不帶 `distance_status`**（沿用 W2：未帶＝保留既有值）；存檔後若有 `confirmed` 因 W7b 退回規則變空，畫面提示。
+  > - **整份上傳入口**：開既有匯入精靈（與標頭按鈕同權限門檻），文案明講「目前直接寫進工時表、不經編輯區」並先確認。W5 改成進編輯區。**W4～W5 之間**整份上傳不經編輯區，也不開啟距離檢查開關（D6），這是已知且已向使用者說明的過渡狀態。
+  > - **既有列仍可直接改**：工時表上既有的列仍可在表上修改、排序、刪除後整份存檔。本節的範圍是「新產生的內容」，不是既有列的編輯方式。
+  > - **學習迴圈暫停**：工作區不再送 `nl-draft` 的 review 事件（原 `AiDraftPanel` 採用時送）。後續由後端在 `commit_drafts` 以 `ai_parse_run_id` 與最終 content 產生 review 事件，前端不補送；追蹤見 BL-ENG-20（docs/BACKLOG.md）。
+  > - **已知限制**：(1) 編輯草稿時的即時試算用目前 active 的規則版本，寫入時以工時表的規則版本重算，兩者不同時試算可能不準；(2) `PATCH` 沒有版本欄，兩人同時改同一列草稿，後者覆蓋（共用編輯區已接受，見 W1 追記）；(3) `DRAFT_INCOMPLETE` 原本要求「確認前先乾算引擎」，前端以編輯器的即時試算代替；(4) 解析 issues 以原始代碼顯示（診斷資訊，未翻成文案）。
+  > - **驗證**：`src/frontend/e2e/workspace-drafts.spec.ts`（9 個，mock API）。e2e 全套在並行時有既有的順序依賴（共用 DB），`workers=1` 時 204 passed、13 skipped。
 - **本 ADR 定義 ADR-037 D4 審核的落點**：ADR-037 規劃的「審核佇列」就是工作區的編輯區，不另做獨立頁面。
 - AI 草稿的處理（滿足 ADR-037 D3 澄清「預覽不是可接受依據」）：
   - AI 的格位代碼在編輯區是**候選**（`chosen` 為空），畫面上可直接看到預填的值，但列狀態為 `pending`。

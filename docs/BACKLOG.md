@@ -378,3 +378,10 @@
   - 若統一平台來不及而需要暫時做，必須所有 worksheet 路由一起做，不得只在單一路由加，否則權限不一致。
   - 角色判斷只用 `CurrentUser.has`／`require_role`，平台接手時只換這一層。
 - 對應文件：[rbac-spec](architecture/rbac-spec.md)、[ADR-037](decisions/ADR-037-ai-service-integration.md) D7。
+
+## BL-ENG-20 — 工作區暫停送 nl-draft review 事件，學習迴圈需改由後端產生
+- 領域：`nlp-compiler`、`wi-workbench`
+- 現況（2026-11-24，W4 時記錄）：W4 移除 `AiDraftPanel`（「採用到編輯器」）後，前端不再送 `nl-draft` 的 review 事件。原本那是 AI 解析結果被人採用、修改的回饋來源，現在沒有路徑送，學習迴圈暫停。
+- 影響：`ai_review` 沒有新的採用／修改紀錄，之後依這些紀錄調整同義詞或候選排序的作法拿不到新資料。不影響 TMU 計算與草稿寫入。
+- 建議做法：後端在 `commit_drafts`（草稿寫入工時表）時，以草稿的 `ai_parse_run_id` 與最終 content（人確認、修改後寫入的內容）產生 review 事件；前端不補送。需先確認 review 事件的欄位對得上草稿的 `ai_candidates`／`parse_snapshot`，以及手動與 `rule_based` 草稿是否產生。
+- 對應文件：[ADR-038](decisions/ADR-038-unified-wi-workspace-and-two-stage-distance.md) D3（W4 追記）、[ADR-037](decisions/ADR-037-ai-service-integration.md) D4、[交付計畫](roadmap/adr-038-delivery-plan.md)〈決策紀錄〉。
