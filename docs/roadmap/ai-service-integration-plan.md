@@ -207,6 +207,8 @@ DB 欄位不動；寫入端不再產生 `kind='llm'`，但**舊 `kind='llm'` 列
 ### 真實量測（2026-11-24，本機開發值）
 
 依 ai_service 對接契約（`ai_service/docs/specs/consumer-contract-most.md`）對常駐測試實例 `127.0.0.1:8610`（bundle `most-wi-motion-parse-poc003`，`shadow`；LLM 本機 `qwen2.5:14b`；ai_service `AI_LLM_ADMISSION_CONCURRENCY=2`）真實呼叫。
+
+> **2026-11-25 更新（ai_service A2 已套用）**：常駐測試實例改綁 `172.17.0.1:8610`（docker0），`127.0.0.1:8610` 不再可用；主機與 MOST 的 compose 網路（`ddm-v2_default`）都可連。MOST 設定：`DDM_AI_SERVICE_BASE_URL=http://172.17.0.1:8610`、`DDM_AI_SERVICE_ALLOWED_HOSTS=172.17.0.1`、`DDM_AI_SERVICE_ALLOW_PLAINTEXT=true`，金鑰用 `DDM_AI_SERVICE_KEY_FILE`（compose 的 secrets 區塊）。本機其他 docker 網路的容器也連得到此埠，沒有金鑰一律 401；ai_service 未對其他呼叫端發金鑰。2026-11-25 smoke：容器內（`ddm-v2_default`）與主機各一句，`ok`、1 motion、約 14–16 秒。上方的量測當時仍是 `127.0.0.1:8610`。
 工具：`scripts/ai_service_measure.py`（`smoke`／`latency`／`errors`）。走正式程式路徑（guard → adapter → client → mapper → plan adapter → compile 預覽 → engine_gate → routing → `ai_parse_runs`），環境變數只在該程序內設定，不開放給使用者；DB 用拋棄式測試庫；句子取自 `docs/sample_excel/MiniMOST1128` 與 `tests/gold/wi_plans`（不用真實 SKU 句子：常駐實例 Postgres 持久化、無保留期，契約 §8.3 第 9 項）。報告 JSON 在 `data/ai-service-measure/`（gitignore）。
 設定：`TIMEOUT_S=60`、`CONCURRENCY_INTERACTIVE=1`（Howard 2026-11-24 核可）、`MAX_RETRY_AFTER_S=60`（PR #24）。
 
