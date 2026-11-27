@@ -15,7 +15,7 @@
 | `DDM_AI_SERVICE_ALLOWED_HOSTS` | （無） | 逗號分隔；base URL 的 host 必須在其中 |
 | `DDM_AI_SERVICE_ALLOW_PLAINTEXT` | false | 允許 `http://`；即使開啟，也只接受解析到私網位址的 host |
 | `DDM_AI_SERVICE_KEY` | （無） | 服務金鑰（`X-AI-Service-Key`）；可用 `DDM_AI_SERVICE_KEY_FILE` 指向檔案 |
-| `DDM_AI_SERVICE_BUNDLE_CODE` | `most-wi-motion-parse-poc003` | bundle 不可變，換 prompt＝換 code |
+| `DDM_AI_SERVICE_BUNDLE_CODE` | `most-wi-motion-parse-poc003` | bundle 不可變，換 prompt＝換 code；必須是 `schema.SCHEMAS` 有複本的 bundle（poc003、poc004） |
 | `DDM_AI_SERVICE_SERVICE_USER` | `most-service` | 服務身分（ADR-037 D7：不送員工編號） |
 | `DDM_AI_SERVICE_PLANT_CODE` | `MOST` | 服務身分所屬廠 |
 | `DDM_AI_SERVICE_TIMEOUT_S` | 15 | 單次請求總時限（含重試前的單次呼叫） |
@@ -46,6 +46,7 @@ from pathlib import Path
 from urllib.parse import urlsplit
 
 from ddm_v2.ai_integration.errors import AiServiceError, AiServiceErrorKind
+from ddm_v2.ai_integration.schema import SCHEMAS, schema_sha256
 
 DEFAULT_BUNDLE_CODE = "most-wi-motion-parse-poc003"
 DEFAULT_SERVICE_USER = "most-service"
@@ -267,6 +268,12 @@ def validate_config(config: AiServiceConfig, *, resolver: Resolver = default_res
     for value in (config.bundle_code, config.service_user, config.plant_code):
         if not value or not _HEADER_SAFE.fullmatch(value):
             raise AiServiceError(AiServiceErrorKind.MISCONFIGURED, upstream_code="identity_or_bundle_invalid")
+    if config.bundle_code not in SCHEMAS:
+        # 約束解碼要送對應 bundle 的 schema；沒有複本就不啟用（不拿別的 bundle 的 schema 去猜）
+        raise AiServiceError(AiServiceErrorKind.MISCONFIGURED, upstream_code="bundle_schema_missing")
+    if schema_sha256(config.bundle_code) != SCHEMAS[config.bundle_code].sha256:
+        # 換 bundle 只改環境變數：複本檔有問題要在啟用時就擋，不等到第一次解析才爆
+        raise AiServiceError(AiServiceErrorKind.MISCONFIGURED, upstream_code="bundle_schema_hash_mismatch")
     if not (math.isfinite(config.timeout_s) and 0 < config.timeout_s <= MAX_TIMEOUT_S):
         raise AiServiceError(AiServiceErrorKind.MISCONFIGURED, upstream_code="bad_limits")
     if not 0 <= config.max_retries <= MAX_RETRIES_CAP:

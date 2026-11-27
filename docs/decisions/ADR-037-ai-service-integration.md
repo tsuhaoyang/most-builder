@@ -64,6 +64,7 @@ MOST 內的 LLM 專屬程式移除：`llm_client`、`prompts/*`、`LLMClientPort
   `{item_id, status, motions[], error, provenance}`。第一個 adapter 逐句呼叫 `structured-completion`；
   ai_service 的批量 flow 落地後只換 adapter，port 與下游不動。
 - bundle code、`json_schema` 複本、lane 放設定，不寫死在業務邏輯；`json_schema` 複本記 hash 以偵測漂移。
+  - 追記（2026-11-27，poc004 切換準備，依審查建議，Howard 授權）：複本現為 bundle code→複本表（`schema.py` 的 `SCHEMAS`，`poc003` 與 `poc004` 各一份，各記 sha256 與來源 commit）；沒有複本或 hash 不符時啟用即擋（`bundle_schema_missing`／`bundle_schema_hash_mismatch`）。切換程序見 `docs/roadmap/ai-service-integration-plan.md` 落差第 8 項。
 - 測試以 fake ai_service server 為主（依 openapi.json 快照與真服務錄製的 golden 回應），CI 不連真服務。
 - ai_service 不可用（逾時、5xx、429、契約不符、bundle 不可跑、熔斷開啟）時，`nl-draft` 照舊回 200 並走 `rule_based`，
   人工建表完全不受影響。`nl-draft` 維持同步，不改成 202。降級訊息不帶內部 URL 與錯誤細節。

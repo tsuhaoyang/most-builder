@@ -50,7 +50,7 @@ class AiServiceWiParser:
             extra = set(req.context) - CONTEXT_WHITELIST
             if extra:
                 raise ValueError(f"context keys not in ADR-037 D7 whitelist: {sorted(extra)}")
-        schema = wi_motion_parse_schema()
+        schema = wi_motion_parse_schema(self._client.bundle_code)
         return [await self._parse_one(req, schema, allow_lists, lane) for req in requests]
 
     async def _parse_one(

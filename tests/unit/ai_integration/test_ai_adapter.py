@@ -186,3 +186,19 @@ async def test_unexpected_mapper_exception_degrades_to_contract_mismatch(
     assert warned, "降級要留 WARNING，讓維運看得到 mapper bug"
     assert warned[0].exc_info is None and "SECRET-RESPONSE-VALUE" not in caplog.text, "log 只記例外類別，不含例外訊息、語句或回應內容"
     assert "KeyError" in warned[0].getMessage()
+
+
+async def test_poc004_sends_its_constrained_schema():
+    """約束解碼用呼叫端送的 schema：設定 poc004 就要送約束版，不是 poc003 的複本。"""
+    fake = FakeAiService(script=["ok:fewshot-zh-0"])
+
+    async def no_sleep(_s: float) -> None:
+        return None
+
+    cfg = load_config({**ENV, "DDM_AI_SERVICE_BUNDLE_CODE": "most-wi-motion-parse-poc004"})
+    client = AiServiceClient(cfg, transport=httpx.ASGITransport(app=fake.app()), resolver=_private, sleep=no_sleep)
+    await AiServiceWiParser(client).parse([_req()], allow_lists=ALLOW, lane="interactive")
+    body = fake.received[0]["body"]
+    assert body["bundle_code"] == "most-wi-motion-parse-poc004"
+    assert body["json_schema"] == wi_motion_parse_schema("most-wi-motion-parse-poc004")
+    assert body["json_schema"] != wi_motion_parse_schema("most-wi-motion-parse-poc003")

@@ -181,7 +181,7 @@ async def run_errors() -> dict:
         t0 = time.perf_counter()
         try:
             res = await client.structured_completion(
-                variables=v, json_schema=wi_motion_parse_schema(), prompt_variant=prompt_variant,
+                variables=v, json_schema=wi_motion_parse_schema(cfg.bundle_code), prompt_variant=prompt_variant,
                 lane="interactive", request_id=str(uuid.uuid4()),
             )
             return {"ok": True, "s": round(time.perf_counter() - t0, 2), "attempts": res.attempts}
