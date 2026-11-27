@@ -175,6 +175,7 @@ DB 欄位不動；寫入端不再產生 `kind='llm'`，但**舊 `kind='llm'` 列
 - [x] 每日額度：已決定 10,000 次（Howard 2026-11-23，ADR-038 D7；原 ADR-037 D8 為 2000）。程式預設值另以小 PR 更新。
 - [x] 快取 TTL 決定：不設 TTL，快取鍵加版本（2026-11-24，真實量測後，Howard 核可；ADR-037 D8）。
 - [ ] ai_service S-085／S-086 一起上線（S-085 已實作未上線，單獨上線會使最壞延遲約加倍；`poc004` 轉 shadow 後 ai_service 通知）：MOST 換 `DDM_AI_SERVICE_BUNDLE_CODE`＝`most-wi-motion-parse-poc004`、送約束版 schema 並同步複本、`SCHEMA_SHA256`、`SCHEMA_SOURCE_COMMIT`，確認 `motions[].slots` 形狀未變，重測後再定總時限（2026-11-24，ai_service A3 回覆後，依審查建議，Howard 授權；2026-11-25 ai_service A3 補充回覆，Howard 授權）。
+  複本與切換能力已就緒（2026-11-27），待 ai_service 重建與轉 shadow 後改環境變數、重測（見落差第 8 項；2026-11-27，poc004 切換準備，依審查建議，Howard 授權）。
 - [ ] 進入條件：30 句延遲量測；`most` 金鑰最小權限已確認。
 - [ ] 部署：verify 模式（見 [lb-most-auth](../architecture/lb-most-auth.md)）；金鑰用檔案。
 
@@ -237,6 +238,13 @@ DB 欄位不動；寫入端不再產生 `kind='llm'`，但**舊 `kind='llm'` 列
    - 約束解碼用呼叫端送的 schema。MOST 換 `poc004` 時必須送新的約束版 schema（ai_service `packs/most/schemas/wi-motion-parse.constrained.schema.json`，motion 改 `oneOf`），並同步 MOST 的 schema 複本、`SCHEMA_SHA256`、`SCHEMA_SOURCE_COMMIT`（`src/ddm_v2/ai_integration/schema.py`）與 `DDM_AI_SERVICE_BUNDLE_CODE`；送舊 schema 到 `poc004` 會被拒。`poc004` 轉 shadow 後 ai_service 會通知，在此之前 MOST 不改。
    - ai_service 要求 MOST 端維持完整驗證。MOST 現況：沒有跑 JSON Schema 驗證器，而是 mapper（`src/ddm_v2/ai_integration/mapper.py`）逐欄防禦解讀：未知欄位丟棄並記 issue；`seq_kind` 無效則中段留空；每格代碼依該 `seq_kind` 的位置對目標規則版本允許清單檢查，不在清單就丟並標 `ai_unknown_code`；中段 GM／CM 同時有值判 `composite_unknown`。之後再經 compile、engine_gate、人工確認與寫入重算。「代碼在不在清單、放對格位沒有」這道防線不依賴 ai_service 的驗證。換約束版 schema 時要確認輸出形狀（`motions[].slots` 的 `s0_A`…`s6_A`）未變，否則 mapper 要跟著改。
    - S-087：契約 §3.5.2 更正為「ok ≠ 通過 schema」，合併後生效。
+8. **poc004 切換準備（已就緒）（2026-11-27，poc004 切換準備，依審查建議，Howard 授權）**：
+   - ai_service 通知：常駐實例要重建映像（帶入 S-085 完整驗證與 S-086 `poc004`），api 中斷約 1–2 分鐘，資料庫不動；之後 Howard 以管理金鑰把 `poc004` 轉 shadow。重建後 `poc003` 也套用完整驗證（不合規先重試一次，仍不合路徑 A 回 422），沒有服務端回退開關。路徑 B 維持 `poc003`（MOST 沒用路徑 B）。
+   - 約束版輸出節點上限約 25 個 motion，MOST mapper 上限 20。schema 送錯時 Ollama 回 400、ai_service 回 502 `PROVIDER_UNREACHABLE`。模型 24 小時無人使用會卸載，驗收日前要請 ai_service 暖機。
+   - MOST 端已完成：`src/ddm_v2/ai_integration/schema.py` 改成 bundle code→複本表 `SCHEMAS`。`poc003`：`wi-motion-parse.schema.json`、sha256 `180c7280…`、commit `df399fc`。`poc004`：`wi-motion-parse.constrained.schema.json`、sha256 `71d2157ded5d364c3144635f02c630f8ddbb2e2586df411e9ab7eb5df3828a5c`、ai_service main commit `7560d0d`。adapter 依設定的 bundle 選 schema。`validate_config` 對沒有複本的 bundle 回 MISCONFIGURED `bundle_schema_missing`，複本 hash 不符回 `bundle_schema_hash_mismatch`（啟用時就擋）。快取鍵已含外部 bundle code，換 bundle 不會重播舊結果。預設仍 `poc003`。
+   - 實測（2026-11-27，舊映像）：`poc003` ok（1 motion、19.5 s）；`poc004` 回 404 `NOT_FOUND` → `request_rejected` 降級，符合預期（映像還沒有 `poc004`）。
+   - 切換程序：ai_service 重建且 Howard 轉 shadow 後，MOST 只改 `DDM_AI_SERVICE_BUNDLE_CODE=most-wi-motion-parse-poc004` 並重啟（量測腳本用同一個環境變數），接著 smoke 與 30 句重測，之後再定總時限。
+   - 時窗影響：MOST 沒有對使用者開放 AI（`DDM_AI_SERVICE_ENABLED` 預設 false），重建到切換之間不影響使用者。
 
 ### 路徑 B（延後）（2026-11-24，W3b，依審查建議，Howard 授權）
 
