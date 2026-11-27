@@ -24,7 +24,7 @@ from ddm_v2.ai_integration.adapter import AiServiceWiParser
 from ddm_v2.ai_integration.client import CONTRACT_VERSION, ENDPOINT_PATH, AiServiceClient
 from ddm_v2.ai_integration.config import MIN_KEY_LENGTH, load_config
 from ddm_v2.ai_integration.ports import WiParseRequest
-from ddm_v2.ai_integration.schema import SCHEMA_SHA256, schema_sha256, wi_motion_parse_schema
+from ddm_v2.ai_integration.schema import SCHEMA_SHA256, SCHEMAS, schema_sha256, wi_motion_parse_schema
 from ddm_v2.most_compiler.compile import allow_lists_from_rule_set
 from ddm_v2.most_engine.providers import build_from_seed_v2
 
@@ -109,6 +109,25 @@ async def test_golden_cases_parse_end_to_end(case_id: str):
 def test_vendored_schema_hash_is_pinned():
     assert schema_sha256() == SCHEMA_SHA256
     assert wi_motion_parse_schema()["$id"] == "wi-motion-parse.schema.json"
+
+
+@pytest.mark.parametrize("bundle", sorted(SCHEMAS))
+def test_every_vendored_schema_is_pinned_and_lists_the_seed_codes(bundle: str):
+    """每個 bundle 的複本都要對得上釘值，code 清單也要和 MOST rule-set 一致（poc004 的約束版同樣檢查）。"""
+    assert schema_sha256(bundle) == SCHEMAS[bundle].sha256
+    d = wi_motion_parse_schema(bundle)["$defs"]
+    for family, key in (("B", "b_code"), ("G", "g_code"), ("M", "m_code"), ("X", "x_code"), ("I", "i_code")):
+        assert set(d[key]["enum"]) == set(ALLOW[family]), (bundle, family)
+    assert set(d["p_slot"]["properties"]["base"]["enum"]) == set(ALLOW["P"])
+    assert set(d["p_slot"]["properties"]["addon"]["items"]["enum"]) == set(ALLOW["P_ADDON"])
+
+
+def test_poc004_schema_keeps_the_output_shape():
+    """S-086：約束版只改結構（motion 改 oneOf），輸出形狀（頂層 motions、slots s0_A…s6_A）不變，mapper 不用改。"""
+    d = wi_motion_parse_schema("most-wi-motion-parse-poc004")
+    assert set(d["properties"]) == {"motions"}
+    for key in ("slots_gm", "slots_cm"):
+        assert set(d["$defs"][key]["properties"]) == {"s0_A", "s1_B", "s2_G", "s3", "s4", "s5", "s6_A"}, key
 
 
 def test_schema_code_enums_match_the_seed_rule_set():

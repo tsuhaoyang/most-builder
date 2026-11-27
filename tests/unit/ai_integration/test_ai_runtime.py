@@ -16,7 +16,7 @@ GOOD = {
     "DDM_AI_SERVICE_BASE_URL": f"https://{HOST}",
     "DDM_AI_SERVICE_ALLOWED_HOSTS": HOST,
     "DDM_AI_SERVICE_KEY": "k" * MIN_KEY_LENGTH,
-    "DDM_AI_SERVICE_BUNDLE_CODE": "bundle-x",
+    "DDM_AI_SERVICE_BUNDLE_CODE": "most-wi-motion-parse-poc003",
 }
 
 
@@ -58,7 +58,7 @@ def test_disabled_by_default():
 def test_enabled_and_valid_gives_a_guarded_parser(monkeypatch, private_dns):
     _env(monkeypatch, GOOD)
     r = rt.get_runtime()
-    assert (r.enabled, r.available, r.service_bundle_code) == (True, True, "bundle-x")
+    assert (r.enabled, r.available, r.service_bundle_code) == (True, True, "most-wi-motion-parse-poc003")
     assert isinstance(r.parser, GuardedWiParser)
 
 

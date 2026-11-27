@@ -92,6 +92,8 @@ def test_d8_defaults():
         ({"DDM_AI_SERVICE_BASE_URL": f"https://u:p@{HOST}"}, "userinfo_in_url"),
         ({"DDM_AI_SERVICE_BASE_URL": f"ftp://{HOST}"}, "bad_scheme_or_host"),
         ({"DDM_AI_SERVICE_TIMEOUT_S": "0"}, "bad_limits"),
+        # 沒有 schema 複本的 bundle：不啟用（約束解碼要送該 bundle 的 schema，不拿別的去猜）
+        ({"DDM_AI_SERVICE_BUNDLE_CODE": "most-wi-motion-parse-poc999"}, "bundle_schema_missing"),
     ],
 )
 def test_misconfiguration_is_rejected(over: dict[str, str], code: str):
@@ -209,3 +211,24 @@ def test_dns_failure_is_unreachable():
     with pytest.raises(AiServiceError) as exc:
         validate_target(f"https://{HOST}", frozenset({HOST}), allow_plaintext=False, resolver=boom)
     assert exc.value.kind is AiServiceErrorKind.UNREACHABLE
+
+
+def test_poc004_passes_validation():
+    validate_config(load_config(_env(DDM_AI_SERVICE_BUNDLE_CODE="most-wi-motion-parse-poc004")), resolver=_private)
+
+
+def test_a_vendored_schema_with_a_wrong_hash_disables_the_integration(monkeypatch):
+    from ddm_v2.ai_integration import config as cfg_mod
+
+    monkeypatch.setattr(cfg_mod, "schema_sha256", lambda _b: "0" * 64)
+    with pytest.raises(AiServiceError) as exc:
+        validate_config(load_config(_env()), resolver=_private)
+    assert exc.value.kind is AiServiceErrorKind.MISCONFIGURED
+    assert exc.value.upstream_code == "bundle_schema_hash_mismatch"
+
+
+def test_unknown_bundle_has_no_schema():
+    from ddm_v2.ai_integration.schema import UnknownSchemaBundle, wi_motion_parse_schema
+
+    with pytest.raises(UnknownSchemaBundle):
+        wi_motion_parse_schema("most-wi-motion-parse-poc999")

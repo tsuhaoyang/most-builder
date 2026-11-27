@@ -259,6 +259,10 @@ class AiServiceClient:
         self._jitter = jitter
 
     @property
+    def bundle_code(self) -> str:
+        return self._config.bundle_code
+
+    @property
     def breaker(self) -> CircuitBreaker:
         return self._breaker
 
